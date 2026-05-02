@@ -30,7 +30,7 @@ export type ClientMessage =
 export type ServerMessage =
   | { t: 'state'; state: GameState; you: Seat | 'spectator' }
   | { t: 'delta'; events: Event[]; state: GameState }
-  | { t: 'lobby'; players: PublicPlayer[]; host: string; rules: RuleConfig }
+  | { t: 'lobby'; players: PublicPlayer[]; host: string | null; rules: RuleConfig }
   | { t: 'error'; code: string; detail?: string }
   | { t: 'pong' };
 

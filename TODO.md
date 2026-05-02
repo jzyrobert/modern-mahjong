@@ -13,21 +13,22 @@ Tracker for outstanding plan work. The full design lives in `/root/.claude/plans
 - [x] Engine property + flow tests (fast-check, kong, win-on-discard, scoring).
 - [x] GitHub Actions CI: typecheck + tests + lint + client/server builds.
 - [x] Match-flow controls: lobby "create match", in-game "start match" + "start next hand" with HK dealer rotation.
+- [x] Animations: framer-motion `layoutId` FLIP on every tile, table-orientation layout, discard piles per seat, `prefers-reduced-motion` honored.
+- [x] Configurable rules: `setRules` action + `RulePanel` (faan minimum, seven-pairs / thirteen-orphans toggles, turn timeout, claim window).
+- [x] Cumulative `Scoreboard` between hands.
+- [x] Server-side dealer rotation (`nextDealer` in game-logic).
+- [x] Host-only gating on `startHand` / `setRules` (in the client UI; server-side gating still queued).
 
 ## Queued (in dependency order)
 
 ### Animations & layout polish
-- [ ] `framer-motion` `layoutId`-based FLIP animations on every tile so wall → hand → meld → discard transitions are automatic.
-- [ ] Table-orientation layout (bottom self, left/top/right opponents) instead of the current 3-column grid.
-- [ ] Discard piles rendered in front of each seat.
-- [ ] `prefers-reduced-motion` collapses motion to instantaneous.
-- [ ] Perf check: tile transitions ≤ 250 ms, all animation on `transform` only.
+- [ ] Perf check: tile transitions ≤ 250 ms, all animation on `transform` only (instrumentation + Lighthouse run).
+- [ ] Dice-roll opening: each player rolls two dice; the highest scorer rolls again to decide where the dealing starts (real-mahjong opening).
+- [ ] In subsequent hands of the same session, the previous winner rolls the dice to start the deal.
+- [ ] End-of-hand shuffle animation: tiles shuffle into a center circle, then new rows of tiles dispense onto the table like an automatic mahjong machine.
 
-### Configurable rules + scoring breakdown UX
-- [ ] Lobby panel exposing `RuleConfig` (faan minimum, allow seven-pairs, allow thirteen-orphans, turn timeout, claim-window).
-- [ ] Server applies rule changes only while phase is `waiting`.
-- [ ] Scoring breakdown modal on the result screen with per-pattern faan list + tile composition.
-- [ ] Cumulative scoreboard rendered between hands.
+### Scoring breakdown UX
+- [ ] Scoring breakdown modal on the result screen with per-pattern faan list + the tile composition that produced it.
 
 ### Server hardening
 - [ ] In-memory MatchRoom integration test (mock Connection, scripted hand, assert delta sequence).

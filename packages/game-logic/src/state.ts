@@ -30,6 +30,8 @@ export const DEFAULT_RULES: RuleConfig = {
   claimWindowMs: 3_000,
 };
 
+export const FAAN_OPTIONS: readonly RuleConfig['faanMin'][] = [0, 1, 3, 5] as const;
+
 export type Claim =
   | { kind: 'pass' }
   | { kind: 'chi'; with: [Tile, Tile] } // the two tiles already in hand that complete the run
@@ -109,4 +111,16 @@ export function prevSeat(s: Seat): Seat {
 
 export function acrossSeat(s: Seat): Seat {
   return ((s + 2) % 4) as Seat;
+}
+
+/**
+ * HK dealer rotation: the dealer keeps the seat if they won or the hand
+ * was drawn; otherwise rotation advances counter-clockwise. Returns the
+ * dealer seat for the next hand.
+ */
+export function nextDealer(state: GameState): Seat {
+  const r = state.lastResult;
+  if (!r) return state.dealer;
+  if (r.kind === 'win' && r.winner !== state.dealer) return nextSeat(state.dealer);
+  return state.dealer;
 }

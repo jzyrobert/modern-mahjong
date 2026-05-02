@@ -1,19 +1,19 @@
 import type { Action, Seat } from '@mahjong/game-logic';
-import { nextSeat } from '@mahjong/game-logic';
+import { nextDealer } from '@mahjong/game-logic';
 import { useGame } from '../state/game.js';
 import { randomSeed } from '../util.js';
+import { RulePanel } from './RulePanel.js';
 
 interface ResultPanelProps {
   onAction: (a: Action) => void;
   mySeat: Seat;
+  isHost: boolean;
 }
 
-export function ResultPanel({ onAction, mySeat }: ResultPanelProps) {
+export function ResultPanel({ onAction, mySeat, isHost }: ResultPanelProps) {
   const state = useGame((s) => s.state)!;
   const r = state.lastResult!;
-  // Dealer rotation: the dealer keeps the seat if they won, otherwise rotation continues CCW.
-  const nextDealer: Seat =
-    r.kind === 'win' && r.winner === state.dealer ? state.dealer : nextSeat(state.dealer);
+  const dealerForNext = nextDealer(state);
   return (
     <div style={{ marginTop: 16, padding: 12, background: '#1d2538', borderRadius: 6 }}>
       {r.kind === 'win' ? (
@@ -29,15 +29,17 @@ export function ResultPanel({ onAction, mySeat }: ResultPanelProps) {
       ) : (
         <strong>Drawn game (wall empty)</strong>
       )}
+      <RulePanel rules={state.rules} isHost={isHost} onAction={onAction} />
       <div style={{ marginTop: 8 }}>
         <button
           type="button"
-          onClick={() => onAction({ t: 'startHand', seed: randomSeed(), dealer: nextDealer })}
+          disabled={!isHost}
+          onClick={() => onAction({ t: 'startHand', seed: randomSeed(), dealer: dealerForNext })}
         >
           Start next hand
         </button>{' '}
         <span style={{ fontSize: 12, opacity: 0.7 }}>
-          (you are seat {mySeat}; next dealer will be seat {nextDealer})
+          (you are seat {mySeat}; next dealer will be seat {dealerForNext})
         </span>
       </div>
     </div>

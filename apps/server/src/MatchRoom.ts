@@ -278,7 +278,7 @@ export class MatchRoom extends Server {
     const msg: ServerMessage = {
       t: 'lobby',
       players,
-      host: this.meta.hostPlayerId ?? '',
+      host: this.meta.hostPlayerId,
       rules: this.state.rules,
     };
     this.broadcast(JSON.stringify(msg));

@@ -12,6 +12,7 @@ import { buildWall } from './tiles.js';
 
 export type Action =
   | { t: 'startHand'; seed: number; dealer?: Seat }
+  | { t: 'setRules'; rules: Partial<RuleConfig> }
   | { t: 'draw'; seat: Seat } // server-issued automatically at turn boundaries
   | { t: 'discard'; seat: Seat; tile: Tile }
   | { t: 'declareClaim'; seat: Seat; claim: Claim }
@@ -22,6 +23,7 @@ export type Action =
 
 export type Event =
   | { t: 'handStarted'; seed: number }
+  | { t: 'rulesChanged'; rules: RuleConfig }
   | { t: 'drew'; seat: Seat; tile: Tile }
   | { t: 'discarded'; seat: Seat; tile: Tile }
   | { t: 'claimsOpened'; deadlineMs: number }
@@ -57,6 +59,8 @@ export function reduce(state: GameState, action: Action): { state: GameState; ev
   switch (action.t) {
     case 'startHand':
       return startHand(state, action.seed, action.dealer ?? state.dealer);
+    case 'setRules':
+      return setRules(state, action.rules);
     case 'draw':
       return drawTile(state, action.seat);
     case 'discard':
@@ -72,6 +76,33 @@ export function reduce(state: GameState, action: Action): { state: GameState; ev
     case 'declareWin':
       return declareWin(state, action.seat, action.selfDraw);
   }
+}
+
+function setRules(
+  state: GameState,
+  patch: Partial<RuleConfig>,
+): { state: GameState; events: Event[] } {
+  if (state.phase !== 'waiting' && state.phase !== 'resolved') {
+    throw new IllegalActionError('PHASE', 'rules can only change between hands');
+  }
+  const merged: RuleConfig = { ...state.rules, ...patch };
+  if (rulesEqual(merged, state.rules)) {
+    return { state, events: [] };
+  }
+  return {
+    state: { ...state, rules: merged },
+    events: [{ t: 'rulesChanged', rules: merged }],
+  };
+}
+
+function rulesEqual(a: RuleConfig, b: RuleConfig): boolean {
+  return (
+    a.faanMin === b.faanMin &&
+    a.allowSevenPairs === b.allowSevenPairs &&
+    a.allowThirteenOrphans === b.allowThirteenOrphans &&
+    a.turnTimeoutMs === b.turnTimeoutMs &&
+    a.claimWindowMs === b.claimWindowMs
+  );
 }
 
 function startHand(
@@ -222,13 +253,7 @@ function declareKongConcealed(
   if (state.turn !== seat) throw new IllegalActionError('SEAT', 'not your turn');
   const matching = state.hands[seat].filter((t) => sameFace(t, tile));
   if (matching.length < 4) throw new IllegalActionError('TILE', 'not 4 in hand');
-  let newHand = [...state.hands[seat]];
-  for (let i = 0; i < 4; i++)
-    newHand = newHand
-      .filter((t, idx) => !(sameFace(t, tile) && newHand.indexOf(t) === idx))
-      .concat();
-  // simpler: just filter all matching out and re-add 0
-  newHand = state.hands[seat].filter((t) => !sameFace(t, tile));
+  const newHand = state.hands[seat].filter((t) => !sameFace(t, tile));
   const meld: Meld = { kind: 'kong-concealed', tiles: matching };
   const melds = { ...state.melds, [seat]: [...state.melds[seat], meld] };
   // Replacement draw from the dead wall.

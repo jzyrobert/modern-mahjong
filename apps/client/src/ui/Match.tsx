@@ -1,9 +1,11 @@
 import type { Action, Tile as MTile } from '@mahjong/game-logic';
 import { useCallback, useMemo } from 'react';
-import { useGame } from '../state/game.js';
+import { isSeatHost, useGame } from '../state/game.js';
 import { randomSeed } from '../util.js';
 import { ClaimBar } from './ClaimBar.js';
 import { ResultPanel } from './ResultPanel.js';
+import { RulePanel } from './RulePanel.js';
+import { Scoreboard } from './Scoreboard.js';
 import { Table } from './Table.js';
 
 interface MatchProps {
@@ -13,9 +15,11 @@ interface MatchProps {
 export function Match({ onAction }: MatchProps) {
   const state = useGame((s) => s.state);
   const you = useGame((s) => s.you);
+  const lobby = useGame((s) => s.lobby);
 
   const myTurn = !!state && state.phase === 'turn' && state.turn === you;
   const seat = you !== null && you !== 'spectator' ? you : null;
+  const isHost = isSeatHost(lobby, seat);
 
   const onDiscard = useCallback(
     (t: MTile) => {
@@ -41,15 +45,24 @@ export function Match({ onAction }: MatchProps) {
 
   if (state.phase === 'waiting') {
     return (
-      <div style={{ padding: 24, color: '#eee', fontFamily: 'system-ui, sans-serif' }}>
+      <div
+        style={{ padding: 24, color: '#eee', fontFamily: 'system-ui, sans-serif', maxWidth: 560 }}
+      >
         <h2>Lobby</h2>
         <p>You are seated as seat {seat}. Hit start when everyone has joined.</p>
+        <RulePanel rules={state.rules} isHost={isHost} onAction={onAction} />
         <button
           type="button"
+          disabled={!isHost}
           onClick={() => onAction({ t: 'startHand', seed: randomSeed(), dealer: 0 })}
         >
           Start match
         </button>
+        {!isHost && (
+          <p style={{ fontSize: 12, opacity: 0.6, marginTop: 8 }}>
+            Waiting for the host to start the match.
+          </p>
+        )}
       </div>
     );
   }
@@ -58,6 +71,7 @@ export function Match({ onAction }: MatchProps) {
 
   return (
     <div style={{ padding: 12, color: '#eee', fontFamily: 'system-ui, sans-serif' }}>
+      <Scoreboard />
       <Table
         mySeat={seat}
         hands={state.hands}
@@ -82,7 +96,7 @@ export function Match({ onAction }: MatchProps) {
         </button>
       </div>
       {showClaim && <ClaimBar onAction={onAction} seat={seat} />}
-      {state.lastResult && <ResultPanel onAction={onAction} mySeat={seat} />}
+      {state.lastResult && <ResultPanel onAction={onAction} mySeat={seat} isHost={isHost} />}
     </div>
   );
 }
