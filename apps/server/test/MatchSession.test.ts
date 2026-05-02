@@ -218,6 +218,46 @@ describe('MatchSession — disconnect + reconnect grace', () => {
   });
 });
 
+describe('MatchSession — snapshot + restore', () => {
+  it('round-trips through JSON without losing engine state', () => {
+    const a = new MatchSession();
+    helloAs(a, 'c0', 'p0', 'Host');
+    helloAs(a, 'c1', 'p1', 'Guest');
+    a.applyClientMessage('c0', {
+      t: 'action',
+      action: { t: 'startHand', seed: 42, dealer: 0 },
+    });
+    const phaseBefore = a.getState().phase;
+    const wallBefore = a.getState().wall.length;
+
+    const snap = JSON.parse(JSON.stringify(a.snapshot()));
+    const b = new MatchSession();
+    b.restore(snap);
+
+    expect(b.getState().phase).toBe(phaseBefore);
+    expect(b.getState().wall.length).toBe(wallBefore);
+  });
+
+  it('rebuilds the auto-bot stand-in seat across a snapshot/restore cycle', () => {
+    const a = new MatchSession();
+    helloAs(a, 'c0', 'p0');
+    a.detachConnection('c0', 1_000);
+    const snap = JSON.parse(JSON.stringify(a.snapshot()));
+
+    const b = new MatchSession();
+    b.restore(snap);
+    // Reconnect by the same playerId — seat 0 should still be associated with p0.
+    const reconn = helloAs(b, 'c0b', 'p0');
+    expect(stateYouFor(reconn, 'c0b')).toBe(0);
+    // Host gating: p0 was the host before the snapshot, so startHand must succeed.
+    const out = b.applyClientMessage('c0b', {
+      t: 'action',
+      action: { t: 'startHand', seed: 1, dealer: 0 },
+    });
+    expect(pickSends(out, 'c0b').filter((m) => m.t === 'error')).toHaveLength(0);
+  });
+});
+
 describe('MatchSession — illegal action error path', () => {
   it('out-of-turn discard returns a typed error to the offending connection', () => {
     const s = new MatchSession();
