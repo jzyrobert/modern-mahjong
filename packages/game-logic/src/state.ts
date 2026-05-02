@@ -86,6 +86,16 @@ export interface GameState {
   openingRolls?: OpeningRolls | undefined;
 }
 
+/** One scoring pattern that contributed faan, with its name + value. */
+export interface FaanBreakdown {
+  /** Traditional Chinese name (e.g. 清一色). */
+  name: string;
+  /** Short English gloss (e.g. "full flush"). */
+  english: string;
+  /** Faan contributed by this pattern. */
+  faan: number;
+}
+
 export type HandResult =
   | {
       kind: 'win';
@@ -94,7 +104,7 @@ export type HandResult =
       tile: Tile;
       selfDraw: boolean;
       faan: number;
-      reasons: string[];
+      breakdown: FaanBreakdown[];
     }
   | { kind: 'draw'; reason: 'wall-empty' };
 

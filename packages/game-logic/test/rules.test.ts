@@ -52,7 +52,7 @@ describe('engine — nextDealer', () => {
         tile: { kind: 'honor', honor: 'E', copy: 0 },
         selfDraw: true,
         faan: 3,
-        reasons: [],
+        breakdown: [],
       },
     };
     expect(nextDealer(state)).toBe(2);
@@ -70,7 +70,7 @@ describe('engine — nextDealer', () => {
         tile: { kind: 'honor', honor: 'E', copy: 0 },
         selfDraw: false,
         faan: 3,
-        reasons: [],
+        breakdown: [],
       },
     };
     expect(nextDealer(state)).toBe(1);
