@@ -10,6 +10,7 @@ import { useGame } from './state/game.js';
 import { DiceCeremony } from './ui/DiceCeremony.js';
 import { Lobby } from './ui/Lobby.js';
 import { Match } from './ui/Match.js';
+import { ShuffleOverlay } from './ui/ShuffleOverlay.js';
 
 function App() {
   const [transport, setTransport] = useState<Transport | null>(null);
@@ -88,6 +89,7 @@ function App() {
       ) : (
         <Match onAction={onAction} />
       )}
+      <ShuffleOverlay />
       <DiceCeremony />
     </>
   );
