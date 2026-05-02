@@ -5,6 +5,7 @@ import { StrictMode, useCallback, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { getDisplayName, getPlayerId } from './identity.js';
 import { initNativeIfAvailable } from './native/init.js';
+import { createSoloTransport } from './net/solo-transport.js';
 import { type Transport, createLanTransport, createOnlineTransport } from './net/transport.js';
 import { useGame } from './state/game.js';
 import { DiceCeremony } from './ui/DiceCeremony.js';
@@ -53,6 +54,10 @@ function App() {
     [swap],
   );
 
+  const onJoinSolo = useCallback(() => {
+    swap(createSoloTransport({ playerId: getPlayerId(), displayName: getDisplayName() }));
+  }, [swap]);
+
   useEffect(() => {
     if (!transport) return;
     return transport.onMessage((m: ServerMessage) => {
@@ -85,7 +90,7 @@ function App() {
   return (
     <>
       {!state ? (
-        <Lobby onJoinOnline={onJoinOnline} onJoinLan={onJoinLan} />
+        <Lobby onJoinOnline={onJoinOnline} onJoinLan={onJoinLan} onJoinSolo={onJoinSolo} />
       ) : (
         <Match onAction={onAction} />
       )}

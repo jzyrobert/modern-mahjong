@@ -141,6 +141,8 @@ export const bots: Record<BotKind, Bot> = {
   passive: passiveBot,
 };
 
+export { runBotTurns } from './run.js';
+
 // --- helpers -----------------------------------------------------------
 
 function isolationScore(t: Tile, hand: readonly Tile[]): number {

@@ -9,9 +9,10 @@ import { JoinLanModal } from './JoinLanModal.js';
 interface LobbyProps {
   onJoinOnline: (matchCode: string) => void;
   onJoinLan: (hostUrl: string, matchCode: string) => void;
+  onJoinSolo: () => void;
 }
 
-export function Lobby({ onJoinOnline, onJoinLan }: LobbyProps) {
+export function Lobby({ onJoinOnline, onJoinLan, onJoinSolo }: LobbyProps) {
   const lanGuest = isLanOrigin();
   const lanOrigin = lanGuest && typeof window !== 'undefined' ? window.location.origin : '';
   const [name, setName] = useState(getDisplayName());
@@ -73,11 +74,20 @@ export function Lobby({ onJoinOnline, onJoinLan }: LobbyProps) {
         </button>
       </div>
 
+      <h3 style={{ marginTop: 24 }}>Practice vs bots</h3>
+      <p style={{ fontSize: 12, opacity: 0.7 }}>
+        No connection — runs entirely on this device. You're seated against three bots (heuristic,
+        simple, passive). Useful for offline play and learning the rules.
+      </p>
+      <button type="button" onClick={onJoinSolo}>
+        Play vs bots
+      </button>
+
       <h3 style={{ marginTop: 24 }}>LAN / offline</h3>
       <p style={{ fontSize: 12, opacity: 0.7 }}>
         Play four-player matches over your local network without an internet connection. The host
-        runs the installed app and shares a URL or QR code; guests can join from any browser on the
-        same Wi-Fi.
+        runs the installed app and shares the URL; guests can join from any browser on the same
+        Wi-Fi.
       </p>
       <div style={{ display: 'flex', gap: 8 }}>
         <button type="button" onClick={() => setHostLanOpen(true)}>
