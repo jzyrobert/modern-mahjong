@@ -44,7 +44,7 @@ Tracker for outstanding plan work. The full design lives in [`docs/PLAN.md`](./d
 - [x] `isLanOrigin()` heuristic so a guest visiting an `http://192.168.x.x` URL can default into LAN-guest mode.
 - [x] Lobby gets "Host LAN match" / "Join LAN match" buttons; host modal renders a QR + URL via `qrcode`.
 - [x] Capacitor `LanServer` TS bridge stub (iOS / Android native code still pending).
-- [ ] Wire `isLanOrigin()` into the lobby so visiting an `http://192.168.x.x:port` URL auto-fills the LAN-join form.
+- [x] `isLanOrigin()` is now wired into the lobby: visiting an `http://192.168.x.x:port` URL auto-opens the Join LAN modal with the host URL pre-filled.
 - [ ] Camera-based QR scanning for guests (`MediaDevices` + `jsqr`); requires HTTPS so only available in the installed Capacitor app.
 - [ ] Native `LanServer` plugin: iOS (Telegraph or Swifter for HTTP+WS), Android (NanoHTTPD-WebSockets), and a small static-file server for the bundled `dist/`.
 - [ ] mDNS discovery (v1.1) — guests browse nearby hosts.
@@ -52,11 +52,10 @@ Tracker for outstanding plan work. The full design lives in [`docs/PLAN.md`](./d
 ### Capacitor packaging
 - [x] `apps/client/capacitor.config.ts` with app id, splash, and status-bar config.
 - [x] `@capacitor/core` + StatusBar + ScreenOrientation + Haptics + Preferences deps installed; lazy-loaded by `apps/client/src/native/init.ts`.
-- [x] `vibrateLight()` haptic helper (no-ops on web; available for the UI to fire on discards once wired up).
+- [x] `vibrateLight()` haptic helper fires when the local player discards a tile.
 - [x] Landscape orientation lock applied automatically when running on a native shell.
 - [ ] `npx cap add ios` and `npx cap add android` (requires Xcode / Android Studio); commit the generated shells.
 - [ ] Migrate `getPlayerId` / `getDisplayName` to `@capacitor/preferences` so iOS doesn't lose identity when the WebView clears localStorage.
-- [ ] Wire `vibrateLight()` into the discard button.
 
 ### Final hardening
 - [ ] Visual regression / e2e test (Playwright): bot-vs-bot full hand headless.

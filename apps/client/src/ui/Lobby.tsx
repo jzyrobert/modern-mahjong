@@ -1,6 +1,7 @@
 import { generateMatchCode } from '@mahjong/protocol';
 import { useState } from 'react';
 import { getDisplayName, setDisplayName } from '../identity.js';
+import { isLanOrigin } from '../net/transport.js';
 import { useGame } from '../state/game.js';
 import { HostLanModal } from './HostLanModal.js';
 import { JoinLanModal } from './JoinLanModal.js';
@@ -11,10 +12,12 @@ interface LobbyProps {
 }
 
 export function Lobby({ onJoinOnline, onJoinLan }: LobbyProps) {
+  const lanGuest = isLanOrigin();
+  const lanOrigin = lanGuest && typeof window !== 'undefined' ? window.location.origin : '';
   const [name, setName] = useState(getDisplayName());
   const [code, setCode] = useState('');
   const [hostLanOpen, setHostLanOpen] = useState(false);
-  const [joinLanOpen, setJoinLanOpen] = useState(false);
+  const [joinLanOpen, setJoinLanOpen] = useState(lanGuest);
   const lobby = useGame((s) => s.lobby);
 
   return (
@@ -109,6 +112,7 @@ export function Lobby({ onJoinOnline, onJoinLan }: LobbyProps) {
       />
       <JoinLanModal
         open={joinLanOpen}
+        defaultUrl={lanOrigin}
         onClose={() => setJoinLanOpen(false)}
         onJoin={(url, matchCode) => {
           setJoinLanOpen(false);
