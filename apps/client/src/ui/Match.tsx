@@ -1,5 +1,6 @@
 import type { Action, Tile as MTile } from '@mahjong/game-logic';
 import { useCallback, useMemo } from 'react';
+import { vibrateLight } from '../native/init.js';
 import { isSeatHost, useGame } from '../state/game.js';
 import { randomSeed } from '../util.js';
 import { ClaimBar } from './ClaimBar.js';
@@ -23,7 +24,10 @@ export function Match({ onAction }: MatchProps) {
 
   const onDiscard = useCallback(
     (t: MTile) => {
-      if (myTurn && seat !== null) onAction({ t: 'discard', seat, tile: t });
+      if (myTurn && seat !== null) {
+        onAction({ t: 'discard', seat, tile: t });
+        void vibrateLight();
+      }
     },
     [myTurn, seat, onAction],
   );

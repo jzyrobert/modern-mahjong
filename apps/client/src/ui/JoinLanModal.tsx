@@ -5,10 +5,12 @@ interface JoinLanModalProps {
   open: boolean;
   onClose: () => void;
   onJoin: (hostUrl: string, matchCode: string) => void;
+  /** Optional default — pre-fills the host URL when the page is being served from an LAN origin. */
+  defaultUrl?: string;
 }
 
-export function JoinLanModal({ open, onClose, onJoin }: JoinLanModalProps) {
-  const [url, setUrl] = useState('');
+export function JoinLanModal({ open, onClose, onJoin, defaultUrl = '' }: JoinLanModalProps) {
+  const [url, setUrl] = useState(defaultUrl);
   const [code, setCode] = useState('');
 
   return (
