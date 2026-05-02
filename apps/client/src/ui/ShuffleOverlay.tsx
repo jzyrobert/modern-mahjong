@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
+import { TILE_BACK_BG } from '../native/theme.js';
 import { useGame } from '../state/game.js';
 
 const SHUFFLE_MS = 1700;
@@ -102,7 +103,7 @@ function SpinningTile({ index }: { index: number }) {
         marginLeft: -16,
         width: 32,
         height: 44,
-        background: '#5b3a2b',
+        background: TILE_BACK_BG,
         borderRadius: 4,
         boxShadow: '0 2px 4px #0007',
         border: '1px solid #2228',

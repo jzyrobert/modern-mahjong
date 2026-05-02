@@ -1,6 +1,7 @@
 import { type Tile as MTile, tileId, tileLabel } from '@mahjong/game-logic';
 import { type MotionStyle, type Transition, motion } from 'framer-motion';
 import { memo } from 'react';
+import { TILE_BACK_BG } from '../native/theme.js';
 
 interface TileProps {
   tile: MTile;
@@ -40,7 +41,7 @@ function TileComponent({ tile, faceDown, selected, onClick, style, rotate, testI
       transition={SPRING}
       style={{
         ...STATIC_STYLE,
-        background: faceDown ? '#5b3a2b' : '#fff',
+        background: faceDown ? TILE_BACK_BG : '#fff',
         border: selected ? '2px solid #f3c54a' : '1px solid #2228',
         cursor: onClick ? 'pointer' : 'default',
         rotate: rotate ?? 0,
