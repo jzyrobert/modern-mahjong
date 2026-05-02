@@ -1,6 +1,5 @@
 import { generateMatchCode } from '@mahjong/protocol';
-import QRCode from 'qrcode';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { isLanServerAvailable } from '../native/lan-server.js';
 import { Modal } from './Modal.js';
 
@@ -13,25 +12,27 @@ interface HostLanModalProps {
 export function HostLanModal({ open, onClose, onHosted }: HostLanModalProps) {
   const [hostUrl, setHostUrl] = useState('');
   const [matchCode] = useState(() => generateMatchCode());
-  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'error'>('idle');
+  const resetTimer = useRef<number | null>(null);
 
-  useEffect(() => {
-    if (!hostUrl) {
-      setQrDataUrl(null);
-      return;
+  useEffect(
+    () => () => {
+      if (resetTimer.current !== null) window.clearTimeout(resetTimer.current);
+    },
+    [],
+  );
+
+  async function copyHostUrl() {
+    if (!hostUrl) return;
+    try {
+      await navigator.clipboard.writeText(hostUrl);
+      setCopyState('copied');
+    } catch {
+      setCopyState('error');
     }
-    let cancelled = false;
-    QRCode.toDataURL(hostUrl, { width: 240, margin: 1 })
-      .then((url) => {
-        if (!cancelled) setQrDataUrl(url);
-      })
-      .catch(() => {
-        /* malformed URL — leave the QR cleared */
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [hostUrl]);
+    if (resetTimer.current !== null) window.clearTimeout(resetTimer.current);
+    resetTimer.current = window.setTimeout(() => setCopyState('idle'), 1500);
+  }
 
   return (
     <Modal open={open} onClose={onClose} title="Host LAN match">
@@ -43,12 +44,17 @@ export function HostLanModal({ open, onClose, onHosted }: HostLanModalProps) {
       )}
       <label style={{ display: 'block', margin: '12px 0' }}>
         Host URL
-        <input
-          value={hostUrl}
-          onChange={(e) => setHostUrl(e.target.value)}
-          placeholder="http://192.168.1.42:7777"
-          style={{ display: 'block', width: '100%', padding: 8, marginTop: 4 }}
-        />
+        <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+          <input
+            value={hostUrl}
+            onChange={(e) => setHostUrl(e.target.value)}
+            placeholder="http://192.168.1.42:7777"
+            style={{ flex: 1, padding: 8 }}
+          />
+          <button type="button" disabled={!hostUrl} onClick={copyHostUrl} style={{ minWidth: 64 }}>
+            {copyState === 'copied' ? 'Copied' : copyState === 'error' ? 'Failed' : 'Copy'}
+          </button>
+        </div>
       </label>
       <p style={{ fontSize: 13 }}>
         Match code:{' '}
@@ -56,19 +62,7 @@ export function HostLanModal({ open, onClose, onHosted }: HostLanModalProps) {
           {matchCode}
         </code>
       </p>
-      {qrDataUrl && (
-        <div style={{ textAlign: 'center', margin: '12px 0' }}>
-          <img
-            src={qrDataUrl}
-            alt="Host URL QR"
-            width={240}
-            height={240}
-            style={{ background: '#fff', padding: 8, borderRadius: 8 }}
-          />
-          <div style={{ fontSize: 11, opacity: 0.6, marginTop: 4 }}>{hostUrl}</div>
-        </div>
-      )}
-      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
         <button type="button" onClick={onClose}>
           Cancel
         </button>
