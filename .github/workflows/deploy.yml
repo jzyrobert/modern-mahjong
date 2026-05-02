@@ -56,9 +56,16 @@ jobs:
           VITE_SERVER_URL: ${{ secrets.VITE_SERVER_URL }}
         run: pnpm --filter @mahjong/client build
 
+      # Run wrangler from `apps/server` so wrangler-action's pnpm-based
+      # auto-install finds the workspace's wrangler binary (it's a devDep
+      # of `apps/server`). Without `workingDirectory + packageManager`,
+      # wrangler-action runs `pnpm i wrangler` at the root, which is a
+      # workspace and rejects ad-hoc `pnpm i <pkg>` from CI.
       - name: Deploy Pages
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy apps/client/dist --project-name=modern-mahjong --branch=main --commit-dirty=true
+          workingDirectory: apps/server
+          packageManager: pnpm
+          command: pages deploy ../client/dist --project-name=modern-mahjong --branch=main --commit-dirty=true
