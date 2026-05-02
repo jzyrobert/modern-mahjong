@@ -97,6 +97,19 @@ export function Match({ onAction }: MatchProps) {
     });
   })();
 
+  // Tsumo (self-drawn win) is only legal when it's the player's turn, they've
+  // drawn (have 14 tiles), and that hand is in a winning shape. Hide the
+  // button entirely otherwise — previously it rendered always-disabled
+  // outside that window, which read as "I'm broken".
+  const canTsumo =
+    myTurn &&
+    state.hasDrawn &&
+    isWinning({
+      hand: state.hands[seat],
+      exposedMelds: state.melds[seat].length,
+      allowSpecial: state.rules.allowSevenPairs || state.rules.allowThirteenOrphans,
+    });
+
   return (
     <div
       style={{
@@ -120,15 +133,13 @@ export function Match({ onAction }: MatchProps) {
         onDrawNext={onDrawNext}
         centerHud={centerHud}
       />
-      <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
-        <button
-          type="button"
-          onClick={() => onAction({ t: 'declareWin', seat, selfDraw: true })}
-          disabled={!myTurn || !state.hasDrawn}
-        >
-          Declare win (tsumo)
-        </button>
-      </div>
+      {canTsumo && (
+        <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+          <button type="button" onClick={() => onAction({ t: 'declareWin', seat, selfDraw: true })}>
+            Declare win (tsumo)
+          </button>
+        </div>
+      )}
       {showClaim && <ClaimBar onAction={onAction} seat={seat} />}
       {state.lastResult && <ResultPanel onAction={onAction} mySeat={seat} isHost={isHost} />}
     </div>
