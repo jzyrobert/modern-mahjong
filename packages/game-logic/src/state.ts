@@ -102,3 +102,11 @@ export function emptyState(rules: RuleConfig = DEFAULT_RULES): GameState {
 export function nextSeat(s: Seat): Seat {
   return ((s + 1) % 4) as Seat;
 }
+
+export function prevSeat(s: Seat): Seat {
+  return ((s + 3) % 4) as Seat;
+}
+
+export function acrossSeat(s: Seat): Seat {
+  return ((s + 2) % 4) as Seat;
+}

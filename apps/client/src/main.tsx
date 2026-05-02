@@ -1,5 +1,6 @@
 import type { Action } from '@mahjong/game-logic';
 import type { ServerMessage } from '@mahjong/protocol';
+import { MotionConfig } from 'framer-motion';
 import { StrictMode, useCallback, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { getDisplayName, getPlayerId } from './identity.js';
@@ -23,16 +24,31 @@ function App() {
       playerId,
       displayName,
     });
-    setTransport(t);
+    setTransport((prev) => {
+      prev?.close();
+      return t;
+    });
   }, []);
 
   useEffect(() => {
     if (!transport) return;
     return transport.onMessage((m: ServerMessage) => {
-      if (m.t === 'state') setState(m.state, m.you);
-      else if (m.t === 'delta') setState(m.state);
-      else if (m.t === 'lobby') setLobby(m);
-      else if (m.t === 'error') console.warn('server error:', m.code, m.detail);
+      switch (m.t) {
+        case 'state':
+          setState(m.state, m.you);
+          return;
+        case 'delta':
+          setState(m.state);
+          return;
+        case 'lobby':
+          setLobby(m);
+          return;
+        case 'error':
+          console.warn('server error:', m.code, m.detail);
+          return;
+        case 'pong':
+          return;
+      }
     });
   }, [transport, setState, setLobby]);
 
@@ -51,7 +67,9 @@ const root = document.getElementById('root');
 if (root) {
   createRoot(root).render(
     <StrictMode>
-      <App />
+      <MotionConfig reducedMotion="user">
+        <App />
+      </MotionConfig>
     </StrictMode>,
   );
 }
