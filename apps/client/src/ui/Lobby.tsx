@@ -22,86 +22,114 @@ export function Lobby({ onJoinOnline, onJoinLan, onJoinSolo }: LobbyProps) {
   const lobby = useGame((s) => s.lobby);
 
   return (
-    <div style={{ padding: 24, color: '#eee', fontFamily: 'system-ui, sans-serif', maxWidth: 480 }}>
-      <h1>Modern Mahjong</h1>
-      <label style={{ display: 'block', margin: '12px 0' }}>
-        Display name
+    <div
+      style={{
+        padding: 'clamp(8px, 2vmin, 24px)',
+        color: '#eee',
+        fontFamily: 'system-ui, sans-serif',
+        // Wide enough for desktop reading, compresses on phones.
+        maxWidth: 880,
+        margin: '0 auto',
+      }}
+    >
+      <h1 style={{ margin: '0 0 8px', fontSize: 'clamp(20px, 3.4vmin, 28px)' }}>Modern Mahjong</h1>
+      <label style={{ display: 'block', margin: '8px 0 12px' }}>
+        <span style={{ fontSize: 12, opacity: 0.7 }}>Display name</span>
         <input
           value={name}
           onChange={(e) => {
             setName(e.target.value);
             setDisplayName(e.target.value);
           }}
-          style={{ display: 'block', width: '100%', padding: 8, marginTop: 4 }}
+          style={inputStyle}
         />
       </label>
 
-      <h3>Online match</h3>
-      <label style={{ display: 'block', margin: '12px 0' }}>
-        Match code
-        <input
-          value={code}
-          onChange={(e) => setCode(e.target.value.toUpperCase())}
-          maxLength={5}
-          style={{
-            display: 'block',
-            width: '100%',
-            padding: 8,
-            marginTop: 4,
-            fontFamily: 'monospace',
-            textTransform: 'uppercase',
-          }}
-          placeholder="ABCDE"
-        />
-      </label>
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button
-          type="button"
-          onClick={() => code && onJoinOnline(code)}
-          disabled={code.length !== 5}
-        >
-          Join match
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            const fresh = generateMatchCode();
-            setCode(fresh);
-            onJoinOnline(fresh);
-          }}
-        >
-          Create new match
-        </button>
-      </div>
+      {/*
+        Two-column grid on viewports ≥ 600 px wide so a landscape phone
+        (~800×360) sees every section at once. Below that it stacks
+        vertically.
+      */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+          gap: 'clamp(8px, 1.5vmin, 16px)',
+        }}
+      >
+        <Section title="Online match">
+          <label style={{ display: 'block', marginBottom: 8 }}>
+            <span style={{ fontSize: 12, opacity: 0.7 }}>Match code</span>
+            <input
+              value={code}
+              onChange={(e) => setCode(e.target.value.toUpperCase())}
+              maxLength={5}
+              placeholder="ABCDE"
+              style={{
+                ...inputStyle,
+                fontFamily: 'monospace',
+                textTransform: 'uppercase',
+              }}
+            />
+          </label>
+          <ButtonRow>
+            <button
+              type="button"
+              onClick={() => code && onJoinOnline(code)}
+              disabled={code.length !== 5}
+            >
+              Join match
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const fresh = generateMatchCode();
+                setCode(fresh);
+                onJoinOnline(fresh);
+              }}
+            >
+              Create new match
+            </button>
+          </ButtonRow>
+        </Section>
 
-      <h3 style={{ marginTop: 24 }}>Practice vs bots</h3>
-      <p style={{ fontSize: 12, opacity: 0.7 }}>
-        No connection — runs entirely on this device. You're seated against three bots (heuristic,
-        simple, passive). Useful for offline play and learning the rules.
-      </p>
-      <button type="button" onClick={onJoinSolo}>
-        Play vs bots
-      </button>
+        <Section title="Practice vs bots">
+          <p style={{ fontSize: 12, opacity: 0.7, margin: '0 0 8px' }}>
+            Runs entirely on this device. No connection. You're seated against three bots
+            (heuristic, simple, passive).
+          </p>
+          <button type="button" onClick={onJoinSolo}>
+            Play vs bots
+          </button>
+        </Section>
 
-      <h3 style={{ marginTop: 24 }}>LAN / offline</h3>
-      <p style={{ fontSize: 12, opacity: 0.7 }}>
-        Play four-player matches over your local network without an internet connection. The host
-        runs the installed app and shares the URL; guests can join from any browser on the same
-        Wi-Fi.
-      </p>
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button type="button" onClick={() => setHostLanOpen(true)}>
-          Host LAN match
-        </button>
-        <button type="button" onClick={() => setJoinLanOpen(true)}>
-          Join LAN match
-        </button>
+        <Section title="LAN / offline">
+          <p style={{ fontSize: 12, opacity: 0.7, margin: '0 0 8px' }}>
+            Four-player matches over local Wi-Fi. Host shares the URL; guests paste it into any
+            browser on the same network.
+          </p>
+          <ButtonRow>
+            <button type="button" onClick={() => setHostLanOpen(true)}>
+              Host LAN match
+            </button>
+            <button type="button" onClick={() => setJoinLanOpen(true)}>
+              Join LAN match
+            </button>
+          </ButtonRow>
+        </Section>
       </div>
 
       {lobby && (
-        <div style={{ marginTop: 24, padding: 12, background: '#1a1f2e', borderRadius: 6 }}>
-          <h3>Lobby</h3>
-          <ul>
+        <div
+          style={{
+            marginTop: 16,
+            padding: 'clamp(8px, 1.5vmin, 12px)',
+            background: '#1a1f2e',
+            borderRadius: 6,
+          }}
+        >
+          <h3 style={{ margin: '0 0 8px', fontSize: 14 }}>Lobby</h3>
+          <ul style={{ margin: 0, paddingLeft: 18 }}>
             {lobby.players.map((p) => (
               <li key={p.playerId}>
                 Seat {p.seat}: {p.displayName}{' '}
@@ -132,3 +160,35 @@ export function Lobby({ onJoinOnline, onJoinLan, onJoinSolo }: LobbyProps) {
     </div>
   );
 }
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section
+      style={{
+        background: '#171b27',
+        padding: 'clamp(8px, 1.5vmin, 14px)',
+        borderRadius: 8,
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
+      <h3 style={{ margin: '0 0 8px', fontSize: 14, fontWeight: 600 }}>{title}</h3>
+      {children}
+    </section>
+  );
+}
+
+function ButtonRow({ children }: { children: React.ReactNode }) {
+  return <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{children}</div>;
+}
+
+const inputStyle: React.CSSProperties = {
+  display: 'block',
+  width: '100%',
+  padding: 8,
+  marginTop: 4,
+  borderRadius: 4,
+  border: '1px solid #2228',
+  background: '#0e1320',
+  color: '#eee',
+};
