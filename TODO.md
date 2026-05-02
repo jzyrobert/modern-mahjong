@@ -1,6 +1,6 @@
 # Roadmap
 
-Tracker for outstanding plan work. The full design lives in `/root/.claude/plans/in-detail-plan-the-greedy-star.md`. This file is the short version: what's done, what's queued, and what's deliberately out of scope until later.
+Tracker for outstanding plan work. The full design lives in [`docs/PLAN.md`](./docs/PLAN.md). This file is the short version: what's done, what's queued, and what's deliberately out of scope until later.
 
 ## Done
 
@@ -18,25 +18,24 @@ Tracker for outstanding plan work. The full design lives in `/root/.claude/plans
 - [x] Cumulative `Scoreboard` between hands.
 - [x] Server-side dealer rotation (`nextDealer` in game-logic).
 - [x] Host-only gating on `startHand` / `setRules` (in the client UI; server-side gating still queued).
+- [x] Dice-roll opening (`OpeningRolls` on state, `DiceCeremony` modal, winner-rolls-only on subsequent hands).
+- [x] Discard-toss rotation jitter so discards don't look perfectly aligned.
+- [x] `MatchSession` extracted from `MatchRoom` for unit-testable room logic; integration test runs a full bot-vs-bot hand.
 
 ## Queued (in dependency order)
 
 ### Animations & layout polish
 - [ ] Perf check: tile transitions ≤ 250 ms, all animation on `transform` only (instrumentation + Lighthouse run).
-- [ ] Dice-roll opening: each player rolls two dice; the highest scorer rolls again to decide where the dealing starts (real-mahjong opening).
-- [ ] In subsequent hands of the same session, the previous winner rolls the dice to start the deal.
-- [ ] End-of-hand shuffle animation: tiles shuffle into a center circle, then new rows of tiles dispense onto the table like an automatic mahjong machine.
-- [ ] Discard-toss animation: when a discard isn't claimed, slide the tile toward the table center and lay it slightly off-axis, oriented from the discarding seat (mimics a player physically sliding the tile in).
+- [ ] End-of-hand shuffle animation: tiles shuffle into a center circle, then new rows of tiles dispense onto the table like an automatic mahjong machine. Needs a visible wall component first.
 
 ### Scoring breakdown UX
 - [ ] Scoring breakdown modal on the result screen with per-pattern faan list + the tile composition that produced it.
 
 ### Server hardening
-- [ ] In-memory MatchRoom integration test (mock Connection, scripted hand, assert delta sequence).
-- [ ] Reconnect grace (~60 s) — keep seat reserved for matching `playerId`.
-- [ ] Bot-handoff on disconnect (passive bot takes over until reconnect or grace expiry).
+- [ ] Reconnect grace (~60 s) timer — currently a disconnected seat sits empty; need a bot stand-in until reconnect or grace expiry.
+- [ ] Bot-handoff on disconnect (passive bot takes over while the seat is empty).
 - [ ] Persist `GameState` to DO storage so a hibernated room rehydrates correctly.
-- [ ] Host-only gating on `startHand` / rule changes (not just any client).
+- [ ] Host-only gating on `startHand` / rule changes (server-side enforcement, not just UI disable).
 
 ### LAN transport
 - [ ] `Transport` interface adapter that consumes a host-supplied `ws://lan-ip:port` URL.
