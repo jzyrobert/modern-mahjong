@@ -39,9 +39,12 @@ export function Table({ mySeat, hands, discards, ownHandClickable, centerHud }: 
         display: 'grid',
         gridTemplateColumns: 'auto 1fr auto',
         gridTemplateRows: 'auto 1fr auto',
-        gap: 12,
-        minHeight: 560,
-        padding: 16,
+        gap: 'clamp(4px, 1vmin, 12px)',
+        // Scale the table to whatever vertical space is available — on a
+        // landscape phone (~360px tall) this collapses to ~360px instead of
+        // forcing a fixed 560 that overflows the viewport.
+        minHeight: 'min(560px, 70vh)',
+        padding: 'clamp(6px, 1.4vmin, 16px)',
         background: 'radial-gradient(ellipse at center, #1f3b2c 0%, #0e1c14 100%)',
         borderRadius: 12,
         color: '#eee',
@@ -74,11 +77,11 @@ export function Table({ mySeat, hands, discards, ownHandClickable, centerHud }: 
           display: 'grid',
           gridTemplateColumns: 'auto 1fr auto',
           gridTemplateRows: 'auto 1fr auto',
-          gap: 8,
+          gap: 'clamp(4px, 0.8vmin, 8px)',
           background: '#0d1812aa',
           borderRadius: 10,
-          padding: 12,
-          minHeight: 220,
+          padding: 'clamp(6px, 1.2vmin, 12px)',
+          minHeight: 'min(220px, 38vh)',
         }}
       >
         {positions.map((p) => (

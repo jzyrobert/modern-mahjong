@@ -27,6 +27,23 @@ test('solo match: lobby → match, user discards, bots take over', async ({ page
     .toBeLessThan(initial);
 });
 
+test('after the first round-trip, the highlighted draw-tile pulls a new tile', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Play vs bots' }).click();
+  await page.getByRole('button', { name: 'Start match' }).click();
+
+  // Hand turn off to bots.
+  await page.getByTestId('own-hand-tile').first().click();
+
+  // Once the turn comes back, the engine flips `hasDrawn` to false and the
+  // pulsing draw-tile surfaces in the center HUD. (The old "Draw" button is
+  // gone — this is the only way to advance.)
+  const drawTile = page.getByRole('button', { name: 'Draw a tile' });
+  await expect(drawTile).toBeVisible({ timeout: 30_000 });
+  await drawTile.click();
+  await expect(drawTile).toBeHidden();
+});
+
 async function readWallCount(page: Page): Promise<number> {
   const text = await page.getByText(/Wall:\s*\d+/).innerText();
   const m = text.match(/Wall:\s*(\d+)/);

@@ -28,8 +28,8 @@ Tracker for outstanding plan work. The full design lives in [`docs/PLAN.md`](./d
 - [x] Between-hand shuffle overlay: a brief swirl of face-down tiles plays whenever a fresh seed lands (visual cue at the start of every hand).
 - [ ] Perf check: tile transitions ≤ 250 ms, all animation on `transform` only (instrumentation + Lighthouse run).
 - [ ] Full mechanical shuffle/dispense: render the wall as physical stacks around the table, animate every used tile flowing into the center pile and back out into the new walls. Needs a visible `<Wall>` component and a state-machine extension so the engine pauses briefly between hands for the animation to complete.
-- [ ] Replace the Draw button with a glow / pulse on the next-to-draw tile in the wall. The current button is a hold-over from the early prototype; surfacing the action on the wall itself reads more naturally and reclaims a row of vertical space (helps the landscape-mobile crunch below).
-- [ ] Mobile landscape layout pass: the table grid clips on landscape phones (`<700px` height). Audit `Table.tsx`'s `gridTemplateRows: 'auto 1fr auto'` + `Hand` row heights, switch to viewport-relative tile sizing so the user's hand stays fully visible without horizontal scroll.
+- [x] Replaced the Draw button with a pulsing face-down draw-tile in the center HUD. Surfaces during the local player's turn before they've drawn; clicking it dispatches `{ t: 'draw' }`. New e2e test exercises the full draw-tile path.
+- [x] Mobile landscape layout pass: the `Match` container now sets `--tile-w` / `--tile-h` to `max(28px, 4.4vmin)` / `max(40px, 6.2vmin)` so every tile (own hand, opponent backs, discards, draw-tile) shrinks under cramped viewports. `Table.tsx` swaps the fixed 560/220 minHeights for `min(…, 70vh)` / `min(…, 38vh)` and uses clamp-based padding/gap so the table doesn't blow past the viewport on landscape phones.
 - [ ] Generate proper tile icons. Tiles currently render as `<button>` text (`1m`, `9p`, `Z` etc.). Replace with SVG glyphs (or a sprite atlas) that show the actual mahjong tile face. Should keep the existing `tileLabel` accessible to screen readers via `aria-label`.
 
 ### Scoring breakdown UX
