@@ -9,6 +9,7 @@ interface TileProps {
   onClick?: (() => void) | undefined;
   style?: MotionStyle | undefined;
   rotate?: number | undefined;
+  testId?: string | undefined;
 }
 
 const SPRING: Transition = { type: 'spring', stiffness: 420, damping: 32, mass: 0.6 };
@@ -28,13 +29,14 @@ const STATIC_STYLE: MotionStyle = {
   padding: 0,
 };
 
-function TileComponent({ tile, faceDown, selected, onClick, style, rotate }: TileProps) {
+function TileComponent({ tile, faceDown, selected, onClick, style, rotate, testId }: TileProps) {
   return (
     <motion.button
       type="button"
       layoutId={`tile-${tileId(tile)}`}
       onClick={onClick}
       {...(onClick ? { whileTap: TAP } : {})}
+      {...(testId ? { 'data-testid': testId } : {})}
       transition={SPRING}
       style={{
         ...STATIC_STYLE,

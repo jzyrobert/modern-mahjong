@@ -9,7 +9,9 @@
       "**/coverage",
       "**/node_modules",
       "apps/client/ios",
-      "apps/client/android"
+      "apps/client/android",
+      "apps/client/test-results",
+      "apps/client/playwright-report"
     ]
   },
   "formatter": {

@@ -15,12 +15,28 @@ const NAME_KEY = 'mahjong.displayName';
 
 type PreferencesPlugin = typeof import('@capacitor/preferences').Preferences;
 
-let prefsPromise: Promise<PreferencesPlugin | null> | null = null;
-function loadPreferences(): Promise<PreferencesPlugin | null> {
-  if (!prefsPromise) {
-    prefsPromise = import('@capacitor/preferences').then((m) => m.Preferences).catch(() => null);
+// IMPORTANT: Capacitor's plugin proxy implements `.then` (it forwards to the
+// native bridge), which means returning the proxy from a Promise chain
+// confuses JS into thinking the proxy is a thenable. JS then calls
+// `proxy.then(resolve, reject)` to chain, the proxy dispatches a `then` RPC
+// to the bridge, and on web it throws "Preferences.then() is not implemented
+// on web". So we keep the plugin in a closure variable and never let it
+// surface as a Promise resolution value.
+let prefs: PreferencesPlugin | null = null;
+let loadOnce: Promise<void> | null = null;
+
+function ensurePrefsLoaded(): Promise<void> {
+  if (!loadOnce) {
+    loadOnce = (async () => {
+      try {
+        const m = await import('@capacitor/preferences');
+        prefs = m.Preferences;
+      } catch {
+        /* plugin missing on this platform — localStorage is the only persistence */
+      }
+    })();
   }
-  return prefsPromise;
+  return loadOnce;
 }
 
 export function getPlayerId(): string {
@@ -54,25 +70,27 @@ export function setDisplayName(name: string): void {
  * controlled inputs see a stable initial value.
  */
 export async function hydrateIdentity(): Promise<void> {
-  const Preferences = await loadPreferences();
-  if (!Preferences) return;
-  await Promise.all([syncKey(Preferences, ID_KEY), syncKey(Preferences, NAME_KEY)]);
+  await ensurePrefsLoaded();
+  if (!prefs) return;
+  await syncKey(ID_KEY);
+  await syncKey(NAME_KEY);
 }
 
-async function syncKey(Preferences: PreferencesPlugin, key: string): Promise<void> {
+async function syncKey(key: string): Promise<void> {
+  if (!prefs) return;
   const local = localStorage.getItem(key);
-  const stored = (await Preferences.get({ key })).value;
+  const stored = (await prefs.get({ key })).value;
   if (local && !stored) {
-    await Preferences.set({ key, value: local });
+    await prefs.set({ key, value: local });
   } else if (!local && stored) {
     localStorage.setItem(key, stored);
   }
 }
 
 async function mirrorToPreferences(key: string, value: string): Promise<void> {
-  const Preferences = await loadPreferences();
-  if (!Preferences) return;
-  await Preferences.set({ key, value });
+  await ensurePrefsLoaded();
+  if (!prefs) return;
+  await prefs.set({ key, value });
 }
 
 function randomName(): string {
