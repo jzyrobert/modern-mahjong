@@ -30,7 +30,7 @@ Tracker for outstanding plan work. The full design lives in [`docs/PLAN.md`](./d
 - [ ] Full mechanical shuffle/dispense: render the wall as physical stacks around the table, animate every used tile flowing into the center pile and back out into the new walls. Needs a visible `<Wall>` component and a state-machine extension so the engine pauses briefly between hands for the animation to complete.
 
 ### Scoring breakdown UX
-- [ ] Scoring breakdown modal on the result screen with per-pattern faan list + the tile composition that produced it.
+- [x] Scoring breakdown modal on the result screen with per-pattern faan list + the tile composition that produced it. `FaanBreakdown.tiles` carries the engine's view of which tiles triggered each pattern (e.g. 9 dragon tiles for 大三元, the winning tile for 自摸, every tile in the hand for 字一色); the modal renders them as a tile row beneath each pattern.
 
 ### Server hardening
 - [x] Bot-handoff on disconnect: when a seated player drops, a passive `Bot` takes their seat so the game keeps moving.

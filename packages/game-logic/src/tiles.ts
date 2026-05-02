@@ -1,6 +1,8 @@
 export type Suit = 'man' | 'pin' | 'sou';
 export type SuitRank = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
-export type Honor = 'E' | 'S' | 'W' | 'N' | 'Z' | 'F' | 'B';
+export type Wind = 'E' | 'S' | 'W' | 'N';
+export type Dragon = 'Z' | 'F' | 'B';
+export type Honor = Wind | Dragon;
 export type Copy = 0 | 1 | 2 | 3;
 
 export type Tile =
@@ -9,6 +11,8 @@ export type Tile =
 
 export const SUITS: readonly Suit[] = ['man', 'pin', 'sou'] as const;
 export const HONORS: readonly Honor[] = ['E', 'S', 'W', 'N', 'Z', 'F', 'B'] as const;
+export const WINDS: readonly Wind[] = ['E', 'S', 'W', 'N'] as const;
+export const DRAGONS: readonly Dragon[] = ['Z', 'F', 'B'] as const;
 export const RANKS: readonly SuitRank[] = [1, 2, 3, 4, 5, 6, 7, 8, 9] as const;
 export const COPIES: readonly Copy[] = [0, 1, 2, 3] as const;
 
@@ -70,6 +74,14 @@ export function buildWall(): Tile[] {
 
 export function isHonor(t: Tile): boolean {
   return t.kind === 'honor';
+}
+
+export function isWind(t: Tile): boolean {
+  return t.kind === 'honor' && (WINDS as readonly Honor[]).includes(t.honor);
+}
+
+export function isDragon(t: Tile): boolean {
+  return t.kind === 'honor' && (DRAGONS as readonly Honor[]).includes(t.honor);
 }
 
 export function isTerminal(t: Tile): boolean {

@@ -1,5 +1,5 @@
 import type { Meld } from './hand.js';
-import type { Tile } from './tiles.js';
+import type { Tile, Wind } from './tiles.js';
 
 export type Seat = 0 | 1 | 2 | 3;
 
@@ -7,7 +7,7 @@ export const SEATS: readonly Seat[] = [0, 1, 2, 3] as const;
 
 export type Phase = 'waiting' | 'dealing' | 'turn' | 'awaitingClaims' | 'resolved';
 
-export type Wind = 'E' | 'S' | 'W' | 'N';
+export type { Wind };
 
 export interface RuleConfig {
   /** Minimum faan to declare a win. */
@@ -94,6 +94,11 @@ export interface FaanBreakdown {
   english: string;
   /** Faan contributed by this pattern. */
   faan: number;
+  /**
+   * Tiles that triggered this pattern (e.g. 9 dragon tiles for 大三元,
+   * the single winning tile for 自摸, every tile in the hand for 字一色).
+   */
+  tiles: Tile[];
 }
 
 export type HandResult =
