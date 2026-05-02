@@ -36,7 +36,7 @@ Tracker for outstanding plan work. The full design lives in [`docs/PLAN.md`](./d
 - [x] Bot-handoff on disconnect: when a seated player drops, a passive `Bot` takes their seat so the game keeps moving.
 - [x] Reconnect: a `hello` from the same `playerId` clears the stand-in bot and restores the seat.
 - [x] Server-side host gating: `startHand` / `setRules` are rejected for non-host connections with a typed `HOST` error.
-- [ ] Reconnect grace timer — currently a disconnected player can reclaim their seat indefinitely; add an alarm-driven "give up after 60s" that kicks them and exposes the seat to a new player.
+- [x] Reconnect grace timer — `MatchSession` now tracks `disconnectedSinceMs` and re-arms a single DO alarm at the soonest of (claim window, every disconnected seat's 60s grace expiry). On grace expiry the seat's playerId is cleared (auto-bot keeps playing), `hostPlayerId` hands off to the next connected human, and the seat becomes reclaimable by a new joiner via `findOrAssignSeat`.
 - [ ] Persist `GameState` to DO storage so a hibernated room rehydrates correctly.
 
 ### LAN transport
