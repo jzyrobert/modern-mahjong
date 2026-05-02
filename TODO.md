@@ -40,7 +40,7 @@ Tracker for outstanding plan work. The full design lives in [`docs/PLAN.md`](./d
 - [ ] Persist `GameState` to DO storage so a hibernated room rehydrates correctly.
 
 ### Single-player / bots-only offline match
-- [ ] "Start solo match (vs bots)" entry on the lobby: skips the host-URL handshake entirely, spins up a local in-process `MatchSession` with three bots seated, and takes the player straight into a hand. Useful for practice and for the very common "I'm offline and just want to play" case where the LAN host setup is overkill.
+- [x] "Play vs bots" lobby entry: `apps/client/src/net/solo-transport.ts` runs an in-process engine loop with three bots (heuristic, simple, passive) seated. Skips the WebSocket handshake entirely; runs offline, no LAN setup needed.
 
 ### LAN transport
 - [x] `createLanTransport({ hostUrl, matchCode, ... })` factory sharing a `createWsTransport` core with the online flow.

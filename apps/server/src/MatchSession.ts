@@ -1,4 +1,4 @@
-import { type Bot, heuristicBot, passiveBot, simpleBot } from '@mahjong/bots';
+import { type Bot, heuristicBot, passiveBot, runBotTurns, simpleBot } from '@mahjong/bots';
 import {
   type Action,
   DEFAULT_RULES,
@@ -41,8 +41,6 @@ export type Outbound =
   | { kind: 'broadcast'; msg: ServerMessage }
   | { kind: 'closeConnection'; connectionId: string }
   | { kind: 'scheduleAlarm'; deadlineMs: number };
-
-const BOT_TICK_LIMIT = 16;
 
 export interface MatchSessionOptions {
   /**
@@ -274,46 +272,19 @@ export class MatchSession {
 
   private runBots(): Outbound[] {
     const out: Outbound[] = [];
-    for (let i = 0; i < BOT_TICK_LIMIT; i++) {
-      const tick = this.tickBotsOnce();
-      if (tick.length === 0) break;
-      out.push(...tick);
-    }
-    return out;
-  }
-
-  private tickBotsOnce(): Outbound[] {
-    const out: Outbound[] = [];
-    if (this.state.phase === 'awaitingClaims' && this.state.pendingClaims) {
-      const pending = this.state.pendingClaims;
-      for (const seat of SEATS) {
-        if (seat === this.state.lastDiscard?.from) continue;
-        const slot = this.seats[seat];
-        if (!slot.bot) continue;
-        if (pending.submitted[seat]) continue;
-        const claim = slot.bot.pickClaim({ state: this.state, seat });
-        out.push(this.apply({ t: 'declareClaim', seat, claim }));
-      }
-      return out;
-    }
-    if (this.state.phase === 'turn') {
-      const seat = this.state.turn;
-      const slot = this.seats[seat];
-      if (!slot.bot) return out;
-      if (!this.state.hasDrawn) {
-        out.push(this.apply({ t: 'draw', seat }));
-        if (this.state.phase !== 'turn') return out;
-      }
-      try {
-        out.push(this.apply({ t: 'declareWin', seat, selfDraw: true }));
-        return out;
-      } catch (e) {
-        if (!(e instanceof IllegalActionError)) throw e;
-      }
-      const tile = slot.bot.pickDiscard({ state: this.state, seat });
-      out.push(this.apply({ t: 'discard', seat, tile }));
-      return out;
-    }
+    const seatBots: Record<Seat, Bot | null> = {
+      0: this.seats[0].bot,
+      1: this.seats[1].bot,
+      2: this.seats[2].bot,
+      3: this.seats[3].bot,
+    };
+    runBotTurns(
+      () => this.state,
+      seatBots,
+      (action) => {
+        out.push(this.apply(action));
+      },
+    );
     return out;
   }
 
