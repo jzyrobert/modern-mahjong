@@ -32,10 +32,11 @@ Tracker for outstanding plan work. The full design lives in [`docs/PLAN.md`](./d
 - [ ] Scoring breakdown modal on the result screen with per-pattern faan list + the tile composition that produced it.
 
 ### Server hardening
-- [ ] Reconnect grace (~60 s) timer — currently a disconnected seat sits empty; need a bot stand-in until reconnect or grace expiry.
-- [ ] Bot-handoff on disconnect (passive bot takes over while the seat is empty).
+- [x] Bot-handoff on disconnect: when a seated player drops, a passive `Bot` takes their seat so the game keeps moving.
+- [x] Reconnect: a `hello` from the same `playerId` clears the stand-in bot and restores the seat.
+- [x] Server-side host gating: `startHand` / `setRules` are rejected for non-host connections with a typed `HOST` error.
+- [ ] Reconnect grace timer — currently a disconnected player can reclaim their seat indefinitely; add an alarm-driven "give up after 60s" that kicks them and exposes the seat to a new player.
 - [ ] Persist `GameState` to DO storage so a hibernated room rehydrates correctly.
-- [ ] Host-only gating on `startHand` / rule changes (server-side enforcement, not just UI disable).
 
 ### LAN transport
 - [x] `createLanTransport({ hostUrl, matchCode, ... })` factory sharing a `createWsTransport` core with the online flow.
