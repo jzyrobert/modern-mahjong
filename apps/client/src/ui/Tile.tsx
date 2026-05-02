@@ -2,6 +2,7 @@ import { type Tile as MTile, tileId, tileLabel } from '@mahjong/game-logic';
 import { type MotionStyle, type Transition, motion } from 'framer-motion';
 import { memo } from 'react';
 import { TILE_BACK_BG } from '../native/theme.js';
+import { useGame } from '../state/game.js';
 import { TileGlyph } from './TileGlyph.js';
 
 interface TileProps {
@@ -15,6 +16,10 @@ interface TileProps {
 }
 
 const SPRING: Transition = { type: 'spring', stiffness: 420, damping: 32, mass: 0.6 };
+// Slower spring used during the between-hand dispense so the table-wide
+// tile flight is readable instead of a 150 ms blur. See docs/PERF.md —
+// still transform-only, still GPU-composited.
+const SLOW_SPRING: Transition = { type: 'spring', stiffness: 80, damping: 18, mass: 0.8 };
 const TAP = { scale: 0.94 } as const;
 
 const STATIC_STYLE: MotionStyle = {
@@ -32,6 +37,7 @@ const STATIC_STYLE: MotionStyle = {
 };
 
 function TileComponent({ tile, faceDown, selected, onClick, style, rotate, testId }: TileProps) {
+  const shuffling = useGame((s) => s.shuffling);
   return (
     <motion.button
       type="button"
@@ -42,7 +48,7 @@ function TileComponent({ tile, faceDown, selected, onClick, style, rotate, testI
       aria-label={faceDown ? 'Face-down tile' : tileLabel(tile)}
       {...(onClick ? { whileTap: TAP } : {})}
       {...(testId ? { 'data-testid': testId } : {})}
-      transition={SPRING}
+      transition={shuffling ? SLOW_SPRING : SPRING}
       style={{
         ...STATIC_STYLE,
         background: faceDown ? TILE_BACK_BG : '#fff',

@@ -11,6 +11,13 @@ sluggish. The shared `SPRING` config in `Tile.tsx`
 (`stiffness: 420, damping: 32, mass: 0.6`) settles in roughly **150 ms**
 for typical UI deltas — comfortably under budget.
 
+`Tile` also defines a `SLOW_SPRING` (~400 ms settling) that's used **only
+during the between-hand shuffle window** (`useGame.shuffling === true`).
+It's still transform-only, but lets the table-wide layoutId tile flight
+during the dispense actually be readable instead of a 150 ms blur. The
+budget of ≤ 250 ms intentionally only applies to mid-hand transitions —
+once-per-hand shuffle motion can take longer.
+
 ## Animations inventory
 
 | Component | Property | Type | Notes |

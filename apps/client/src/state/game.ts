@@ -12,8 +12,16 @@ interface ClientGameStore {
   state: GameState | null;
   you: Seat | 'spectator' | null;
   lobby: LobbyState | null;
+  /**
+   * True while the between-hand shuffle overlay is active. `Tile` reads
+   * this to swap to a slower transition so the layoutId-driven dispense
+   * (every tile flying from its old position to its new wall position)
+   * is deliberate enough to read.
+   */
+  shuffling: boolean;
   setState: (state: GameState, you?: Seat | 'spectator') => void;
   setLobby: (l: LobbyState) => void;
+  setShuffling: (shuffling: boolean) => void;
   reset: () => void;
 }
 
@@ -21,9 +29,11 @@ export const useGame = create<ClientGameStore>((set) => ({
   state: null,
   you: null,
   lobby: null,
+  shuffling: false,
   setState: (state, you) => set((prev) => ({ state, you: you ?? prev.you })),
   setLobby: (lobby) => set({ lobby }),
-  reset: () => set({ state: null, you: null, lobby: null }),
+  setShuffling: (shuffling) => set({ shuffling }),
+  reset: () => set({ state: null, you: null, lobby: null, shuffling: false }),
 }));
 
 export function playerForSeat(lobby: LobbyState | null, seat: Seat | null): PublicPlayer | null {
