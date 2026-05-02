@@ -25,8 +25,9 @@ Tracker for outstanding plan work. The full design lives in [`docs/PLAN.md`](./d
 ## Queued (in dependency order)
 
 ### Animations & layout polish
+- [x] Between-hand shuffle overlay: a brief swirl of face-down tiles plays whenever a fresh seed lands (visual cue at the start of every hand).
 - [ ] Perf check: tile transitions ≤ 250 ms, all animation on `transform` only (instrumentation + Lighthouse run).
-- [ ] End-of-hand shuffle animation: tiles shuffle into a center circle, then new rows of tiles dispense onto the table like an automatic mahjong machine. Needs a visible wall component first.
+- [ ] Full mechanical shuffle/dispense: render the wall as physical stacks around the table, animate every used tile flowing into the center pile and back out into the new walls. Needs a visible `<Wall>` component and a state-machine extension so the engine pauses briefly between hands for the animation to complete.
 
 ### Scoring breakdown UX
 - [ ] Scoring breakdown modal on the result screen with per-pattern faan list + the tile composition that produced it.
