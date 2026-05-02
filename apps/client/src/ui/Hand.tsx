@@ -39,5 +39,13 @@ function TileWithClick({ tile, faceDown, rotate, onTileClick }: TileWithClickPro
     () => (onTileClick ? () => onTileClick(tile) : undefined),
     [onTileClick, tile],
   );
-  return <Tile tile={tile} faceDown={faceDown} rotate={rotate} onClick={handleClick} />;
+  return (
+    <Tile
+      tile={tile}
+      faceDown={faceDown}
+      rotate={rotate}
+      onClick={handleClick}
+      testId={onTileClick ? 'own-hand-tile' : undefined}
+    />
+  );
 }

@@ -62,7 +62,7 @@ Tracker for outstanding plan work. The full design lives in [`docs/PLAN.md`](./d
 - [x] Identity (`getPlayerId` / `getDisplayName`) now mirrors writes to `@capacitor/preferences` (lazy-loaded; no-op on web). `hydrateIdentity()` runs once at startup, copies preferences into localStorage if the WebView wiped it, and conversely seeds preferences from localStorage on first install. Sync getter API preserved so the lobby's controlled inputs don't need restructuring.
 
 ### Final hardening
-- [ ] Visual regression / e2e test (Playwright): bot-vs-bot full hand headless.
+- [x] Playwright e2e: `apps/client/e2e/solo-match.spec.ts` opens the app, clicks Play vs bots, starts a hand, clicks a tile to discard, asserts the wall count drops as bots take over. Runs as a `e2e` job in CI on every PR; browser cache is keyed off the lockfile so reruns are fast. Reports + traces are uploaded as artifacts.
 - [ ] Lighthouse-score CI check (≥ 90 mobile).
 - [x] Documented release process: see [`docs/DEPLOY.md`](./docs/DEPLOY.md). Cloudflare Pages (client) + Workers (server) auto-deploy from `main` via `.github/workflows/deploy.yml`; debug APK is a CI artifact. iOS Store + production-signed Android still pending.
 

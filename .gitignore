@@ -17,6 +17,10 @@ coverage
 apps/client/ios
 apps/client/android
 
+# Playwright outputs
+apps/client/test-results
+apps/client/playwright-report
+
 # IDE
 .idea
 .vscode
