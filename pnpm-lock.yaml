@@ -20,6 +20,9 @@ importers:
 
   apps/client:
     dependencies:
+      '@capacitor/android':
+        specifier: 7.0.0
+        version: 7.0.0(@capacitor/core@7.0.0)
       '@capacitor/core':
         specifier: 7.0.0
         version: 7.0.0
@@ -298,6 +301,11 @@ packages:
     engines: {node: '>=14.21.3'}
     cpu: [x64]
     os: [win32]
+
+  '@capacitor/android@7.0.0':
+    resolution: {integrity: sha512-T7WMJPGlzEzNFI3s3lA8F2H6XyYzQM8OwgIfPKOAbawc6Fq669ABKIpfNPzsQHR1kVxH3cMHYSkDaPMgJyDdXQ==}
+    peerDependencies:
+      '@capacitor/core': ^7.0.0
 
   '@capacitor/cli@7.0.0':
     resolution: {integrity: sha512-9zjz3ZkiwYFMOnbAk3H+fvofOfbDxvDiuXzjU/6R7hbxMERNV4wUkeEQhDRNLYKG+ttpBJNGlxvSILtvMV2TQQ==}
@@ -1971,6 +1979,10 @@ snapshots:
 
   '@biomejs/cli-win32-x64@1.9.4':
     optional: true
+
+  '@capacitor/android@7.0.0(@capacitor/core@7.0.0)':
+    dependencies:
+      '@capacitor/core': 7.0.0
 
   '@capacitor/cli@7.0.0':
     dependencies:

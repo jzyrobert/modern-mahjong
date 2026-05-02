@@ -1,0 +1,59 @@
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Don't interrupt an in-flight deploy — wait for it to finish before queuing the next.
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy-server:
+    runs-on: ubuntu-latest
+    environment: cloudflare
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy Worker (partyserver / Durable Objects)
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: apps/server
+          packageManager: pnpm
+          command: deploy
+
+  deploy-client:
+    runs-on: ubuntu-latest
+    needs: deploy-server
+    environment: cloudflare
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+
+      # Surface the silent-fallback footgun: VITE_SERVER_URL not being set means
+      # the production bundle bakes in `http://localhost:8787`, which won't work
+      # against the deployed Worker. See docs/DEPLOY.md.
+      - name: Verify VITE_SERVER_URL is set
+        env:
+          VITE_SERVER_URL: ${{ secrets.VITE_SERVER_URL }}
+        run: |
+          if [ -z "$VITE_SERVER_URL" ]; then
+            echo "::error::VITE_SERVER_URL secret is not set. The Pages bundle would point at localhost. See docs/DEPLOY.md → 'First deploy'."
+            exit 1
+          fi
+
+      - name: Build client
+        env:
+          VITE_SERVER_URL: ${{ secrets.VITE_SERVER_URL }}
+        run: pnpm --filter @mahjong/client build
+
+      - name: Deploy Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy apps/client/dist --project-name=modern-mahjong --branch=main --commit-dirty=true

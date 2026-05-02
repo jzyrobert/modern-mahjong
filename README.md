@@ -2,7 +2,7 @@
 
 A cross-platform Hong Kong mahjong game (web + iOS + Android) built around a pure, fully unit-tested game engine.
 
-See the design plan in [`docs/PLAN.md`](./docs/PLAN.md) and the live roadmap in [`TODO.md`](./TODO.md).
+See the design plan in [`docs/PLAN.md`](./docs/PLAN.md), the deployment guide in [`docs/DEPLOY.md`](./docs/DEPLOY.md), and the live roadmap in [`TODO.md`](./TODO.md).
 
 ## Layout
 

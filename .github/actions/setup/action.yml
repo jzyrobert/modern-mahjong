@@ -1,0 +1,17 @@
+name: Setup pnpm + Node + workspace deps
+description: Centralized version pins for pnpm and Node so every workflow stays in lockstep.
+runs:
+  using: composite
+  steps:
+    - uses: pnpm/action-setup@v4
+      with:
+        version: 10.33.0
+
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 22
+        cache: pnpm
+
+    - name: Install workspace deps
+      shell: bash
+      run: pnpm install --frozen-lockfile
