@@ -88,9 +88,10 @@ export function Match({ onAction }: MatchProps) {
         color: '#eee',
         fontFamily: 'system-ui, sans-serif',
         // Viewport-aware tile sizing — tiles scale down on cramped landscape phones
-        // and back up on desktop. The 28/40 floor keeps them tappable on tiny screens.
-        ['--tile-w' as string]: 'max(28px, 4.4vmin)',
-        ['--tile-h' as string]: 'max(40px, 6.2vmin)',
+        // and back up on desktop. The 22/30 floor keeps them tappable on tiny
+        // screens while letting 14 hand tiles fit in a single row at 800x360.
+        ['--tile-w' as string]: 'max(22px, 3.6vmin)',
+        ['--tile-h' as string]: 'max(30px, 5vmin)',
       }}
     >
       <Scoreboard />

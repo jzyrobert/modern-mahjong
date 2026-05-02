@@ -68,32 +68,55 @@ export function Table({
         color: '#eee',
       }}
     >
-      {opponents.map((p) => (
-        <div
-          key={p.seat}
-          style={{
-            gridColumn: p.outer[0],
-            gridRow: p.outer[1],
-            ...p.align,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: 4,
-          }}
-        >
-          <SeatLabel label={p.label} />
+      {opponents.map((p) => {
+        // For left/right opponents (the ones that get a `wrapTransform`),
+        // put the Wall as the FIRST child of the column-flex so that after
+        // the wrap rotation it lands on the outer edge of the cell —
+        // i.e., closer to that seat. Hand sits to the inside, closer to
+        // the central discard area. For the top opponent (no
+        // wrapTransform), Hand stays at the top of the column so it's
+        // visually closest to the top of the screen (the across seat's
+        // own edge), with Wall between it and the discards.
+        //
+        // For face-down opponent hands, also drop the per-tile rotate when
+        // a wrapTransform is set — the wrap already rotates the tiles
+        // visually, and the per-tile rotation on top of that flips them
+        // into a portrait-but-upside-down shape from the opponent's POV.
+        // Top opponent has no wrap and still needs `rotate={180}` to read
+        // upright.
+        const handTile = (
+          <Hand tiles={hands[p.seat]} faceDown rotate={p.wrapTransform ? 0 : p.rotate} />
+        );
+        const wallTile = <Wall tiles={wallSlices[p.seat]} rows={1} showCount={false} />;
+        return (
           <div
-            style={
-              p.wrapTransform ? { transform: p.wrapTransform, whiteSpace: 'nowrap' } : undefined
-            }
+            key={p.seat}
+            style={{
+              gridColumn: p.outer[0],
+              gridRow: p.outer[1],
+              ...p.align,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 4,
+            }}
           >
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-              <Hand tiles={hands[p.seat]} faceDown rotate={p.rotate} />
-              <Wall tiles={wallSlices[p.seat]} rows={1} showCount={false} />
+            <SeatLabel label={p.label} />
+            <div
+              style={
+                p.wrapTransform ? { transform: p.wrapTransform, whiteSpace: 'nowrap' } : undefined
+              }
+            >
+              <div
+                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}
+              >
+                {p.wrapTransform ? wallTile : handTile}
+                {p.wrapTransform ? handTile : wallTile}
+              </div>
             </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
 
       <div
         style={{
