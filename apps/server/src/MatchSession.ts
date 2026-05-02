@@ -23,7 +23,18 @@ interface SeatState {
   bot: Bot | null;
   /** Connection ID of the currently-attached client, if any. */
   connectionId: string | null;
+  /**
+   * Server time when the seat's owner disconnected. While set, the
+   * seat's `bot` is a stand-in keeping the game moving; reconnect by
+   * the same playerId clears it. Currently only written; an alarm-
+   * driven grace-expiry that uses this field is still queued (see
+   * TODO.md "Reconnect grace timer").
+   */
+  disconnectedSinceMs: number | null;
 }
+
+/** Actions that only the host is allowed to issue (server-side enforcement). */
+const HOST_ONLY_ACTIONS: ReadonlySet<Action['t']> = new Set(['startHand', 'setRules']);
 
 export type Outbound =
   | { kind: 'sendTo'; connectionId: string; msg: ServerMessage }
@@ -43,10 +54,10 @@ export class MatchSession {
   private state: GameState = emptyState(DEFAULT_RULES);
   private hostPlayerId: string | null = null;
   private seats: Record<Seat, SeatState> = {
-    0: { playerId: null, displayName: null, bot: null, connectionId: null },
-    1: { playerId: null, displayName: null, bot: null, connectionId: null },
-    2: { playerId: null, displayName: null, bot: null, connectionId: null },
-    3: { playerId: null, displayName: null, bot: null, connectionId: null },
+    0: emptySeat(),
+    1: emptySeat(),
+    2: emptySeat(),
+    3: emptySeat(),
   };
 
   getState(): GameState {
@@ -56,10 +67,9 @@ export class MatchSession {
   /** Test/seeding helper: place a bot in a specific seat. */
   seatBot(seat: Seat, bot: Bot, displayName?: string): void {
     this.seats[seat] = {
-      playerId: null,
+      ...emptySeat(),
       displayName: displayName ?? `Bot (${bot.kind})`,
       bot,
-      connectionId: null,
     };
   }
 
@@ -69,15 +79,24 @@ export class MatchSession {
     return this.handle(connectionId, r.msg);
   }
 
-  detachConnection(connectionId: string): Outbound[] {
+  detachConnection(connectionId: string, nowMs: number = Date.now()): Outbound[] {
     let changed = false;
     for (const seat of SEATS) {
-      if (this.seats[seat].connectionId === connectionId) {
-        this.seats[seat].connectionId = null;
+      const slot = this.seats[seat];
+      if (slot.connectionId === connectionId) {
+        slot.connectionId = null;
+        // Install a passive stand-in bot so the game keeps moving until reconnect.
+        if (slot.playerId !== null && slot.bot === null) {
+          slot.bot = passiveBot;
+          slot.disconnectedSinceMs = nowMs;
+        }
         changed = true;
       }
     }
-    return changed ? [this.lobbyBroadcast()] : [];
+    if (!changed) return [];
+    const out: Outbound[] = [this.lobbyBroadcast()];
+    out.push(...this.runBots());
+    return out;
   }
 
   fireAlarm(nowMs: number): Outbound[] {
@@ -117,9 +136,9 @@ export class MatchSession {
       ];
     }
     this.seats[seat] = {
+      ...emptySeat(),
       playerId: msg.playerId,
       displayName: msg.displayName,
-      bot: null,
       connectionId,
     };
     if (this.hostPlayerId === null) this.hostPlayerId = msg.playerId;
@@ -141,6 +160,12 @@ export class MatchSession {
   }
 
   private onAction(connectionId: string, action: Action): Outbound[] {
+    if (HOST_ONLY_ACTIONS.has(action.t)) {
+      const sender = this.playerIdFor(connectionId);
+      if (sender === null || sender !== this.hostPlayerId) {
+        return [errMsg(connectionId, 'HOST', 'only the host can perform this action')];
+      }
+    }
     try {
       const out: Outbound[] = [this.apply(action), ...this.maybeScheduleClaimAlarm()];
       out.push(...this.runBots());
@@ -151,6 +176,13 @@ export class MatchSession {
       }
       return [errMsg(connectionId, 'INTERNAL', String(e))];
     }
+  }
+
+  private playerIdFor(connectionId: string): string | null {
+    for (const s of SEATS) {
+      if (this.seats[s].connectionId === connectionId) return this.seats[s].playerId;
+    }
+    return null;
   }
 
   /** Apply an action through the engine and return its broadcast event. Mutates `this.state`. */
@@ -239,6 +271,16 @@ function errMsg(connectionId: string, code: string, detail?: string): Outbound {
   const msg: ServerMessage =
     detail !== undefined ? { t: 'error', code, detail } : { t: 'error', code };
   return { kind: 'sendTo', connectionId, msg };
+}
+
+function emptySeat(): SeatState {
+  return {
+    playerId: null,
+    displayName: null,
+    bot: null,
+    connectionId: null,
+    disconnectedSinceMs: null,
+  };
 }
 
 export function botByKind(kind: 'simple' | 'heuristic' | 'passive'): Bot {

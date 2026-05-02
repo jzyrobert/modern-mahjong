@@ -13,15 +13,20 @@ function pickSends(outs: Outbound[], connectionId: string): ServerMessage[] {
     .map((o) => (o as { msg: ServerMessage }).msg);
 }
 
+function helloAs(
+  s: MatchSession,
+  connectionId: string,
+  playerId: string,
+  displayName = playerId,
+  matchCode = 'X',
+): Outbound[] {
+  return s.applyClientMessage(connectionId, { t: 'hello', playerId, displayName, matchCode });
+}
+
 describe('MatchSession — hello + lobby', () => {
   it('first hello assigns seat 0 and becomes host', () => {
     const s = new MatchSession();
-    const out = s.applyClientMessage('c1', {
-      t: 'hello',
-      playerId: 'p1',
-      displayName: 'Alice',
-      matchCode: 'ABCDE',
-    });
+    const out = helloAs(s, 'c1', 'p1', 'Alice', 'ABCDE');
     const stateMsg = pickSends(out, 'c1').find((m) => m.t === 'state');
     expect(stateMsg && stateMsg.t === 'state' && stateMsg.you).toBe(0);
 
@@ -32,50 +37,17 @@ describe('MatchSession — hello + lobby', () => {
 
   it('reconnect with same playerId restores the original seat', () => {
     const s = new MatchSession();
-    s.applyClientMessage('c1', {
-      t: 'hello',
-      playerId: 'p1',
-      displayName: 'Alice',
-      matchCode: 'ABCDE',
-    });
+    helloAs(s, 'c1', 'p1', 'Alice');
     s.detachConnection('c1');
-    const out = s.applyClientMessage('c2', {
-      t: 'hello',
-      playerId: 'p1',
-      displayName: 'Alice',
-      matchCode: 'ABCDE',
-    });
+    const out = helloAs(s, 'c2', 'p1', 'Alice');
     const stateMsg = pickSends(out, 'c2').find((m) => m.t === 'state');
     expect(stateMsg && stateMsg.t === 'state' && stateMsg.you).toBe(0);
   });
 
   it('new playerIds get the next available seats', () => {
     const s = new MatchSession();
-    const out0 = s.applyClientMessage('c0', {
-      t: 'hello',
-      playerId: 'p0',
-      displayName: 'A',
-      matchCode: 'X',
-    });
-    const out1 = s.applyClientMessage('c1', {
-      t: 'hello',
-      playerId: 'p1',
-      displayName: 'B',
-      matchCode: 'X',
-    });
-    const out2 = s.applyClientMessage('c2', {
-      t: 'hello',
-      playerId: 'p2',
-      displayName: 'C',
-      matchCode: 'X',
-    });
-    const out3 = s.applyClientMessage('c3', {
-      t: 'hello',
-      playerId: 'p3',
-      displayName: 'D',
-      matchCode: 'X',
-    });
-    const seats = [out0, out1, out2, out3].map((out, i) => {
+    const outs = [0, 1, 2, 3].map((i) => helloAs(s, `c${i}`, `p${i}`));
+    const seats = outs.map((out, i) => {
       const m = pickSends(out, `c${i}`).find((x) => x.t === 'state');
       return m && m.t === 'state' ? m.you : null;
     });
@@ -84,20 +56,8 @@ describe('MatchSession — hello + lobby', () => {
 
   it('rejects a fifth player when the room is full', () => {
     const s = new MatchSession();
-    for (let i = 0; i < 4; i++) {
-      s.applyClientMessage(`c${i}`, {
-        t: 'hello',
-        playerId: `p${i}`,
-        displayName: `${i}`,
-        matchCode: 'X',
-      });
-    }
-    const out = s.applyClientMessage('c4', {
-      t: 'hello',
-      playerId: 'p4',
-      displayName: '4',
-      matchCode: 'X',
-    });
+    for (let i = 0; i < 4; i++) helloAs(s, `c${i}`, `p${i}`);
+    const out = helloAs(s, 'c4', 'p4');
     const errs = pickSends(out, 'c4').filter((m) => m.t === 'error');
     expect(errs[0]?.t).toBe('error');
     expect(errs[0]?.t === 'error' && errs[0].code).toBe('FULL');
@@ -108,23 +68,28 @@ describe('MatchSession — hello + lobby', () => {
 describe('MatchSession — bot-driven hand to completion', () => {
   it('four bots play a full hand and end up in a resolved state', () => {
     const s = new MatchSession();
-    s.seatBot(0, heuristicBot);
+    // Seat a human host first so we can pass the host-only `startHand` gate.
+    s.applyClientMessage('host', {
+      t: 'hello',
+      playerId: 'host-p',
+      displayName: 'Host',
+      matchCode: 'ABCDE',
+    });
     s.seatBot(1, heuristicBot);
     s.seatBot(2, simpleBot);
     s.seatBot(3, passiveBot);
 
-    // Kick off a hand directly via an action message.
-    const startOut = s.applyClientMessage('host', {
+    s.applyClientMessage('host', {
       t: 'action',
       action: { t: 'startHand', seed: 42, dealer: 0 },
     });
-    expect(startOut.length).toBeGreaterThan(0);
 
-    // Pump the alarm a few times; each call drains one claim window
-    // and may chain into bot turns. Bots also drive their own actions
-    // synchronously when an alarm fires.
+    // Disconnect the host so seat 0 falls back to its passive stand-in bot;
+    // alarms then drive all four seats to completion.
+    s.detachConnection('host');
+
     let safety = 0;
-    while (s.getState().phase !== 'resolved' && safety < 200) {
+    while (s.getState().phase !== 'resolved' && safety < 300) {
       s.fireAlarm(Date.now());
       safety++;
     }
@@ -132,15 +97,74 @@ describe('MatchSession — bot-driven hand to completion', () => {
   });
 });
 
+describe('MatchSession — host gating', () => {
+  it('rejects a non-host startHand with HOST error', () => {
+    const s = new MatchSession();
+    helloAs(s, 'c0', 'p0', 'Host');
+    helloAs(s, 'c1', 'p1', 'Guest');
+    const out = s.applyClientMessage('c1', {
+      t: 'action',
+      action: { t: 'startHand', seed: 1, dealer: 0 },
+    });
+    const errs = pickSends(out, 'c1').filter((m) => m.t === 'error');
+    expect(errs[0]?.t === 'error' && errs[0].code).toBe('HOST');
+  });
+
+  it('rejects a non-host setRules with HOST error', () => {
+    const s = new MatchSession();
+    helloAs(s, 'c0', 'p0', 'Host');
+    helloAs(s, 'c1', 'p1', 'Guest');
+    const out = s.applyClientMessage('c1', {
+      t: 'action',
+      action: { t: 'setRules', rules: { faanMin: 0 } },
+    });
+    const errs = pickSends(out, 'c1').filter((m) => m.t === 'error');
+    expect(errs[0]?.t === 'error' && errs[0].code).toBe('HOST');
+  });
+
+  it('accepts host-issued startHand', () => {
+    const s = new MatchSession();
+    helloAs(s, 'c0', 'p0', 'Host');
+    s.applyClientMessage('c0', {
+      t: 'action',
+      action: { t: 'startHand', seed: 1, dealer: 0 },
+    });
+    expect(s.getState().phase).toBe('turn');
+  });
+});
+
+describe('MatchSession — disconnect + reconnect grace', () => {
+  it('installs a passive stand-in bot when a seated player disconnects', () => {
+    const s = new MatchSession();
+    helloAs(s, 'c0', 'p0');
+    s.detachConnection('c0');
+    const lobby = helloAs(s, 'cx', 'pX');
+    // pX should land in seat 1 (seat 0 is reserved for the disconnected p0 + bot).
+    const stateMsg = pickSends(lobby, 'cx').find((m) => m.t === 'state');
+    expect(stateMsg && stateMsg.t === 'state' && stateMsg.you).toBe(1);
+  });
+
+  it('reconnect by the same playerId clears the stand-in bot', () => {
+    const s = new MatchSession();
+    helloAs(s, 'c0', 'p0');
+    s.detachConnection('c0');
+    const reconn = helloAs(s, 'c0b', 'p0');
+    const stateMsg = pickSends(reconn, 'c0b').find((m) => m.t === 'state');
+    expect(stateMsg && stateMsg.t === 'state' && stateMsg.you).toBe(0);
+    // After reconnect, sending a host-only action should succeed (p0 is still host).
+    const startOut = s.applyClientMessage('c0b', {
+      t: 'action',
+      action: { t: 'startHand', seed: 1, dealer: 0 },
+    });
+    expect(pickSends(startOut, 'c0b').filter((m) => m.t === 'error')).toHaveLength(0);
+    expect(s.getState().phase).toBe('turn');
+  });
+});
+
 describe('MatchSession — illegal action error path', () => {
   it('out-of-turn discard returns a typed error to the offending connection', () => {
     const s = new MatchSession();
-    s.applyClientMessage('c0', {
-      t: 'hello',
-      playerId: 'p0',
-      displayName: 'A',
-      matchCode: 'X',
-    });
+    helloAs(s, 'c0', 'p0');
     s.applyClientMessage('c0', { t: 'action', action: { t: 'startHand', seed: 1, dealer: 0 } });
 
     const out = s.applyClientMessage('c0', {
