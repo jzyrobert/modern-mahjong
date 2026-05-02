@@ -7,9 +7,17 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "cap:sync": "cap sync",
+    "cap:open:ios": "cap open ios",
+    "cap:open:android": "cap open android"
   },
   "dependencies": {
+    "@capacitor/core": "7.0.0",
+    "@capacitor/haptics": "7.0.0",
+    "@capacitor/preferences": "7.0.0",
+    "@capacitor/screen-orientation": "7.0.0",
+    "@capacitor/status-bar": "7.0.0",
     "@mahjong/bots": "workspace:*",
     "@mahjong/game-logic": "workspace:*",
     "@mahjong/protocol": "workspace:*",
@@ -21,6 +29,7 @@
     "zustand": "5.0.2"
   },
   "devDependencies": {
+    "@capacitor/cli": "7.0.0",
     "@types/qrcode": "1.5.5",
     "@types/react": "19.0.1",
     "@types/react-dom": "19.0.1",
