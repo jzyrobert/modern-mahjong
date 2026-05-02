@@ -11,7 +11,8 @@
       "apps/client/ios",
       "apps/client/android",
       "apps/client/test-results",
-      "apps/client/playwright-report"
+      "apps/client/playwright-report",
+      "apps/client/.lighthouseci"
     ]
   },
   "formatter": {

@@ -28,6 +28,9 @@ Tracker for outstanding plan work. The full design lives in [`docs/PLAN.md`](./d
 - [x] Between-hand shuffle overlay: a brief swirl of face-down tiles plays whenever a fresh seed lands (visual cue at the start of every hand).
 - [ ] Perf check: tile transitions ≤ 250 ms, all animation on `transform` only (instrumentation + Lighthouse run).
 - [ ] Full mechanical shuffle/dispense: render the wall as physical stacks around the table, animate every used tile flowing into the center pile and back out into the new walls. Needs a visible `<Wall>` component and a state-machine extension so the engine pauses briefly between hands for the animation to complete.
+- [ ] Replace the Draw button with a glow / pulse on the next-to-draw tile in the wall. The current button is a hold-over from the early prototype; surfacing the action on the wall itself reads more naturally and reclaims a row of vertical space (helps the landscape-mobile crunch below).
+- [ ] Mobile landscape layout pass: the table grid clips on landscape phones (`<700px` height). Audit `Table.tsx`'s `gridTemplateRows: 'auto 1fr auto'` + `Hand` row heights, switch to viewport-relative tile sizing so the user's hand stays fully visible without horizontal scroll.
+- [ ] Generate proper tile icons. Tiles currently render as `<button>` text (`1m`, `9p`, `Z` etc.). Replace with SVG glyphs (or a sprite atlas) that show the actual mahjong tile face. Should keep the existing `tileLabel` accessible to screen readers via `aria-label`.
 
 ### Scoring breakdown UX
 - [x] Scoring breakdown modal on the result screen with per-pattern faan list + the tile composition that produced it. `FaanBreakdown.tiles` carries the engine's view of which tiles triggered each pattern (e.g. 9 dragon tiles for 大三元, the winning tile for 自摸, every tile in the hand for 字一色); the modal renders them as a tile row beneath each pattern.
@@ -63,7 +66,7 @@ Tracker for outstanding plan work. The full design lives in [`docs/PLAN.md`](./d
 
 ### Final hardening
 - [x] Playwright e2e: `apps/client/e2e/solo-match.spec.ts` opens the app, clicks Play vs bots, starts a hand, clicks a tile to discard, asserts the wall count drops as bots take over. Runs as a `e2e` job in CI on every PR; browser cache is keyed off the lockfile so reruns are fast. Reports + traces are uploaded as artifacts.
-- [ ] Lighthouse-score CI check (≥ 90 mobile).
+- [x] Lighthouse CI: `apps/client/lighthouserc.json` + a `lighthouse` job in CI runs `lhci autorun` against `vite preview`. Performance ≥ 0.9 is enforced (errors the build); accessibility/best-practices warn at 0.9/0.85. Reports upload as the `lighthouse-report` artifact.
 - [x] Documented release process: see [`docs/DEPLOY.md`](./docs/DEPLOY.md). Cloudflare Pages (client) + Workers (server) auto-deploy from `main` via `.github/workflows/deploy.yml`; debug APK is a CI artifact. iOS Store + production-signed Android still pending.
 
 ## Out of scope until a maintainer decides

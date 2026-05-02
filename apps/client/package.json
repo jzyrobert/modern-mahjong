@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "e2e": "playwright test",
     "e2e:install": "playwright install --with-deps chromium",
+    "lighthouse": "lhci autorun",
     "cap:sync": "cap sync",
     "cap:open:ios": "cap open ios",
     "cap:open:android": "cap open android"
@@ -32,6 +33,7 @@
   },
   "devDependencies": {
     "@capacitor/cli": "7.0.0",
+    "@lhci/cli": "^0.15.1",
     "@playwright/test": "^1.59.1",
     "@types/react": "19.0.1",
     "@types/react-dom": "19.0.1",
