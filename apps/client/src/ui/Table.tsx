@@ -169,7 +169,9 @@ function layoutFor(mySeat: Seat): [SeatPosition, SeatPosition, SeatPosition, Sea
       seat: nextSeat(mySeat),
       outer: [3, 2],
       inner: [3, 2],
-      rotate: 90,
+      // Right seat: top of each tile must point LEFT (toward center) so
+      // the seat reads them upright. CSS rotate is clockwise, so -90.
+      rotate: -90,
       align: { alignSelf: 'center', justifySelf: 'end' },
       label: `Seat ${nextSeat(mySeat)}`,
       wrapTransform: 'rotate(-90deg)',
@@ -186,7 +188,8 @@ function layoutFor(mySeat: Seat): [SeatPosition, SeatPosition, SeatPosition, Sea
       seat: prevSeat(mySeat),
       outer: [1, 2],
       inner: [1, 2],
-      rotate: -90,
+      // Left seat: top of each tile must point RIGHT (toward center).
+      rotate: 90,
       align: { alignSelf: 'center' },
       label: `Seat ${prevSeat(mySeat)}`,
       wrapTransform: 'rotate(90deg)',
