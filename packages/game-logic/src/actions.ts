@@ -1,14 +1,14 @@
 import { applyClaim, resolveClaims } from './claims.js';
 import type { Meld } from './hand.js';
-import { sameFace, sameTile } from './tiles.js';
-import type { Tile } from './tiles.js';
 import { meldSize } from './hand.js';
 import { shuffle } from './rng.js';
 import { scoreHand } from './scoring.js';
 import { isWinning } from './shanten.js';
-import { buildWall } from './tiles.js';
 import type { Claim, GameState, RuleConfig, Seat } from './state.js';
-import { DEFAULT_RULES, nextSeat, SEATS, emptyState } from './state.js';
+import { DEFAULT_RULES, SEATS, emptyState, nextSeat } from './state.js';
+import { sameFace, sameTile } from './tiles.js';
+import type { Tile } from './tiles.js';
+import { buildWall } from './tiles.js';
 
 export type Action =
   | { t: 'startHand'; seed: number; dealer?: Seat }
@@ -27,7 +27,15 @@ export type Event =
   | { t: 'claimsOpened'; deadlineMs: number }
   | { t: 'claimsResolved'; result: ReturnType<typeof resolveClaims> }
   | { t: 'kongDeclared'; seat: Seat; kind: 'concealed' | 'promoted' | 'exposed' }
-  | { t: 'won'; seat: Seat; from: Seat; tile: Tile; selfDraw: boolean; faan: number; reasons: string[] }
+  | {
+      t: 'won';
+      seat: Seat;
+      from: Seat;
+      tile: Tile;
+      selfDraw: boolean;
+      faan: number;
+      reasons: string[];
+    }
   | { t: 'drawn-game'; reason: 'wall-empty' };
 
 export class IllegalActionError extends Error {
@@ -66,7 +74,11 @@ export function reduce(state: GameState, action: Action): { state: GameState; ev
   }
 }
 
-function startHand(prev: GameState, seed: number, dealer: Seat): { state: GameState; events: Event[] } {
+function startHand(
+  prev: GameState,
+  seed: number,
+  dealer: Seat,
+): { state: GameState; events: Event[] } {
   const rules: RuleConfig = prev.rules ?? DEFAULT_RULES;
   const fresh = emptyState(rules);
   const wall = shuffle(buildWall(), seed);
@@ -211,7 +223,10 @@ function declareKongConcealed(
   const matching = state.hands[seat].filter((t) => sameFace(t, tile));
   if (matching.length < 4) throw new IllegalActionError('TILE', 'not 4 in hand');
   let newHand = [...state.hands[seat]];
-  for (let i = 0; i < 4; i++) newHand = newHand.filter((t, idx) => !(sameFace(t, tile) && newHand.indexOf(t) === idx)).concat();
+  for (let i = 0; i < 4; i++)
+    newHand = newHand
+      .filter((t, idx) => !(sameFace(t, tile) && newHand.indexOf(t) === idx))
+      .concat();
   // simpler: just filter all matching out and re-add 0
   newHand = state.hands[seat].filter((t) => !sameFace(t, tile));
   const meld: Meld = { kind: 'kong-concealed', tiles: matching };
@@ -291,14 +306,16 @@ function declareWin(
   const winning = isWinning({
     hand: concealed,
     exposedMelds,
-    allowSpecial:
-      state.rules.allowSevenPairs || state.rules.allowThirteenOrphans,
+    allowSpecial: state.rules.allowSevenPairs || state.rules.allowThirteenOrphans,
   });
   if (!winning) throw new IllegalActionError('SHAPE', 'hand is not winning');
 
   const score = scoreHand({ state, winner: seat, winningTile, selfDraw });
   if (score.faan < state.rules.faanMin) {
-    throw new IllegalActionError('FAAN', `below faan minimum (${score.faan} < ${state.rules.faanMin})`);
+    throw new IllegalActionError(
+      'FAAN',
+      `below faan minimum (${score.faan} < ${state.rules.faanMin})`,
+    );
   }
   const fromSeat: Seat = selfDraw ? seat : state.lastDiscard!.from;
   return {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  TOTAL_TILES,
   buildWall,
   sameFace,
   sameTile,
@@ -7,7 +8,6 @@ import {
   tileFromId,
   tileId,
   tileLabel,
-  TOTAL_TILES,
 } from '../src/index.js';
 
 describe('tile model', () => {

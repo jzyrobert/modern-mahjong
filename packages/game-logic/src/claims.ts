@@ -1,8 +1,8 @@
 import type { Meld } from './hand.js';
-import { sameFace } from './tiles.js';
-import type { Tile } from './tiles.js';
 import type { Claim, ClaimRound, GameState, Seat } from './state.js';
 import { nextSeat } from './state.js';
+import { sameFace } from './tiles.js';
+import type { Tile } from './tiles.js';
 
 /**
  * Resolve a completed claim round to a single winner. Returns:
@@ -26,7 +26,10 @@ export function resolveClaims(round: ClaimRound): ClaimResolution {
   const seats = Object.keys(round.submitted).map((s) => Number(s) as Seat);
   const submissions = seats
     .map((seat) => ({ seat, claim: round.submitted[seat]! }))
-    .filter((s) => s.claim.kind !== 'pass') as { seat: Seat; claim: Exclude<Claim, { kind: 'pass' }> }[];
+    .filter((s) => s.claim.kind !== 'pass') as {
+    seat: Seat;
+    claim: Exclude<Claim, { kind: 'pass' }>;
+  }[];
 
   if (submissions.length === 0) return { kind: 'pass' };
 
@@ -93,11 +96,11 @@ export function canChi(hand: readonly Tile[], discard: Tile): boolean {
   const suit = discard.suit;
   const r = discard.rank;
   const has = (rank: number): boolean =>
-    rank >= 1 && rank <= 9 && hand.some((t) => t.kind === 'suit' && t.suit === suit && t.rank === rank);
+    rank >= 1 &&
+    rank <= 9 &&
+    hand.some((t) => t.kind === 'suit' && t.suit === suit && t.rank === rank);
   // [r-2, r-1] | [r-1, r+1] | [r+1, r+2]
-  return (
-    (has(r - 2) && has(r - 1)) || (has(r - 1) && has(r + 1)) || (has(r + 1) && has(r + 2))
-  );
+  return (has(r - 2) && has(r - 1)) || (has(r - 1) && has(r + 1)) || (has(r + 1) && has(r + 2));
 }
 
 /**

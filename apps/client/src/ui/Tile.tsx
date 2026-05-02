@@ -1,4 +1,4 @@
-import { tileLabel, type Tile as MTile } from '@mahjong/game-logic';
+import { type Tile as MTile, tileLabel } from '@mahjong/game-logic';
 import type { CSSProperties, MouseEventHandler } from 'react';
 
 interface TileProps {

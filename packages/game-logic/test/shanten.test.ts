@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { shanten, type Tile } from '../src/index.js';
+import { type Tile, shanten } from '../src/index.js';
 
 function tiles(spec: string): Tile[] {
   // Spec like "1m 2m 3m 4p 5p 6p 7s 8s 9s E E S S"

@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  type ClaimRound,
-  type Seat,
-  resolveClaims,
-} from '../src/index.js';
+import { type ClaimRound, type Seat, resolveClaims } from '../src/index.js';
 
 const tile = (rank: 1 | 5 | 9): { kind: 'suit'; suit: 'man'; rank: typeof rank; copy: 0 } => ({
   kind: 'suit',
@@ -12,7 +8,10 @@ const tile = (rank: 1 | 5 | 9): { kind: 'suit'; suit: 'man'; rank: typeof rank; 
   copy: 0,
 });
 
-function round(submitted: Partial<Record<Seat, import('../src/index.js').Claim>>, from: Seat = 0): ClaimRound {
+function round(
+  submitted: Partial<Record<Seat, import('../src/index.js').Claim>>,
+  from: Seat = 0,
+): ClaimRound {
   return {
     discard: { tile: tile(5), from },
     deadlineMs: 9999,
@@ -29,9 +28,7 @@ describe('claim resolution', () => {
   });
 
   it('hu beats peng', () => {
-    const r = resolveClaims(
-      round({ 1: { kind: 'peng' }, 2: { kind: 'hu' } }),
-    );
+    const r = resolveClaims(round({ 1: { kind: 'peng' }, 2: { kind: 'hu' } }));
     expect(r.kind).toBe('win');
     if (r.kind === 'win') {
       expect(r.seat).toBe(2);
@@ -58,9 +55,7 @@ describe('claim resolution', () => {
   it('two simultaneous hu picks closest CCW', () => {
     // discard from seat 0; seats 1 and 3 both call hu.
     // CCW distance: 1 → 1, 3 → 3. Seat 1 wins.
-    const r = resolveClaims(
-      round({ 1: { kind: 'hu' }, 3: { kind: 'hu' } }, 0),
-    );
+    const r = resolveClaims(round({ 1: { kind: 'hu' }, 3: { kind: 'hu' } }, 0));
     expect(r.kind).toBe('win');
     if (r.kind === 'win') {
       expect(r.seat).toBe(1);
@@ -82,12 +77,19 @@ describe('claim resolution', () => {
         for (let c = 0; c < claims.length; c++) {
           // Use seats 1 (next), 2, 3 against discard from 0.
           const r = resolveClaims(round({ 1: claims[a]!, 2: claims[b]!, 3: claims[c]! }, 0));
-          const top = Math.max(priority[claims[a]!.kind], priority[claims[b]!.kind], priority[claims[c]!.kind]);
+          const top = Math.max(
+            priority[claims[a]!.kind],
+            priority[claims[b]!.kind],
+            priority[claims[c]!.kind],
+          );
           if (top === 0) {
             expect(r.kind).toBe('pass');
           } else {
             // Chi only for seat 1 (next); skip cases where the only claim is chi from non-next seats.
-            const chiFromOnlySource = top === 1 && (claims[b]!.kind === 'chi' || claims[c]!.kind === 'chi') && claims[a]!.kind !== 'chi';
+            const chiFromOnlySource =
+              top === 1 &&
+              (claims[b]!.kind === 'chi' || claims[c]!.kind === 'chi') &&
+              claims[a]!.kind !== 'chi';
             if (chiFromOnlySource) continue;
             expect(r.kind).toBe('win');
           }

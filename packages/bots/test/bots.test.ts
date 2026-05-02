@@ -1,15 +1,15 @@
-import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_RULES,
-  emptyState,
-  reduce,
   type GameState,
+  IllegalActionError,
+  SEATS,
   type Seat,
   assertTileConservation,
-  SEATS,
-  IllegalActionError,
+  emptyState,
+  reduce,
 } from '@mahjong/game-logic';
-import { simpleBot, heuristicBot, passiveBot } from '../src/index.js';
+import { describe, expect, it } from 'vitest';
+import { heuristicBot, passiveBot, simpleBot } from '../src/index.js';
 
 function startedHand(seed: number): GameState {
   const init = emptyState(DEFAULT_RULES);

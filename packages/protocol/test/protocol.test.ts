@@ -28,7 +28,12 @@ describe('protocol — match codes', () => {
 
 describe('protocol — message parsing', () => {
   it('accepts a well-formed hello', () => {
-    const r = parseClientMessage({ t: 'hello', playerId: 'p1', displayName: 'me', matchCode: 'ABCDE' });
+    const r = parseClientMessage({
+      t: 'hello',
+      playerId: 'p1',
+      displayName: 'me',
+      matchCode: 'ABCDE',
+    });
     expect(r.ok).toBe(true);
   });
 
@@ -38,7 +43,10 @@ describe('protocol — message parsing', () => {
   });
 
   it('accepts an action envelope without deep-validating the action', () => {
-    const r = parseClientMessage({ t: 'action', action: { t: 'discard', seat: 0, tile: { kind: 'honor', honor: 'E', copy: 0 } } });
+    const r = parseClientMessage({
+      t: 'action',
+      action: { t: 'discard', seat: 0, tile: { kind: 'honor', honor: 'E', copy: 0 } },
+    });
     expect(r.ok).toBe(true);
   });
 });
