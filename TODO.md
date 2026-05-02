@@ -39,10 +39,13 @@ Tracker for outstanding plan work. The full design lives in [`docs/PLAN.md`](./d
 - [x] Reconnect grace timer — `MatchSession` now tracks `disconnectedSinceMs` and re-arms a single DO alarm at the soonest of (claim window, every disconnected seat's 60s grace expiry). On grace expiry the seat's playerId is cleared (auto-bot keeps playing), `hostPlayerId` hands off to the next connected human, and the seat becomes reclaimable by a new joiner via `findOrAssignSeat`.
 - [ ] Persist `GameState` to DO storage so a hibernated room rehydrates correctly.
 
+### Single-player / bots-only offline match
+- [ ] "Start solo match (vs bots)" entry on the lobby: skips the host-URL handshake entirely, spins up a local in-process `MatchSession` with three bots seated, and takes the player straight into a hand. Useful for practice and for the very common "I'm offline and just want to play" case where the LAN host setup is overkill.
+
 ### LAN transport
 - [x] `createLanTransport({ hostUrl, matchCode, ... })` factory sharing a `createWsTransport` core with the online flow.
 - [x] `isLanOrigin()` heuristic so a guest visiting an `http://192.168.x.x` URL can default into LAN-guest mode.
-- [x] Lobby gets "Host LAN match" / "Join LAN match" buttons; host modal renders a QR + URL via `qrcode`.
+- [x] Lobby gets "Host LAN match" / "Join LAN match" buttons; host modal shows the URL with a clipboard copy button. (QR generation was removed — it auto-rendered while the host typed and was hiding the "Start hosting" button on landscape mobile.)
 - [x] Capacitor `LanServer` TS bridge stub (iOS / Android native code still pending).
 - [x] `isLanOrigin()` is now wired into the lobby: visiting an `http://192.168.x.x:port` URL auto-opens the Join LAN modal with the host URL pre-filled.
 - [ ] Camera-based QR scanning for guests (`MediaDevices` + `jsqr`); requires HTTPS so only available in the installed Capacitor app.
