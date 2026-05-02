@@ -16,6 +16,11 @@ jobs:
     environment: cloudflare
     steps:
       - uses: actions/checkout@v4
+      # Wrangler bundles the worker entry by walking workspace imports
+      # (`@mahjong/game-logic`, `@mahjong/protocol`, `@mahjong/bots`), so
+      # the workspace symlinks must exist before `wrangler deploy` runs.
+      # Also puts pnpm on PATH for wrangler-action's `packageManager: pnpm`.
+      - uses: ./.github/actions/setup
 
       - name: Deploy Worker (partyserver / Durable Objects)
         uses: cloudflare/wrangler-action@v3

@@ -1,16 +1,34 @@
 /**
  * Per-device durable identity. Generated on first launch and persisted to
- * localStorage. The display name is independently editable any time.
+ * localStorage AND `@capacitor/preferences`. The display name is
+ * independently editable any time.
+ *
+ * iOS WebViews aggressively evict localStorage under storage pressure, so
+ * `hydrateIdentity()` (called at app startup) reseeds localStorage from
+ * native Preferences when the WebView has been wiped. Web builds where
+ * the Preferences plugin import fails silently fall back to localStorage
+ * only.
  */
 
 const ID_KEY = 'mahjong.playerId';
 const NAME_KEY = 'mahjong.displayName';
+
+type PreferencesPlugin = typeof import('@capacitor/preferences').Preferences;
+
+let prefsPromise: Promise<PreferencesPlugin | null> | null = null;
+function loadPreferences(): Promise<PreferencesPlugin | null> {
+  if (!prefsPromise) {
+    prefsPromise = import('@capacitor/preferences').then((m) => m.Preferences).catch(() => null);
+  }
+  return prefsPromise;
+}
 
 export function getPlayerId(): string {
   let id = localStorage.getItem(ID_KEY);
   if (!id) {
     id = crypto.randomUUID();
     localStorage.setItem(ID_KEY, id);
+    void mirrorToPreferences(ID_KEY, id);
   }
   return id;
 }
@@ -20,7 +38,41 @@ export function getDisplayName(): string {
 }
 
 export function setDisplayName(name: string): void {
-  localStorage.setItem(NAME_KEY, name.slice(0, 32));
+  const trimmed = name.slice(0, 32);
+  localStorage.setItem(NAME_KEY, trimmed);
+  void mirrorToPreferences(NAME_KEY, trimmed);
+}
+
+/**
+ * Read identity from native Preferences and seed localStorage with any
+ * values it's missing — and conversely, push localStorage values into
+ * Preferences when Preferences is empty (e.g., first launch after a web
+ * → installed-app upgrade). Idempotent. No-ops on web where the plugin
+ * isn't available.
+ *
+ * Call once at app startup before the first render so the lobby's
+ * controlled inputs see a stable initial value.
+ */
+export async function hydrateIdentity(): Promise<void> {
+  const Preferences = await loadPreferences();
+  if (!Preferences) return;
+  await Promise.all([syncKey(Preferences, ID_KEY), syncKey(Preferences, NAME_KEY)]);
+}
+
+async function syncKey(Preferences: PreferencesPlugin, key: string): Promise<void> {
+  const local = localStorage.getItem(key);
+  const stored = (await Preferences.get({ key })).value;
+  if (local && !stored) {
+    await Preferences.set({ key, value: local });
+  } else if (!local && stored) {
+    localStorage.setItem(key, stored);
+  }
+}
+
+async function mirrorToPreferences(key: string, value: string): Promise<void> {
+  const Preferences = await loadPreferences();
+  if (!Preferences) return;
+  await Preferences.set({ key, value });
 }
 
 function randomName(): string {
