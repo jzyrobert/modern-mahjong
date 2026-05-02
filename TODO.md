@@ -37,7 +37,7 @@ Tracker for outstanding plan work. The full design lives in [`docs/PLAN.md`](./d
 - [x] Reconnect: a `hello` from the same `playerId` clears the stand-in bot and restores the seat.
 - [x] Server-side host gating: `startHand` / `setRules` are rejected for non-host connections with a typed `HOST` error.
 - [x] Reconnect grace timer — `MatchSession` now tracks `disconnectedSinceMs` and re-arms a single DO alarm at the soonest of (claim window, every disconnected seat's 60s grace expiry). On grace expiry the seat's playerId is cleared (auto-bot keeps playing), `hostPlayerId` hands off to the next connected human, and the seat becomes reclaimable by a new joiner via `findOrAssignSeat`.
-- [ ] Persist `GameState` to DO storage so a hibernated room rehydrates correctly.
+- [x] Persist `MatchSession` snapshot to DO storage. `MatchSession.snapshot()` / `restore(snap)` round-trip the engine state + lobby + auto-bot stand-in flag through plain JSON; `MatchRoom.onStart` reads from `ctx.storage` on the way out of hibernation, and every `dispatch` writes the new snapshot back. Connection IDs are intentionally not persisted (clients re-hello).
 
 ### Single-player / bots-only offline match
 - [x] "Play vs bots" lobby entry: `apps/client/src/net/solo-transport.ts` runs an in-process engine loop with three bots (heuristic, simple, passive) seated. Skips the WebSocket handshake entirely; runs offline, no LAN setup needed.

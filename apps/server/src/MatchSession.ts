@@ -1,4 +1,11 @@
-import { type Bot, heuristicBot, passiveBot, runBotTurns, simpleBot } from '@mahjong/bots';
+import {
+  type Bot,
+  type BotKind,
+  heuristicBot,
+  passiveBot,
+  runBotTurns,
+  simpleBot,
+} from '@mahjong/bots';
 import {
   type Action,
   DEFAULT_RULES,
@@ -51,6 +58,27 @@ export interface MatchSessionOptions {
   reconnectGraceMs?: number;
 }
 
+interface SerializableSeat {
+  playerId: string | null;
+  displayName: string | null;
+  botKind: BotKind | null;
+  disconnectedSinceMs: number | null;
+  botAutoInstalled: boolean;
+}
+
+/**
+ * Plain-object snapshot of a `MatchSession`'s persisted state. Deliberately
+ * excludes per-connection runtime fields (`connectionId`,
+ * `lastEmittedDeadline`) — clients reconnect via `hello` after restore
+ * and the alarm is re-armed by the next `maybeScheduleAlarm` call.
+ */
+export interface MatchSessionSnapshot {
+  version: 1;
+  state: GameState;
+  hostPlayerId: string | null;
+  seats: Record<Seat, SerializableSeat>;
+}
+
 /**
  * Authoritative match logic, decoupled from the partyserver runtime so it
  * can be unit-tested directly. Every public method returns an `Outbound[]`
@@ -89,6 +117,59 @@ export class MatchSession {
       displayName: displayName ?? botDisplayName(bot),
       bot,
     };
+  }
+
+  /**
+   * Serializable snapshot for DO storage. `connectionId` is intentionally
+   * omitted — the partyserver runtime hands out fresh ones on the next
+   * `hello`, so persisting them across hibernation would point at zombies.
+   */
+  snapshot(): MatchSessionSnapshot {
+    const seats = {} as Record<Seat, SerializableSeat>;
+    for (const seat of SEATS) {
+      const slot = this.seats[seat];
+      seats[seat] = {
+        playerId: slot.playerId,
+        displayName: slot.displayName,
+        botKind: slot.bot?.kind ?? null,
+        disconnectedSinceMs: slot.disconnectedSinceMs,
+        botAutoInstalled: slot.botAutoInstalled,
+      };
+    }
+    return {
+      version: 1,
+      state: this.state,
+      hostPlayerId: this.hostPlayerId,
+      seats,
+    };
+  }
+
+  /**
+   * Rehydrate from a snapshot — used when a hibernated DO comes back to
+   * life. All connections start cleared; clients are expected to re-hello.
+   * If the alarm was set pre-hibernation, the next `maybeScheduleAlarm`
+   * will recompute and re-arm. Snapshots from a different schema version
+   * are dropped (room boots fresh rather than mis-restoring).
+   */
+  restore(snap: MatchSessionSnapshot): void {
+    if (snap.version !== 1) {
+      console.warn(`MatchSession: ignoring snapshot with unknown version ${snap.version}`);
+      return;
+    }
+    this.state = snap.state;
+    this.hostPlayerId = snap.hostPlayerId;
+    this.lastEmittedDeadline = null;
+    for (const seat of SEATS) {
+      const ser = snap.seats[seat];
+      this.seats[seat] = {
+        playerId: ser.playerId,
+        displayName: ser.displayName,
+        bot: ser.botKind ? botByKind(ser.botKind) : null,
+        connectionId: null,
+        disconnectedSinceMs: ser.disconnectedSinceMs,
+        botAutoInstalled: ser.botAutoInstalled,
+      };
+    }
   }
 
   applyClientMessage(connectionId: string, raw: unknown): Outbound[] {
