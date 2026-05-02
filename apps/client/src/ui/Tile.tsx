@@ -1,38 +1,53 @@
-import { type Tile as MTile, tileLabel } from '@mahjong/game-logic';
-import type { CSSProperties, MouseEventHandler } from 'react';
+import { type Tile as MTile, tileId, tileLabel } from '@mahjong/game-logic';
+import { type MotionStyle, type Transition, motion } from 'framer-motion';
+import { memo } from 'react';
 
 interface TileProps {
   tile: MTile;
   faceDown?: boolean | undefined;
   selected?: boolean | undefined;
-  onClick?: MouseEventHandler<HTMLButtonElement> | undefined;
-  style?: CSSProperties | undefined;
+  onClick?: (() => void) | undefined;
+  style?: MotionStyle | undefined;
+  rotate?: number | undefined;
 }
 
-export function Tile({ tile, faceDown, selected, onClick, style }: TileProps) {
+const SPRING: Transition = { type: 'spring', stiffness: 420, damping: 32, mass: 0.6 };
+const TAP = { scale: 0.94 } as const;
+
+const STATIC_STYLE: MotionStyle = {
+  width: 'var(--tile-w, 36px)',
+  height: 'var(--tile-h, 50px)',
+  color: '#222',
+  borderRadius: 6,
+  boxShadow: '0 2px 4px #0006',
+  fontWeight: 600,
+  fontSize: 14,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: 0,
+};
+
+function TileComponent({ tile, faceDown, selected, onClick, style, rotate }: TileProps) {
   return (
-    <button
+    <motion.button
       type="button"
+      layoutId={`tile-${tileId(tile)}`}
       onClick={onClick}
+      {...(onClick ? { whileTap: TAP } : {})}
+      transition={SPRING}
       style={{
-        width: 'var(--tile-w, 36px)',
-        height: 'var(--tile-h, 50px)',
+        ...STATIC_STYLE,
         background: faceDown ? '#5b3a2b' : '#fff',
-        color: '#222',
         border: selected ? '2px solid #f3c54a' : '1px solid #2228',
-        borderRadius: 6,
-        boxShadow: '0 2px 4px #0006',
-        fontWeight: 600,
-        fontSize: 14,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
         cursor: onClick ? 'pointer' : 'default',
-        padding: 0,
-        ...style,
+        rotate: rotate ?? 0,
+        ...(style ?? {}),
       }}
     >
       {faceDown ? '' : tileLabel(tile)}
-    </button>
+    </motion.button>
   );
 }
+
+export const Tile = memo(TileComponent);
