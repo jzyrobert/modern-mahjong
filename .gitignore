@@ -1,0 +1,26 @@
+node_modules
+dist
+build
+.cache
+*.tsbuildinfo
+.turbo
+.parcel-cache
+coverage
+*.log
+.DS_Store
+.env
+.env.local
+.wrangler
+.dev.vars
+
+# Capacitor synced web assets (generated)
+apps/client/ios/App/App/public
+apps/client/android/app/src/main/assets/public
+
+# IDE
+.idea
+.vscode
+*.iml
+
+# OS
+Thumbs.db
