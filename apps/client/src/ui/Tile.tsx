@@ -37,7 +37,9 @@ function TileComponent({ tile, faceDown, selected, onClick, style, rotate, testI
       type="button"
       layoutId={`tile-${tileId(tile)}`}
       onClick={onClick}
-      aria-label={tileLabel(tile)}
+      // Face-down tiles (opponent hands, the wall) shouldn't leak the
+      // actual tile face to screen readers — announce them generically.
+      aria-label={faceDown ? 'Face-down tile' : tileLabel(tile)}
       {...(onClick ? { whileTap: TAP } : {})}
       {...(testId ? { 'data-testid': testId } : {})}
       transition={SPRING}
