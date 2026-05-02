@@ -3,7 +3,7 @@ import type { ServerMessage } from '@mahjong/protocol';
 import { MotionConfig } from 'framer-motion';
 import { StrictMode, useCallback, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { getDisplayName, getPlayerId } from './identity.js';
+import { getDisplayName, getPlayerId, hydrateIdentity } from './identity.js';
 import { initNativeIfAvailable } from './native/init.js';
 import { createSoloTransport } from './net/solo-transport.js';
 import { type Transport, createLanTransport, createOnlineTransport } from './net/transport.js';
@@ -103,11 +103,16 @@ function App() {
 const root = document.getElementById('root');
 if (root) {
   void initNativeIfAvailable();
-  createRoot(root).render(
-    <StrictMode>
-      <MotionConfig reducedMotion="user">
-        <App />
-      </MotionConfig>
-    </StrictMode>,
-  );
+  // Block first render on identity hydration so the lobby's display-name
+  // input doesn't flicker from a fresh random name to the persisted one
+  // when localStorage was wiped but native Preferences still has it.
+  hydrateIdentity().finally(() => {
+    createRoot(root).render(
+      <StrictMode>
+        <MotionConfig reducedMotion="user">
+          <App />
+        </MotionConfig>
+      </StrictMode>,
+    );
+  });
 }

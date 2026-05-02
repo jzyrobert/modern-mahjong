@@ -59,7 +59,7 @@ Tracker for outstanding plan work. The full design lives in [`docs/PLAN.md`](./d
 - [x] Landscape orientation lock applied automatically when running on a native shell.
 - [x] CI-built debug APK: `build-android` job in `.github/workflows/ci.yml` regenerates `apps/client/android/` each run, runs `gradlew assembleDebug`, uploads the APK as a workflow artifact (no Xcode / Android Studio needed locally).
 - [ ] iOS shell: needs `macos-latest` runner + signing certs; deferred until release time.
-- [ ] Migrate `getPlayerId` / `getDisplayName` to `@capacitor/preferences` so iOS doesn't lose identity when the WebView clears localStorage.
+- [x] Identity (`getPlayerId` / `getDisplayName`) now mirrors writes to `@capacitor/preferences` (lazy-loaded; no-op on web). `hydrateIdentity()` runs once at startup, copies preferences into localStorage if the WebView wiped it, and conversely seeds preferences from localStorage on first install. Sync getter API preserved so the lobby's controlled inputs don't need restructuring.
 
 ### Final hardening
 - [ ] Visual regression / e2e test (Playwright): bot-vs-bot full hand headless.
