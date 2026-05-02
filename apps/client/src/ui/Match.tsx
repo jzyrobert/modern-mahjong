@@ -1,4 +1,5 @@
 import type { Action, Tile as MTile, Seat } from '@mahjong/game-logic';
+import { isWinning, legalClaimsFor } from '@mahjong/game-logic';
 import { useCallback, useMemo } from 'react';
 import { vibrateLight } from '../native/init.js';
 import { isSeatHost, useGame } from '../state/game.js';
@@ -79,7 +80,22 @@ export function Match({ onAction }: MatchProps) {
     );
   }
 
-  const showClaim = state.phase === 'awaitingClaims' && state.lastDiscard?.from !== seat;
+  // Show the claim bar only when the seat actually has something they could
+  // claim against this discard (peng / gong / chi, or a winning hu). If the
+  // only legal action is `pass`, there's no decision to surface — the engine
+  // will auto-pass when the claim window expires.
+  const showClaim = (() => {
+    if (state.phase !== 'awaitingClaims') return false;
+    if (!state.lastDiscard || state.lastDiscard.from === seat) return false;
+    const legal = legalClaimsFor(state, seat).filter((k) => k !== 'pass');
+    if (legal.length > 0) return true;
+    const handPlusTile = [...state.hands[seat], state.lastDiscard.tile];
+    return isWinning({
+      hand: handPlusTile,
+      exposedMelds: state.melds[seat].length,
+      allowSpecial: state.rules.allowSevenPairs || state.rules.allowThirteenOrphans,
+    });
+  })();
 
   return (
     <div
