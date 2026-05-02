@@ -21,7 +21,7 @@ This document captures the original ground-up design for the project. The reposi
 |---|---|
 | UI stack | React + Vite + TypeScript + Capacitor |
 | Online server | `partyserver` ([cloudflare/partykit/packages/partyserver](https://github.com/cloudflare/partykit/tree/main/packages/partyserver)); fall back to raw Durable Objects if blocked |
-| LAN/offline | Direct WebSocket: host runs a native WebSocket server (Capacitor plugin) on a LAN port; guests connect with a typed-in address or a single-step QR. WebRTC is **not** used. |
+| LAN/offline | Direct WebSocket: host runs a native WebSocket server (Capacitor plugin) on a LAN port; the host shares the URL via tap-to-copy and guests join by pasting it. WebRTC is **not** used; QR sharing was prototyped and dropped (it ate scarce vertical space on landscape mobile and the URL-copy path covers the same flow). |
 | Match scope | One hand per "round"; lobby leader can start another hand if no one has disconnected |
 | Bots | Configurable per seat: `simple` (random-but-legal) and `heuristic` (shanten-aware discard + claim if completes a meld) |
 | HK ruleset | Configurable per-lobby (faan threshold 0/1/3/5; toggles for common rules) |
@@ -263,7 +263,7 @@ Client uses `partysocket` (auto-reconnect, exponential back-off, pings) to talk 
 
 ### LAN transport — direct WebSocket (Minecraft-LAN style)
 
-The simplest possible model: the host opens a real listening port on the LAN; guests connect directly. No SDP exchange, no two-step QR, no STUN/TURN.
+The simplest possible model: the host opens a real listening port on the LAN; guests connect directly. No SDP exchange, no QR sharing, no STUN/TURN — the host taps Copy on the URL and the guest pastes it into a browser.
 
 **Who needs the app installed.**
 
@@ -278,10 +278,8 @@ This is enabled by the same native plugin: it speaks HTTP/1.1 (using `NanoHTTPD`
 2. The app:
    - reads its LAN IPv4 via the native plugin's interface enumeration,
    - starts the native HTTP+WS server on a fixed port (default `7777`; auto-falls-through to `7778`/`7779` if taken),
-   - displays:
-     - a human-readable URL: `http://192.168.1.42:7777`,
-     - a QR code containing exactly that URL — nothing custom-scheme, just a plain HTTP URL the OS camera will recognize and offer to open in the default browser.
-3. Each guest either scans the QR (one tap → opens browser → app loads) or, if they already have the installed app, types the URL inside the app's "Join LAN match" form.
+   - displays a human-readable URL `http://192.168.1.42:7777` next to a Copy button.
+3. The host taps Copy and shares the URL via chat / SMS / verbally; each guest opens it in their phone's browser, or pastes it into the installed app's "Join LAN match" form.
 4. The bundled client opens a single WebSocket to `ws://192.168.1.42:7777/ws?code=ABCDE&playerId=...&name=...` derived from `window.location`.
 5. The host's app runs the same `MatchRoom` engine in-process and broadcasts via the accepted WebSocket connections. The wire protocol is byte-for-byte identical to the online one — same `ClientMessage` / `ServerMessage` types from `packages/protocol`.
 
@@ -307,12 +305,12 @@ interface LanServer {
 
 Implementation: `NanoHTTPD-WebSockets` on Android (LGPL — we'll depend on it as an .aar; alternatively `Java-WebSocket` plus a hand-rolled HTTP handler) and `Telegraph` (MIT) or `Swifter` on iOS. Both ship HTTP + WS in one server and stream files from disk efficiently.
 
-**iOS local-network permission.** iOS 14+ requires the `NSLocalNetworkUsageDescription` Info.plist key and a Bonjour service declaration (`NSBonjourServices`). We'll register `_mahjong._tcp` and optionally use mDNS for zero-config discovery so guests don't have to type an IP at all (still scan a QR or pick from a list of nearby hosts). Documented as a v1.1 enhancement; v1 ships QR + manual address.
+**iOS local-network permission.** iOS 14+ requires the `NSLocalNetworkUsageDescription` Info.plist key and a Bonjour service declaration (`NSBonjourServices`). We'll register `_mahjong._tcp` and optionally use mDNS for zero-config discovery so guests don't have to copy a URL at all (instead pick from a list of nearby hosts). Documented as a v1.1 enhancement; v1 ships URL-copy + manual address.
 
 **HTTP-vs-HTTPS implications for the host-served bundle.** Guests load over plain `http://` (no LAN certificate authority). The host-served client therefore cannot rely on:
 
 - Service workers (HTTPS-only). Acceptable: not used by mahjong.
-- The `MediaDevices` camera API (HTTPS-only). Acceptable: only the host needs to scan QR codes — guests already arrived via the URL.
+- The `MediaDevices` camera API (HTTPS-only). Not used.
 - Web Push, Web Bluetooth, Web USB, Wallet APIs. Not used.
 - PWA install prompt. Not used.
 
@@ -321,7 +319,7 @@ Everything actually needed by the game (`<canvas>` / SVG, touch, pointer events,
 **Tradeoffs vs. WebRTC:**
 
 - ✅ Single direct connection per guest. No SDP, no ICE, no two-way exchange.
-- ✅ Guests don't need the app installed — the host serves the entire client bundle, so a plain browser scanning a QR is enough.
+- ✅ Guests don't need the app installed — the host serves the entire client bundle, so the pasted URL loads everything in a plain browser.
 - ✅ Trivially debuggable (`curl http://host-ip:7777`, `websocat ws://host-ip:7777/ws`).
 - ✅ Same on-the-wire protocol as the online server, so almost all code is shared.
 - ✅ Survives short blips on the LAN with normal WebSocket reconnection.
@@ -444,7 +442,7 @@ The single most important commitment of this design is that the **game logic is 
 5. **`apps/server`**: `MatchRoom` extending `partyserver`'s `Server`, lobby/host election, claim-window alarm, turn timer alarm. Local dev via `wrangler dev`.
 6. **`apps/client` minimal**: identity, lobby screen, online transport via `partysocket`, render of `GameState` — no animations yet, ugly but playable.
 7. **Animations + polish**: `framer-motion` with `layoutId`, perf measurement.
-8. **LAN transport**: write the `LanServer` Capacitor plugin (iOS + Android), wire it up behind `Transport`, build the host/guest screens (QR render, QR scan, manual address entry), host-runs-engine path identical to online.
+8. **LAN transport**: write the `LanServer` Capacitor plugin (iOS + Android), wire it up behind `Transport`, build the host/guest screens (URL display + tap-to-copy on the host, paste-or-typed address entry on the guest), host-runs-engine path identical to online.
 9. **Capacitor packaging**: native shells, splash, orientation lock, native preferences.
 10. **Hardening**: reconnect grace, scoring breakdown UI, configurable rule UI, rule set tested against canonical HK hands.
 
@@ -472,7 +470,6 @@ Each phase ends with a green test suite and a manual smoke test of the new capab
 - `immer` for ergonomic immutable updates inside the reducer.
 - `fast-check` for property tests.
 - `vitest`, `playwright`, `biome` for testing/lint.
-- `qrcode` (browser) for rendering the host's QR, `jsqr` for camera-based scanning (Capacitor camera plugin feeds frames).
 - A custom Capacitor `LanServer` plugin (in `apps/client/native/lan-server`) hosting both an HTTP server (for the static client bundle) and WebSockets (for live game messages):
   - iOS: `Telegraph` (MIT) — combined HTTP + WS Swift server.
   - Android: `NanoHTTPD` + its `NanoWSD` WebSocket extension.
@@ -489,9 +486,9 @@ End-to-end checks performed at the close of implementation:
 4. Strangle network (Chrome DevTools throttle + 200ms latency) — animations remain smooth, no double-claims, server clock is authoritative.
 5. `npx cap run android` and `npx cap run ios` on a connected device — same flow, locked landscape, haptics fire on discard.
 6. LAN flow: one phone has the installed Capacitor app and hosts. Three guests use whatever they have:
-   - Guest A: same installed app — taps "Join," types `IP:port`.
-   - Guest B: phone with no app — opens the camera, scans the host's QR, taps the notification, the React bundle loads from the host into the default browser, plays.
-   - Guest C: laptop with no app — types `http://192.168.1.42:7777` into a browser address bar.
+   - Guest A: same installed app — taps "Join," pastes the host URL.
+   - Guest B: phone with no app — opens the host URL the host shared (chat / SMS / verbally) in their browser, the React bundle loads from the host, plays.
+   - Guest C: laptop with no app — pastes `http://192.168.1.42:7777` into a browser address bar.
    All four complete a full hand including a `chi`/`peng` race. Verify with the WiFi router's WAN cable unplugged — gameplay continues with zero internet.
 7. Lighthouse mobile score ≥ 90 on the lobby and match screens.
 8. `playwright` e2e: bot-vs-bot full hand passes headless in CI in under 30 seconds.
