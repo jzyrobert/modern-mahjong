@@ -39,6 +39,20 @@ export type Claim =
   | { kind: 'gong' }
   | { kind: 'hu' };
 
+export type DiePair = [number, number];
+
+export interface OpeningRolls {
+  /**
+   * One pair of dice per seat that rolled. On the first hand of a session
+   * all four seats roll; on subsequent hands, only the previous winner does.
+   */
+  dice: Partial<Record<Seat, DiePair>>;
+  /** Wall break position (purely decorative in the simplified model). */
+  breakPosition: number;
+  /** Whether all four seats rolled (first hand of the session). */
+  fullRoll: boolean;
+}
+
 export interface ClaimRound {
   discard: { tile: Tile; from: Seat };
   /** Server-clock deadline. */
@@ -68,6 +82,8 @@ export interface GameState {
   scoreboard: Record<Seat, number>;
   /** Result of the most recent hand, if any. */
   lastResult?: HandResult | undefined;
+  /** Opening dice for the current hand (cleared at the start of the next). */
+  openingRolls?: OpeningRolls | undefined;
 }
 
 export type HandResult =

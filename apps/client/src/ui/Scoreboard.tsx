@@ -1,13 +1,10 @@
-import type { Seat } from '@mahjong/game-logic';
 import { SEATS } from '@mahjong/game-logic';
-import { playerForSeat, useGame } from '../state/game.js';
+import { nameForSeat, useGame } from '../state/game.js';
 
 export function Scoreboard() {
   const state = useGame((s) => s.state);
   const lobby = useGame((s) => s.lobby);
   if (!state) return null;
-
-  const nameFor = (seat: Seat): string => playerForSeat(lobby, seat)?.displayName ?? `Seat ${seat}`;
 
   return (
     <div
@@ -23,7 +20,7 @@ export function Scoreboard() {
       <strong>Scoreboard</strong>
       {SEATS.map((s) => (
         <span key={s}>
-          {nameFor(s)}: <b>{state.scoreboard[s]}</b>
+          {nameForSeat(lobby, s)}: <b>{state.scoreboard[s]}</b>
           {s === state.dealer ? ' (dealer)' : ''}
         </span>
       ))}

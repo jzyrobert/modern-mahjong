@@ -36,3 +36,7 @@ export function isSeatHost(lobby: LobbyState | null, seat: Seat | null): boolean
   const p = playerForSeat(lobby, seat);
   return p !== null && p.playerId === lobby.host;
 }
+
+export function nameForSeat(lobby: LobbyState | null, seat: Seat): string {
+  return playerForSeat(lobby, seat)?.displayName ?? `Seat ${seat}`;
+}

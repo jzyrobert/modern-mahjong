@@ -1,10 +1,10 @@
 import { applyClaim, resolveClaims } from './claims.js';
 import type { Meld } from './hand.js';
 import { meldSize } from './hand.js';
-import { shuffle } from './rng.js';
+import { rollDice, shuffle } from './rng.js';
 import { scoreHand } from './scoring.js';
 import { isWinning } from './shanten.js';
-import type { Claim, GameState, RuleConfig, Seat } from './state.js';
+import type { Claim, DiePair, GameState, OpeningRolls, RuleConfig, Seat } from './state.js';
 import { DEFAULT_RULES, SEATS, emptyState, nextSeat } from './state.js';
 import { sameFace, sameTile } from './tiles.js';
 import type { Tile } from './tiles.js';
@@ -23,6 +23,7 @@ export type Action =
 
 export type Event =
   | { t: 'handStarted'; seed: number }
+  | { t: 'opened'; rolls: OpeningRolls }
   | { t: 'rulesChanged'; rules: RuleConfig }
   | { t: 'drew'; seat: Seat; tile: Tile }
   | { t: 'discarded'; seat: Seat; tile: Tile }
@@ -112,6 +113,7 @@ function startHand(
 ): { state: GameState; events: Event[] } {
   const rules: RuleConfig = prev.rules ?? DEFAULT_RULES;
   const fresh = emptyState(rules);
+  const openingRolls = computeOpeningRolls(prev, seed);
   const wall = shuffle(buildWall(), seed);
   // Last 14 tiles are the dead wall (kong replacements).
   const deadWall = wall.splice(wall.length - 14, 14);
@@ -135,8 +137,30 @@ function startHand(
     hands,
     scoreboard: prev.scoreboard,
     prevailingWind: prev.prevailingWind,
+    openingRolls,
   };
-  return { state, events: [{ t: 'handStarted', seed }] };
+  return {
+    state,
+    events: [
+      { t: 'handStarted', seed },
+      { t: 'opened', rolls: openingRolls },
+    ],
+  };
+}
+
+/** Salt offset for the break-position roll, kept clear of seat-indexed salts (0..3). */
+const BREAK_ROLL_SALT = 0xb1ea7;
+
+function computeOpeningRolls(prev: GameState, seed: number): OpeningRolls {
+  const fullRoll = !prev.lastResult || prev.lastResult.kind === 'draw';
+  const dice: Partial<Record<Seat, DiePair>> = {};
+  if (fullRoll) {
+    for (const s of SEATS) dice[s] = rollDice(seed, s);
+  } else if (prev.lastResult?.kind === 'win') {
+    dice[prev.lastResult.winner] = rollDice(seed, prev.lastResult.winner);
+  }
+  const breakRoll = rollDice(seed, BREAK_ROLL_SALT);
+  return { dice, breakPosition: breakRoll[0] + breakRoll[1], fullRoll };
 }
 
 function drawTile(state: GameState, seat: Seat): { state: GameState; events: Event[] } {
