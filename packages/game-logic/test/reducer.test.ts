@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_RULES,
+  type GameState,
   IllegalActionError,
   assertTileConservation,
   emptyState,
   reduce,
-  type GameState,
 } from '../src/index.js';
 
 function startedHand(seed = 1): GameState {

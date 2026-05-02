@@ -33,7 +33,14 @@ export function createOnlineTransport(opts: {
 
   ws.addEventListener('open', () => {
     setStatus('open');
-    ws.send(JSON.stringify({ t: 'hello', playerId: opts.playerId, displayName: opts.displayName, matchCode: opts.matchCode }));
+    ws.send(
+      JSON.stringify({
+        t: 'hello',
+        playerId: opts.playerId,
+        displayName: opts.displayName,
+        matchCode: opts.matchCode,
+      }),
+    );
   });
   ws.addEventListener('close', () => setStatus('closed'));
   ws.addEventListener('message', (ev) => {

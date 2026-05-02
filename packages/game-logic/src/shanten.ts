@@ -23,11 +23,7 @@ interface BlockResult {
 }
 
 function bucket(tiles: readonly Tile[]): { suits: Counts[]; honors: Counts } {
-  const suits: Counts[] = [
-    new Array(9).fill(0),
-    new Array(9).fill(0),
-    new Array(9).fill(0),
-  ];
+  const suits: Counts[] = [new Array(9).fill(0), new Array(9).fill(0), new Array(9).fill(0)];
   const honors: Counts = new Array(7).fill(0);
   for (const t of tiles) {
     if (t.kind === 'suit') {

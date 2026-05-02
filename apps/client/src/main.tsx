@@ -3,7 +3,7 @@ import type { ServerMessage } from '@mahjong/protocol';
 import { StrictMode, useCallback, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { getDisplayName, getPlayerId } from './identity.js';
-import { createOnlineTransport, type Transport } from './net/transport.js';
+import { type Transport, createOnlineTransport } from './net/transport.js';
 import { useGame } from './state/game.js';
 import { Lobby } from './ui/Lobby.js';
 import { Match } from './ui/Match.js';
@@ -18,7 +18,7 @@ function App() {
     const playerId = getPlayerId();
     const displayName = getDisplayName();
     const t = createOnlineTransport({
-      host: import.meta.env['VITE_SERVER_URL'] ?? 'http://localhost:8787',
+      host: import.meta.env.VITE_SERVER_URL ?? 'http://localhost:8787',
       matchCode,
       playerId,
       displayName,

@@ -1,12 +1,12 @@
-import { passiveBot, simpleBot, heuristicBot, type Bot } from '@mahjong/bots';
+import { type Bot, heuristicBot, passiveBot, simpleBot } from '@mahjong/bots';
 import {
-  DEFAULT_RULES,
   type Action,
+  DEFAULT_RULES,
   type Event,
   type GameState,
-  type Seat,
   IllegalActionError,
   SEATS,
+  type Seat,
   emptyState,
   reduce,
 } from '@mahjong/game-logic';
@@ -16,7 +16,7 @@ import {
   type ServerMessage,
   parseClientMessage,
 } from '@mahjong/protocol';
-import { Server, type Connection, type ConnectionContext, type WSMessage } from 'partyserver';
+import { type Connection, type ConnectionContext, Server, type WSMessage } from 'partyserver';
 
 interface SeatState {
   playerId: string | null;
@@ -106,7 +106,10 @@ export class MatchRoom extends Server {
     }
   }
 
-  private onHello(conn: Connection, msg: { playerId: string; displayName: string; matchCode: string }): void {
+  private onHello(
+    conn: Connection,
+    msg: { playerId: string; displayName: string; matchCode: string },
+  ): void {
     // Reattach existing seat if same playerId.
     let seat: Seat | null = null;
     for (const s of SEATS) {
@@ -164,7 +167,10 @@ export class MatchRoom extends Server {
     // Claim-window deadline reached.
     if (this.state.phase === 'awaitingClaims') {
       try {
-        const { state: next, events } = reduce(this.state, { t: 'resolveClaims', nowMs: Date.now() });
+        const { state: next, events } = reduce(this.state, {
+          t: 'resolveClaims',
+          nowMs: Date.now(),
+        });
         this.state = next;
         this.broadcastDelta(events);
         await this.maybeRunBots();
@@ -214,7 +220,11 @@ export class MatchRoom extends Server {
       }
       // Try a self-draw win first.
       try {
-        const { state: next, events } = reduce(this.state, { t: 'declareWin', seat, selfDraw: true });
+        const { state: next, events } = reduce(this.state, {
+          t: 'declareWin',
+          seat,
+          selfDraw: true,
+        });
         this.state = next;
         this.broadcastDelta(events);
         return true;
@@ -245,7 +255,8 @@ export class MatchRoom extends Server {
   }
 
   private sendErr(conn: Connection, code: string, detail?: string): void {
-    const msg: ServerMessage = detail !== undefined ? { t: 'error', code, detail } : { t: 'error', code };
+    const msg: ServerMessage =
+      detail !== undefined ? { t: 'error', code, detail } : { t: 'error', code };
     this.send(conn, msg);
   }
 
@@ -258,7 +269,8 @@ export class MatchRoom extends Server {
     const players: PublicPlayer[] = SEATS.map((seat) => ({
       playerId: this.meta.seats[seat].playerId ?? `bot-${seat}`,
       displayName:
-        this.meta.seats[seat].displayName ?? (this.meta.seats[seat].bot ? `Bot (${this.meta.seats[seat].bot!.kind})` : `Seat ${seat}`),
+        this.meta.seats[seat].displayName ??
+        (this.meta.seats[seat].bot ? `Bot (${this.meta.seats[seat].bot!.kind})` : `Seat ${seat}`),
       seat,
       connected: this.meta.seats[seat].connectionId !== null,
       isBot: this.meta.seats[seat].bot !== null,

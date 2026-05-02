@@ -1,11 +1,4 @@
-import type {
-  Action,
-  Claim,
-  Event,
-  GameState,
-  RuleConfig,
-  Seat,
-} from '@mahjong/game-logic';
+import type { Action, Claim, Event, GameState, RuleConfig, Seat } from '@mahjong/game-logic';
 import { z } from 'zod';
 
 /**
@@ -74,7 +67,9 @@ export const clientMessageSchema = z.union([
 
 export type ParsedClientMessage = z.infer<typeof clientMessageSchema>;
 
-export function parseClientMessage(raw: unknown): { ok: true; msg: ClientMessage } | { ok: false; error: string } {
+export function parseClientMessage(
+  raw: unknown,
+): { ok: true; msg: ClientMessage } | { ok: false; error: string } {
   const r = clientMessageSchema.safeParse(raw);
   if (!r.success) return { ok: false, error: r.error.message };
   // Cast Action through; the engine validates it.

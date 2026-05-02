@@ -1,7 +1,7 @@
-import type { Action, Seat, Tile as MTile } from '@mahjong/game-logic';
+import type { Action, Tile as MTile, Seat } from '@mahjong/game-logic';
 import { SEATS } from '@mahjong/game-logic';
-import { Hand } from './Hand.js';
 import { useGame } from '../state/game.js';
+import { Hand } from './Hand.js';
 
 interface MatchProps {
   onAction: (action: Action) => void;
@@ -14,6 +14,21 @@ export function Match({ onAction }: MatchProps) {
     return <div>Waiting for the game to start…</div>;
   }
   const seat = you;
+
+  if (state.phase === 'waiting') {
+    return (
+      <div style={{ padding: 24, color: '#eee', fontFamily: 'system-ui, sans-serif' }}>
+        <h2>Lobby</h2>
+        <p>You are seated as seat {seat}. Hit start when everyone has joined.</p>
+        <button
+          type="button"
+          onClick={() => onAction({ t: 'startHand', seed: randomSeed(), dealer: 0 })}
+        >
+          Start match
+        </button>
+      </div>
+    );
+  }
 
   const onDiscard = (t: MTile) => {
     if (state.phase !== 'turn') return;
@@ -36,9 +51,16 @@ export function Match({ onAction }: MatchProps) {
         ))}
       </div>
       <h3 style={{ marginTop: 16 }}>Your hand</h3>
-      <Hand tiles={state.hands[seat]} onTileClick={state.phase === 'turn' && state.turn === seat ? onDiscard : undefined} />
+      <Hand
+        tiles={state.hands[seat]}
+        onTileClick={state.phase === 'turn' && state.turn === seat ? onDiscard : undefined}
+      />
       <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
-        <button type="button" onClick={onDraw} disabled={state.phase !== 'turn' || state.turn !== seat || state.hasDrawn}>
+        <button
+          type="button"
+          onClick={onDraw}
+          disabled={state.phase !== 'turn' || state.turn !== seat || state.hasDrawn}
+        >
           Draw
         </button>
         <button
@@ -52,9 +74,13 @@ export function Match({ onAction }: MatchProps) {
       {state.phase === 'awaitingClaims' && state.lastDiscard && state.lastDiscard.from !== seat && (
         <ClaimBar onAction={onAction} seat={seat} />
       )}
-      {state.lastResult && <ResultPanel />}
+      {state.lastResult && <ResultPanel onAction={onAction} mySeat={seat} />}
     </div>
   );
+}
+
+function randomSeed(): number {
+  return Math.floor(Math.random() * 0xffffffff);
 }
 
 function Hud() {
@@ -86,29 +112,48 @@ function ClaimBar({ onAction, seat }: { onAction: (a: Action) => void; seat: Sea
   return (
     <div style={{ marginTop: 12, padding: 8, border: '1px dashed #f3c54a', borderRadius: 6 }}>
       <span style={{ marginRight: 8 }}>Claim?</span>
-      <button type="button" onClick={() => onAction({ t: 'declareClaim', seat, claim: { kind: 'pass' } })}>
+      <button
+        type="button"
+        onClick={() => onAction({ t: 'declareClaim', seat, claim: { kind: 'pass' } })}
+      >
         Pass
       </button>
-      <button type="button" onClick={() => onAction({ t: 'declareClaim', seat, claim: { kind: 'peng' } })}>
+      <button
+        type="button"
+        onClick={() => onAction({ t: 'declareClaim', seat, claim: { kind: 'peng' } })}
+      >
         Peng
       </button>
-      <button type="button" onClick={() => onAction({ t: 'declareClaim', seat, claim: { kind: 'gong' } })}>
+      <button
+        type="button"
+        onClick={() => onAction({ t: 'declareClaim', seat, claim: { kind: 'gong' } })}
+      >
         Gong
       </button>
-      <button type="button" onClick={() => onAction({ t: 'declareClaim', seat, claim: { kind: 'hu' } })}>
+      <button
+        type="button"
+        onClick={() => onAction({ t: 'declareClaim', seat, claim: { kind: 'hu' } })}
+      >
         Hu (Win)
       </button>
     </div>
   );
 }
 
-function ResultPanel() {
-  const r = useGame((s) => s.state)!.lastResult!;
+function ResultPanel({ onAction, mySeat }: { onAction: (a: Action) => void; mySeat: Seat }) {
+  const state = useGame((s) => s.state)!;
+  const r = state.lastResult!;
+  // Rotate the dealer counter-clockwise unless the previous dealer won (HK convention).
+  const nextDealer: Seat =
+    r.kind === 'win' && r.winner === state.dealer
+      ? state.dealer
+      : (((state.dealer + 1) % 4) as Seat);
   return (
     <div style={{ marginTop: 16, padding: 12, background: '#1d2538', borderRadius: 6 }}>
       {r.kind === 'win' ? (
         <>
-          <strong>Seat {r.winner} wins!</strong> {r.faan} faan ({r.selfDraw ? 'self-draw' : `from seat ${r.from}`}).
+          <strong>Seat {r.winner} wins!</strong> {r.faan} faan (
+          {r.selfDraw ? 'self-draw' : `from seat ${r.from}`}).
           <ul>
             {r.reasons.map((x) => (
               <li key={x}>{x}</li>
@@ -118,6 +163,17 @@ function ResultPanel() {
       ) : (
         <strong>Drawn game (wall empty)</strong>
       )}
+      <div style={{ marginTop: 8 }}>
+        <button
+          type="button"
+          onClick={() => onAction({ t: 'startHand', seed: randomSeed(), dealer: nextDealer })}
+        >
+          Start next hand
+        </button>{' '}
+        <span style={{ fontSize: 12, opacity: 0.7 }}>
+          (you are seat {mySeat}; next dealer will be seat {nextDealer})
+        </span>
+      </div>
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import type { Meld } from './hand.js';
+import type { GameState, Seat, Wind } from './state.js';
 import { isHonor, isTerminalOrHonor, sameFace } from './tiles.js';
 import type { Tile } from './tiles.js';
-import type { GameState, Seat, Wind } from './state.js';
 
 export interface ScoringInput {
   state: GameState;
@@ -54,7 +54,9 @@ export function scoreHand(input: ScoringInput): ScoreResult {
   }
 
   // 清一色 — all one suit (no honors)
-  const suits = new Set(allTiles.filter((t) => t.kind === 'suit').map((t) => (t as { suit: string }).suit));
+  const suits = new Set(
+    allTiles.filter((t) => t.kind === 'suit').map((t) => (t as { suit: string }).suit),
+  );
   const hasHonors = allTiles.some(isHonor);
   if (!hasHonors && suits.size === 1) {
     faan += 7;
@@ -76,7 +78,11 @@ export function scoreHand(input: ScoringInput): ScoreResult {
 
   // 平和 — all runs + valueless pair (no triplets, pair is not yakuhai)
   const allRuns = exposed.every((m) => m.kind === 'chi');
-  if (allRuns && hasOnlyRunsConcealed(concealed) && !pairIsYakuhai(concealed, state.prevailingWind, winner)) {
+  if (
+    allRuns &&
+    hasOnlyRunsConcealed(concealed) &&
+    !pairIsYakuhai(concealed, state.prevailingWind, winner)
+  ) {
     faan += 1;
     reasons.push('平和 (all sequences)');
   }
@@ -102,7 +108,10 @@ export function scoreHand(input: ScoringInput): ScoreResult {
     reasons.push('大四喜 (big four winds)');
   } else if (
     windTriplets === 3 &&
-    hasPair(allTiles, (t) => t.kind === 'honor' && (['E', 'S', 'W', 'N'] as const).includes(t.honor as Wind))
+    hasPair(
+      allTiles,
+      (t) => t.kind === 'honor' && (['E', 'S', 'W', 'N'] as const).includes(t.honor as Wind),
+    )
   ) {
     faan += 6;
     reasons.push('小四喜 (small four winds)');

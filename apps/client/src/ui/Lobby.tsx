@@ -1,3 +1,4 @@
+import { generateMatchCode } from '@mahjong/protocol';
 import { useState } from 'react';
 import { getDisplayName, setDisplayName } from '../identity.js';
 import { useGame } from '../state/game.js';
@@ -31,13 +32,32 @@ export function Lobby({ onJoin }: LobbyProps) {
           value={code}
           onChange={(e) => setCode(e.target.value.toUpperCase())}
           maxLength={5}
-          style={{ display: 'block', width: '100%', padding: 8, marginTop: 4, fontFamily: 'monospace', textTransform: 'uppercase' }}
+          style={{
+            display: 'block',
+            width: '100%',
+            padding: 8,
+            marginTop: 4,
+            fontFamily: 'monospace',
+            textTransform: 'uppercase',
+          }}
           placeholder="ABCDE"
         />
       </label>
-      <button type="button" onClick={() => code && onJoin(code)} disabled={code.length !== 5}>
-        Join match
-      </button>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button type="button" onClick={() => code && onJoin(code)} disabled={code.length !== 5}>
+          Join match
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            const fresh = generateMatchCode();
+            setCode(fresh);
+            onJoin(fresh);
+          }}
+        >
+          Create new match
+        </button>
+      </div>
       {lobby && (
         <div style={{ marginTop: 24, padding: 12, background: '#1a1f2e', borderRadius: 6 }}>
           <h3>Lobby</h3>
