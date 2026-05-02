@@ -4,7 +4,15 @@ import { meldSize } from './hand.js';
 import { rollDice, shuffle } from './rng.js';
 import { scoreHand } from './scoring.js';
 import { isWinning } from './shanten.js';
-import type { Claim, DiePair, GameState, OpeningRolls, RuleConfig, Seat } from './state.js';
+import type {
+  Claim,
+  DiePair,
+  FaanBreakdown,
+  GameState,
+  OpeningRolls,
+  RuleConfig,
+  Seat,
+} from './state.js';
 import { DEFAULT_RULES, SEATS, emptyState, nextSeat } from './state.js';
 import { sameFace, sameTile } from './tiles.js';
 import type { Tile } from './tiles.js';
@@ -37,7 +45,7 @@ export type Event =
       tile: Tile;
       selfDraw: boolean;
       faan: number;
-      reasons: string[];
+      breakdown: FaanBreakdown[];
     }
   | { t: 'drawn-game'; reason: 'wall-empty' };
 
@@ -378,7 +386,7 @@ function declareWin(
         tile: winningTile,
         selfDraw,
         faan: score.faan,
-        reasons: score.reasons,
+        breakdown: score.breakdown,
       },
       scoreboard: { ...state.scoreboard, [seat]: state.scoreboard[seat] + score.faan },
     },
@@ -390,7 +398,7 @@ function declareWin(
         tile: winningTile,
         selfDraw,
         faan: score.faan,
-        reasons: score.reasons,
+        breakdown: score.breakdown,
       },
     ],
   };

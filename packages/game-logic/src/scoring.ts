@@ -1,5 +1,4 @@
-import type { Meld } from './hand.js';
-import type { GameState, Seat, Wind } from './state.js';
+import type { FaanBreakdown, GameState, Seat, Wind } from './state.js';
 import { isHonor, isTerminalOrHonor, sameFace } from './tiles.js';
 import type { Tile } from './tiles.js';
 
@@ -14,7 +13,7 @@ export interface ScoringInput {
 
 export interface ScoreResult {
   faan: number;
-  reasons: string[];
+  breakdown: FaanBreakdown[];
 }
 
 /**
@@ -30,122 +29,80 @@ export function scoreHand(input: ScoringInput): ScoreResult {
   const { state, winner, winningTile, selfDraw } = input;
   const concealed = [...state.hands[winner], winningTile];
   const exposed = state.melds[winner];
-  const reasons: string[] = [];
-  let faan = 0;
+  const breakdown: FaanBreakdown[] = [];
 
   const allTiles = [...concealed, ...exposed.flatMap((m) => m.tiles)];
 
-  // 自摸 — self-draw
-  if (selfDraw) {
-    faan += 1;
-    reasons.push('自摸 (self-draw)');
+  function add(name: string, english: string, faan: number) {
+    breakdown.push({ name, english, faan });
   }
 
-  // 門前清 — fully concealed (no exposed melds, won by self-draw)
-  if (selfDraw && exposed.length === 0) {
-    faan += 1;
-    reasons.push('門前清 (concealed self-draw)');
-  }
+  if (selfDraw) add('自摸', 'self-draw', 1);
+  if (selfDraw && exposed.length === 0) add('門前清', 'concealed self-draw', 1);
 
-  // 字一色 — all honors
-  if (allTiles.every(isHonor)) {
-    faan += 10;
-    reasons.push('字一色 (all honors)');
-  }
+  if (allTiles.every(isHonor)) add('字一色', 'all honors', 10);
 
-  // 清一色 — all one suit (no honors)
   const suits = new Set(
     allTiles.filter((t) => t.kind === 'suit').map((t) => (t as { suit: string }).suit),
   );
   const hasHonors = allTiles.some(isHonor);
-  if (!hasHonors && suits.size === 1) {
-    faan += 7;
-    reasons.push('清一色 (full flush)');
-  }
+  if (!hasHonors && suits.size === 1) add('清一色', 'full flush', 7);
+  if (hasHonors && suits.size === 1) add('混一色', 'half flush', 3);
 
-  // 混一色 — one suit + honors only
-  if (hasHonors && suits.size === 1) {
-    faan += 3;
-    reasons.push('混一色 (half flush)');
-  }
-
-  // 對對和 — all triplets (no chi)
   const allTriplets = exposed.every((m) => m.kind !== 'chi') && hasNoConcealedRun(concealed);
-  if (allTriplets) {
-    faan += 3;
-    reasons.push('對對和 (all triplets)');
-  }
+  if (allTriplets) add('對對和', 'all triplets', 3);
 
-  // 平和 — all runs + valueless pair (no triplets, pair is not yakuhai)
   const allRuns = exposed.every((m) => m.kind === 'chi');
   if (
     allRuns &&
     hasOnlyRunsConcealed(concealed) &&
     !pairIsYakuhai(concealed, state.prevailingWind, winner)
   ) {
-    faan += 1;
-    reasons.push('平和 (all sequences)');
+    add('平和', 'all sequences', 1);
   }
 
-  // 大三元 — three dragon triplets (Z/F/B)
   const dragonTriplets = ['Z', 'F', 'B'].filter((d) =>
     hasTriplet(allTiles, (t) => t.kind === 'honor' && t.honor === d),
   ).length;
-  if (dragonTriplets === 3) {
-    faan += 8;
-    reasons.push('大三元 (big three dragons)');
-  } else if (dragonTriplets === 2 && hasPair(allTiles, (t) => isDragon(t))) {
-    faan += 5;
-    reasons.push('小三元 (small three dragons)');
-  }
+  if (dragonTriplets === 3) add('大三元', 'big three dragons', 8);
+  else if (dragonTriplets === 2 && hasPair(allTiles, isDragon))
+    add('小三元', 'small three dragons', 5);
 
-  // 大四喜 / 小四喜
   const windTriplets = (['E', 'S', 'W', 'N'] as const).filter((w) =>
     hasTriplet(allTiles, (t) => t.kind === 'honor' && t.honor === w),
   ).length;
-  if (windTriplets === 4) {
-    faan += 13;
-    reasons.push('大四喜 (big four winds)');
-  } else if (
+  if (windTriplets === 4) add('大四喜', 'big four winds', 13);
+  else if (
     windTriplets === 3 &&
     hasPair(
       allTiles,
       (t) => t.kind === 'honor' && (['E', 'S', 'W', 'N'] as const).includes(t.honor as Wind),
     )
   ) {
-    faan += 6;
-    reasons.push('小四喜 (small four winds)');
+    add('小四喜', 'small four winds', 6);
   }
 
-  // Yakuhai dragons: each dragon triplet
   for (const d of ['Z', 'F', 'B'] as const) {
     if (hasTriplet(allTiles, (t) => t.kind === 'honor' && t.honor === d)) {
-      faan += 1;
-      reasons.push(`三元牌 ${d} (dragon triplet)`);
+      add(`三元牌 ${d}`, 'dragon triplet', 1);
     }
   }
 
-  // Yakuhai winds: prevailing wind triplet, seat wind triplet
   const seatWind: Wind = (['E', 'S', 'W', 'N'] as const)[(winner - state.dealer + 4) % 4]!;
   if (hasTriplet(allTiles, (t) => t.kind === 'honor' && t.honor === state.prevailingWind)) {
-    faan += 1;
-    reasons.push(`圈風 ${state.prevailingWind} (prevailing-wind triplet)`);
+    add(`圈風 ${state.prevailingWind}`, 'prevailing-wind triplet', 1);
   }
   if (
     seatWind !== state.prevailingWind &&
     hasTriplet(allTiles, (t) => t.kind === 'honor' && t.honor === seatWind)
   ) {
-    faan += 1;
-    reasons.push(`門風 ${seatWind} (seat-wind triplet)`);
+    add(`門風 ${seatWind}`, 'seat-wind triplet', 1);
   }
 
-  // 么九 — all terminals/honors
-  if (allTiles.every(isTerminalOrHonor)) {
-    faan += 10;
-    reasons.push('么九 (all terminals/honors)');
-  }
+  if (allTiles.every(isTerminalOrHonor)) add('么九', 'all terminals/honors', 10);
 
-  return { faan, reasons };
+  const faan = breakdown.reduce((s, b) => s + b.faan, 0);
+  return { faan, breakdown };
 }
 
 function isDragon(t: Tile): boolean {
@@ -195,14 +152,11 @@ function hasNoConcealedRun(concealed: readonly Tile[]): boolean {
 }
 
 function hasOnlyRunsConcealed(concealed: readonly Tile[]): boolean {
-  // Conservative: if every concealed tile is a suit tile and no triplet structure exists.
   if (concealed.some(isHonor)) return false;
-  // We don't fully verify decomposition here; the caller cross-checks against `allRuns`.
   return true;
 }
 
 function pairIsYakuhai(concealed: readonly Tile[], prevailing: Wind, winner: Seat): boolean {
-  // Find a pair in concealed; if it's a dragon, prevailing wind, or seat wind → yakuhai.
   const seen = new Map<string, Tile>();
   for (const t of concealed) {
     const key = t.kind === 'suit' ? `s:${t.suit}:${t.rank}` : `h:${t.honor}`;
@@ -210,7 +164,6 @@ function pairIsYakuhai(concealed: readonly Tile[], prevailing: Wind, winner: Sea
       const pair = seen.get(key)!;
       if (isDragon(pair)) return true;
       if (pair.kind === 'honor' && pair.honor === prevailing) return true;
-      // Seat wind check elided; conservative.
       void winner;
     }
     seen.set(key, t);

@@ -37,9 +37,9 @@ describe('scoring — full flush (清一色)', () => {
     ];
     const state = stateWith(hand);
     const r = scoreHand({ state, winner: 0, winningTile, selfDraw: true });
-    expect(r.reasons).toContain('清一色 (full flush)');
-    expect(r.reasons).toContain('自摸 (self-draw)');
-    expect(r.reasons).toContain('門前清 (concealed self-draw)');
+    expect(r.breakdown.find((b) => b.name === '清一色')?.faan).toBe(7);
+    expect(r.breakdown.find((b) => b.name === '自摸')?.faan).toBe(1);
+    expect(r.breakdown.find((b) => b.name === '門前清')?.faan).toBe(1);
     expect(r.faan).toBeGreaterThanOrEqual(9);
   });
 });
@@ -64,7 +64,7 @@ describe('scoring — half flush (混一色)', () => {
     ];
     const state = stateWith(hand);
     const r = scoreHand({ state, winner: 0, winningTile, selfDraw: false });
-    expect(r.reasons).toContain('混一色 (half flush)');
+    expect(r.breakdown.find((b) => b.name === '混一色')?.faan).toBe(3);
   });
 });
 
@@ -88,7 +88,7 @@ describe('scoring — all honors (字一色)', () => {
     ];
     const state = stateWith(hand);
     const r = scoreHand({ state, winner: 0, winningTile, selfDraw: false });
-    expect(r.reasons).toContain('字一色 (all honors)');
+    expect(r.breakdown.find((b) => b.name === '字一色')?.faan).toBe(10);
     expect(r.faan).toBeGreaterThanOrEqual(10);
   });
 });
@@ -113,6 +113,6 @@ describe('scoring — small/large dragons', () => {
     ];
     const state = stateWith(hand);
     const r = scoreHand({ state, winner: 0, winningTile, selfDraw: false });
-    expect(r.reasons).toContain('大三元 (big three dragons)');
+    expect(r.breakdown.find((b) => b.name === '大三元')?.faan).toBe(8);
   });
 });

@@ -1,8 +1,10 @@
 import type { Action, Seat } from '@mahjong/game-logic';
 import { nextDealer } from '@mahjong/game-logic';
+import { useState } from 'react';
 import { useGame } from '../state/game.js';
 import { randomSeed } from '../util.js';
 import { RulePanel } from './RulePanel.js';
+import { ScoringBreakdownModal } from './ScoringBreakdownModal.js';
 
 interface ResultPanelProps {
   onAction: (a: Action) => void;
@@ -14,17 +16,30 @@ export function ResultPanel({ onAction, mySeat, isHost }: ResultPanelProps) {
   const state = useGame((s) => s.state)!;
   const r = state.lastResult!;
   const dealerForNext = nextDealer(state);
+  const [breakdownOpen, setBreakdownOpen] = useState(false);
   return (
     <div style={{ marginTop: 16, padding: 12, background: '#1d2538', borderRadius: 6 }}>
       {r.kind === 'win' ? (
         <>
-          <strong>Seat {r.winner} wins!</strong> {r.faan} faan (
-          {r.selfDraw ? 'self-draw' : `from seat ${r.from}`}).
-          <ul>
-            {r.reasons.map((x) => (
-              <li key={x}>{x}</li>
-            ))}
-          </ul>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <strong>Seat {r.winner} wins!</strong>
+            <span>
+              {r.faan} faan ({r.selfDraw ? 'self-draw' : `from seat ${r.from}`})
+            </span>
+            <button
+              type="button"
+              onClick={() => setBreakdownOpen(true)}
+              style={{ marginLeft: 'auto' }}
+            >
+              Scoring breakdown
+            </button>
+          </div>
+          <ScoringBreakdownModal
+            open={breakdownOpen}
+            onClose={() => setBreakdownOpen(false)}
+            result={r}
+            faanMin={state.rules.faanMin}
+          />
         </>
       ) : (
         <strong>Drawn game (wall empty)</strong>

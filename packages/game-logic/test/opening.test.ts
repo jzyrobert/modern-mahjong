@@ -37,7 +37,7 @@ describe('engine — opening dice rolls', () => {
         tile: { kind: 'honor', honor: 'E', copy: 0 },
         selfDraw: false,
         faan: 3,
-        reasons: [],
+        breakdown: [],
       },
     };
     const { state } = reduce(seeded, { t: 'startHand', seed: 200, dealer: 0 });
