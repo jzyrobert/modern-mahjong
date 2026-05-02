@@ -1,5 +1,6 @@
 import { type FaanBreakdown, type HandResult, type Tile, tileLabel } from '@mahjong/game-logic';
 import { Modal } from './Modal.js';
+import { TileGlyph } from './TileGlyph.js';
 
 type WinResult = Extract<HandResult, { kind: 'win' }>;
 
@@ -115,22 +116,21 @@ function BreakdownRow({ entry }: { entry: FaanBreakdown }) {
 function FlatTile({ t }: { t: Tile }) {
   return (
     <span
+      aria-label={tileLabel(t)}
       style={{
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
         background: '#fff',
-        color: '#222',
         borderRadius: 4,
         border: '1px solid #2228',
         boxShadow: '0 1px 2px #0006',
         width: 26,
         height: 36,
-        fontWeight: 600,
-        fontSize: 12,
+        padding: 1,
       }}
     >
-      {tileLabel(t)}
+      <TileGlyph t={t} />
     </span>
   );
 }
