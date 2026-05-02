@@ -10,8 +10,12 @@ interface WallProps {
 }
 
 const VISIBLE_TILES = 16;
-const PULSE: { boxShadow: string[] } = {
-  boxShadow: ['0 0 0 0 #f3c54a99', '0 0 0 10px #f3c54a00', '0 0 0 0 #f3c54a99'],
+// Pulse is implemented as a scale+opacity halo overlay rather than a
+// box-shadow keyframe — keeps the animation transform/opacity only so
+// the compositor can run it without per-frame paint. See docs/PERF.md.
+const PULSE_HALO_ANIMATE = {
+  scale: [1, 1.18, 1],
+  opacity: [0.6, 0, 0.6],
 };
 const PULSE_TRANSITION = {
   duration: 1.4,
@@ -76,14 +80,21 @@ function WallRow({
         const isNextDraw = i === 0 && onDrawNext !== undefined;
         if (isNextDraw) {
           return (
-            <motion.div
-              key={tileId(t)}
-              animate={PULSE}
-              transition={PULSE_TRANSITION}
-              style={{ borderRadius: 6 }}
-            >
+            <div key={tileId(t)} style={{ position: 'relative', display: 'inline-block' }}>
+              <motion.div
+                animate={PULSE_HALO_ANIMATE}
+                transition={PULSE_TRANSITION}
+                aria-hidden="true"
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  borderRadius: 6,
+                  background: '#f3c54a',
+                  pointerEvents: 'none',
+                }}
+              />
               <Tile tile={t} faceDown onClick={onDrawNext} testId="wall-draw-next" />
-            </motion.div>
+            </div>
           );
         }
         return <Tile key={tileId(t)} tile={t} faceDown />;

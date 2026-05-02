@@ -26,7 +26,7 @@ Tracker for outstanding plan work. The full design lives in [`docs/PLAN.md`](./d
 
 ### Animations & layout polish
 - [x] Between-hand shuffle overlay: a brief swirl of face-down tiles plays whenever a fresh seed lands (visual cue at the start of every hand).
-- [ ] Perf check: tile transitions ≤ 250 ms, all animation on `transform` only (instrumentation + Lighthouse run).
+- [x] Perf check: tile transitions ≤ 250 ms, all animation on `transform` / `opacity` only. See [`docs/PERF.md`](./docs/PERF.md) for the full inventory + verification recipe. The wall's next-draw pulse switched from a `boxShadow` keyframe (paint per frame) to a scale+opacity halo overlay (compositor only). Lighthouse CI enforces the Performance ≥ 0.9 budget on every PR.
 - [x] (v1) Visible `<Wall>` component in the center HUD: renders up to 16 face-down tiles in two rows scaled to viewport, plus the live remaining-count badge. Each face-down tile carries the engine's real `tileId` so framer-motion's `layoutId` animates the wall→hand transition for free when a tile is drawn. Replaces the floating draw-tile + `Wall: N` text. The next-to-draw tile (`state.wall[0]`) pulses + accepts the click when it's the user's turn.
 - [ ] Mechanical shuffle/dispense (v2): four full walls along the table edges, animate every used tile flowing into the center pile and back out into the new walls between hands. Needs a state-machine extension so the engine briefly pauses between hands to let the animation play out.
 - [x] Replaced the Draw button with a pulsing face-down draw-tile in the center HUD. Surfaces during the local player's turn before they've drawn; clicking it dispatches `{ t: 'draw' }`. New e2e test exercises the full draw-tile path.
