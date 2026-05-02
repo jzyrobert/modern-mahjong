@@ -2,6 +2,7 @@ import { type Tile as MTile, tileId, tileLabel } from '@mahjong/game-logic';
 import { type MotionStyle, type Transition, motion } from 'framer-motion';
 import { memo } from 'react';
 import { TILE_BACK_BG } from '../native/theme.js';
+import { TileGlyph } from './TileGlyph.js';
 
 interface TileProps {
   tile: MTile;
@@ -36,6 +37,7 @@ function TileComponent({ tile, faceDown, selected, onClick, style, rotate, testI
       type="button"
       layoutId={`tile-${tileId(tile)}`}
       onClick={onClick}
+      aria-label={tileLabel(tile)}
       {...(onClick ? { whileTap: TAP } : {})}
       {...(testId ? { 'data-testid': testId } : {})}
       transition={SPRING}
@@ -48,7 +50,7 @@ function TileComponent({ tile, faceDown, selected, onClick, style, rotate, testI
         ...(style ?? {}),
       }}
     >
-      {faceDown ? '' : tileLabel(tile)}
+      {faceDown ? null : <TileGlyph t={tile} />}
     </motion.button>
   );
 }
