@@ -113,6 +113,12 @@ describe('scoring — small/large dragons', () => {
     ];
     const state = stateWith(hand);
     const r = scoreHand({ state, winner: 0, winningTile, selfDraw: false });
-    expect(r.breakdown.find((b) => b.name === '大三元')?.faan).toBe(8);
+    const dragons = r.breakdown.find((b) => b.name === '大三元');
+    expect(dragons?.faan).toBe(8);
+    // Tile composition should include all 9 dragon tiles (3 each of Z/F/B).
+    expect(dragons?.tiles).toHaveLength(9);
+    expect(dragons?.tiles.filter((t) => t.kind === 'honor' && t.honor === 'Z')).toHaveLength(3);
+    expect(dragons?.tiles.filter((t) => t.kind === 'honor' && t.honor === 'F')).toHaveLength(3);
+    expect(dragons?.tiles.filter((t) => t.kind === 'honor' && t.honor === 'B')).toHaveLength(3);
   });
 });
