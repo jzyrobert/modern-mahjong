@@ -26,6 +26,7 @@ Tracker for outstanding plan work. The full design lives in `/root/.claude/plans
 - [ ] Dice-roll opening: each player rolls two dice; the highest scorer rolls again to decide where the dealing starts (real-mahjong opening).
 - [ ] In subsequent hands of the same session, the previous winner rolls the dice to start the deal.
 - [ ] End-of-hand shuffle animation: tiles shuffle into a center circle, then new rows of tiles dispense onto the table like an automatic mahjong machine.
+- [ ] Discard-toss animation: when a discard isn't claimed, slide the tile toward the table center and lay it slightly off-axis, oriented from the discarding seat (mimics a player physically sliding the tile in).
 
 ### Scoring breakdown UX
 - [ ] Scoring breakdown modal on the result screen with per-pattern faan list + the tile composition that produced it.

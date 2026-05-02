@@ -25,3 +25,9 @@ export function shuffle<T>(arr: T[], seed: number): T[] {
   }
   return arr;
 }
+
+/** Roll a pair of d6 deterministically from a seed and salt. */
+export function rollDice(seed: number, salt: number): [number, number] {
+  const rand = mulberry32((seed ^ (salt * 0x9e3779b1)) >>> 0);
+  return [1 + Math.floor(rand() * 6), 1 + Math.floor(rand() * 6)];
+}

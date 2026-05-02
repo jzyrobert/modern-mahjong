@@ -6,6 +6,7 @@ import { createRoot } from 'react-dom/client';
 import { getDisplayName, getPlayerId } from './identity.js';
 import { type Transport, createOnlineTransport } from './net/transport.js';
 import { useGame } from './state/game.js';
+import { DiceCeremony } from './ui/DiceCeremony.js';
 import { Lobby } from './ui/Lobby.js';
 import { Match } from './ui/Match.js';
 
@@ -59,8 +60,12 @@ function App() {
     [transport],
   );
 
-  if (!state) return <Lobby onJoin={onJoin} />;
-  return <Match onAction={onAction} />;
+  return (
+    <>
+      {!state ? <Lobby onJoin={onJoin} /> : <Match onAction={onAction} />}
+      <DiceCeremony />
+    </>
+  );
 }
 
 const root = document.getElementById('root');
