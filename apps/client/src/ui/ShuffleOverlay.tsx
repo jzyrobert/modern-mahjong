@@ -24,6 +24,7 @@ const SPIN_INDICES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] as const;
 export function ShuffleOverlay() {
   const phase = useGame((s) => s.state?.phase);
   const seed = useGame((s) => s.state?.seed);
+  const setShuffling = useGame((s) => s.setShuffling);
   const lastSeed = useRef<number | undefined>(undefined);
   const [active, setActive] = useState(false);
 
@@ -31,12 +32,18 @@ export function ShuffleOverlay() {
     if (seed === undefined) return;
     if (lastSeed.current !== undefined && lastSeed.current !== seed) {
       setActive(true);
-      const timer = setTimeout(() => setActive(false), SHUFFLE_MS);
+      // Tell Tile to swap to a slower spring while the dispense plays out —
+      // see the comment on `shuffling` in state/game.ts.
+      setShuffling(true);
+      const timer = setTimeout(() => {
+        setActive(false);
+        setShuffling(false);
+      }, SHUFFLE_MS);
       lastSeed.current = seed;
       return () => clearTimeout(timer);
     }
     lastSeed.current = seed;
-  }, [seed]);
+  }, [seed, setShuffling]);
 
   // Suppress while a new hand's dice ceremony is taking over visual focus.
   void phase;
