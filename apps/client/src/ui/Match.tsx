@@ -1,8 +1,6 @@
 import type { Action, Tile as MTile } from '@mahjong/game-logic';
-import { motion } from 'framer-motion';
 import { useCallback, useMemo } from 'react';
 import { vibrateLight } from '../native/init.js';
-import { TILE_BACK_BG } from '../native/theme.js';
 import { isSeatHost, useGame } from '../state/game.js';
 import { randomSeed } from '../util.js';
 import { ClaimBar } from './ClaimBar.js';
@@ -10,6 +8,7 @@ import { ResultPanel } from './ResultPanel.js';
 import { RulePanel } from './RulePanel.js';
 import { Scoreboard } from './Scoreboard.js';
 import { Table } from './Table.js';
+import { Wall } from './Wall.js';
 
 interface MatchProps {
   onAction: (action: Action) => void;
@@ -37,12 +36,13 @@ export function Match({ onAction }: MatchProps) {
 
   const centerHud = useMemo(() => {
     if (!state) return null;
+    const onDrawNext = needsDraw && seat !== null ? () => onAction({ t: 'draw', seat }) : undefined;
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-        <div>Wall: {state.wall.length}</div>
-        <div>Turn: seat {state.turn}</div>
-        <div>{state.prevailingWind} round</div>
-        {needsDraw && seat !== null && <DrawTile onDraw={() => onAction({ t: 'draw', seat })} />}
+        <div style={{ fontSize: 11, opacity: 0.6 }}>
+          Turn: seat {state.turn} · {state.prevailingWind} round
+        </div>
+        <Wall tiles={state.wall} onDrawNext={onDrawNext} />
       </div>
     );
   }, [state, needsDraw, seat, onAction]);
@@ -109,33 +109,5 @@ export function Match({ onAction }: MatchProps) {
       {showClaim && <ClaimBar onAction={onAction} seat={seat} />}
       {state.lastResult && <ResultPanel onAction={onAction} mySeat={seat} isHost={isHost} />}
     </div>
-  );
-}
-
-/**
- * Clickable face-down tile shown in the center HUD when it's the local
- * player's turn and they haven't drawn yet. Replaces the older "Draw"
- * button — surfacing the action on the wall reads more naturally and
- * frees a row of vertical space on landscape mobile.
- */
-function DrawTile({ onDraw }: { onDraw: () => void }) {
-  return (
-    <motion.button
-      type="button"
-      onClick={onDraw}
-      aria-label="Draw a tile"
-      whileTap={{ scale: 0.94 }}
-      animate={{ boxShadow: ['0 0 0 0 #f3c54a99', '0 0 0 10px #f3c54a00', '0 0 0 0 #f3c54a99'] }}
-      transition={{ duration: 1.4, repeat: Number.POSITIVE_INFINITY, ease: 'easeInOut' }}
-      style={{
-        width: 'var(--tile-w, 36px)',
-        height: 'var(--tile-h, 50px)',
-        background: TILE_BACK_BG,
-        borderRadius: 6,
-        border: '2px solid #f3c54a',
-        cursor: 'pointer',
-        padding: 0,
-      }}
-    />
   );
 }

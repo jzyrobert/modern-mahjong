@@ -10,7 +10,7 @@ test('solo match: lobby → match, user discards, bots take over', async ({ page
   await page.getByRole('button', { name: 'Start match' }).click();
 
   // Engine has dealt — HUD shows the live wall.
-  await expect(page.getByText(/Wall:\s*\d+/)).toBeVisible();
+  await expect(page.getByText(/\d+ left/)).toBeVisible();
   const initial = await readWallCount(page);
   expect(initial).toBeGreaterThan(0);
 
@@ -36,16 +36,17 @@ test('after the first round-trip, the highlighted draw-tile pulls a new tile', a
   await page.getByTestId('own-hand-tile').first().click();
 
   // Once the turn comes back, the engine flips `hasDrawn` to false and the
-  // pulsing draw-tile surfaces in the center HUD. (The old "Draw" button is
-  // gone — this is the only way to advance.)
-  const drawTile = page.getByRole('button', { name: 'Draw a tile' });
+  // wall's next tile surfaces as the highlighted draw target inside the
+  // center HUD. (The old "Draw" button is gone — this is the only way to
+  // advance the user's turn.)
+  const drawTile = page.getByTestId('wall-draw-next');
   await expect(drawTile).toBeVisible({ timeout: 30_000 });
   await drawTile.click();
   await expect(drawTile).toBeHidden();
 });
 
 async function readWallCount(page: Page): Promise<number> {
-  const text = await page.getByText(/Wall:\s*\d+/).innerText();
-  const m = text.match(/Wall:\s*(\d+)/);
+  const text = await page.getByText(/\d+ left/).innerText();
+  const m = text.match(/(\d+)\s*left/);
   return m ? Number.parseInt(m[1]!, 10) : Number.NaN;
 }
