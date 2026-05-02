@@ -15,11 +15,13 @@
     "@mahjong/protocol": "workspace:*",
     "framer-motion": "11.15.0",
     "partysocket": "1.0.2",
+    "qrcode": "1.5.4",
     "react": "19.0.0",
     "react-dom": "19.0.0",
     "zustand": "5.0.2"
   },
   "devDependencies": {
+    "@types/qrcode": "1.5.5",
     "@types/react": "19.0.1",
     "@types/react-dom": "19.0.1",
     "@vitejs/plugin-react": "4.3.4",

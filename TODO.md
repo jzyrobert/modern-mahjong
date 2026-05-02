@@ -38,9 +38,13 @@ Tracker for outstanding plan work. The full design lives in [`docs/PLAN.md`](./d
 - [ ] Host-only gating on `startHand` / rule changes (server-side enforcement, not just UI disable).
 
 ### LAN transport
-- [ ] `Transport` interface adapter that consumes a host-supplied `ws://lan-ip:port` URL.
-- [ ] Lobby flow: "Host LAN match" / "Join LAN match" screens with QR rendering and scanning.
-- [ ] Capacitor `LanServer` plugin spec (TS bridge, iOS Telegraph wrapper, Android NanoHTTPD wrapper) — just the JS-side stub + Info.plist additions; native code lands when we have a Capacitor build.
+- [x] `createLanTransport({ hostUrl, matchCode, ... })` factory sharing a `createWsTransport` core with the online flow.
+- [x] `isLanOrigin()` heuristic so a guest visiting an `http://192.168.x.x` URL can default into LAN-guest mode.
+- [x] Lobby gets "Host LAN match" / "Join LAN match" buttons; host modal renders a QR + URL via `qrcode`.
+- [x] Capacitor `LanServer` TS bridge stub (iOS / Android native code still pending).
+- [ ] Wire `isLanOrigin()` into the lobby so visiting an `http://192.168.x.x:port` URL auto-fills the LAN-join form.
+- [ ] Camera-based QR scanning for guests (`MediaDevices` + `jsqr`); requires HTTPS so only available in the installed Capacitor app.
+- [ ] Native `LanServer` plugin: iOS (Telegraph or Swifter for HTTP+WS), Android (NanoHTTPD-WebSockets), and a small static-file server for the bundled `dist/`.
 - [ ] mDNS discovery (v1.1) — guests browse nearby hosts.
 
 ### Capacitor packaging
