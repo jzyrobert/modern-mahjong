@@ -4,8 +4,7 @@
     "lib": ["ES2022"],
     "types": ["@cloudflare/workers-types"],
     "outDir": "./dist",
-    "rootDir": "./src",
     "moduleResolution": "Bundler"
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*", "test/**/*"]
 }
