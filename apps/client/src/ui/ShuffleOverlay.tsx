@@ -10,9 +10,16 @@ const SPIN_INDICES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] as const;
  * Brief between-hands shuffle ceremony — fans a small ring of face-down
  * tiles that spin into a swirl while the wall is being rebuilt for the
  * next hand. Triggered by transitions out of `resolved` (the previous
- * hand has wrapped up, a fresh one is about to start). The full
- * mechanical "tiles flow into the center circle then dispense as rows"
- * animation is left as a follow-up — see TODO.md.
+ * hand has wrapped up, a fresh one is about to start).
+ *
+ * The backdrop is a radial gradient (dark at the center where the swirl
+ * lives, transparent towards the edges) instead of a uniform black tint.
+ * This way the actual table tiles — which are simultaneously animating
+ * from their old positions in hands/discards/wall to their new wall
+ * positions via framer-motion's `layoutId` — stay visible behind the
+ * swirl. The "real" mechanical dispense (engine state-machine pause +
+ * gather-into-center-pile-then-disperse) is still queued; this is the
+ * cheap halfway visualization.
  */
 export function ShuffleOverlay() {
   const phase = useGame((s) => s.state?.phase);
@@ -48,7 +55,7 @@ export function ShuffleOverlay() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            background: '#0008',
+            background: 'radial-gradient(circle at center, #000c 10%, #0001 70%)',
             zIndex: 90,
             pointerEvents: 'none',
           }}
