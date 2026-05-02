@@ -4,6 +4,7 @@ import { MotionConfig } from 'framer-motion';
 import { StrictMode, useCallback, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { getDisplayName, getPlayerId } from './identity.js';
+import { initNativeIfAvailable } from './native/init.js';
 import { type Transport, createLanTransport, createOnlineTransport } from './net/transport.js';
 import { useGame } from './state/game.js';
 import { DiceCeremony } from './ui/DiceCeremony.js';
@@ -94,6 +95,7 @@ function App() {
 
 const root = document.getElementById('root');
 if (root) {
+  void initNativeIfAvailable();
   createRoot(root).render(
     <StrictMode>
       <MotionConfig reducedMotion="user">
