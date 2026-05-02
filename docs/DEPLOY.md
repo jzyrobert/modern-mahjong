@@ -42,7 +42,7 @@ In **GitHub → Settings → Secrets and variables → Actions → New repositor
 Push any commit to `main`. The workflow will:
 
 1. **Deploy the Worker first.** On success, look at the Action logs — wrangler prints the worker URL (e.g. `https://modern-mahjong-server.your-subdomain.workers.dev`).
-2. **Deploy Pages second.** This step will use the `VITE_SERVER_URL` secret if it's set.
+2. **Deploy Pages second.** The `deploy-client` job runs `wrangler pages project create modern-mahjong` (idempotent — succeeds if the project already exists) and then deploys the bundle. The build picks up `VITE_SERVER_URL` if you've set it; otherwise it hard-fails the job.
 
 If this is the *very* first deploy, `VITE_SERVER_URL` is still empty and the `deploy-client` job will **fail loudly** rather than silently bake `http://localhost:8787` into the production bundle. Fix it by adding the secret (step 3 above) and re-running the workflow:
 

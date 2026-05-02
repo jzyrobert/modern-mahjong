@@ -61,6 +61,13 @@ jobs:
       # of `apps/server`). Without `workingDirectory + packageManager`,
       # wrangler-action runs `pnpm i wrangler` at the root, which is a
       # workspace and rejects ad-hoc `pnpm i <pkg>` from CI.
+      #
+      # `pages deploy --project-name=...` does NOT auto-create the project,
+      # so we attempt creation first; the `|| true` is harmless because:
+      #   - if the project already exists, create errors with code 8000005
+      #     and we skip past it,
+      #   - if the API token / account is wrong, the deploy step right
+      #     after will fail with the actual auth error.
       - name: Deploy Pages
         uses: cloudflare/wrangler-action@v3
         with:
@@ -68,4 +75,5 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: apps/server
           packageManager: pnpm
+          preCommands: pnpm exec wrangler pages project create modern-mahjong --production-branch=main || true
           command: pages deploy ../client/dist --project-name=modern-mahjong --branch=main --commit-dirty=true
