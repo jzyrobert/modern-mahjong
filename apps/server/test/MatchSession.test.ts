@@ -23,12 +23,16 @@ function helloAs(
   return s.applyClientMessage(connectionId, { t: 'hello', playerId, displayName, matchCode });
 }
 
+function stateYouFor(out: Outbound[], connectionId: string) {
+  const m = pickSends(out, connectionId).find((x) => x.t === 'state');
+  return m && m.t === 'state' ? m.you : null;
+}
+
 describe('MatchSession — hello + lobby', () => {
   it('first hello assigns seat 0 and becomes host', () => {
     const s = new MatchSession();
     const out = helloAs(s, 'c1', 'p1', 'Alice', 'ABCDE');
-    const stateMsg = pickSends(out, 'c1').find((m) => m.t === 'state');
-    expect(stateMsg && stateMsg.t === 'state' && stateMsg.you).toBe(0);
+    expect(stateYouFor(out, 'c1')).toBe(0);
 
     const lobby = pickBroadcasts(out).find((m) => m.t === 'lobby');
     expect(lobby?.t).toBe('lobby');
@@ -40,17 +44,13 @@ describe('MatchSession — hello + lobby', () => {
     helloAs(s, 'c1', 'p1', 'Alice');
     s.detachConnection('c1');
     const out = helloAs(s, 'c2', 'p1', 'Alice');
-    const stateMsg = pickSends(out, 'c2').find((m) => m.t === 'state');
-    expect(stateMsg && stateMsg.t === 'state' && stateMsg.you).toBe(0);
+    expect(stateYouFor(out, 'c2')).toBe(0);
   });
 
   it('new playerIds get the next available seats', () => {
     const s = new MatchSession();
     const outs = [0, 1, 2, 3].map((i) => helloAs(s, `c${i}`, `p${i}`));
-    const seats = outs.map((out, i) => {
-      const m = pickSends(out, `c${i}`).find((x) => x.t === 'state');
-      return m && m.t === 'state' ? m.you : null;
-    });
+    const seats = outs.map((out, i) => stateYouFor(out, `c${i}`));
     expect(seats).toEqual([0, 1, 2, 3]);
   });
 
@@ -140,8 +140,7 @@ describe('MatchSession — disconnect + reconnect grace', () => {
     s.detachConnection('c0');
     const lobby = helloAs(s, 'cx', 'pX');
     // pX should land in seat 1 (seat 0 is reserved for the disconnected p0 + bot).
-    const stateMsg = pickSends(lobby, 'cx').find((m) => m.t === 'state');
-    expect(stateMsg && stateMsg.t === 'state' && stateMsg.you).toBe(1);
+    expect(stateYouFor(lobby, 'cx')).toBe(1);
   });
 
   it('reconnect by the same playerId clears the stand-in bot', () => {
@@ -149,8 +148,7 @@ describe('MatchSession — disconnect + reconnect grace', () => {
     helloAs(s, 'c0', 'p0');
     s.detachConnection('c0');
     const reconn = helloAs(s, 'c0b', 'p0');
-    const stateMsg = pickSends(reconn, 'c0b').find((m) => m.t === 'state');
-    expect(stateMsg && stateMsg.t === 'state' && stateMsg.you).toBe(0);
+    expect(stateYouFor(reconn, 'c0b')).toBe(0);
     // After reconnect, sending a host-only action should succeed (p0 is still host).
     const startOut = s.applyClientMessage('c0b', {
       t: 'action',
@@ -158,6 +156,65 @@ describe('MatchSession — disconnect + reconnect grace', () => {
     });
     expect(pickSends(startOut, 'c0b').filter((m) => m.t === 'error')).toHaveLength(0);
     expect(s.getState().phase).toBe('turn');
+  });
+
+  it('schedules an alarm for the grace deadline on disconnect', () => {
+    const s = new MatchSession({ reconnectGraceMs: 5_000 });
+    helloAs(s, 'c0', 'p0');
+    const out = s.detachConnection('c0', 1_000_000);
+    const scheduled = out.find((o) => o.kind === 'scheduleAlarm');
+    expect(scheduled?.kind).toBe('scheduleAlarm');
+    if (scheduled?.kind === 'scheduleAlarm') {
+      expect(scheduled.deadlineMs).toBe(1_005_000);
+    }
+  });
+
+  it('grace expiry frees the seat so a new player can claim it', () => {
+    const s = new MatchSession({ reconnectGraceMs: 1_000 });
+    helloAs(s, 'c0', 'p0');
+    helloAs(s, 'c1', 'p1');
+    helloAs(s, 'c2', 'p2');
+    helloAs(s, 'c3', 'p3');
+    s.detachConnection('c0', 0);
+    // Before grace expiry the room is full to new players (only seat 0 is auto-bot held).
+    const earlyOut = helloAs(s, 'cEarly', 'pEarly');
+    const earlyErrs = pickSends(earlyOut, 'cEarly').filter((m) => m.t === 'error');
+    expect(earlyErrs[0]?.t === 'error' && earlyErrs[0].code).toBe('FULL');
+    // After grace expires, p0's seat is reclaimable.
+    s.fireAlarm(2_000);
+    const lateOut = helloAs(s, 'cLate', 'pLate');
+    expect(stateYouFor(lateOut, 'cLate')).toBe(0);
+  });
+
+  it('grace expiry hands off the host if the evicted player held the host slot', () => {
+    const s = new MatchSession({ reconnectGraceMs: 1_000 });
+    helloAs(s, 'c0', 'p0', 'Host');
+    helloAs(s, 'c1', 'p1', 'Guest');
+    s.detachConnection('c0', 0);
+    s.fireAlarm(2_000);
+    // Guest (p1) is now host: their startHand must succeed (no HOST error).
+    const out = s.applyClientMessage('c1', {
+      t: 'action',
+      action: { t: 'startHand', seed: 1, dealer: 0 },
+    });
+    expect(pickSends(out, 'c1').filter((m) => m.t === 'error')).toHaveLength(0);
+    expect(s.getState().phase).not.toBe('waiting');
+  });
+
+  it('reconnect within the grace window keeps the original seat (no eviction)', () => {
+    const s = new MatchSession({ reconnectGraceMs: 1_000 });
+    helloAs(s, 'c0', 'p0');
+    s.detachConnection('c0', 0);
+    const reconn = helloAs(s, 'c0b', 'p0');
+    expect(stateYouFor(reconn, 'c0b')).toBe(0);
+    // Firing the alarm after reconnect must NOT evict — playerId is back.
+    s.fireAlarm(10_000);
+    // p0 can still start the hand (still seated, still host).
+    const out = s.applyClientMessage('c0b', {
+      t: 'action',
+      action: { t: 'startHand', seed: 1, dealer: 0 },
+    });
+    expect(pickSends(out, 'c0b').filter((m) => m.t === 'error')).toHaveLength(0);
   });
 });
 

@@ -23,17 +23,17 @@ interface SeatState {
   bot: Bot | null;
   /** Connection ID of the currently-attached client, if any. */
   connectionId: string | null;
-  /**
-   * Server time when the seat's owner disconnected. While set, the
-   * seat's `bot` is a stand-in keeping the game moving; reconnect by
-   * the same playerId clears it. Currently only written; an alarm-
-   * driven grace-expiry that uses this field is still queued (see
-   * TODO.md "Reconnect grace timer").
-   */
+  /** Server time when the seat's owner disconnected, or null if connected/empty. */
   disconnectedSinceMs: number | null;
+  /**
+   * True iff `bot` was installed automatically by `detachConnection` (vs.
+   * placed deliberately via `seatBot`). Auto-installed bots act as a
+   * stand-in until reconnect or grace-expiry; an intentionally-seated bot
+   * is permanent for the match.
+   */
+  botAutoInstalled: boolean;
 }
 
-/** Actions that only the host is allowed to issue (server-side enforcement). */
 const HOST_ONLY_ACTIONS: ReadonlySet<Action['t']> = new Set(['startHand', 'setRules']);
 
 export type Outbound =
@@ -43,6 +43,15 @@ export type Outbound =
   | { kind: 'scheduleAlarm'; deadlineMs: number };
 
 const BOT_TICK_LIMIT = 16;
+
+export interface MatchSessionOptions {
+  /**
+   * How long a seat is held for its owner after they drop. After this
+   * elapses without a reconnect the seat is freed (the auto-bot keeps
+   * playing) so a new player can take it. Default 60s.
+   */
+  reconnectGraceMs?: number;
+}
 
 /**
  * Authoritative match logic, decoupled from the partyserver runtime so it
@@ -59,6 +68,17 @@ export class MatchSession {
     2: emptySeat(),
     3: emptySeat(),
   };
+  private readonly reconnectGraceMs: number;
+  /**
+   * The deadline currently armed via `scheduleAlarm`, or null if no
+   * alarm is set. Cached so we don't re-emit the same `scheduleAlarm`
+   * outbound on every action when nothing about the deadline changed.
+   */
+  private lastEmittedDeadline: number | null = null;
+
+  constructor(opts: MatchSessionOptions = {}) {
+    this.reconnectGraceMs = opts.reconnectGraceMs ?? 60_000;
+  }
 
   getState(): GameState {
     return this.state;
@@ -68,7 +88,7 @@ export class MatchSession {
   seatBot(seat: Seat, bot: Bot, displayName?: string): void {
     this.seats[seat] = {
       ...emptySeat(),
-      displayName: displayName ?? `Bot (${bot.kind})`,
+      displayName: displayName ?? botDisplayName(bot),
       bot,
     };
   }
@@ -85,9 +105,9 @@ export class MatchSession {
       const slot = this.seats[seat];
       if (slot.connectionId === connectionId) {
         slot.connectionId = null;
-        // Install a passive stand-in bot so the game keeps moving until reconnect.
         if (slot.playerId !== null && slot.bot === null) {
           slot.bot = passiveBot;
+          slot.botAutoInstalled = true;
           slot.disconnectedSinceMs = nowMs;
         }
         changed = true;
@@ -96,19 +116,49 @@ export class MatchSession {
     if (!changed) return [];
     const out: Outbound[] = [this.lobbyBroadcast()];
     out.push(...this.runBots());
+    out.push(...this.maybeScheduleAlarm());
     return out;
   }
 
   fireAlarm(nowMs: number): Outbound[] {
-    if (this.state.phase !== 'awaitingClaims') return [];
-    try {
-      const out: Outbound[] = [this.apply({ t: 'resolveClaims', nowMs })];
-      out.push(...this.runBots());
-      return out;
-    } catch (e) {
-      console.error('alarm reduce error', e);
-      return [];
+    const out: Outbound[] = [];
+    out.push(...this.expireGraceTimers(nowMs));
+    // resolveClaims is idempotent — the engine no-ops if we're not in
+    // awaitingClaims, otherwise pads missing seats with 'pass' and resolves.
+    if (this.state.phase === 'awaitingClaims') {
+      try {
+        out.push(this.apply({ t: 'resolveClaims', nowMs }));
+        out.push(...this.runBots());
+      } catch (e) {
+        console.error('alarm reduce error', e);
+      }
     }
+    out.push(...this.maybeScheduleAlarm());
+    return out;
+  }
+
+  private expireGraceTimers(nowMs: number): Outbound[] {
+    let evicted = false;
+    for (const seat of SEATS) {
+      const slot = this.seats[seat];
+      if (slot.disconnectedSinceMs === null) continue;
+      if (nowMs - slot.disconnectedSinceMs < this.reconnectGraceMs) continue;
+      const wasHost = slot.playerId !== null && slot.playerId === this.hostPlayerId;
+      slot.playerId = null;
+      slot.displayName = slot.bot ? botDisplayName(slot.bot) : null;
+      slot.disconnectedSinceMs = null;
+      if (wasHost) this.hostPlayerId = this.firstConnectedPlayerId();
+      evicted = true;
+    }
+    return evicted ? [this.lobbyBroadcast()] : [];
+  }
+
+  private firstConnectedPlayerId(): string | null {
+    for (const seat of SEATS) {
+      const slot = this.seats[seat];
+      if (slot.playerId !== null && slot.connectionId !== null) return slot.playerId;
+    }
+    return null;
   }
 
   private handle(connectionId: string, msg: ClientMessage): Outbound[] {
@@ -143,10 +193,12 @@ export class MatchSession {
     };
     if (this.hostPlayerId === null) this.hostPlayerId = msg.playerId;
 
-    return [
+    const out: Outbound[] = [
       { kind: 'sendTo', connectionId, msg: { t: 'state', state: this.state, you: seat } },
       this.lobbyBroadcast(),
     ];
+    out.push(...this.maybeScheduleAlarm());
+    return out;
   }
 
   private findOrAssignSeat(playerId: string): Seat | null {
@@ -155,6 +207,9 @@ export class MatchSession {
     }
     for (const s of SEATS) {
       if (this.seats[s].playerId === null && this.seats[s].bot === null) return s;
+    }
+    for (const s of SEATS) {
+      if (this.seats[s].playerId === null && this.seats[s].botAutoInstalled) return s;
     }
     return null;
   }
@@ -167,8 +222,9 @@ export class MatchSession {
       }
     }
     try {
-      const out: Outbound[] = [this.apply(action), ...this.maybeScheduleClaimAlarm()];
+      const out: Outbound[] = [this.apply(action)];
       out.push(...this.runBots());
+      out.push(...this.maybeScheduleAlarm());
       return out;
     } catch (e) {
       if (e instanceof IllegalActionError) {
@@ -192,11 +248,28 @@ export class MatchSession {
     return this.deltaBroadcast(events);
   }
 
-  private maybeScheduleClaimAlarm(): Outbound[] {
+  /**
+   * Compute the soonest deadline across active timers (claim window +
+   * each disconnected seat's grace expiry) and emit a `scheduleAlarm`
+   * for it. Cloudflare DOs only support one scheduled alarm at a time,
+   * so we always re-arm to the earliest pending deadline. Skips emission
+   * when the deadline matches what's already armed — keeps the
+   * MatchRoom's per-action dispatch quiet during steady-state play.
+   */
+  private maybeScheduleAlarm(): Outbound[] {
+    let soonest: number | null = null;
     if (this.state.phase === 'awaitingClaims' && this.state.pendingClaims) {
-      return [{ kind: 'scheduleAlarm', deadlineMs: this.state.pendingClaims.deadlineMs }];
+      soonest = this.state.pendingClaims.deadlineMs;
     }
-    return [];
+    for (const seat of SEATS) {
+      const slot = this.seats[seat];
+      if (slot.disconnectedSinceMs === null) continue;
+      const deadline = slot.disconnectedSinceMs + this.reconnectGraceMs;
+      if (soonest === null || deadline < soonest) soonest = deadline;
+    }
+    if (soonest === this.lastEmittedDeadline) return [];
+    this.lastEmittedDeadline = soonest;
+    return soonest !== null ? [{ kind: 'scheduleAlarm', deadlineMs: soonest }] : [];
   }
 
   private runBots(): Outbound[] {
@@ -239,7 +312,6 @@ export class MatchSession {
       }
       const tile = slot.bot.pickDiscard({ state: this.state, seat });
       out.push(this.apply({ t: 'discard', seat, tile }));
-      out.push(...this.maybeScheduleClaimAlarm());
       return out;
     }
     return out;
@@ -254,7 +326,7 @@ export class MatchSession {
       const slot = this.seats[seat];
       return {
         playerId: slot.playerId ?? `bot-${seat}`,
-        displayName: slot.displayName ?? (slot.bot ? `Bot (${slot.bot.kind})` : `Seat ${seat}`),
+        displayName: slot.displayName ?? (slot.bot ? botDisplayName(slot.bot) : `Seat ${seat}`),
         seat,
         connected: slot.connectionId !== null,
         isBot: slot.bot !== null,
@@ -280,7 +352,12 @@ function emptySeat(): SeatState {
     bot: null,
     connectionId: null,
     disconnectedSinceMs: null,
+    botAutoInstalled: false,
   };
+}
+
+function botDisplayName(bot: Bot): string {
+  return `Bot (${bot.kind})`;
 }
 
 export function botByKind(kind: 'simple' | 'heuristic' | 'passive'): Bot {
