@@ -1,4 +1,4 @@
-import type { Action, Tile as MTile } from '@mahjong/game-logic';
+import type { Action, Tile as MTile, Seat } from '@mahjong/game-logic';
 import { useCallback, useMemo } from 'react';
 import { vibrateLight } from '../native/init.js';
 import { isSeatHost, useGame } from '../state/game.js';
@@ -8,7 +8,6 @@ import { ResultPanel } from './ResultPanel.js';
 import { RulePanel } from './RulePanel.js';
 import { Scoreboard } from './Scoreboard.js';
 import { Table } from './Table.js';
-import { Wall } from './Wall.js';
 
 interface MatchProps {
   onAction: (action: Action) => void;
@@ -34,18 +33,23 @@ export function Match({ onAction }: MatchProps) {
     [myTurn, seat, onAction],
   );
 
+  const wallSlices = useMemo(() => distributeWall(state?.wall ?? []), [state?.wall]);
+
+  const onDrawNext = useMemo(
+    () => (needsDraw && seat !== null ? () => onAction({ t: 'draw', seat }) : undefined),
+    [needsDraw, seat, onAction],
+  );
+
   const centerHud = useMemo(() => {
     if (!state) return null;
-    const onDrawNext = needsDraw && seat !== null ? () => onAction({ t: 'draw', seat }) : undefined;
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-        <div style={{ fontSize: 11, opacity: 0.6 }}>
-          Turn: seat {state.turn} · {state.prevailingWind} round
-        </div>
-        <Wall tiles={state.wall} onDrawNext={onDrawNext} />
+      <div style={{ fontSize: 11, opacity: 0.6, lineHeight: 1.4 }}>
+        Turn: seat {state.turn}
+        <br />
+        {state.prevailingWind} round
       </div>
     );
-  }, [state, needsDraw, seat, onAction]);
+  }, [state]);
 
   if (!state || seat === null) {
     return <div>Waiting for the game to start…</div>;
@@ -94,7 +98,9 @@ export function Match({ onAction }: MatchProps) {
         mySeat={seat}
         hands={state.hands}
         discards={state.discards}
+        wallSlices={wallSlices}
         ownHandClickable={myTurn ? onDiscard : undefined}
+        onDrawNext={onDrawNext}
         centerHud={centerHud}
       />
       <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
@@ -110,4 +116,19 @@ export function Match({ onAction }: MatchProps) {
       {state.lastResult && <ResultPanel onAction={onAction} mySeat={seat} isHost={isHost} />}
     </div>
   );
+}
+
+/**
+ * Split the live wall into per-seat slices by index modulo 4. Keeping the
+ * draw order stable across seats means seat 0's slice is `[wall[0], wall[4],
+ * wall[8], …]` — so the next-to-draw tile is always `slice[0]` on the
+ * dealer's wall.
+ */
+function distributeWall(wall: readonly MTile[]): Record<Seat, readonly MTile[]> {
+  const out: Record<Seat, MTile[]> = { 0: [], 1: [], 2: [], 3: [] };
+  for (const [i, tile] of wall.entries()) {
+    out[(i % 4) as Seat].push(tile);
+  }
+  // Hand back as readonly to discourage downstream mutation.
+  return out as Record<Seat, readonly MTile[]>;
 }

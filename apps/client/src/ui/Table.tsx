@@ -1,15 +1,25 @@
-import type { Tile as MTile, Seat } from '@mahjong/game-logic';
-import { acrossSeat, nextSeat, prevSeat } from '@mahjong/game-logic';
+import { type Tile as MTile, type Seat, acrossSeat, nextSeat, prevSeat } from '@mahjong/game-logic';
 import type { ReactNode } from 'react';
 import { DiscardPile } from './DiscardPile.js';
 import { Hand } from './Hand.js';
+import { Wall } from './Wall.js';
 
 interface TableProps {
   /** The viewer's seat — placed at the bottom. */
   mySeat: Seat;
   hands: Record<Seat, MTile[]>;
   discards: Record<Seat, MTile[]>;
+  /**
+   * The live wall split per seat (engine `state.wall` distributed by index
+   * modulo 4, so each seat's slice keeps the draw order stable).
+   */
+  wallSlices: Record<Seat, readonly MTile[]>;
   ownHandClickable?: ((t: MTile) => void) | undefined;
+  /**
+   * When set, the user's wall has a pulsing first tile that triggers this
+   * callback on click — replaces the older floating draw-tile.
+   */
+  onDrawNext?: (() => void) | undefined;
   centerHud?: ReactNode;
 }
 
@@ -28,7 +38,15 @@ interface SeatPosition {
   wrapTransform?: string;
 }
 
-export function Table({ mySeat, hands, discards, ownHandClickable, centerHud }: TableProps) {
+export function Table({
+  mySeat,
+  hands,
+  discards,
+  wallSlices,
+  ownHandClickable,
+  onDrawNext,
+  centerHud,
+}: TableProps) {
   const positions = layoutFor(mySeat);
   const me = positions[0];
   const opponents = [positions[1], positions[2], positions[3]];
@@ -43,7 +61,7 @@ export function Table({ mySeat, hands, discards, ownHandClickable, centerHud }: 
         // Scale the table to whatever vertical space is available — on a
         // landscape phone (~360px tall) this collapses to ~360px instead of
         // forcing a fixed 560 that overflows the viewport.
-        minHeight: 'min(560px, 70vh)',
+        minHeight: 'min(620px, 80vh)',
         padding: 'clamp(6px, 1.4vmin, 16px)',
         background: 'radial-gradient(ellipse at center, #1f3b2c 0%, #0e1c14 100%)',
         borderRadius: 12,
@@ -57,6 +75,10 @@ export function Table({ mySeat, hands, discards, ownHandClickable, centerHud }: 
             gridColumn: p.outer[0],
             gridRow: p.outer[1],
             ...p.align,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 4,
           }}
         >
           <SeatLabel label={p.label} />
@@ -65,7 +87,10 @@ export function Table({ mySeat, hands, discards, ownHandClickable, centerHud }: 
               p.wrapTransform ? { transform: p.wrapTransform, whiteSpace: 'nowrap' } : undefined
             }
           >
-            <Hand tiles={hands[p.seat]} faceDown rotate={p.rotate} />
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+              <Hand tiles={hands[p.seat]} faceDown rotate={p.rotate} />
+              <Wall tiles={wallSlices[p.seat]} rows={1} showCount={false} />
+            </div>
           </div>
         </div>
       ))}
@@ -111,7 +136,18 @@ export function Table({ mySeat, hands, discards, ownHandClickable, centerHud }: 
         </div>
       </div>
 
-      <div style={{ gridColumn: me.outer[0], gridRow: me.outer[1], justifySelf: 'center' }}>
+      <div
+        style={{
+          gridColumn: me.outer[0],
+          gridRow: me.outer[1],
+          justifySelf: 'center',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 4,
+        }}
+      >
+        <Wall tiles={wallSlices[me.seat]} rows={1} onDrawNext={onDrawNext} />
         <SeatLabel label={me.label} />
         <Hand tiles={hands[me.seat]} onTileClick={ownHandClickable} />
       </div>
@@ -159,5 +195,5 @@ function layoutFor(mySeat: Seat): [SeatPosition, SeatPosition, SeatPosition, Sea
 }
 
 function SeatLabel({ label }: { label: string }) {
-  return <div style={{ fontSize: 11, opacity: 0.6, marginBottom: 4 }}>{label}</div>;
+  return <div style={{ fontSize: 11, opacity: 0.6 }}>{label}</div>;
 }
