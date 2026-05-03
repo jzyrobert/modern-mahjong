@@ -7,7 +7,7 @@ import { getDisplayName, getPlayerId, hydrateIdentity } from './identity.js';
 import { initNativeIfAvailable } from './native/init.js';
 import { createSoloTransport } from './net/solo-transport.js';
 import { type Transport, createLanTransport, createOnlineTransport } from './net/transport.js';
-import { useGame } from './state/game.js';
+import { hydrateSettings, useGame } from './state/game.js';
 import { DiceCeremony } from './ui/DiceCeremony.js';
 import { Lobby } from './ui/Lobby.js';
 import { Match } from './ui/Match.js';
@@ -122,10 +122,11 @@ function App() {
 const root = document.getElementById('root');
 if (root) {
   void initNativeIfAvailable();
-  // Block first render on identity hydration so the lobby's display-name
-  // input doesn't flicker from a fresh random name to the persisted one
-  // when localStorage was wiped but native Preferences still has it.
-  hydrateIdentity().finally(() => {
+  // Block first render on identity + settings hydration so the lobby's
+  // display-name input and the persisted skin / sort / animations
+  // preferences don't flicker from defaults to the actual values when
+  // localStorage was wiped but native Preferences still has them.
+  Promise.allSettled([hydrateIdentity(), hydrateSettings()]).finally(() => {
     createRoot(root).render(
       <StrictMode>
         <App />
