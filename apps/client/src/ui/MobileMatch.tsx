@@ -15,6 +15,7 @@ import { motion } from 'framer-motion';
 import { useCallback, useMemo } from 'react';
 import { vibrateLight } from '../native/init.js';
 import { useGame } from '../state/game.js';
+import { useFullscreen } from '../util/fullscreen.js';
 import { ClaimBar } from './ClaimBar.js';
 import { Hand } from './Hand.js';
 import { Tile } from './Tile.js';
@@ -73,6 +74,7 @@ export function MobileMatch({
   const drawnTileId = useGame((s) => s.drawnTileId);
   const manualOrder = useGame((s) => s.manualOrder);
   const setManualOrder = useGame((s) => s.setManualOrder);
+  const fullscreen = useFullscreen();
 
   const seat = you !== null && you !== 'spectator' ? you : null;
   const myTurn = !!state && state.phase === 'turn' && state.turn === seat;
@@ -195,6 +197,9 @@ export function MobileMatch({
           onLeave={onLeave}
           onSettings={onOpenSettings}
           onLog={onOpenLog}
+          {...(fullscreen.supported
+            ? { onFullscreen: fullscreen.toggle, fullscreenActive: fullscreen.active }
+            : {})}
         />
       </div>
 
