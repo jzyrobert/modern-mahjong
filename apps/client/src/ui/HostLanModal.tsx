@@ -1,7 +1,9 @@
 import { generateMatchCode } from '@mahjong/protocol';
 import { useEffect, useRef, useState } from 'react';
 import { isLanServerAvailable } from '../native/lan-server.js';
+import { CREAM, HAIRLINE, INK, INK_3, MONO, PAPER_HI, SANS } from '../native/theme.js';
 import { Modal } from './Modal.js';
+import { GhostButton, PrimaryButton } from './buttons.js';
 
 interface HostLanModalProps {
   open: boolean;
@@ -36,47 +38,95 @@ export function HostLanModal({ open, onClose, onHosted }: HostLanModalProps) {
 
   return (
     <Modal open={open} onClose={onClose} title="Host LAN match">
-      {!isLanServerAvailable() && (
-        <p style={{ fontSize: 12, opacity: 0.7 }}>
-          Native LAN-server plugin not available in this build. Paste the host address you want to
-          advertise and guests can join over the same LAN.
-        </p>
-      )}
-      <label style={{ display: 'block', margin: '12px 0' }}>
-        Host URL
-        <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+      <div style={{ fontSize: 12, color: INK_3, lineHeight: 1.5, marginBottom: 14 }}>
+        {isLanServerAvailable()
+          ? 'Share the URL and match code with anyone on the same Wi-Fi.'
+          : 'Native LAN-server plugin not available in this build. Paste the host address you want to advertise; guests on the same Wi-Fi can join with the match code below.'}
+      </div>
+
+      <div style={{ marginBottom: 14 }}>
+        <Label>Host URL</Label>
+        <div style={{ display: 'flex', gap: 8 }}>
           <input
             value={hostUrl}
             onChange={(e) => setHostUrl(e.target.value)}
             placeholder="http://192.168.1.42:7777"
-            style={{ flex: 1, padding: 8 }}
+            style={{
+              flex: 1,
+              padding: '10px 12px',
+              borderRadius: 8,
+              border: `1px solid ${HAIRLINE}`,
+              background: PAPER_HI,
+              fontFamily: SANS,
+              fontSize: 14,
+              fontWeight: 600,
+              color: INK,
+              outline: 'none',
+            }}
           />
-          <button type="button" disabled={!hostUrl} onClick={copyHostUrl} style={{ minWidth: 64 }}>
+          <GhostButton onClick={copyHostUrl} disabled={!hostUrl}>
             {copyState === 'copied' ? 'Copied' : copyState === 'error' ? 'Failed' : 'Copy'}
-          </button>
+          </GhostButton>
         </div>
-      </label>
-      <p style={{ fontSize: 13 }}>
-        Match code:{' '}
-        <code
-          style={{
-            background: 'oklch(0.9 0.01 80)',
-            padding: '2px 6px',
-            borderRadius: 4,
-            fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-          }}
-        >
-          {matchCode}
-        </code>
-      </p>
-      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
-        <button type="button" onClick={onClose}>
-          Cancel
-        </button>
-        <button type="button" disabled={!hostUrl} onClick={() => onHosted(hostUrl, matchCode)}>
+      </div>
+
+      <div
+        style={{
+          background: CREAM,
+          border: `1px solid ${HAIRLINE}`,
+          borderRadius: 10,
+          padding: '12px 14px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 18,
+          gap: 12,
+          flexWrap: 'wrap',
+        }}
+      >
+        <div>
+          <Label>Match code</Label>
+          <div
+            style={{
+              fontFamily: MONO,
+              fontSize: 22,
+              fontWeight: 800,
+              letterSpacing: 5,
+              color: INK,
+              marginTop: 2,
+            }}
+          >
+            {matchCode}
+          </div>
+        </div>
+        <div style={{ fontSize: 11, color: INK_3, textAlign: 'right', maxWidth: 140 }}>
+          Share with guests so they can find this match.
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <GhostButton onClick={onClose}>Cancel</GhostButton>
+        <PrimaryButton onClick={() => onHosted(hostUrl, matchCode)} disabled={!hostUrl}>
           Start hosting
-        </button>
+        </PrimaryButton>
       </div>
     </Modal>
+  );
+}
+
+function Label({ children }: { children: string }) {
+  return (
+    <div
+      style={{
+        fontSize: 11,
+        fontWeight: 700,
+        color: INK_3,
+        textTransform: 'uppercase',
+        letterSpacing: 0.6,
+        marginBottom: 6,
+      }}
+    >
+      {children}
+    </div>
   );
 }
