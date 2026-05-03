@@ -14,24 +14,42 @@ interface HandProps {
    * and always render in engine order. Defaults to 'suit'.
    */
   sortMode?: SortMode;
+  /**
+   * Engine `tileId` of the just-drawn tile (driven by `useGame.drawnTileId`).
+   * When this matches a tile in the row, that tile gets a soft gold drop-
+   * shadow glow + lift to mark it as the freshly drawn tile.
+   */
+  drawnTileId?: number | null;
 }
 
-export function Hand({ tiles, faceDown, onTileClick, rotate, sortMode = 'suit' }: HandProps) {
+export function Hand({
+  tiles,
+  faceDown,
+  onTileClick,
+  rotate,
+  sortMode = 'suit',
+  drawnTileId = null,
+}: HandProps) {
   const ordered = useMemo(() => {
     if (faceDown) return [...tiles];
     return orderHand(tiles, sortMode);
   }, [tiles, faceDown, sortMode]);
   return (
-    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-      {ordered.map((t) => (
-        <TileWithClick
-          key={tileId(t)}
-          tile={t}
-          faceDown={faceDown}
-          rotate={rotate}
-          onTileClick={onTileClick}
-        />
-      ))}
+    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+      {ordered.map((t) => {
+        const id = tileId(t);
+        const isDrawn = !faceDown && drawnTileId === id;
+        return (
+          <TileWithClick
+            key={id}
+            tile={t}
+            faceDown={faceDown}
+            rotate={rotate}
+            onTileClick={onTileClick}
+            isDrawn={isDrawn}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -41,13 +59,37 @@ interface TileWithClickProps {
   faceDown?: boolean | undefined;
   rotate?: number | undefined;
   onTileClick?: ((t: MTile) => void) | undefined;
+  isDrawn?: boolean;
 }
 
-function TileWithClick({ tile, faceDown, rotate, onTileClick }: TileWithClickProps) {
+function TileWithClick({ tile, faceDown, rotate, onTileClick, isDrawn }: TileWithClickProps) {
   const handleClick = useMemo(
     () => (onTileClick ? () => onTileClick(tile) : undefined),
     [onTileClick, tile],
   );
+  if (isDrawn) {
+    return (
+      <span
+        style={{
+          display: 'inline-block',
+          // Soft gold drop-shadow ring around the just-drawn tile so it
+          // reads as separated from the rest of the hand without forcing
+          // a layout split.
+          filter:
+            'drop-shadow(0 0 8px oklch(0.78 0.16 75 / 0.7)) drop-shadow(0 2px 3px rgba(0,0,0,0.18))',
+        }}
+      >
+        <Tile
+          tile={tile}
+          faceDown={faceDown}
+          rotate={rotate}
+          onClick={handleClick}
+          raised
+          testId={onTileClick ? 'own-hand-tile' : undefined}
+        />
+      </span>
+    );
+  }
   return (
     <Tile
       tile={tile}
