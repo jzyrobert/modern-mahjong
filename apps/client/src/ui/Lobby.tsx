@@ -1,6 +1,7 @@
 import { generateMatchCode } from '@mahjong/protocol';
 import { useState } from 'react';
 import { getDisplayName, setDisplayName } from '../identity.js';
+import { HAIRLINE, INK, PAPER, PAPER_HI, SANS } from '../native/theme.js';
 import { isLanOrigin } from '../net/transport.js';
 import { useGame } from '../state/game.js';
 import { HostLanModal } from './HostLanModal.js';
@@ -25,8 +26,8 @@ export function Lobby({ onJoinOnline, onJoinLan, onJoinSolo }: LobbyProps) {
     <div
       style={{
         padding: 'clamp(8px, 2vmin, 24px)',
-        color: '#eee',
-        fontFamily: 'system-ui, sans-serif',
+        color: INK,
+        fontFamily: SANS,
         // Wide enough for desktop reading, compresses on phones.
         maxWidth: 880,
         margin: '0 auto',
@@ -124,7 +125,8 @@ export function Lobby({ onJoinOnline, onJoinLan, onJoinSolo }: LobbyProps) {
           style={{
             marginTop: 16,
             padding: 'clamp(8px, 1.5vmin, 12px)',
-            background: '#1a1f2e',
+            background: PAPER,
+            border: `1px solid ${HAIRLINE}`,
             borderRadius: 6,
           }}
         >
@@ -165,7 +167,8 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   return (
     <section
       style={{
-        background: '#171b27',
+        background: PAPER,
+        border: `1px solid ${HAIRLINE}`,
         padding: 'clamp(8px, 1.5vmin, 14px)',
         borderRadius: 8,
         display: 'flex',
@@ -188,7 +191,8 @@ const inputStyle: React.CSSProperties = {
   padding: 8,
   marginTop: 4,
   borderRadius: 4,
-  border: '1px solid #2228',
-  background: '#0e1320',
-  color: '#eee',
+  border: `1px solid ${HAIRLINE}`,
+  background: PAPER_HI,
+  color: INK,
+  fontFamily: SANS,
 };

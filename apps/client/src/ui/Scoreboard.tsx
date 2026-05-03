@@ -1,4 +1,5 @@
 import { SEATS } from '@mahjong/game-logic';
+import { HAIRLINE, PAPER } from '../native/theme.js';
 import { nameForSeat, useGame } from '../state/game.js';
 
 export function Scoreboard() {
@@ -12,7 +13,8 @@ export function Scoreboard() {
         display: 'flex',
         gap: 12,
         padding: '8px 12px',
-        background: '#10141d',
+        background: PAPER,
+        border: `1px solid ${HAIRLINE}`,
         borderRadius: 6,
         fontSize: 13,
       }}

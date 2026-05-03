@@ -1,6 +1,7 @@
 import type { Action, Seat } from '@mahjong/game-logic';
 import { nextDealer } from '@mahjong/game-logic';
 import { useState } from 'react';
+import { HAIRLINE, PAPER } from '../native/theme.js';
 import { useGame } from '../state/game.js';
 import { randomSeed } from '../util.js';
 import { RulePanel } from './RulePanel.js';
@@ -18,7 +19,15 @@ export function ResultPanel({ onAction, mySeat, isHost }: ResultPanelProps) {
   const dealerForNext = nextDealer(state);
   const [breakdownOpen, setBreakdownOpen] = useState(false);
   return (
-    <div style={{ marginTop: 16, padding: 12, background: '#1d2538', borderRadius: 6 }}>
+    <div
+      style={{
+        marginTop: 16,
+        padding: 12,
+        background: PAPER,
+        border: `1px solid ${HAIRLINE}`,
+        borderRadius: 6,
+      }}
+    >
       {r.kind === 'win' ? (
         <>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
