@@ -201,6 +201,7 @@ function discard(state: GameState, seat: Seat, tile: Tile): { state: GameState; 
   newHand.splice(idx, 1);
   const hands = { ...state.hands, [seat]: newHand };
   const discards = { ...state.discards, [seat]: [...state.discards[seat], tile] };
+  const discardOrder = [...state.discardOrder, { tile, from: seat }];
 
   const deadlineMs = Date.now() + state.rules.claimWindowMs;
   return {
@@ -209,6 +210,7 @@ function discard(state: GameState, seat: Seat, tile: Tile): { state: GameState; 
       phase: 'awaitingClaims',
       hands,
       discards,
+      discardOrder,
       hasDrawn: false,
       lastDiscard: { tile, from: seat },
       pendingClaims: { discard: { tile, from: seat }, deadlineMs, submitted: {} },

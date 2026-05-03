@@ -76,6 +76,13 @@ export interface GameState {
   hands: Record<Seat, Tile[]>;
   melds: Record<Seat, Meld[]>;
   discards: Record<Seat, Tile[]>;
+  /**
+   * Chronological log of every discard in the current hand. Each entry
+   * records the tile and the seat that pitched it; the array index doubles
+   * as the seq number used by the mobile shared-discard pool to render
+   * tiles in true turn order. Cleared on `startHand`.
+   */
+  discardOrder: { tile: Tile; from: Seat }[];
   lastDiscard?: { tile: Tile; from: Seat } | undefined;
   pendingClaims?: ClaimRound | undefined;
   /** Cumulative scores across hands in the same lobby session. */
@@ -127,6 +134,7 @@ export function emptyState(rules: RuleConfig = DEFAULT_RULES): GameState {
     hands: { 0: [], 1: [], 2: [], 3: [] },
     melds: { 0: [], 1: [], 2: [], 3: [] },
     discards: { 0: [], 1: [], 2: [], 3: [] },
+    discardOrder: [],
     scoreboard: { 0: 0, 1: 0, 2: 0, 3: 0 },
   };
 }
