@@ -1,5 +1,5 @@
 import type { Action, Tile as MTile, Seat } from '@mahjong/game-logic';
-import { isWinning, legalClaimsFor } from '@mahjong/game-logic';
+import { isWinning, legalClaimsFor, tileId } from '@mahjong/game-logic';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { vibrateLight } from '../native/init.js';
 import { INK, SANS } from '../native/theme.js';
@@ -204,6 +204,11 @@ function DesktopMatchBody({
   const felt = FELT_SKINS[settings.felt];
   const tileBack = TILE_BACK_SKINS[settings.tileBack];
 
+  // While someone is deciding whether to claim, pulse the live tile in the
+  // discarder's pile so claimers can track which tile is on offer.
+  const latestDiscardId =
+    state.phase === 'awaitingClaims' && state.lastDiscard ? tileId(state.lastDiscard.tile) : null;
+
   return (
     <div
       style={{
@@ -251,6 +256,7 @@ function DesktopMatchBody({
         onDrawNext={onDrawNext}
         sortMode={sortMode}
         onSortModeChange={onSortModeChange}
+        latestDiscardId={latestDiscardId}
       />
       {canTsumo && (
         <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
