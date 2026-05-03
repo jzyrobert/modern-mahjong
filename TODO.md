@@ -73,6 +73,26 @@ Tracker for outstanding plan work. The full design lives in [`docs/PLAN.md`](./d
 - [x] Lighthouse CI: `apps/client/lighthouserc.json` + a `lighthouse` job in CI runs `lhci autorun` against `vite preview`. Performance ≥ 0.9 is enforced (errors the build); accessibility/best-practices warn at 0.9/0.85. Reports upload as the `lighthouse-report` artifact.
 - [x] Documented release process: see [`docs/DEPLOY.md`](./docs/DEPLOY.md). Cloudflare Pages (client) + Workers (server) auto-deploy from `main` via `.github/workflows/deploy.yml`; debug APK is a CI artifact. iOS Store + production-signed Android still pending.
 
+### Design port follow-ups
+
+The first design pass (cream-paper / sage-felt language, refined SVG tile faces, depth-gradient tile body) is in. The structural redesigns from `/tmp/design/design/{menu,app,app-mobile}.jsx` are queued.
+
+- [ ] Lobby v2: rebuild against `menu.jsx` — hero with `WindEmblem` 東 + 麻雀, three `ModeCard`s (Online / Practice / LAN), `LobbyPreview` with 東南西北 wind glyphs and dashed open-seat boxes, scattered tile decorations.
+- [ ] Desktop table chrome: new `GameStatusBar` pill (live wall count, prevailing wind, dealer name, my-turn pulse), `TopBar` with game id + Leave + Settings, `OpponentSeat` badges with avatar / seat wind / score / active-turn glow, four `WallEdge` perimeter walls, exposed-meld strips per opponent.
+- [ ] Hand UX: `SortPicker` (Suit / Number / Manual), drawn-tile separated with a soft glow, drag-to-reorder under manual mode, `CallButton` style for `ClaimBar.tsx` (Chow/Pung/Kong/Win/Pass with bilingual labels and gradient backgrounds).
+- [ ] Settings panel: modal toggled from `TopBar` with bindings for turn-timer seconds (host-only), sound, felt color skin, auto-sort hand, animations override, tile back colour. Below: 136-tile reference grouped by suit using the new `TileGlyph`.
+- [ ] Mobile/desktop shell split: viewport-driven — landscape mobile (≤900×500) renders a new `MobileMatch.tsx` (glass top-bars, `OppHandStrip`, shared discard pool with seat-color underlines, bottom sheets); portrait mobile shows a "rotate your device" message; desktop renders the existing/new `Match`.
+- [ ] Last-discarded tile highlight: `state.lastDiscard.tile` already exists; pulse the matching `tileId` on the discard pile while `phase === 'awaitingClaims'`.
+- [ ] Per-tile discard sequence number on the engine so the mobile shared pool can sort chronologically without the design's interleaving heuristic.
+- [ ] Settings persistence: mirror `useGame.settings` (felt skin, sort mode, sound on/off, animations override, tile back) to `@capacitor/preferences` so they survive app restart — reuse the identity hydrate pattern.
+- [ ] Sound effects: tile-click chime, discard thud, win fanfare. Off by default; toggleable in Settings. Honor `prefers-reduced-motion` accordingly.
+- [ ] Chat / emotes: 6-emote `ChatBar` (👍😎🎉🤔😅🔥) over the existing `ClientMessage.t === 'chat'` (already typed in `packages/protocol`).
+- [ ] Spectator viewer count (server-side): track non-seated connections in `MatchSession`, expose count to clients.
+- [ ] Game log buffer: ring-buffer the engine `Event[]` per `apply` in `useGame`; surface as a "Last 12 actions" sheet on mobile.
+- [ ] Leave-game flow: client-side path that sends `ClientMessage.t === 'leave'` (already in protocol) and navigates back to lobby.
+- [ ] Win celebration animation: design comp doesn't include this but a celebratory overlay (confetti / glow / faan readout) on `state.lastResult.kind === 'win'` would land well.
+- [ ] DiceCeremony / ShuffleOverlay restyle: warm-paper instead of dark slate so they don't read as a separate UI layer when the rest of the table chrome moves to the cream-paper language.
+
 ## Out of scope until a maintainer decides
 
 - Account system / cross-device identity sync.

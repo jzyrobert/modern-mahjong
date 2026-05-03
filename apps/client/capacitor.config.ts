@@ -3,7 +3,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 // Keep this in sync with SURFACE_BG in src/native/theme.ts. It's inlined
 // here rather than imported because the Capacitor CLI parses this config
 // with plain CJS require, which doesn't honor TS's `.js`→`.ts` resolution.
-const SURFACE_BG = '#0e1320';
+const SURFACE_BG = '#f1eadc';
 
 /**
  * Capacitor configuration for the Modern Mahjong shells. The native shells

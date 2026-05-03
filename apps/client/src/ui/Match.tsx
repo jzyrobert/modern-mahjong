@@ -2,6 +2,7 @@ import type { Action, Tile as MTile, Seat } from '@mahjong/game-logic';
 import { isWinning, legalClaimsFor } from '@mahjong/game-logic';
 import { useCallback, useMemo } from 'react';
 import { vibrateLight } from '../native/init.js';
+import { INK, SANS } from '../native/theme.js';
 import { isSeatHost, useGame } from '../state/game.js';
 import { randomSeed } from '../util.js';
 import { ClaimBar } from './ClaimBar.js';
@@ -58,9 +59,7 @@ export function Match({ onAction }: MatchProps) {
 
   if (state.phase === 'waiting') {
     return (
-      <div
-        style={{ padding: 24, color: '#eee', fontFamily: 'system-ui, sans-serif', maxWidth: 560 }}
-      >
+      <div style={{ padding: 24, color: INK, fontFamily: SANS, maxWidth: 560 }}>
         <h2>Lobby</h2>
         <p>You are seated as seat {seat}. Hit start when everyone has joined.</p>
         <RulePanel rules={state.rules} isHost={isHost} onAction={onAction} />
@@ -114,8 +113,8 @@ export function Match({ onAction }: MatchProps) {
     <div
       style={{
         padding: 12,
-        color: '#eee',
-        fontFamily: 'system-ui, sans-serif',
+        color: INK,
+        fontFamily: SANS,
         // Viewport-aware tile sizing — tiles scale down on cramped landscape phones
         // and back up on desktop. The 22/30 floor keeps them tappable on tiny
         // screens while letting 14 hand tiles fit in a single row at 800x360.

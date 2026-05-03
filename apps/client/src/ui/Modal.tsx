@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { useEffect } from 'react';
+import { HAIRLINE, INK, PAPER, SANS } from '../native/theme.js';
 
 interface ModalProps {
   open: boolean;
@@ -41,13 +42,14 @@ export function Modal({ open, title, onClose, children }: ModalProps) {
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.stopPropagation()}
         style={{
-          background: '#1a1f2e',
-          color: '#eee',
+          background: PAPER,
+          color: INK,
+          border: `1px solid ${HAIRLINE}`,
           padding: 24,
           borderRadius: 12,
           minWidth: 360,
           maxWidth: '90vw',
-          fontFamily: 'system-ui, sans-serif',
+          fontFamily: SANS,
         }}
       >
         <h3 style={{ marginTop: 0 }}>{title}</h3>

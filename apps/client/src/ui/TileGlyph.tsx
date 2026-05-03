@@ -1,34 +1,35 @@
 import type { Tile as MTile } from '@mahjong/game-logic';
 
 /**
- * SVG face for a mahjong tile. Drawn inside a 36×50 viewBox and scales to
- * whatever box the parent gives it. Replaces the older text-label rendering
- * (`1m`, `9p`, `Z`, …) with simplified glyphs:
+ * SVG glyph for a mahjong tile face. Ported from the design comp at
+ * `/tmp/design/design/tile.jsx`. Drawn inside a 36×50 viewBox so it fits the
+ * existing CSS-var driven `--tile-w` / `--tile-h` sizing without changes.
  *
- * - Man: large Arabic numeral on top, red 萬 character below.
- * - Pin: N filled circles arranged in classic mahjong patterns.
- * - Sou: N green vertical bamboo bars (sou-1 is shown as a single thicker
- *   stroke; the traditional sou-1 bird sprite is left as a follow-up).
- * - Winds: 東/南/西/北 in black.
- * - Dragons: 中 red, 發 green, 白 rendered as a thin-bordered blank.
+ * Layouts:
+ * - Man (萬): big TC-serif numeral on top, smaller 萬 below — both deep red.
+ * - Pin (筒): N concentric dots in classical mahjong patterns.
+ * - Sou (索): N stylised bamboo sticks; sou-1 is the traditional bird.
+ * - Winds: 東/南/西/北 in dark slate, TC serif.
+ * - Dragons: 中 (red), 發 (green), 白 (slate) — TC serif at full body height.
  *
- * Authentic per-rank pin arrangements look subtly different (the canonical
- * pin-5 has the center dot a different colour, pin-7 stacks oddly, etc.).
- * The simplified positions here trade visual fidelity for being a single
- * compact source file. Real glyph SVGs can drop in later if the tile face
- * needs to be more recognisable.
+ * The accessible label is owned by the wrapping button in `Tile.tsx`; the
+ * SVG itself is decorative.
  */
+const W = 36;
+const H = 50;
+const CX = W / 2;
+const CY = H / 2;
+
 export function TileGlyph({ t }: { t: MTile }) {
   return (
     <svg
-      viewBox="0 0 36 50"
+      viewBox={`0 0 ${W} ${H}`}
       width="100%"
       height="100%"
       xmlns="http://www.w3.org/2000/svg"
-      // The wrapping button / span sets the accessible label; the glyph itself
-      // is decorative.
       aria-hidden="true"
-      style={{ display: 'block' }}
+      preserveAspectRatio="xMidYMid meet"
+      style={{ display: 'block', overflow: 'visible' }}
     >
       {renderFace(t)}
     </svg>
@@ -44,171 +45,230 @@ function renderFace(t: MTile) {
   return <HonorFace honor={t.honor} />;
 }
 
+const MAN_FILL = 'oklch(0.4 0.18 25)';
+const SERIF = "'Noto Serif TC', 'Noto Serif', serif";
+
 function ManFace({ rank }: { rank: number }) {
   return (
     <g>
       <text
-        x="18"
-        y="22"
-        fontSize="18"
-        fontWeight="700"
+        x={CX}
+        y={CY - H * 0.12}
         textAnchor="middle"
-        fill="#1a1a1a"
-        fontFamily="system-ui, sans-serif"
+        fontFamily={SERIF}
+        fontSize={W * 0.42}
+        fontWeight="700"
+        fill={MAN_FILL}
+        dominantBaseline="middle"
       >
         {rank}
       </text>
-      <text x="18" y="42" fontSize="14" textAnchor="middle" fill="#b22222" fontFamily="serif">
+      <text
+        x={CX}
+        y={CY + H * 0.18}
+        textAnchor="middle"
+        fontFamily={SERIF}
+        fontSize={W * 0.36}
+        fontWeight="600"
+        fill={MAN_FILL}
+        dominantBaseline="middle"
+      >
         萬
       </text>
     </g>
   );
 }
 
-const PIN_DOTS: Record<number, ReadonlyArray<readonly [number, number]>> = {
-  1: [[18, 25]],
+// Layouts for 1-9 numbered tiles. Coordinates are relative to the tile
+// centre and assume the design's 60-unit reference width; they're rescaled
+// to our 36×50 viewBox via the parent <g transform>.
+const LAYOUTS: Record<number, ReadonlyArray<readonly [number, number]>> = {
+  1: [[0, 0]],
   2: [
-    [18, 12],
-    [18, 38],
+    [0, -10],
+    [0, 10],
   ],
   3: [
-    [10, 12],
-    [18, 25],
-    [26, 38],
+    [-10, -10],
+    [0, 0],
+    [10, 10],
   ],
   4: [
-    [10, 12],
-    [26, 12],
-    [10, 38],
-    [26, 38],
+    [-10, -10],
+    [10, -10],
+    [-10, 10],
+    [10, 10],
   ],
   5: [
-    [10, 12],
-    [26, 12],
-    [18, 25],
-    [10, 38],
-    [26, 38],
+    [-10, -10],
+    [10, -10],
+    [0, 0],
+    [-10, 10],
+    [10, 10],
   ],
   6: [
+    [-10, -12],
+    [10, -12],
+    [-10, 0],
+    [10, 0],
+    [-10, 12],
     [10, 12],
-    [26, 12],
-    [10, 25],
-    [26, 25],
-    [10, 38],
-    [26, 38],
   ],
   7: [
-    [10, 9],
-    [26, 9],
-    [10, 22],
-    [26, 22],
-    [10, 35],
-    [18, 42],
-    [26, 35],
+    [-10, -14],
+    [0, -14],
+    [10, -14],
+    [-10, 0],
+    [10, 0],
+    [-10, 14],
+    [10, 14],
   ],
   8: [
-    [10, 12],
-    [26, 12],
-    [10, 22],
-    [26, 22],
-    [10, 32],
-    [26, 32],
-    [10, 42],
-    [26, 42],
+    [-10, -14],
+    [10, -14],
+    [-10, -3],
+    [10, -3],
+    [-10, 8],
+    [10, 8],
+    [-10, 18],
+    [10, 18],
   ],
   9: [
-    [10, 11],
-    [18, 11],
-    [26, 11],
-    [10, 25],
-    [18, 25],
-    [26, 25],
-    [10, 39],
-    [18, 39],
-    [26, 39],
+    [-12, -14],
+    [0, -14],
+    [12, -14],
+    [-12, 0],
+    [0, 0],
+    [12, 0],
+    [-12, 14],
+    [0, 14],
+    [12, 14],
   ],
 };
 
-function PinFace({ rank }: { rank: number }) {
-  const dots = PIN_DOTS[rank] ?? [];
+function PinDot({ x, y, r }: { x: number; y: number; r: number }) {
   return (
-    <g>
-      {dots.map(([cx, cy], i) => (
-        <circle
-          // biome-ignore lint/suspicious/noArrayIndexKey: PIN_DOTS layout is fixed per rank
-          key={i}
-          cx={cx}
-          cy={cy}
-          r="3.2"
-          fill={i % 2 === 0 ? '#1f5fa8' : '#cf2a2a'}
-        />
+    <g transform={`translate(${x},${y})`}>
+      <circle r={r} fill="oklch(0.45 0.18 230)" />
+      <circle r={r - 1.4} fill="none" stroke="oklch(0.95 0.02 85)" strokeWidth="0.8" />
+      <circle r={r - 2.6} fill="oklch(0.5 0.16 25)" opacity="0.8" />
+    </g>
+  );
+}
+
+function PinFace({ rank }: { rank: number }) {
+  const layout = LAYOUTS[rank] ?? [];
+  const r = rank <= 4 ? 4.5 : rank <= 6 ? 3.8 : 3.2;
+  // The design's coordinates assume a 60-unit reference; scale to our 36px width.
+  const sc = W / 60;
+  return (
+    <g transform={`translate(${CX},${CY}) scale(${sc})`}>
+      {layout.map(([x, y], i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: layout is fixed per rank
+        <PinDot key={i} x={x} y={y} r={r} />
       ))}
+    </g>
+  );
+}
+
+function BambooStick({ x, y, scale = 1 }: { x: number; y: number; scale?: number }) {
+  return (
+    <g transform={`translate(${x},${y}) scale(${scale})`}>
+      <ellipse cx="0" cy="0" rx="3.2" ry="9" fill="oklch(0.55 0.13 150)" />
+      <ellipse cx="0" cy="-3" rx="3.2" ry="2" fill="oklch(0.7 0.15 150)" opacity="0.6" />
+      <line x1="-3.2" y1="0" x2="3.2" y2="0" stroke="oklch(0.35 0.1 150)" strokeWidth="0.6" />
     </g>
   );
 }
 
 function SouFace({ rank }: { rank: number }) {
-  const cols = rank === 1 ? 1 : rank <= 3 ? 1 : rank <= 6 ? 2 : 3;
-  const rows = Math.ceil(rank / cols);
-  const bars: { x: number; y: number }[] = [];
-  let placed = 0;
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      if (placed >= rank) break;
-      const x = 18 - ((cols - 1) * 9) / 2 + c * 9;
-      const y = 12 + r * (36 / Math.max(1, rows - 1 || 1));
-      bars.push({ x, y });
-      placed++;
-    }
-  }
-  return (
-    <g>
-      {bars.map((b, i) => (
-        <rect
-          // biome-ignore lint/suspicious/noArrayIndexKey: bar order is deterministic from rank
-          key={i}
-          x={b.x - 2}
-          y={b.y - 12}
-          width="4"
-          height="14"
-          rx="1.5"
-          fill="#1f7d3a"
+  if (rank === 1) {
+    // 1-sou is traditionally a bird.
+    const sc = W / 44;
+    return (
+      <g transform={`translate(${CX},${CY}) scale(${sc})`}>
+        <ellipse cx="0" cy="2" rx="10" ry="13" fill="oklch(0.55 0.13 150)" />
+        <circle cx="0" cy="-9" r="6" fill="oklch(0.5 0.18 25)" />
+        <circle cx="2" cy="-10" r="1.2" fill="white" />
+        <path
+          d="M -3 -2 Q -8 4 -10 8"
+          stroke="oklch(0.4 0.1 150)"
+          strokeWidth="1.5"
+          fill="none"
+          strokeLinecap="round"
         />
+        <path
+          d="M 3 -2 Q 8 4 10 8"
+          stroke="oklch(0.4 0.1 150)"
+          strokeWidth="1.5"
+          fill="none"
+          strokeLinecap="round"
+        />
+        <path
+          d="M 0 -3 L 4 -6"
+          stroke="oklch(0.5 0.18 80)"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+        />
+      </g>
+    );
+  }
+  const layout = LAYOUTS[rank] ?? [];
+  const sc = (rank <= 4 ? 0.75 : rank <= 6 ? 0.6 : 0.5) * (W / 44);
+  return (
+    <g transform={`translate(${CX},${CY}) scale(${sc / 0.75})`}>
+      {layout.map(([x, y], i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: layout is fixed per rank
+        <BambooStick key={i} x={x} y={y} scale={0.75} />
       ))}
     </g>
   );
 }
 
-const HONOR_GLYPHS: Record<string, { ch: string; fill: string }> = {
-  E: { ch: '東', fill: '#1a1a1a' },
-  S: { ch: '南', fill: '#1a1a1a' },
-  W: { ch: '西', fill: '#1a1a1a' },
-  N: { ch: '北', fill: '#1a1a1a' },
-  Z: { ch: '中', fill: '#b22222' },
-  F: { ch: '發', fill: '#1f7d3a' },
-  B: { ch: '', fill: '#1a1a1a' },
+const WINDS: Record<string, string> = {
+  E: '東',
+  S: '南',
+  W: '西',
+  N: '北',
+};
+
+const DRAGONS: Record<string, { glyph: string; color: string }> = {
+  Z: { glyph: '中', color: 'oklch(0.5 0.18 25)' }, // red
+  F: { glyph: '發', color: 'oklch(0.5 0.14 150)' }, // green
+  B: { glyph: '白', color: 'oklch(0.4 0.02 230)' }, // slate
 };
 
 function HonorFace({ honor }: { honor: string }) {
-  const cfg = HONOR_GLYPHS[honor];
-  if (!cfg) return null;
-  if (honor === 'B') {
-    // 白 is traditionally rendered as a blank face — just a thin frame.
+  if (honor in WINDS) {
     return (
-      <rect x="6" y="9" width="24" height="32" fill="none" stroke="#1a1a1a" strokeWidth="1.6" />
+      <text
+        x={CX}
+        y={CY}
+        textAnchor="middle"
+        fontFamily={SERIF}
+        fontSize={W * 0.55}
+        fontWeight="700"
+        fill="oklch(0.3 0.05 240)"
+        dominantBaseline="central"
+      >
+        {WINDS[honor]}
+      </text>
     );
   }
+  const d = DRAGONS[honor];
+  if (!d) return null;
   return (
     <text
-      x="18"
-      y="34"
-      fontSize="22"
+      x={CX}
+      y={CY}
       textAnchor="middle"
-      fill={cfg.fill}
-      fontFamily="serif"
+      fontFamily={SERIF}
+      fontSize={W * 0.55}
       fontWeight="700"
+      fill={d.color}
+      dominantBaseline="central"
     >
-      {cfg.ch}
+      {d.glyph}
     </text>
   );
 }

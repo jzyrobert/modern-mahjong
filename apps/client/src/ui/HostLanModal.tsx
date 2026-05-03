@@ -58,7 +58,14 @@ export function HostLanModal({ open, onClose, onHosted }: HostLanModalProps) {
       </label>
       <p style={{ fontSize: 13 }}>
         Match code:{' '}
-        <code style={{ background: '#000a', padding: '2px 6px', borderRadius: 4 }}>
+        <code
+          style={{
+            background: 'oklch(0.9 0.01 80)',
+            padding: '2px 6px',
+            borderRadius: 4,
+            fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+          }}
+        >
           {matchCode}
         </code>
       </p>

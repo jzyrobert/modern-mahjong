@@ -1,6 +1,7 @@
 import { FAAN_OPTIONS } from '@mahjong/game-logic';
 import type { Action, RuleConfig } from '@mahjong/protocol';
 import { useEffect, useState } from 'react';
+import { HAIRLINE, PAPER } from '../native/theme.js';
 
 interface RulePanelProps {
   rules: RuleConfig;
@@ -15,11 +16,11 @@ export function RulePanel({ rules, isHost, onAction }: RulePanelProps) {
   return (
     <fieldset
       style={{
-        border: '1px solid #444',
+        border: `1px solid ${HAIRLINE}`,
         borderRadius: 6,
         padding: 12,
         margin: '12px 0',
-        background: '#161b27',
+        background: PAPER,
       }}
     >
       <legend style={{ padding: '0 6px', fontSize: 13, opacity: 0.85 }}>Rules</legend>
