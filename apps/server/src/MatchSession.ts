@@ -247,7 +247,7 @@ export class MatchSession {
       case 'action':
         return this.onAction(connectionId, msg.action);
       case 'chat':
-        return [];
+        return this.onChat(connectionId, msg.text);
       case 'leave':
         return [{ kind: 'closeConnection', connectionId }];
     }
@@ -318,6 +318,35 @@ export class MatchSession {
       if (this.seats[s].connectionId === connectionId) return this.seats[s].playerId;
     }
     return null;
+  }
+
+  private seatFor(connectionId: string): Seat | null {
+    for (const s of SEATS) {
+      if (this.seats[s].connectionId === connectionId) return s;
+    }
+    return null;
+  }
+
+  /**
+   * Broadcast a chat / emote to all connected clients, tagged with the
+   * sender's seat (or 'spectator' if they're connected without one).
+   * Server-truncates the text at 280 chars to match `chatSchema`.
+   */
+  private onChat(connectionId: string, text: string): Outbound[] {
+    const trimmed = text.slice(0, 280);
+    if (trimmed.length === 0) return [];
+    const seat = this.seatFor(connectionId);
+    return [
+      {
+        kind: 'broadcast',
+        msg: {
+          t: 'chat',
+          from: seat ?? 'spectator',
+          text: trimmed,
+          ts: Date.now(),
+        },
+      },
+    ];
   }
 
   /** Apply an action through the engine and return its broadcast event. Mutates `this.state`. */

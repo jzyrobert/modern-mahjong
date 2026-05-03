@@ -1,5 +1,12 @@
 import type { Action, Tile as MTile, Seat } from '@mahjong/game-logic';
-import { isWinning, legalClaimsFor, tileId } from '@mahjong/game-logic';
+import {
+  acrossSeat,
+  isWinning,
+  legalClaimsFor,
+  nextSeat,
+  prevSeat,
+  tileId,
+} from '@mahjong/game-logic';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { vibrateLight } from '../native/init.js';
 import { INK, SANS } from '../native/theme.js';
@@ -12,6 +19,8 @@ import { ResultPanel } from './ResultPanel.js';
 import { RulePanel } from './RulePanel.js';
 import { Scoreboard } from './Scoreboard.js';
 import { Table } from './Table.js';
+import { ChatBar } from './match/ChatBar.js';
+import { ChatBubbles } from './match/ChatBubbles.js';
 import { GameLog } from './match/GameLog.js';
 import { GameStatusBar } from './match/GameStatusBar.js';
 import { SettingsPanel } from './match/SettingsPanel.js';
@@ -21,6 +30,8 @@ import { FELT_SKINS, TILE_BACK_SKINS } from './match/skins.js';
 
 interface MatchProps {
   onAction: (action: Action) => void;
+  /** Send a chat / emote over the live transport. */
+  onChat: (text: string) => void;
   /** Match code shown in the top-right "Live · #ABC" pill. Null hides the pill. */
   matchCode: string | null;
   onLeave: () => void;
@@ -36,7 +47,7 @@ const PORTRAIT_PHONE_QUERY = '(max-width: 700px) and (orientation: portrait)';
  * viewport. Portrait phone viewports get a "rotate your device" prompt
  * (a simplified portrait shell is queued in TODO.md).
  */
-export function Match({ onAction, matchCode, onLeave }: MatchProps) {
+export function Match({ onAction, onChat, matchCode, onLeave }: MatchProps) {
   const state = useGame((s) => s.state);
   const you = useGame((s) => s.you);
   const lobby = useGame((s) => s.lobby);
@@ -94,6 +105,20 @@ export function Match({ onAction, matchCode, onLeave }: MatchProps) {
     return <PortraitFallback />;
   }
 
+  // Seat-to-visual-position map (drives ChatBubbles anchoring). The user
+  // is always at the bottom; the others rotate via nextSeat / acrossSeat /
+  // prevSeat.
+  const seatToPosition: Record<Seat, 'bottom' | 'right' | 'top' | 'left'> = {
+    0: 'bottom',
+    1: 'bottom',
+    2: 'bottom',
+    3: 'bottom',
+  };
+  seatToPosition[seat] = 'bottom';
+  seatToPosition[nextSeat(seat)] = 'right';
+  seatToPosition[acrossSeat(seat)] = 'top';
+  seatToPosition[prevSeat(seat)] = 'left';
+
   const overlays = (
     <>
       <SettingsPanel
@@ -104,6 +129,7 @@ export function Match({ onAction, matchCode, onLeave }: MatchProps) {
         onTurnTimeoutChange={onTurnTimeoutChange}
       />
       <GameLog open={logOpen} onClose={() => setLogOpen(false)} />
+      <ChatBubbles seatToPosition={seatToPosition} />
     </>
   );
 
@@ -112,6 +138,7 @@ export function Match({ onAction, matchCode, onLeave }: MatchProps) {
       <>
         <MobileMatch
           onAction={onAction}
+          onChat={onChat}
           matchCode={matchCode}
           onLeave={onLeave}
           sortMode={sortMode}
@@ -128,6 +155,7 @@ export function Match({ onAction, matchCode, onLeave }: MatchProps) {
     <>
       <DesktopMatchBody
         onAction={onAction}
+        onChat={onChat}
         matchCode={matchCode}
         onLeave={onLeave}
         seat={seat}
@@ -143,6 +171,7 @@ export function Match({ onAction, matchCode, onLeave }: MatchProps) {
 
 interface DesktopMatchBodyProps {
   onAction: (action: Action) => void;
+  onChat: (text: string) => void;
   matchCode: string | null;
   onLeave: () => void;
   seat: Seat;
@@ -154,6 +183,7 @@ interface DesktopMatchBodyProps {
 
 function DesktopMatchBody({
   onAction,
+  onChat,
   matchCode,
   onLeave,
   seat,
@@ -258,6 +288,9 @@ function DesktopMatchBody({
           onSettings={onOpenSettings}
           onLog={onOpenLog}
         />
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8, flexWrap: 'wrap' }}>
+        <ChatBar onSend={onChat} />
       </div>
       <Scoreboard />
       <Table
