@@ -33,6 +33,14 @@ const LONG_PRESS_MS = 220;
 const TAP_TOLERANCE_PX = 6;
 const POST_DRAG_CLICK_SUPPRESS_MS = 250;
 
+interface PointerDragState {
+  id: number;
+  startX: number;
+  startY: number;
+  x: number;
+  y: number;
+}
+
 export function Hand({
   tiles,
   faceDown,
@@ -55,6 +63,7 @@ export function Hand({
 
   const [draggingId, setDraggingId] = useState<number | null>(null);
   const [dragOverId, setDragOverId] = useState<number | null>(null);
+  const [pointerDrag, setPointerDrag] = useState<PointerDragState | null>(null);
   const rowRef = useRef<HTMLDivElement | null>(null);
   // Set right before a drag commits or cancels — `handleTileClick` checks
   // this and ignores synthetic clicks that fire from the same pointer
@@ -79,6 +88,7 @@ export function Hand({
     dragEndedAtRef.current = Date.now();
     setDraggingId(null);
     setDragOverId(null);
+    setPointerDrag(null);
   };
 
   const handleTileClick = (t: MTile) => {
@@ -104,6 +114,10 @@ export function Hand({
         const isDrawn = !faceDown && drawnTileId === id;
         const isDragging = draggingId === id;
         const isDragOver = dragOverId === id && draggingId !== id;
+        const pointerOffset =
+          pointerDrag && pointerDrag.id === id
+            ? { x: pointerDrag.x - pointerDrag.startX, y: pointerDrag.y - pointerDrag.startY }
+            : null;
         return (
           <TileWrapper
             key={id}
@@ -116,6 +130,7 @@ export function Hand({
             draggable={draggable}
             isDragging={isDragging}
             isDragOver={isDragOver}
+            pointerOffset={pointerOffset}
             onDragStartTile={() => setDraggingId(id)}
             onDragEnterTile={() => {
               if (draggingId !== null && draggingId !== id) setDragOverId(id);
@@ -125,9 +140,18 @@ export function Hand({
               commitReorder(fromId, id);
               finishDrag();
             }}
-            onPointerDragMove={(clientX, clientY) => {
-              const target = closestTileId(rowRef.current, clientX, clientY);
+            onPointerDragStart={(clientX, clientY) => {
               setDraggingId(id);
+              setPointerDrag({ id, startX: clientX, startY: clientY, x: clientX, y: clientY });
+            }}
+            onPointerDragMove={(clientX, clientY) => {
+              setPointerDrag((prev) =>
+                prev && prev.id === id ? { ...prev, x: clientX, y: clientY } : prev,
+              );
+              // Hit-test against everything except the dragging tile so the
+              // floating tile doesn't "snap to itself" while the pointer
+              // hovers over its own translated bounding box.
+              const target = closestTileId(rowRef.current, clientX, clientY, id);
               if (target !== null && target !== id) setDragOverId(target);
             }}
             onPointerDragCommit={() => {
@@ -153,10 +177,13 @@ interface TileWrapperProps {
   draggable?: boolean;
   isDragging?: boolean;
   isDragOver?: boolean;
+  /** Pixel offset from the tile's natural position while the pointer is dragging it. */
+  pointerOffset?: { x: number; y: number } | null;
   onDragStartTile?: (() => void) | undefined;
   onDragEnterTile?: (() => void) | undefined;
   onDragEndTile?: (() => void) | undefined;
   onDropTile?: ((fromId: number) => void) | undefined;
+  onPointerDragStart?: ((clientX: number, clientY: number) => void) | undefined;
   onPointerDragMove?: ((clientX: number, clientY: number) => void) | undefined;
   onPointerDragCommit?: (() => void) | undefined;
   onPointerDragCancel?: (() => void) | undefined;
@@ -172,10 +199,12 @@ function TileWrapper({
   draggable,
   isDragging,
   isDragOver,
+  pointerOffset,
   onDragStartTile,
   onDragEnterTile,
   onDragEndTile,
   onDropTile,
+  onPointerDragStart,
   onPointerDragMove,
   onPointerDragCommit,
   onPointerDragCancel,
@@ -188,7 +217,7 @@ function TileWrapper({
     let armed = false;
     const armTimer = window.setTimeout(() => {
       armed = true;
-      onPointerDragMove?.(startX, startY);
+      onPointerDragStart?.(startX, startY);
     }, LONG_PRESS_MS);
 
     const cleanup = () => {
@@ -229,15 +258,30 @@ function TileWrapper({
     document.addEventListener('pointercancel', onCancel);
   };
 
+  const isPointerDragging = pointerOffset !== null && pointerOffset !== undefined;
   const wrapperStyle: React.CSSProperties = {
     display: 'inline-block',
     position: 'relative',
     cursor: draggable ? (isDragging ? 'grabbing' : 'grab') : undefined,
-    opacity: isDragging ? 0.4 : 1,
-    transition: 'opacity 0.12s, margin 0.15s',
+    // Pointer-driven drag lifts the tile + makes it follow the finger;
+    // HTML5 mouse drag uses the browser's own ghost image, so we ghost
+    // the original at 0.4 opacity instead of moving it.
+    opacity: isDragging && !isPointerDragging ? 0.4 : 1,
+    transition: isPointerDragging ? 'none' : 'opacity 0.12s, margin 0.15s',
     marginLeft: isDragOver ? 10 : 0,
+    transform: isPointerDragging
+      ? `translate3d(${pointerOffset.x}px, ${pointerOffset.y}px, 0) scale(1.08)`
+      : undefined,
+    zIndex: isPointerDragging ? 50 : undefined,
+    // Keep the dragged tile out of hit-tests so the row's pointermove
+    // listener still fires on the tiles underneath; pointer drives via
+    // a document listener anyway.
+    pointerEvents: isPointerDragging ? 'none' : undefined,
+    filter: isPointerDragging
+      ? 'drop-shadow(0 8px 16px rgba(0,0,0,0.3)) drop-shadow(0 2px 4px rgba(0,0,0,0.18))'
+      : undefined,
   };
-  if (isDrawn) {
+  if (isDrawn && !isPointerDragging) {
     wrapperStyle.filter =
       'drop-shadow(0 0 8px oklch(0.78 0.16 75 / 0.7)) drop-shadow(0 2px 3px rgba(0,0,0,0.18))';
   }
@@ -351,23 +395,29 @@ function manualOrderHand(tiles: readonly MTile[], order: readonly number[]): MTi
   });
 }
 
-function closestTileId(row: HTMLElement | null, clientX: number, clientY: number): number | null {
+function closestTileId(
+  row: HTMLElement | null,
+  clientX: number,
+  clientY: number,
+  excludeId: number | null = null,
+): number | null {
   if (!row) return null;
   const els = Array.from(row.querySelectorAll<HTMLElement>('[data-mh-tile="1"]'));
   let bestId: number | null = null;
   let bestDist = Number.POSITIVE_INFINITY;
   for (const el of els) {
+    const raw = el.getAttribute('data-mh-id');
+    if (raw === null) continue;
+    const id = Number.parseInt(raw, 10);
+    if (!Number.isFinite(id)) continue;
+    if (excludeId !== null && id === excludeId) continue;
     const r = el.getBoundingClientRect();
     const cx = r.left + r.width / 2;
     const cy = r.top + r.height / 2;
     const d = Math.hypot(clientX - cx, clientY - cy);
     if (d < bestDist) {
       bestDist = d;
-      const raw = el.getAttribute('data-mh-id');
-      if (raw !== null) {
-        const id = Number.parseInt(raw, 10);
-        bestId = Number.isFinite(id) ? id : null;
-      }
+      bestId = id;
     }
   }
   return bestId;
