@@ -67,6 +67,7 @@ export function MobileMatch({
   const you = useGame((s) => s.you);
   const lobby = useGame((s) => s.lobby);
   const settings = useGame((s) => s.settings);
+  const drawnTileId = useGame((s) => s.drawnTileId);
 
   const seat = you !== null && you !== 'spectator' ? you : null;
   const myTurn = !!state && state.phase === 'turn' && state.turn === seat;
@@ -271,6 +272,7 @@ export function MobileMatch({
           tiles={state.hands[seat]}
           onTileClick={myTurn ? onDiscard : undefined}
           sortMode={sortMode}
+          drawnTileId={drawnTileId}
         />
         {canTsumo ? (
           <button

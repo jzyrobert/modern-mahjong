@@ -166,6 +166,7 @@ function DesktopMatchBody({
   const you = useGame((s) => s.you);
   const lobby = useGame((s) => s.lobby);
   const settings = useGame((s) => s.settings);
+  const drawnTileId = useGame((s) => s.drawnTileId);
 
   const myTurn = state.phase === 'turn' && state.turn === you;
   const isHost = isSeatHost(lobby, seat);
@@ -271,6 +272,7 @@ function DesktopMatchBody({
         sortMode={sortMode}
         onSortModeChange={onSortModeChange}
         latestDiscardId={latestDiscardId}
+        drawnTileId={drawnTileId}
       />
       {canTsumo && (
         <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>

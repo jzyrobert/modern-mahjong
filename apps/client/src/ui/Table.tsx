@@ -46,6 +46,11 @@ interface TableProps {
    * pile gets a pulsing red halo so claimers can track it.
    */
   latestDiscardId?: number | null;
+  /**
+   * Engine `tileId` of the user's just-drawn tile (from `useGame.drawnTileId`).
+   * Hand uses it to glow that tile with a soft gold drop-shadow.
+   */
+  drawnTileId?: number | null;
   centerHud?: ReactNode;
 }
 
@@ -78,6 +83,7 @@ export function Table({
   sortMode,
   onSortModeChange,
   latestDiscardId = null,
+  drawnTileId = null,
   centerHud,
 }: TableProps) {
   const positions = layoutFor(mySeat);
@@ -217,7 +223,12 @@ export function Table({
           isActive={turn === me.seat}
         />
         <SortPicker mode={sortMode} onChange={onSortModeChange} />
-        <Hand tiles={hands[me.seat]} onTileClick={ownHandClickable} sortMode={sortMode} />
+        <Hand
+          tiles={hands[me.seat]}
+          onTileClick={ownHandClickable}
+          sortMode={sortMode}
+          drawnTileId={drawnTileId}
+        />
       </div>
     </div>
   );

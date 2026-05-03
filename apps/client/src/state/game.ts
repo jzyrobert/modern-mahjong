@@ -1,4 +1,5 @@
 import type { Event as EngineEvent, GameState, Seat } from '@mahjong/game-logic';
+import { tileId } from '@mahjong/game-logic';
 import type { PublicPlayer, RuleConfig } from '@mahjong/protocol';
 import { create } from 'zustand';
 import { getPreference, setPreference } from '../native/preferences.js';
@@ -129,6 +130,14 @@ interface ClientGameStore {
    * server's `delta` messages.
    */
   log: LogEntry[];
+  /**
+   * Engine `tileId` of the tile the local seat most recently drew, or
+   * null when the user has discarded / it's not their turn / they haven't
+   * drawn yet. Drives the soft gold glow on the just-drawn tile in
+   * `Hand.tsx`. Maintained inside `appendEvents` from the engine's
+   * `drew` / `discarded` events so it stays in sync with the wire stream.
+   */
+  drawnTileId: number | null;
   setState: (state: GameState, you?: Seat | 'spectator') => void;
   setLobby: (l: LobbyState) => void;
   setShuffling: (shuffling: boolean) => void;
@@ -144,6 +153,7 @@ export const useGame = create<ClientGameStore>((set) => ({
   shuffling: false,
   settings: loadSettings(),
   log: [],
+  drawnTileId: null,
   setState: (state, you) => set((prev) => ({ state, you: you ?? prev.you })),
   setLobby: (lobby) => set({ lobby }),
   setShuffling: (shuffling) => set({ shuffling }),
@@ -158,11 +168,30 @@ export const useGame = create<ClientGameStore>((set) => ({
       if (events.length === 0) return prev;
       const baseSeq = prev.log.length > 0 ? prev.log[prev.log.length - 1]!.seq + 1 : 0;
       const fresh = events.map((event, i) => ({ seq: baseSeq + i, event }));
-      const next = [...prev.log, ...fresh];
-      // Keep only the most recent LOG_CAPACITY entries.
-      return { log: next.length > LOG_CAPACITY ? next.slice(-LOG_CAPACITY) : next };
+      const log = [...prev.log, ...fresh];
+      const trimmed = log.length > LOG_CAPACITY ? log.slice(-LOG_CAPACITY) : log;
+
+      // Track the local seat's drawn tile from drew/discarded events so
+      // Hand.tsx can glow it. `you` may be null (spectator / lobby) — in
+      // that case nothing to update.
+      let drawnTileId = prev.drawnTileId;
+      if (typeof prev.you === 'number') {
+        for (const event of events) {
+          if (event.t === 'drew' && event.seat === prev.you) {
+            drawnTileId = tileId(event.tile);
+          } else if (event.t === 'discarded' && event.seat === prev.you) {
+            drawnTileId = null;
+          } else if (event.t === 'handStarted') {
+            // Fresh hand — old drawn-tile reference is stale.
+            drawnTileId = null;
+          }
+        }
+      }
+
+      return { log: trimmed, drawnTileId };
     }),
-  reset: () => set({ state: null, you: null, lobby: null, shuffling: false, log: [] }),
+  reset: () =>
+    set({ state: null, you: null, lobby: null, shuffling: false, log: [], drawnTileId: null }),
 }));
 
 export function playerForSeat(lobby: LobbyState | null, seat: Seat | null): PublicPlayer | null {
