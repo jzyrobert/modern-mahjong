@@ -5,6 +5,7 @@ import { StrictMode, useCallback, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { getDisplayName, getPlayerId, hydrateIdentity } from './identity.js';
 import { initNativeIfAvailable } from './native/init.js';
+import { playDiscard } from './native/sound.js';
 import { createSoloTransport } from './net/solo-transport.js';
 import { type Transport, createLanTransport, createOnlineTransport } from './net/transport.js';
 import { hydrateSettings, useGame } from './state/game.js';
@@ -84,6 +85,12 @@ function App() {
         case 'delta':
           setState(m.state);
           appendEvents(m.events);
+          // Audio feedback — the store gates internally on
+          // settings.sound + settings.animations so this is cheap when
+          // disabled.
+          for (const event of m.events) {
+            if (event.t === 'discarded') playDiscard();
+          }
           return;
         case 'lobby':
           setLobby(m);

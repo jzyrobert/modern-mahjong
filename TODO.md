@@ -91,7 +91,7 @@ The first design pass (cream-paper / sage-felt language, refined SVG tile faces,
 - [x] Game log buffer: ring-buffer the engine `Event[]` per `apply` in `useGame`; surfaced as a 📜 button in `TopBar` that opens a "Last actions" modal. _Shipped in #47._
 - [ ] Mobile bottom sheets: menu / 136-tile reference / players panels from the design's `app-mobile.jsx`. (Game log already accessible via the TopBar button on both shells.)
 - [ ] Per-tile discard sequence number on the engine so the mobile shared pool can sort chronologically without the design's interleaving heuristic.
-- [ ] Sound effects: tile-click chime, discard thud, win fanfare. Off by default; toggleable in Settings. Honor `prefers-reduced-motion` accordingly.
+- [x] Sound effects: discard thud (every `discarded` event) + win fanfare (C-major arpeggio on `lastResult.kind === 'win'`). Synthesised via Web Audio API — no asset bloat. Off by default; toggleable in Settings; suppressed when `settings.animations === false` (reduced-motion). _Shipped in #50._
 - [ ] Chat / emotes: 6-emote `ChatBar` (👍😎🎉🤔😅🔥) over the existing `ClientMessage.t === 'chat'` (already typed in `packages/protocol`).
 - [ ] Spectator viewer count (server-side): track non-seated connections in `MatchSession`, expose count to clients.
 

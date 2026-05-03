@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
+import { playWinFanfare } from '../native/sound.js';
 import { GOLD, HAIRLINE, INK, INK_3, PAPER_HI, RED, SANS, SERIF } from '../native/theme.js';
 import { nameForSeat, useGame } from '../state/game.js';
 
@@ -20,10 +21,12 @@ export function WinCelebration() {
   const [dismissed, setDismissed] = useState(false);
 
   // Each new resolution allocates a fresh `lastResult` reference. Reset the
-  // dismissed flag on each new win so a back-to-back win still celebrates.
+  // dismissed flag on each new win so a back-to-back win still celebrates,
+  // and play the fanfare exactly once per win.
   useEffect(() => {
     if (!result) return;
     setDismissed(false);
+    if (result.kind === 'win') playWinFanfare();
     const timer = setTimeout(() => setDismissed(true), DISMISS_MS);
     return () => clearTimeout(timer);
   }, [result]);
