@@ -94,6 +94,13 @@ export class MatchSession {
     2: emptySeat(),
     3: emptySeat(),
   };
+  /**
+   * Live connection ids of non-seated viewers — clients that joined when
+   * the room was full and are now watching. Drives the `viewers` count
+   * on every lobby broadcast. Not persisted in the snapshot — clients
+   * re-hello after a DO restart and start fresh.
+   */
+  private spectators: Set<string> = new Set();
   private readonly reconnectGraceMs: number;
   /**
    * The deadline currently armed via `scheduleAlarm`, or null if no
@@ -192,6 +199,7 @@ export class MatchSession {
         changed = true;
       }
     }
+    if (this.spectators.delete(connectionId)) changed = true;
     if (!changed) return [];
     const out: Outbound[] = [this.lobbyBroadcast()];
     out.push(...this.runBots());
@@ -259,9 +267,18 @@ export class MatchSession {
   ): Outbound[] {
     const seat = this.findOrAssignSeat(msg.playerId);
     if (seat === null) {
+      // Room is full — keep the connection alive as a spectator instead
+      // of closing it. The client gets a 'state' with you === 'spectator'
+      // (already in the protocol), and the viewer count on lobby
+      // broadcasts increments by one.
+      this.spectators.add(connectionId);
       return [
-        errMsg(connectionId, 'FULL', 'room is full'),
-        { kind: 'closeConnection', connectionId },
+        {
+          kind: 'sendTo',
+          connectionId,
+          msg: { t: 'state', state: this.state, you: 'spectator' },
+        },
+        this.lobbyBroadcast(),
       ];
     }
     this.seats[seat] = {
@@ -415,7 +432,13 @@ export class MatchSession {
     });
     return {
       kind: 'broadcast',
-      msg: { t: 'lobby', players, host: this.hostPlayerId, rules: this.state.rules },
+      msg: {
+        t: 'lobby',
+        players,
+        host: this.hostPlayerId,
+        rules: this.state.rules,
+        viewers: this.spectators.size,
+      },
     };
   }
 }

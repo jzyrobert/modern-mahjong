@@ -8,6 +8,8 @@ export interface LobbyState {
   players: PublicPlayer[];
   host: string | null;
   rules: RuleConfig;
+  /** Live spectator count from the server. Older servers omit this; defaults to 0. */
+  viewers?: number;
 }
 
 /** Felt skin id — drives the table-surface gradient hue + chroma. */

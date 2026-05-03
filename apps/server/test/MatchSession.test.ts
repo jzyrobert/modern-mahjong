@@ -54,14 +54,25 @@ describe('MatchSession — hello + lobby', () => {
     expect(seats).toEqual([0, 1, 2, 3]);
   });
 
-  it('rejects a fifth player when the room is full', () => {
+  it('admits a fifth player as a spectator when the room is full', () => {
     const s = new MatchSession();
     for (let i = 0; i < 4; i++) helloAs(s, `c${i}`, `p${i}`);
     const out = helloAs(s, 'c4', 'p4');
-    const errs = pickSends(out, 'c4').filter((m) => m.t === 'error');
-    expect(errs[0]?.t).toBe('error');
-    expect(errs[0]?.t === 'error' && errs[0].code).toBe('FULL');
-    expect(out.some((o) => o.kind === 'closeConnection')).toBe(true);
+    // No close, no FULL error — the connection stays open as a viewer.
+    expect(out.some((o) => o.kind === 'closeConnection')).toBe(false);
+    expect(stateYouFor(out, 'c4')).toBe('spectator');
+    // Lobby broadcast carries the live viewer count.
+    const lobby = pickBroadcasts(out).find((m) => m.t === 'lobby');
+    expect(lobby?.t === 'lobby' && lobby.viewers).toBe(1);
+  });
+
+  it('decrements viewers when a spectator disconnects', () => {
+    const s = new MatchSession();
+    for (let i = 0; i < 4; i++) helloAs(s, `c${i}`, `p${i}`);
+    helloAs(s, 'c4', 'p4');
+    const out = s.detachConnection('c4');
+    const lobby = pickBroadcasts(out).find((m) => m.t === 'lobby');
+    expect(lobby?.t === 'lobby' && lobby.viewers).toBe(0);
   });
 });
 
@@ -176,11 +187,13 @@ describe('MatchSession — disconnect + reconnect grace', () => {
     helloAs(s, 'c2', 'p2');
     helloAs(s, 'c3', 'p3');
     s.detachConnection('c0', 0);
-    // Before grace expiry the room is full to new players (only seat 0 is auto-bot held).
+    // Before grace expiry the room is full to new players — they connect
+    // as spectators (only seat 0 is auto-bot held for p0's reconnect).
     const earlyOut = helloAs(s, 'cEarly', 'pEarly');
-    const earlyErrs = pickSends(earlyOut, 'cEarly').filter((m) => m.t === 'error');
-    expect(earlyErrs[0]?.t === 'error' && earlyErrs[0].code).toBe('FULL');
-    // After grace expires, p0's seat is reclaimable.
+    expect(stateYouFor(earlyOut, 'cEarly')).toBe('spectator');
+    // After grace expires, p0's seat is reclaimable. cEarly already has a
+    // live connection (as a spectator) so they need to detach + re-hello
+    // to take the freed seat — but a fresh connection just claims it.
     s.fireAlarm(2_000);
     const lateOut = helloAs(s, 'cLate', 'pLate');
     expect(stateYouFor(lateOut, 'cLate')).toBe(0);

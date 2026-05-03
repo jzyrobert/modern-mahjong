@@ -30,7 +30,19 @@ export type ClientMessage =
 export type ServerMessage =
   | { t: 'state'; state: GameState; you: Seat | 'spectator' }
   | { t: 'delta'; events: Event[]; state: GameState }
-  | { t: 'lobby'; players: PublicPlayer[]; host: string | null; rules: RuleConfig }
+  | {
+      t: 'lobby';
+      players: PublicPlayer[];
+      host: string | null;
+      rules: RuleConfig;
+      /**
+       * Live count of non-seated spectator connections — clients without
+       * a seat (joined a full room or explicitly opted in as observer).
+       * Defaults to 0 when the server hasn't been upgraded; older clients
+       * just ignore the field.
+       */
+      viewers?: number;
+    }
   | { t: 'error'; code: string; detail?: string }
   | { t: 'pong' }
   /**
