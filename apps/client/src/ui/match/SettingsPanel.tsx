@@ -235,7 +235,7 @@ function SettingsGrid({
           <option value={60000}>60s</option>
         </select>
       </SettingRow>
-      <SettingRow label="Sound" hint="Tile clicks &amp; chimes (coming soon)">
+      <SettingRow label="Sound" hint="Discard thuds &amp; win fanfare">
         <Toggle on={settings.sound} onChange={(v) => onPatch({ sound: v })} />
       </SettingRow>
     </div>
