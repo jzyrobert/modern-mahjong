@@ -211,7 +211,13 @@ function SettingsGrid({
       </SettingRow>
       <SettingRow
         label="Turn timer"
-        hint={isHost ? 'Seconds per turn (host only)' : `${turnTimeoutMs / 1000}s — host only`}
+        hint={
+          isHost
+            ? 'Seconds per turn (host only)'
+            : turnTimeoutMs === 0
+              ? 'Infinite — host only'
+              : `${turnTimeoutMs / 1000}s — host only`
+        }
       >
         <select
           value={turnTimeoutMs}
@@ -233,6 +239,7 @@ function SettingsGrid({
           <option value={20000}>20s</option>
           <option value={30000}>30s</option>
           <option value={60000}>60s</option>
+          <option value={0}>∞ Infinite</option>
         </select>
       </SettingRow>
       <SettingRow label="Sound" hint="Discard thuds &amp; win fanfare">

@@ -9,9 +9,19 @@ interface RulePanelProps {
   onAction: (a: Action) => void;
 }
 
+/**
+ * Sentinel for "no turn timer". The engine doesn't currently fire on
+ * turn timeout (only the claim window has an alarm) — this is a
+ * preference flag the UI exposes, and any future server-side timeout
+ * loop should treat 0 as "skip the alarm entirely".
+ */
+const TURN_TIMER_OFF = 0;
+const TURN_TIMER_DEFAULT_MS = 20_000;
+
 export function RulePanel({ rules, isHost, onAction }: RulePanelProps) {
   const set = (patch: Partial<RuleConfig>) => onAction({ t: 'setRules', rules: patch });
   const disabled = !isHost;
+  const turnTimerOff = rules.turnTimeoutMs === TURN_TIMER_OFF;
 
   return (
     <fieldset
@@ -61,10 +71,22 @@ export function RulePanel({ rules, isHost, onAction }: RulePanelProps) {
           <span>Allow 十三幺 (thirteen orphans)</span>
         </label>
 
+        <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input
+            type="checkbox"
+            disabled={disabled}
+            checked={turnTimerOff}
+            onChange={(e) =>
+              set({ turnTimeoutMs: e.target.checked ? TURN_TIMER_OFF : TURN_TIMER_DEFAULT_MS })
+            }
+          />
+          <span>No turn timer (∞ — let players take their time)</span>
+        </label>
+
         <SecondsInput
           label="Turn timeout"
-          disabled={disabled}
-          ms={rules.turnTimeoutMs}
+          disabled={disabled || turnTimerOff}
+          ms={turnTimerOff ? TURN_TIMER_DEFAULT_MS : rules.turnTimeoutMs}
           min={5}
           max={120}
           onCommit={(ms) => set({ turnTimeoutMs: ms })}
