@@ -21,6 +21,7 @@ function App() {
   const setState = useGame((s) => s.setState);
   const setLobby = useGame((s) => s.setLobby);
   const appendEvents = useGame((s) => s.appendEvents);
+  const pushChat = useGame((s) => s.pushChat);
   const reset = useGame((s) => s.reset);
   const state = useGame((s) => s.state);
   const animationsEnabled = useGame((s) => s.settings.animations);
@@ -100,13 +101,23 @@ function App() {
           return;
         case 'pong':
           return;
+        case 'chat':
+          pushChat({ from: m.from, text: m.text, ts: m.ts });
+          return;
       }
     });
-  }, [transport, setState, setLobby, appendEvents]);
+  }, [transport, setState, setLobby, appendEvents, pushChat]);
 
   const onAction = useCallback(
     (action: Action) => {
       transport?.send({ t: 'action', action });
+    },
+    [transport],
+  );
+
+  const onChat = useCallback(
+    (text: string) => {
+      transport?.send({ t: 'chat', text });
     },
     [transport],
   );
@@ -121,7 +132,7 @@ function App() {
       {!state ? (
         <Lobby onJoinOnline={onJoinOnline} onJoinLan={onJoinLan} onJoinSolo={onJoinSolo} />
       ) : (
-        <Match onAction={onAction} matchCode={matchCode} onLeave={onLeave} />
+        <Match onAction={onAction} onChat={onChat} matchCode={matchCode} onLeave={onLeave} />
       )}
       <ShuffleOverlay />
       <DiceCeremony />

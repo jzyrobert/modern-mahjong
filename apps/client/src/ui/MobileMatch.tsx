@@ -18,6 +18,7 @@ import { useGame } from '../state/game.js';
 import { ClaimBar } from './ClaimBar.js';
 import { Hand } from './Hand.js';
 import { Tile } from './Tile.js';
+import { ChatBar } from './match/ChatBar.js';
 import { GameStatusBar } from './match/GameStatusBar.js';
 import { OppHandStrip } from './match/OppHandStrip.js';
 import { SharedDiscardPool } from './match/SharedDiscardPool.js';
@@ -27,6 +28,7 @@ import { FELT_SKINS } from './match/skins.js';
 
 interface MobileMatchProps {
   onAction: (action: Action) => void;
+  onChat: (text: string) => void;
   matchCode: string | null;
   onLeave: () => void;
   sortMode: SortMode;
@@ -56,6 +58,7 @@ interface SeatPlacement {
  */
 export function MobileMatch({
   onAction,
+  onChat,
   matchCode,
   onLeave,
   sortMode,
@@ -192,6 +195,18 @@ export function MobileMatch({
           onSettings={onOpenSettings}
           onLog={onOpenLog}
         />
+      </div>
+
+      <div
+        style={{
+          position: 'absolute',
+          bottom: 6,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 7,
+        }}
+      >
+        <ChatBar onSend={onChat} />
       </div>
 
       <div

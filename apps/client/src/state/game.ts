@@ -146,14 +146,35 @@ interface ClientGameStore {
    * touched the order yet — Hand falls back to engine order.
    */
   manualOrder: number[];
+  /**
+   * Recent chat / emote messages — tagged with sender seat and an
+   * incrementing local seq so React keys stay stable. Cleared on reset.
+   * The `ChatBubbles` overlay reads this and auto-dismisses each entry
+   * after a short window.
+   */
+  chats: ChatEntry[];
   setState: (state: GameState, you?: Seat | 'spectator') => void;
   setLobby: (l: LobbyState) => void;
   setShuffling: (shuffling: boolean) => void;
   setSettings: (patch: Partial<UserSettings>) => void;
   setManualOrder: (ids: number[]) => void;
   appendEvents: (events: EngineEvent[]) => void;
+  pushChat: (entry: { from: Seat | 'spectator'; text: string; ts: number }) => void;
+  dismissChat: (seq: number) => void;
   reset: () => void;
 }
+
+export interface ChatEntry {
+  /** Local monotonic counter — used as the React key. */
+  seq: number;
+  /** Server-tagged sender. */
+  from: Seat | 'spectator';
+  text: string;
+  /** Server timestamp. */
+  ts: number;
+}
+
+const CHAT_CAPACITY = 24;
 
 export const useGame = create<ClientGameStore>((set) => ({
   state: null,
@@ -164,6 +185,7 @@ export const useGame = create<ClientGameStore>((set) => ({
   log: [],
   drawnTileId: null,
   manualOrder: [],
+  chats: [],
   setState: (state, you) => set((prev) => ({ state, you: you ?? prev.you })),
   setLobby: (lobby) => set({ lobby }),
   setShuffling: (shuffling) => set({ shuffling }),
@@ -174,6 +196,13 @@ export const useGame = create<ClientGameStore>((set) => ({
       return { settings: next };
     }),
   setManualOrder: (ids) => set({ manualOrder: [...ids] }),
+  pushChat: (entry) =>
+    set((prev) => {
+      const seq = prev.chats.length > 0 ? prev.chats[prev.chats.length - 1]!.seq + 1 : 0;
+      const next = [...prev.chats, { seq, ...entry }];
+      return { chats: next.length > CHAT_CAPACITY ? next.slice(-CHAT_CAPACITY) : next };
+    }),
+  dismissChat: (seq) => set((prev) => ({ chats: prev.chats.filter((c) => c.seq !== seq) })),
   appendEvents: (events) =>
     set((prev) => {
       if (events.length === 0) return prev;
@@ -222,6 +251,7 @@ export const useGame = create<ClientGameStore>((set) => ({
       log: [],
       drawnTileId: null,
       manualOrder: [],
+      chats: [],
     }),
 }));
 

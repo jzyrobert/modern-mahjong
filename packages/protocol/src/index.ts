@@ -32,7 +32,14 @@ export type ServerMessage =
   | { t: 'delta'; events: Event[]; state: GameState }
   | { t: 'lobby'; players: PublicPlayer[]; host: string | null; rules: RuleConfig }
   | { t: 'error'; code: string; detail?: string }
-  | { t: 'pong' };
+  | { t: 'pong' }
+  /**
+   * Server-broadcast chat / emote. `from` is the sender's seat, or
+   * 'spectator' if they're connected without a seat. `ts` is the server
+   * clock at receive — clients use it to scope auto-dismissal and to
+   * order overlapping bubbles deterministically.
+   */
+  | { t: 'chat'; from: Seat | 'spectator'; text: string; ts: number };
 
 export const helloSchema = z.object({
   t: z.literal('hello'),
