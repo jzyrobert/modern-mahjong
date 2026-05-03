@@ -83,7 +83,6 @@ export function Match({ onAction, onChat, matchCode, onLeave }: MatchProps) {
     return (
       <div style={{ padding: 24, color: INK, fontFamily: SANS, maxWidth: 560 }}>
         <h2>Lobby</h2>
-        <p>You are seated as seat {seat}. Hit start when everyone has joined.</p>
         <RulePanel rules={state.rules} isHost={isHost} onAction={onAction} />
         <button
           type="button"
