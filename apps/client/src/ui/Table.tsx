@@ -165,18 +165,45 @@ export function Table({
               score={scoreboard[p.seat]}
               isActive={turn === p.seat}
             />
-            <div
-              style={
-                p.wrapTransform ? { transform: p.wrapTransform, whiteSpace: 'nowrap' } : undefined
-              }
-            >
+            {p.wrapTransform ? (
+              // Reserve the *post-rotation* bounding box so the badge
+              // above and the meld strip below can't sit on top of the
+              // rotated tile rows. Pre-rotation the inner column is
+              // ~14 hand tiles wide × (wall row + hand row) tall — after
+              // the 90° rotation those swap, so the layout box width
+              // tracks the row count's height and the layout box height
+              // tracks the tile count's width.
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: 'calc(2 * max(22px, 3.6vmin) + 8px)',
+                  height: 'calc(14 * max(16px, 2.6vmin) + 13 * 4px)',
+                }}
+              >
+                <div style={{ transform: p.wrapTransform, whiteSpace: 'nowrap' }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: 4,
+                    }}
+                  >
+                    {wallTile}
+                    {handTile}
+                  </div>
+                </div>
+              </div>
+            ) : (
               <div
                 style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}
               >
-                {p.wrapTransform ? wallTile : handTile}
-                {p.wrapTransform ? handTile : wallTile}
+                {handTile}
+                {wallTile}
               </div>
-            </div>
+            )}
             {meldStrip}
           </div>
         );
