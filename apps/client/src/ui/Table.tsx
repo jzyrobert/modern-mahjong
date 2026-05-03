@@ -128,8 +128,19 @@ export function Table({
     >
       {opponents.map((p) => {
         const seatWind = seatWindFor(dealer, p.seat);
+        // Opponent hands use the wall's smaller tile scale (≈half the
+        // user's hand) so 13–14 face-down tiles fit even when the window
+        // shrinks. Without this override the floor of `max(22px, 3.6vmin)`
+        // pushes the rotated row past the felt edge on narrower viewports.
         const handTile = (
-          <Hand tiles={hands[p.seat]} faceDown rotate={p.wrapTransform ? 0 : p.rotate} />
+          <div
+            style={{
+              ['--tile-w' as string]: 'max(16px, 2.6vmin)',
+              ['--tile-h' as string]: 'max(22px, 3.6vmin)',
+            }}
+          >
+            <Hand tiles={hands[p.seat]} faceDown rotate={p.wrapTransform ? 0 : p.rotate} />
+          </div>
         );
         const wallTile = <Wall tiles={wallSlices[p.seat]} rows={1} showCount={false} />;
         const meldStrip = <MeldStrip orientation={p.position === 'top' ? 'horiz' : 'vert'} />;
