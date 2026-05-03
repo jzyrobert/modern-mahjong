@@ -1,19 +1,35 @@
-import { type Tile as MTile, type Seat, acrossSeat, nextSeat, prevSeat } from '@mahjong/game-logic';
+import {
+  type Tile as MTile,
+  type Seat,
+  WINDS,
+  type Wind,
+  acrossSeat,
+  nextSeat,
+  prevSeat,
+} from '@mahjong/game-logic';
 import type { ReactNode } from 'react';
+import type { LobbyState } from '../state/game.js';
 import { DiscardPile } from './DiscardPile.js';
 import { Hand } from './Hand.js';
 import { Wall } from './Wall.js';
+import { MeldStrip } from './match/MeldStrip.js';
+import { PlayerBadge } from './match/PlayerBadge.js';
 
 interface TableProps {
   /** The viewer's seat — placed at the bottom. */
   mySeat: Seat;
+  /** Dealer seat from the engine — drives seat-wind rotation. */
+  dealer: Seat;
+  /** Seat whose turn it currently is (for the active-turn glow). */
+  turn: Seat;
+  /** Cumulative scores per seat (`state.scoreboard`). */
+  scoreboard: Record<Seat, number>;
   hands: Record<Seat, MTile[]>;
   discards: Record<Seat, MTile[]>;
-  /**
-   * The live wall split per seat (engine `state.wall` distributed by index
-   * modulo 4, so each seat's slice keeps the draw order stable).
-   */
+  /** Live wall split per seat (engine `state.wall` distributed by index modulo 4). */
   wallSlices: Record<Seat, readonly MTile[]>;
+  /** Lobby snapshot — drives PlayerBadge name + initials. */
+  lobby: LobbyState | null;
   ownHandClickable?: ((t: MTile) => void) | undefined;
   /**
    * When set, the user's wall has a pulsing first tile that triggers this
@@ -25,6 +41,7 @@ interface TableProps {
 
 interface SeatPosition {
   seat: Seat;
+  position: 'bottom' | 'right' | 'top' | 'left';
   /** CSS Grid (column, row) in the outer 3×3 board grid. */
   outer: [number, number];
   /** CSS Grid position within the inner discards grid. */
@@ -33,16 +50,19 @@ interface SeatPosition {
   rotate: number;
   /** Outer-grid alignment hints. */
   align: { justifySelf?: string; alignSelf?: string };
-  label: string;
   /** Wrapping rotation transform for the opponent's Hand row. */
   wrapTransform?: string;
 }
 
 export function Table({
   mySeat,
+  dealer,
+  turn,
+  scoreboard,
   hands,
   discards,
   wallSlices,
+  lobby,
   ownHandClickable,
   onDrawNext,
   centerHud,
@@ -63,31 +83,29 @@ export function Table({
         // forcing a fixed 560 that overflows the viewport.
         minHeight: 'min(620px, 80vh)',
         padding: 'clamp(6px, 1.4vmin, 16px)',
-        background: 'radial-gradient(ellipse at center, #1f3b2c 0%, #0e1c14 100%)',
-        borderRadius: 12,
-        color: '#eee',
+        // Sage felt with a cream inner ring and gold outer hairline — ported
+        // from /tmp/design/design/app.jsx's central felt frame.
+        background: `radial-gradient(ellipse at 50% 40%,
+          oklch(0.5 0.06 145) 0%,
+          oklch(0.4 0.06 145) 55%,
+          oklch(0.32 0.06 150) 100%)`,
+        boxShadow: `
+          inset 0 0 0 5px oklch(0.3 0.06 150),
+          inset 0 0 0 10px oklch(0.78 0.14 80 / 0.45),
+          inset 0 0 60px rgba(0,0,0,0.18),
+          0 12px 32px -8px rgba(40,30,20,0.3)
+        `,
+        borderRadius: 24,
+        color: 'oklch(0.95 0.02 85)',
       }}
     >
       {opponents.map((p) => {
-        // For left/right opponents (the ones that get a `wrapTransform`),
-        // put the Wall as the FIRST child of the column-flex so that after
-        // the wrap rotation it lands on the outer edge of the cell —
-        // i.e., closer to that seat. Hand sits to the inside, closer to
-        // the central discard area. For the top opponent (no
-        // wrapTransform), Hand stays at the top of the column so it's
-        // visually closest to the top of the screen (the across seat's
-        // own edge), with Wall between it and the discards.
-        //
-        // For face-down opponent hands, also drop the per-tile rotate when
-        // a wrapTransform is set — the wrap already rotates the tiles
-        // visually, and the per-tile rotation on top of that flips them
-        // into a portrait-but-upside-down shape from the opponent's POV.
-        // Top opponent has no wrap and still needs `rotate={180}` to read
-        // upright.
+        const seatWind = seatWindFor(dealer, p.seat);
         const handTile = (
           <Hand tiles={hands[p.seat]} faceDown rotate={p.wrapTransform ? 0 : p.rotate} />
         );
         const wallTile = <Wall tiles={wallSlices[p.seat]} rows={1} showCount={false} />;
+        const meldStrip = <MeldStrip orientation={p.position === 'top' ? 'horiz' : 'vert'} />;
         return (
           <div
             key={p.seat}
@@ -98,10 +116,17 @@ export function Table({
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              gap: 4,
+              gap: 6,
             }}
           >
-            <SeatLabel label={p.label} />
+            <PlayerBadge
+              seat={p.seat}
+              position={p.position}
+              seatWind={seatWind}
+              lobby={lobby}
+              score={scoreboard[p.seat]}
+              isActive={turn === p.seat}
+            />
             <div
               style={
                 p.wrapTransform ? { transform: p.wrapTransform, whiteSpace: 'nowrap' } : undefined
@@ -114,6 +139,7 @@ export function Table({
                 {p.wrapTransform ? handTile : wallTile}
               </div>
             </div>
+            {meldStrip}
           </div>
         );
       })}
@@ -126,8 +152,6 @@ export function Table({
           gridTemplateColumns: 'auto 1fr auto',
           gridTemplateRows: 'auto 1fr auto',
           gap: 'clamp(4px, 0.8vmin, 8px)',
-          background: '#0d1812aa',
-          borderRadius: 10,
           padding: 'clamp(6px, 1.2vmin, 12px)',
           minHeight: 'min(220px, 38vh)',
         }}
@@ -150,8 +174,6 @@ export function Table({
             gridRow: 2,
             alignSelf: 'center',
             justifySelf: 'center',
-            fontSize: 12,
-            opacity: 0.75,
             textAlign: 'center',
           }}
         >
@@ -167,59 +189,72 @@ export function Table({
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          gap: 4,
+          gap: 6,
         }}
       >
         <Wall tiles={wallSlices[me.seat]} rows={1} onDrawNext={onDrawNext} />
-        <SeatLabel label={me.label} />
+        <PlayerBadge
+          seat={me.seat}
+          position="bottom"
+          seatWind={seatWindFor(dealer, me.seat)}
+          lobby={lobby}
+          score={scoreboard[me.seat]}
+          isActive={turn === me.seat}
+        />
         <Hand tiles={hands[me.seat]} onTileClick={ownHandClickable} />
       </div>
     </div>
   );
 }
 
+/**
+ * Seat wind derives from dealer position: dealer is East, then S/W/N going
+ * counter-clockwise around the table. Same `nextSeat` ordering the engine
+ * uses for turn rotation.
+ */
+function seatWindFor(dealer: Seat, seat: Seat): Wind {
+  const offset = (seat - dealer + 4) % 4;
+  return WINDS[offset]!;
+}
+
 function layoutFor(mySeat: Seat): [SeatPosition, SeatPosition, SeatPosition, SeatPosition] {
   return [
     {
       seat: mySeat,
+      position: 'bottom',
       outer: [2, 3],
       inner: [2, 3],
       rotate: 0,
       align: { justifySelf: 'center' },
-      label: 'You',
     },
     {
       seat: nextSeat(mySeat),
+      position: 'right',
       outer: [3, 2],
       inner: [3, 2],
       // Right seat: top of each tile must point LEFT (toward center) so
       // the seat reads them upright. CSS rotate is clockwise, so -90.
       rotate: -90,
       align: { alignSelf: 'center', justifySelf: 'end' },
-      label: `Seat ${nextSeat(mySeat)}`,
       wrapTransform: 'rotate(-90deg)',
     },
     {
       seat: acrossSeat(mySeat),
+      position: 'top',
       outer: [2, 1],
       inner: [2, 1],
       rotate: 180,
       align: { justifySelf: 'center' },
-      label: `Seat ${acrossSeat(mySeat)} (across)`,
     },
     {
       seat: prevSeat(mySeat),
+      position: 'left',
       outer: [1, 2],
       inner: [1, 2],
       // Left seat: top of each tile must point RIGHT (toward center).
       rotate: 90,
       align: { alignSelf: 'center' },
-      label: `Seat ${prevSeat(mySeat)}`,
       wrapTransform: 'rotate(90deg)',
     },
   ];
-}
-
-function SeatLabel({ label }: { label: string }) {
-  return <div style={{ fontSize: 11, opacity: 0.6 }}>{label}</div>;
 }

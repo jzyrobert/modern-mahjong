@@ -15,48 +15,61 @@ import { ShuffleOverlay } from './ui/ShuffleOverlay.js';
 
 function App() {
   const [transport, setTransport] = useState<Transport | null>(null);
+  const [matchCode, setMatchCode] = useState<string | null>(null);
   const setState = useGame((s) => s.setState);
   const setLobby = useGame((s) => s.setLobby);
+  const reset = useGame((s) => s.reset);
   const state = useGame((s) => s.state);
 
-  const swap = useCallback((next: Transport) => {
+  const swap = useCallback((next: Transport, code: string | null) => {
     setTransport((prev) => {
       prev?.close();
       return next;
     });
+    setMatchCode(code);
   }, []);
 
   const onJoinOnline = useCallback(
-    (matchCode: string) => {
+    (code: string) => {
       swap(
         createOnlineTransport({
           host: import.meta.env.VITE_SERVER_URL ?? 'http://localhost:8787',
-          matchCode,
+          matchCode: code,
           playerId: getPlayerId(),
           displayName: getDisplayName(),
         }),
+        code,
       );
     },
     [swap],
   );
 
   const onJoinLan = useCallback(
-    (hostUrl: string, matchCode: string) => {
+    (hostUrl: string, code: string) => {
       swap(
         createLanTransport({
           hostUrl,
-          matchCode,
+          matchCode: code,
           playerId: getPlayerId(),
           displayName: getDisplayName(),
         }),
+        code,
       );
     },
     [swap],
   );
 
   const onJoinSolo = useCallback(() => {
-    swap(createSoloTransport({ playerId: getPlayerId(), displayName: getDisplayName() }));
+    swap(createSoloTransport({ playerId: getPlayerId(), displayName: getDisplayName() }), 'SOLO');
   }, [swap]);
+
+  const onLeave = useCallback(() => {
+    transport?.send({ t: 'leave' });
+    transport?.close();
+    setTransport(null);
+    setMatchCode(null);
+    reset();
+  }, [transport, reset]);
 
   useEffect(() => {
     if (!transport) return;
@@ -92,7 +105,7 @@ function App() {
       {!state ? (
         <Lobby onJoinOnline={onJoinOnline} onJoinLan={onJoinLan} onJoinSolo={onJoinSolo} />
       ) : (
-        <Match onAction={onAction} />
+        <Match onAction={onAction} matchCode={matchCode} onLeave={onLeave} />
       )}
       <ShuffleOverlay />
       <DiceCeremony />
