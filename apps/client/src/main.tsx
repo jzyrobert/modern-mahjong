@@ -20,6 +20,7 @@ function App() {
   const setLobby = useGame((s) => s.setLobby);
   const reset = useGame((s) => s.reset);
   const state = useGame((s) => s.state);
+  const animationsEnabled = useGame((s) => s.settings.animations);
 
   const swap = useCallback((next: Transport, code: string | null) => {
     setTransport((prev) => {
@@ -100,8 +101,13 @@ function App() {
     [transport],
   );
 
+  // `reducedMotion="user"` honors the OS-level prefers-reduced-motion; when
+  // the user explicitly turned animations off in SettingsPanel we force it
+  // to `'always'` so motion is suppressed regardless of OS preference.
+  const reducedMotion = animationsEnabled ? 'user' : 'always';
+
   return (
-    <>
+    <MotionConfig reducedMotion={reducedMotion}>
       {!state ? (
         <Lobby onJoinOnline={onJoinOnline} onJoinLan={onJoinLan} onJoinSolo={onJoinSolo} />
       ) : (
@@ -109,7 +115,7 @@ function App() {
       )}
       <ShuffleOverlay />
       <DiceCeremony />
-    </>
+    </MotionConfig>
   );
 }
 
@@ -122,9 +128,7 @@ if (root) {
   hydrateIdentity().finally(() => {
     createRoot(root).render(
       <StrictMode>
-        <MotionConfig reducedMotion="user">
-          <App />
-        </MotionConfig>
+        <App />
       </StrictMode>,
     );
   });

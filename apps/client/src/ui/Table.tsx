@@ -90,11 +90,13 @@ export function Table({
         minHeight: 'min(620px, 80vh)',
         padding: 'clamp(6px, 1.4vmin, 16px)',
         // Sage felt with a cream inner ring and gold outer hairline — ported
-        // from /tmp/design/design/app.jsx's central felt frame.
+        // from /tmp/design/design/app.jsx's central felt frame. The two
+        // gradient stops fall back to sage if the felt-skin CSS vars
+        // haven't been set by SettingsPanel (e.g. running outside a Match).
         background: `radial-gradient(ellipse at 50% 40%,
-          oklch(0.5 0.06 145) 0%,
-          oklch(0.4 0.06 145) 55%,
-          oklch(0.32 0.06 150) 100%)`,
+          var(--felt-1, oklch(0.5 0.06 145)) 0%,
+          var(--felt-1, oklch(0.4 0.06 145)) 55%,
+          var(--felt-2, oklch(0.32 0.06 150)) 100%)`,
         boxShadow: `
           inset 0 0 0 5px oklch(0.3 0.06 150),
           inset 0 0 0 10px oklch(0.78 0.14 80 / 0.45),
