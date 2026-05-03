@@ -73,6 +73,14 @@ interface SeatPosition {
   wrapTransform?: string;
 }
 
+/**
+ * Visual spacing between the hand row (outer, near the felt edge) and
+ * the wall row (inner, flanking the discard pool). Larger than the 4px
+ * we used to ship so each opponent's wall sits clearly inside the
+ * playing area instead of pinned to the edge alongside the hand.
+ */
+const INNER_GAP_RAW = 'clamp(40px, 8vmin, 80px)';
+
 export function Table({
   mySeat,
   dealer,
@@ -169,16 +177,16 @@ export function Table({
               // Reserve the *post-rotation* bounding box so the badge
               // above and the meld strip below can't sit on top of the
               // rotated tile rows. Pre-rotation the inner column is
-              // ~14 hand tiles wide × (wall row + hand row) tall — after
-              // the 90° rotation those swap, so the layout box width
-              // tracks the row count's height and the layout box height
-              // tracks the tile count's width.
+              // ~14 hand tiles wide × (wall row + hand row + INNER_GAP) —
+              // after the 90° rotation those swap. The wall sits on the
+              // inner side of the rotation (toward the discard pool); the
+              // hand stays at the outer edge.
               <div
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  width: 'calc(2 * max(22px, 3.6vmin) + 8px)',
+                  width: `calc(2 * max(22px, 3.6vmin) + ${INNER_GAP_RAW})`,
                   height: 'calc(14 * max(16px, 2.6vmin) + 13 * 4px)',
                 }}
               >
@@ -188,7 +196,7 @@ export function Table({
                       display: 'flex',
                       flexDirection: 'column',
                       alignItems: 'center',
-                      gap: 4,
+                      gap: INNER_GAP_RAW,
                     }}
                   >
                     {wallTile}
@@ -198,7 +206,12 @@ export function Table({
               </div>
             ) : (
               <div
-                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: INNER_GAP_RAW,
+                }}
               >
                 {handTile}
                 {wallTile}
@@ -257,7 +270,9 @@ export function Table({
           gap: 6,
         }}
       >
-        <Wall tiles={wallSlices[me.seat]} rows={1} onDrawNext={onDrawNext} />
+        <div style={{ marginBottom: INNER_GAP_RAW }}>
+          <Wall tiles={wallSlices[me.seat]} rows={1} onDrawNext={onDrawNext} />
+        </div>
         <PlayerBadge
           seat={me.seat}
           position="bottom"
