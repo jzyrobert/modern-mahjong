@@ -131,15 +131,17 @@ export function MobileMatch({
 
   const placements = layoutFor(seat, state.dealer);
   const opponents = placements.filter((p) => p.position !== 'bottom');
-  const me = placements.find((p) => p.position === 'bottom')!;
 
-  // Map per-seat discards onto visual positions for the SharedDiscardPool.
-  const discardsByPosition: Record<Position, readonly MTile[]> = {
-    bottom: state.discards[me.seat],
-    right: state.discards[placements.find((p) => p.position === 'right')!.seat],
-    top: state.discards[placements.find((p) => p.position === 'top')!.seat],
-    left: state.discards[placements.find((p) => p.position === 'left')!.seat],
+  // Map seat numbers to visual positions for the SharedDiscardPool's
+  // per-seat colour underlines.
+  const seatToPosition: Record<Seat, Position> = {
+    0: 'bottom',
+    1: 'bottom',
+    2: 'bottom',
+    3: 'bottom',
   };
+  for (const p of placements) seatToPosition[p.seat] = p.position;
+
   // Highlight the live discard only while a claim is on offer; outside
   // `awaitingClaims` the discard already resolved and the halo would be
   // stale.
@@ -240,7 +242,11 @@ export function MobileMatch({
           transform: 'translate(-50%, -50%)',
         }}
       >
-        <SharedDiscardPool discardsByPosition={discardsByPosition} latestId={latestId} />
+        <SharedDiscardPool
+          discardOrder={state.discardOrder}
+          seatToPosition={seatToPosition}
+          latestId={latestId}
+        />
       </div>
 
       <div

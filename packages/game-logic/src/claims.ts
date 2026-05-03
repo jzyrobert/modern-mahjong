@@ -165,6 +165,12 @@ export function applyClaim(
   if (popIdx >= 0) fromPile.splice(popIdx, 1);
   const newDiscards = { ...state.discards, [from]: fromPile };
 
+  // Same pop on the chronological log so the mobile shared pool stays
+  // accurate.
+  const newDiscardOrder = [...state.discardOrder];
+  const orderIdx = lastIndex(newDiscardOrder, (e) => e.from === from && sameFace(e.tile, tile));
+  if (orderIdx >= 0) newDiscardOrder.splice(orderIdx, 1);
+
   return {
     ...state,
     phase: 'turn',
@@ -174,6 +180,7 @@ export function applyClaim(
     hands: newHands,
     melds: newMelds,
     discards: newDiscards,
+    discardOrder: newDiscardOrder,
     lastDiscard: undefined,
   };
 }

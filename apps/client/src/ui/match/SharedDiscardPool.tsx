@@ -1,35 +1,37 @@
-import { type Tile as MTile, tileId } from '@mahjong/game-logic';
+import { type Tile as MTile, type Seat, tileId } from '@mahjong/game-logic';
 import { SEAT_COLOR } from '../../native/theme.js';
 import { Tile } from '../Tile.js';
 
 type Position = 'bottom' | 'right' | 'top' | 'left';
 
 interface SharedDiscardPoolProps {
-  /** Discards keyed by visual seat position (driven by the user's mySeat). */
-  discardsByPosition: Record<Position, readonly MTile[]>;
   /**
-   * The most recently discarded tile id, used to highlight the latest
-   * tile while the table is in `awaitingClaims` (so claimers can see it
-   * across the felt).
+   * Chronological discard log from `state.discardOrder` — each entry tags
+   * the tile with the seat that pitched it. The mobile pool renders these
+   * in true turn order with a per-seat underline keyed off `SEAT_COLOR`.
+   */
+  discardOrder: readonly { tile: MTile; from: Seat }[];
+  /** Translates engine seat (0-3) to visual position relative to the user. */
+  seatToPosition: Record<Seat, Position>;
+  /**
+   * The most recently discarded tile id, used to highlight the latest tile
+   * while the table is in `awaitingClaims` (so claimers can see it across
+   * the felt).
    */
   latestId: number | null;
 }
 
 /**
- * Combined chronological-ish discard pool used by the mobile shell. Each
- * tile is laid out in a small grid with a per-seat colour underline
- * matching the discarder's `SEAT_COLOR`. Ported from
+ * Combined chronological discard pool used by the mobile shell. Reads the
+ * engine's `state.discardOrder` log so tiles render in true turn order
+ * (not the previous interleaving heuristic). Ported from
  * `/tmp/design/design/app-mobile.jsx::SharedDiscardPool`.
- *
- * Note: a true chronological order would require a per-tile sequence
- * number from the engine. The interleaving heuristic here cycles
- * `right → top → left → bottom` per tile-index across the four arrays —
- * matches the design and is "close enough" while the engine doesn't tag
- * discards with an absolute turn number. Real ordering is queued under
- * "Per-tile discard sequence number" in TODO.md → Design port follow-ups.
  */
-export function SharedDiscardPool({ discardsByPosition, latestId }: SharedDiscardPoolProps) {
-  const pool = buildSharedPool(discardsByPosition);
+export function SharedDiscardPool({
+  discardOrder,
+  seatToPosition,
+  latestId,
+}: SharedDiscardPoolProps) {
   return (
     <div
       style={{
@@ -45,10 +47,11 @@ export function SharedDiscardPool({ discardsByPosition, latestId }: SharedDiscar
         justifyContent: 'center',
       }}
     >
-      {pool.slice(-24).map((entry) => {
+      {discardOrder.slice(-24).map((entry) => {
         const id = tileId(entry.tile);
         const isLatest = id === latestId;
-        const seatColor = SEAT_COLOR[entry.position];
+        const position = seatToPosition[entry.from];
+        const seatColor = SEAT_COLOR[position];
         return (
           <div
             key={id}
@@ -80,23 +83,4 @@ export function SharedDiscardPool({ discardsByPosition, latestId }: SharedDiscar
       })}
     </div>
   );
-}
-
-interface PoolEntry {
-  tile: MTile;
-  position: Position;
-}
-
-const ORDER: Position[] = ['right', 'top', 'left', 'bottom'];
-
-function buildSharedPool(discards: Record<Position, readonly MTile[]>): PoolEntry[] {
-  const out: PoolEntry[] = [];
-  const max = Math.max(...ORDER.map((p) => discards[p].length));
-  for (let i = 0; i < max; i++) {
-    for (const position of ORDER) {
-      const tile = discards[position][i];
-      if (tile) out.push({ tile, position });
-    }
-  }
-  return out;
 }
