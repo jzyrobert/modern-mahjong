@@ -167,6 +167,8 @@ function DesktopMatchBody({
   const lobby = useGame((s) => s.lobby);
   const settings = useGame((s) => s.settings);
   const drawnTileId = useGame((s) => s.drawnTileId);
+  const manualOrder = useGame((s) => s.manualOrder);
+  const setManualOrder = useGame((s) => s.setManualOrder);
 
   const myTurn = state.phase === 'turn' && state.turn === you;
   const isHost = isSeatHost(lobby, seat);
@@ -273,6 +275,8 @@ function DesktopMatchBody({
         onSortModeChange={onSortModeChange}
         latestDiscardId={latestDiscardId}
         drawnTileId={drawnTileId}
+        manualOrder={manualOrder}
+        onReorder={setManualOrder}
       />
       {canTsumo && (
         <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>

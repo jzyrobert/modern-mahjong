@@ -68,6 +68,8 @@ export function MobileMatch({
   const lobby = useGame((s) => s.lobby);
   const settings = useGame((s) => s.settings);
   const drawnTileId = useGame((s) => s.drawnTileId);
+  const manualOrder = useGame((s) => s.manualOrder);
+  const setManualOrder = useGame((s) => s.setManualOrder);
 
   const seat = you !== null && you !== 'spectator' ? you : null;
   const myTurn = !!state && state.phase === 'turn' && state.turn === seat;
@@ -273,6 +275,8 @@ export function MobileMatch({
           onTileClick={myTurn ? onDiscard : undefined}
           sortMode={sortMode}
           drawnTileId={drawnTileId}
+          manualOrder={manualOrder}
+          onReorder={setManualOrder}
         />
         {canTsumo ? (
           <button
