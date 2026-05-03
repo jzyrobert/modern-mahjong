@@ -1,6 +1,6 @@
 import type { Action, Tile as MTile, Seat } from '@mahjong/game-logic';
 import { isWinning, legalClaimsFor } from '@mahjong/game-logic';
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { vibrateLight } from '../native/init.js';
 import { INK, SANS } from '../native/theme.js';
 import { isSeatHost, nameForSeat, useGame } from '../state/game.js';
@@ -11,6 +11,7 @@ import { RulePanel } from './RulePanel.js';
 import { Scoreboard } from './Scoreboard.js';
 import { Table } from './Table.js';
 import { GameStatusBar } from './match/GameStatusBar.js';
+import type { SortMode } from './match/SortPicker.js';
 import { TopBar } from './match/TopBar.js';
 
 interface MatchProps {
@@ -24,6 +25,7 @@ export function Match({ onAction, matchCode, onLeave }: MatchProps) {
   const state = useGame((s) => s.state);
   const you = useGame((s) => s.you);
   const lobby = useGame((s) => s.lobby);
+  const [sortMode, setSortMode] = useState<SortMode>('suit');
 
   const myTurn = !!state && state.phase === 'turn' && state.turn === you;
   const seat = you !== null && you !== 'spectator' ? you : null;
@@ -147,6 +149,8 @@ export function Match({ onAction, matchCode, onLeave }: MatchProps) {
         lobby={lobby}
         ownHandClickable={myTurn ? onDiscard : undefined}
         onDrawNext={onDrawNext}
+        sortMode={sortMode}
+        onSortModeChange={setSortMode}
       />
       {canTsumo && (
         <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>

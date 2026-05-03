@@ -14,6 +14,7 @@ import { Hand } from './Hand.js';
 import { Wall } from './Wall.js';
 import { MeldStrip } from './match/MeldStrip.js';
 import { PlayerBadge } from './match/PlayerBadge.js';
+import { type SortMode, SortPicker } from './match/SortPicker.js';
 
 interface TableProps {
   /** The viewer's seat — placed at the bottom. */
@@ -36,6 +37,9 @@ interface TableProps {
    * callback on click — replaces the older floating draw-tile.
    */
   onDrawNext?: (() => void) | undefined;
+  /** Sort mode for the user's hand. */
+  sortMode: SortMode;
+  onSortModeChange: (mode: SortMode) => void;
   centerHud?: ReactNode;
 }
 
@@ -65,6 +69,8 @@ export function Table({
   lobby,
   ownHandClickable,
   onDrawNext,
+  sortMode,
+  onSortModeChange,
   centerHud,
 }: TableProps) {
   const positions = layoutFor(mySeat);
@@ -201,7 +207,8 @@ export function Table({
           score={scoreboard[me.seat]}
           isActive={turn === me.seat}
         />
-        <Hand tiles={hands[me.seat]} onTileClick={ownHandClickable} />
+        <SortPicker mode={sortMode} onChange={onSortModeChange} />
+        <Hand tiles={hands[me.seat]} onTileClick={ownHandClickable} sortMode={sortMode} />
       </div>
     </div>
   );
