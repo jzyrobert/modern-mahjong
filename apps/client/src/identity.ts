@@ -10,41 +10,17 @@
  * only.
  */
 
+import { ensurePrefsLoaded, getPreference, setPreference } from './native/preferences.js';
+
 const ID_KEY = 'mahjong.playerId';
 const NAME_KEY = 'mahjong.displayName';
-
-type PreferencesPlugin = typeof import('@capacitor/preferences').Preferences;
-
-// IMPORTANT: Capacitor's plugin proxy implements `.then` (it forwards to the
-// native bridge), which means returning the proxy from a Promise chain
-// confuses JS into thinking the proxy is a thenable. JS then calls
-// `proxy.then(resolve, reject)` to chain, the proxy dispatches a `then` RPC
-// to the bridge, and on web it throws "Preferences.then() is not implemented
-// on web". So we keep the plugin in a closure variable and never let it
-// surface as a Promise resolution value.
-let prefs: PreferencesPlugin | null = null;
-let loadOnce: Promise<void> | null = null;
-
-function ensurePrefsLoaded(): Promise<void> {
-  if (!loadOnce) {
-    loadOnce = (async () => {
-      try {
-        const m = await import('@capacitor/preferences');
-        prefs = m.Preferences;
-      } catch {
-        /* plugin missing on this platform — localStorage is the only persistence */
-      }
-    })();
-  }
-  return loadOnce;
-}
 
 export function getPlayerId(): string {
   let id = localStorage.getItem(ID_KEY);
   if (!id) {
     id = crypto.randomUUID();
     localStorage.setItem(ID_KEY, id);
-    void mirrorToPreferences(ID_KEY, id);
+    void setPreference(ID_KEY, id);
   }
   return id;
 }
@@ -56,7 +32,7 @@ export function getDisplayName(): string {
 export function setDisplayName(name: string): void {
   const trimmed = name.slice(0, 32);
   localStorage.setItem(NAME_KEY, trimmed);
-  void mirrorToPreferences(NAME_KEY, trimmed);
+  void setPreference(NAME_KEY, trimmed);
 }
 
 /**
@@ -71,26 +47,18 @@ export function setDisplayName(name: string): void {
  */
 export async function hydrateIdentity(): Promise<void> {
   await ensurePrefsLoaded();
-  if (!prefs) return;
   await syncKey(ID_KEY);
   await syncKey(NAME_KEY);
 }
 
 async function syncKey(key: string): Promise<void> {
-  if (!prefs) return;
   const local = localStorage.getItem(key);
-  const stored = (await prefs.get({ key })).value;
+  const stored = await getPreference(key);
   if (local && !stored) {
-    await prefs.set({ key, value: local });
+    await setPreference(key, local);
   } else if (!local && stored) {
     localStorage.setItem(key, stored);
   }
-}
-
-async function mirrorToPreferences(key: string, value: string): Promise<void> {
-  await ensurePrefsLoaded();
-  if (!prefs) return;
-  await prefs.set({ key, value });
 }
 
 function randomName(): string {
