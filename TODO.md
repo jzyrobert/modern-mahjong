@@ -83,17 +83,17 @@ The first design pass (cream-paper / sage-felt language, refined SVG tile faces,
 - [ ] Hand UX residue: drawn-tile separated with a soft glow; drag-to-reorder under manual mode. (Engine doesn't tag the just-drawn tile — see "Per-tile discard sequence number" below; same pattern.)
 - [x] Settings panel: modal toggled from `TopBar` with bindings for turn-timer seconds (host-only), sound, felt color skin, auto-sort hand, animations override, tile back colour. Below: 136-tile reference grouped by suit using the new `TileGlyph`. _Shipped in #42._
 - [x] Mobile/desktop shell split: viewport-driven — landscape mobile (≤900) renders `MobileMatch.tsx` (glass top-bars, `OppHandStrip`, shared discard pool with seat-color underlines); portrait mobile shows a "rotate your device" message; desktop renders the `DesktopMatchBody`. _Shipped in #43._
+- [x] Last-discarded tile highlight: pulse the matching `tileId` on the discard pile while `phase === 'awaitingClaims'`. _Shipped in #44._
+- [x] DiceCeremony / ShuffleOverlay restyle: warm-paper instead of dark slate. _Shipped in #44._
+- [x] Settings persistence: mirror `useGame.settings` to `@capacitor/preferences` so they survive a WebView wipe. _Shipped in #45._
+- [x] Win celebration animation: brief 和 emblem + winner name + faan readout on `state.lastResult.kind === 'win'` with gold confetti, auto-dismisses after 3.5s. _Shipped in #46._
+- [x] Leave-game flow: client-side path that sends `ClientMessage.t === 'leave'` (already in protocol) and navigates back to lobby. _Shipped in #40._
 - [ ] Mobile bottom sheets: menu / 136-tile reference / players panels from the design's `app-mobile.jsx`.
-- [ ] Last-discarded tile highlight: `state.lastDiscard.tile` already exists; pulse the matching `tileId` on the discard pile while `phase === 'awaitingClaims'`.
 - [ ] Per-tile discard sequence number on the engine so the mobile shared pool can sort chronologically without the design's interleaving heuristic.
-- [ ] Settings persistence: mirror `useGame.settings` (felt skin, sort mode, sound on/off, animations override, tile back) to `@capacitor/preferences` so they survive app restart — reuse the identity hydrate pattern.
 - [ ] Sound effects: tile-click chime, discard thud, win fanfare. Off by default; toggleable in Settings. Honor `prefers-reduced-motion` accordingly.
 - [ ] Chat / emotes: 6-emote `ChatBar` (👍😎🎉🤔😅🔥) over the existing `ClientMessage.t === 'chat'` (already typed in `packages/protocol`).
 - [ ] Spectator viewer count (server-side): track non-seated connections in `MatchSession`, expose count to clients.
 - [ ] Game log buffer: ring-buffer the engine `Event[]` per `apply` in `useGame`; surface as a "Last 12 actions" sheet on mobile.
-- [x] Leave-game flow: client-side path that sends `ClientMessage.t === 'leave'` (already in protocol) and navigates back to lobby. _Shipped in #40._
-- [ ] Win celebration animation: design comp doesn't include this but a celebratory overlay (confetti / glow / faan readout) on `state.lastResult.kind === 'win'` would land well.
-- [ ] DiceCeremony / ShuffleOverlay restyle: warm-paper instead of dark slate so they don't read as a separate UI layer when the rest of the table chrome moves to the cream-paper language.
 
 ## Out of scope until a maintainer decides
 
