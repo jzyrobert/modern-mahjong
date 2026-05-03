@@ -12,6 +12,7 @@ import { ResultPanel } from './ResultPanel.js';
 import { RulePanel } from './RulePanel.js';
 import { Scoreboard } from './Scoreboard.js';
 import { Table } from './Table.js';
+import { GameLog } from './match/GameLog.js';
 import { GameStatusBar } from './match/GameStatusBar.js';
 import { SettingsPanel } from './match/SettingsPanel.js';
 import type { SortMode } from './match/SortPicker.js';
@@ -41,6 +42,7 @@ export function Match({ onAction, matchCode, onLeave }: MatchProps) {
   const lobby = useGame((s) => s.lobby);
   const settings = useGame((s) => s.settings);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [logOpen, setLogOpen] = useState(false);
   const initialSort: SortMode = settings.autoSort ? 'suit' : 'manual';
   const [sortMode, setSortMode] = useState<SortMode>(initialSort);
 
@@ -92,14 +94,17 @@ export function Match({ onAction, matchCode, onLeave }: MatchProps) {
     return <PortraitFallback />;
   }
 
-  const settingsPanel = (
-    <SettingsPanel
-      open={settingsOpen}
-      onClose={() => setSettingsOpen(false)}
-      isHost={isHost}
-      turnTimeoutMs={state.rules.turnTimeoutMs}
-      onTurnTimeoutChange={onTurnTimeoutChange}
-    />
+  const overlays = (
+    <>
+      <SettingsPanel
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        isHost={isHost}
+        turnTimeoutMs={state.rules.turnTimeoutMs}
+        onTurnTimeoutChange={onTurnTimeoutChange}
+      />
+      <GameLog open={logOpen} onClose={() => setLogOpen(false)} />
+    </>
   );
 
   if (isMobileLandscape) {
@@ -112,8 +117,9 @@ export function Match({ onAction, matchCode, onLeave }: MatchProps) {
           sortMode={sortMode}
           onSortModeChange={setSortMode}
           onOpenSettings={() => setSettingsOpen(true)}
+          onOpenLog={() => setLogOpen(true)}
         />
-        {settingsPanel}
+        {overlays}
       </>
     );
   }
@@ -128,8 +134,9 @@ export function Match({ onAction, matchCode, onLeave }: MatchProps) {
         sortMode={sortMode}
         onSortModeChange={setSortMode}
         onOpenSettings={() => setSettingsOpen(true)}
+        onOpenLog={() => setLogOpen(true)}
       />
-      {settingsPanel}
+      {overlays}
     </>
   );
 }
@@ -142,6 +149,7 @@ interface DesktopMatchBodyProps {
   sortMode: SortMode;
   onSortModeChange: (mode: SortMode) => void;
   onOpenSettings: () => void;
+  onOpenLog: () => void;
 }
 
 function DesktopMatchBody({
@@ -152,6 +160,7 @@ function DesktopMatchBody({
   sortMode,
   onSortModeChange,
   onOpenSettings,
+  onOpenLog,
 }: DesktopMatchBodyProps) {
   const state = useGame((s) => s.state)!;
   const you = useGame((s) => s.you);
@@ -240,7 +249,12 @@ function DesktopMatchBody({
           wallCount={state.wall.length}
           isMyTurn={myTurn}
         />
-        <TopBar gameId={matchCode} onLeave={onLeave} onSettings={onOpenSettings} />
+        <TopBar
+          gameId={matchCode}
+          onLeave={onLeave}
+          onSettings={onOpenSettings}
+          onLog={onOpenLog}
+        />
       </div>
       <Scoreboard />
       <Table

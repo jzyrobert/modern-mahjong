@@ -4,6 +4,7 @@ interface TopBarProps {
   /** Match code shown in the live pill — e.g. `A7K2`. Pass null to hide. */
   gameId: string | null;
   onSettings?: () => void;
+  onLog?: () => void;
   onLeave: () => void;
 }
 
@@ -16,7 +17,7 @@ interface TopBarProps {
  * spectator connections yet — see the "Spectator viewer count" entry in
  * TODO.md → Design port follow-ups.
  */
-export function TopBar({ gameId, onSettings, onLeave }: TopBarProps) {
+export function TopBar({ gameId, onSettings, onLog, onLeave }: TopBarProps) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
       {gameId ? (
@@ -50,6 +51,28 @@ export function TopBar({ gameId, onSettings, onLeave }: TopBarProps) {
           />
           <span>Live · #{gameId}</span>
         </div>
+      ) : null}
+      {onLog ? (
+        <button
+          type="button"
+          onClick={onLog}
+          aria-label="Game log"
+          title="Game log"
+          style={{
+            width: 38,
+            height: 38,
+            borderRadius: 12,
+            background: 'oklch(1 0 0 / 0.92)',
+            border: 'none',
+            boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
+            cursor: 'pointer',
+            fontSize: 16,
+            color: INK,
+            fontFamily: SANS,
+          }}
+        >
+          📜
+        </button>
       ) : null}
       <button
         type="button"

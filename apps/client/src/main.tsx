@@ -19,6 +19,7 @@ function App() {
   const [matchCode, setMatchCode] = useState<string | null>(null);
   const setState = useGame((s) => s.setState);
   const setLobby = useGame((s) => s.setLobby);
+  const appendEvents = useGame((s) => s.appendEvents);
   const reset = useGame((s) => s.reset);
   const state = useGame((s) => s.state);
   const animationsEnabled = useGame((s) => s.settings.animations);
@@ -82,6 +83,7 @@ function App() {
           return;
         case 'delta':
           setState(m.state);
+          appendEvents(m.events);
           return;
         case 'lobby':
           setLobby(m);
@@ -93,7 +95,7 @@ function App() {
           return;
       }
     });
-  }, [transport, setState, setLobby]);
+  }, [transport, setState, setLobby, appendEvents]);
 
   const onAction = useCallback(
     (action: Action) => {

@@ -32,6 +32,7 @@ interface MobileMatchProps {
   sortMode: SortMode;
   onSortModeChange: (mode: SortMode) => void;
   onOpenSettings: () => void;
+  onOpenLog: () => void;
 }
 
 type Position = 'bottom' | 'right' | 'top' | 'left';
@@ -60,6 +61,7 @@ export function MobileMatch({
   sortMode,
   onSortModeChange,
   onOpenSettings,
+  onOpenLog,
 }: MobileMatchProps) {
   const state = useGame((s) => s.state);
   const you = useGame((s) => s.you);
@@ -179,7 +181,12 @@ export function MobileMatch({
           wallCount={state.wall.length}
           isMyTurn={myTurn}
         />
-        <TopBar gameId={matchCode} onLeave={onLeave} onSettings={onOpenSettings} />
+        <TopBar
+          gameId={matchCode}
+          onLeave={onLeave}
+          onSettings={onOpenSettings}
+          onLog={onOpenLog}
+        />
       </div>
 
       <div

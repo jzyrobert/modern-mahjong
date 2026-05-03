@@ -88,12 +88,12 @@ The first design pass (cream-paper / sage-felt language, refined SVG tile faces,
 - [x] Settings persistence: mirror `useGame.settings` to `@capacitor/preferences` so they survive a WebView wipe. _Shipped in #45._
 - [x] Win celebration animation: brief 和 emblem + winner name + faan readout on `state.lastResult.kind === 'win'` with gold confetti, auto-dismisses after 3.5s. _Shipped in #46._
 - [x] Leave-game flow: client-side path that sends `ClientMessage.t === 'leave'` (already in protocol) and navigates back to lobby. _Shipped in #40._
-- [ ] Mobile bottom sheets: menu / 136-tile reference / players panels from the design's `app-mobile.jsx`.
+- [x] Game log buffer: ring-buffer the engine `Event[]` per `apply` in `useGame`; surfaced as a 📜 button in `TopBar` that opens a "Last actions" modal. _Shipped in #47._
+- [ ] Mobile bottom sheets: menu / 136-tile reference / players panels from the design's `app-mobile.jsx`. (Game log already accessible via the TopBar button on both shells.)
 - [ ] Per-tile discard sequence number on the engine so the mobile shared pool can sort chronologically without the design's interleaving heuristic.
 - [ ] Sound effects: tile-click chime, discard thud, win fanfare. Off by default; toggleable in Settings. Honor `prefers-reduced-motion` accordingly.
 - [ ] Chat / emotes: 6-emote `ChatBar` (👍😎🎉🤔😅🔥) over the existing `ClientMessage.t === 'chat'` (already typed in `packages/protocol`).
 - [ ] Spectator viewer count (server-side): track non-seated connections in `MatchSession`, expose count to clients.
-- [ ] Game log buffer: ring-buffer the engine `Event[]` per `apply` in `useGame`; surface as a "Last 12 actions" sheet on mobile.
 
 ## Out of scope until a maintainer decides
 
