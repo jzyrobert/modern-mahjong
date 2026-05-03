@@ -3,19 +3,24 @@ import { isWinning, legalClaimsFor } from '@mahjong/game-logic';
 import { useCallback, useMemo } from 'react';
 import { vibrateLight } from '../native/init.js';
 import { INK, SANS } from '../native/theme.js';
-import { isSeatHost, useGame } from '../state/game.js';
+import { isSeatHost, nameForSeat, useGame } from '../state/game.js';
 import { randomSeed } from '../util.js';
 import { ClaimBar } from './ClaimBar.js';
 import { ResultPanel } from './ResultPanel.js';
 import { RulePanel } from './RulePanel.js';
 import { Scoreboard } from './Scoreboard.js';
 import { Table } from './Table.js';
+import { GameStatusBar } from './match/GameStatusBar.js';
+import { TopBar } from './match/TopBar.js';
 
 interface MatchProps {
   onAction: (action: Action) => void;
+  /** Match code shown in the top-right "Live · #ABC" pill. Null hides the pill. */
+  matchCode: string | null;
+  onLeave: () => void;
 }
 
-export function Match({ onAction }: MatchProps) {
+export function Match({ onAction, matchCode, onLeave }: MatchProps) {
   const state = useGame((s) => s.state);
   const you = useGame((s) => s.you);
   const lobby = useGame((s) => s.lobby);
@@ -41,17 +46,6 @@ export function Match({ onAction }: MatchProps) {
     () => (needsDraw && seat !== null ? () => onAction({ t: 'draw', seat }) : undefined),
     [needsDraw, seat, onAction],
   );
-
-  const centerHud = useMemo(() => {
-    if (!state) return null;
-    return (
-      <div style={{ fontSize: 11, opacity: 0.6, lineHeight: 1.4 }}>
-        Turn: seat {state.turn}
-        <br />
-        {state.prevailingWind} round
-      </div>
-    );
-  }, [state]);
 
   if (!state || seat === null) {
     return <div>Waiting for the game to start…</div>;
@@ -112,6 +106,7 @@ export function Match({ onAction }: MatchProps) {
   return (
     <div
       style={{
+        position: 'relative',
         padding: 12,
         color: INK,
         fontFamily: SANS,
@@ -122,15 +117,36 @@ export function Match({ onAction }: MatchProps) {
         ['--tile-h' as string]: 'max(30px, 5vmin)',
       }}
     >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          justifyContent: 'center',
+          gap: 12,
+          marginBottom: 12,
+          flexWrap: 'wrap',
+        }}
+      >
+        <GameStatusBar
+          prevailing={state.prevailingWind}
+          dealerName={nameForSeat(lobby, state.dealer)}
+          wallCount={state.wall.length}
+          isMyTurn={myTurn}
+        />
+        <TopBar gameId={matchCode} onLeave={onLeave} />
+      </div>
       <Scoreboard />
       <Table
         mySeat={seat}
+        dealer={state.dealer}
+        turn={state.turn}
+        scoreboard={state.scoreboard}
         hands={state.hands}
         discards={state.discards}
         wallSlices={wallSlices}
+        lobby={lobby}
         ownHandClickable={myTurn ? onDiscard : undefined}
         onDrawNext={onDrawNext}
-        centerHud={centerHud}
       />
       {canTsumo && (
         <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
