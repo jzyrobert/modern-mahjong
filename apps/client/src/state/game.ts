@@ -138,10 +138,19 @@ interface ClientGameStore {
    * `drew` / `discarded` events so it stays in sync with the wire stream.
    */
   drawnTileId: number | null;
+  /**
+   * Per-tileId display order used when `sortMode === 'manual'`. Cleared on
+   * reset / handStarted so each fresh hand starts from a clean slate. New
+   * tiles drawn into the hand append to the end; tiles that leave the hand
+   * are pruned in `setManualOrder`. Empty array means the user hasn't
+   * touched the order yet — Hand falls back to engine order.
+   */
+  manualOrder: number[];
   setState: (state: GameState, you?: Seat | 'spectator') => void;
   setLobby: (l: LobbyState) => void;
   setShuffling: (shuffling: boolean) => void;
   setSettings: (patch: Partial<UserSettings>) => void;
+  setManualOrder: (ids: number[]) => void;
   appendEvents: (events: EngineEvent[]) => void;
   reset: () => void;
 }
@@ -154,6 +163,7 @@ export const useGame = create<ClientGameStore>((set) => ({
   settings: loadSettings(),
   log: [],
   drawnTileId: null,
+  manualOrder: [],
   setState: (state, you) => set((prev) => ({ state, you: you ?? prev.you })),
   setLobby: (lobby) => set({ lobby }),
   setShuffling: (shuffling) => set({ shuffling }),
@@ -163,6 +173,7 @@ export const useGame = create<ClientGameStore>((set) => ({
       persistSettings(next);
       return { settings: next };
     }),
+  setManualOrder: (ids) => set({ manualOrder: [...ids] }),
   appendEvents: (events) =>
     set((prev) => {
       if (events.length === 0) return prev;
@@ -175,23 +186,43 @@ export const useGame = create<ClientGameStore>((set) => ({
       // Hand.tsx can glow it. `you` may be null (spectator / lobby) — in
       // that case nothing to update.
       let drawnTileId = prev.drawnTileId;
+      let manualOrder = prev.manualOrder;
       if (typeof prev.you === 'number') {
         for (const event of events) {
           if (event.t === 'drew' && event.seat === prev.you) {
             drawnTileId = tileId(event.tile);
+            // New tile in the hand — append to manual order so it slots in
+            // at the end rather than disappearing.
+            const id = tileId(event.tile);
+            if (!manualOrder.includes(id)) manualOrder = [...manualOrder, id];
           } else if (event.t === 'discarded' && event.seat === prev.you) {
             drawnTileId = null;
+            const id = tileId(event.tile);
+            if (manualOrder.includes(id)) manualOrder = manualOrder.filter((x) => x !== id);
           } else if (event.t === 'handStarted') {
-            // Fresh hand — old drawn-tile reference is stale.
+            // Fresh hand — old drawn-tile reference is stale and the
+            // manual order reset to empty.
             drawnTileId = null;
+            manualOrder = [];
           }
         }
       }
 
-      return { log: trimmed, drawnTileId };
+      const next: Partial<ClientGameStore> = { log: trimmed };
+      if (drawnTileId !== prev.drawnTileId) next.drawnTileId = drawnTileId;
+      if (manualOrder !== prev.manualOrder) next.manualOrder = manualOrder;
+      return next;
     }),
   reset: () =>
-    set({ state: null, you: null, lobby: null, shuffling: false, log: [], drawnTileId: null }),
+    set({
+      state: null,
+      you: null,
+      lobby: null,
+      shuffling: false,
+      log: [],
+      drawnTileId: null,
+      manualOrder: [],
+    }),
 }));
 
 export function playerForSeat(lobby: LobbyState | null, seat: Seat | null): PublicPlayer | null {

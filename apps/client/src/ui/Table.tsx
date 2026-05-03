@@ -51,6 +51,10 @@ interface TableProps {
    * Hand uses it to glow that tile with a soft gold drop-shadow.
    */
   drawnTileId?: number | null;
+  /** Persisted manual order under sortMode === 'manual'. */
+  manualOrder?: readonly number[] | undefined;
+  /** Commit a new manual order after a drag. */
+  onReorder?: ((ids: number[]) => void) | undefined;
   centerHud?: ReactNode;
 }
 
@@ -84,6 +88,8 @@ export function Table({
   onSortModeChange,
   latestDiscardId = null,
   drawnTileId = null,
+  manualOrder,
+  onReorder,
   centerHud,
 }: TableProps) {
   const positions = layoutFor(mySeat);
@@ -228,6 +234,8 @@ export function Table({
           onTileClick={ownHandClickable}
           sortMode={sortMode}
           drawnTileId={drawnTileId}
+          manualOrder={manualOrder}
+          onReorder={onReorder}
         />
       </div>
     </div>
