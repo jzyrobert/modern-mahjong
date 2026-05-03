@@ -68,6 +68,13 @@ jobs:
       #     and we skip past it,
       #   - if the API token / account is wrong, the deploy step right
       #     after will fail with the actual auth error.
+      #
+      # `--branch=main` lands on production iff the Pages project's
+      # "Production branch" setting is also `main`. Our create call sets
+      # that, but if the project was auto-created earlier via the
+      # dashboard with the default `production` branch, deploys would
+      # silently land on a *preview* URL and the project root would never
+      # update. See docs/DEPLOY.md → "Production URL".
       - name: Deploy Pages
         uses: cloudflare/wrangler-action@v3
         with:
@@ -77,3 +84,9 @@ jobs:
           packageManager: pnpm
           preCommands: pnpm exec wrangler pages project create modern-mahjong --production-branch=main || true
           command: pages deploy ../client/dist --project-name=modern-mahjong --branch=main --commit-dirty=true
+
+      - name: Print production URL
+        run: |
+          echo "::notice title=Production URL::https://modern-mahjong.pages.dev"
+          echo "https://modern-mahjong.pages.dev is the project root and always points at the latest production deploy."
+          echo "If it doesn't update on this run, see docs/DEPLOY.md → 'Production URL'."

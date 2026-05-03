@@ -51,6 +51,20 @@ If this is the *very* first deploy, `VITE_SERVER_URL` is still empty and the `de
 
 Subsequent deploys are fully automated.
 
+## Production URL
+
+The project root is **`https://modern-mahjong.pages.dev`** — that's the URL you bookmark and share. Each individual deploy *also* gets a unique hashed alias (e.g. `https://7b19a3.modern-mahjong.pages.dev`) for stable historical access; that's what wrangler logs at the end of `pages deploy`. Both are valid; the root URL just always reflects the *latest production* deploy.
+
+A deploy lands on production iff the project's **Production branch** setting matches the `--branch=` argument we pass (`main`). Our CI creates the project with `--production-branch=main`, so this works out of the box for fresh setups.
+
+**If your deploys are landing on hashed preview URLs but the root URL never updates**, the project's Production branch is probably set to something else (often `production`, the Cloudflare default if the project was created via the dashboard). Fix it once in the dashboard:
+
+1. Cloudflare dashboard → **Workers & Pages → modern-mahjong → Settings → Builds & deployments**
+2. **Production branch** → change to `main` → Save
+3. Re-run the deploy workflow. Subsequent runs will update `https://modern-mahjong.pages.dev`.
+
+Alternative if you'd rather start clean: `wrangler pages project delete modern-mahjong` (run locally with the API token) and let CI recreate it on the next push — the auto-create call uses `--production-branch=main`.
+
 ## Custom domain (optional)
 
 By default you'll get:
