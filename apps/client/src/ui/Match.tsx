@@ -1,6 +1,6 @@
 import type { Action, Tile as MTile, Seat } from '@mahjong/game-logic';
 import { isWinning, legalClaimsFor } from '@mahjong/game-logic';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { vibrateLight } from '../native/init.js';
 import { INK, SANS } from '../native/theme.js';
 import { isSeatHost, nameForSeat, useGame } from '../state/game.js';
@@ -11,8 +11,10 @@ import { RulePanel } from './RulePanel.js';
 import { Scoreboard } from './Scoreboard.js';
 import { Table } from './Table.js';
 import { GameStatusBar } from './match/GameStatusBar.js';
+import { SettingsPanel } from './match/SettingsPanel.js';
 import type { SortMode } from './match/SortPicker.js';
 import { TopBar } from './match/TopBar.js';
+import { FELT_SKINS, TILE_BACK_SKINS } from './match/skins.js';
 
 interface MatchProps {
   onAction: (action: Action) => void;
@@ -25,7 +27,19 @@ export function Match({ onAction, matchCode, onLeave }: MatchProps) {
   const state = useGame((s) => s.state);
   const you = useGame((s) => s.you);
   const lobby = useGame((s) => s.lobby);
-  const [sortMode, setSortMode] = useState<SortMode>('suit');
+  const settings = useGame((s) => s.settings);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  // When auto-sort is on, lock the user's hand to 'suit' order; otherwise
+  // start in 'manual' so the SortPicker matches the persisted preference.
+  const initialSort: SortMode = settings.autoSort ? 'suit' : 'manual';
+  const [sortMode, setSortMode] = useState<SortMode>(initialSort);
+
+  // If autoSort flips on while a match is in progress, snap the local sort
+  // mode back to 'suit' so the user immediately sees the preference take
+  // effect — otherwise the toggle would silently no-op until the next hand.
+  useEffect(() => {
+    if (settings.autoSort) setSortMode('suit');
+  }, [settings.autoSort]);
 
   const myTurn = !!state && state.phase === 'turn' && state.turn === you;
   const seat = you !== null && you !== 'spectator' ? you : null;
@@ -47,6 +61,11 @@ export function Match({ onAction, matchCode, onLeave }: MatchProps) {
   const onDrawNext = useMemo(
     () => (needsDraw && seat !== null ? () => onAction({ t: 'draw', seat }) : undefined),
     [needsDraw, seat, onAction],
+  );
+
+  const onTurnTimeoutChange = useCallback(
+    (turnTimeoutMs: number) => onAction({ t: 'setRules', rules: { turnTimeoutMs } }),
+    [onAction],
   );
 
   if (!state || seat === null) {
@@ -105,6 +124,9 @@ export function Match({ onAction, matchCode, onLeave }: MatchProps) {
       allowSpecial: state.rules.allowSevenPairs || state.rules.allowThirteenOrphans,
     });
 
+  const felt = FELT_SKINS[settings.felt];
+  const tileBack = TILE_BACK_SKINS[settings.tileBack];
+
   return (
     <div
       style={{
@@ -117,6 +139,11 @@ export function Match({ onAction, matchCode, onLeave }: MatchProps) {
         // screens while letting 14 hand tiles fit in a single row at 800x360.
         ['--tile-w' as string]: 'max(22px, 3.6vmin)',
         ['--tile-h' as string]: 'max(30px, 5vmin)',
+        // Skin overrides — Table.tsx and Tile.tsx read these via CSS vars.
+        ['--felt-1' as string]: felt.top,
+        ['--felt-2' as string]: felt.bottom,
+        ['--tile-back-1' as string]: tileBack.top,
+        ['--tile-back-2' as string]: tileBack.bottom,
       }}
     >
       <div
@@ -135,7 +162,7 @@ export function Match({ onAction, matchCode, onLeave }: MatchProps) {
           wallCount={state.wall.length}
           isMyTurn={myTurn}
         />
-        <TopBar gameId={matchCode} onLeave={onLeave} />
+        <TopBar gameId={matchCode} onLeave={onLeave} onSettings={() => setSettingsOpen(true)} />
       </div>
       <Scoreboard />
       <Table
@@ -161,6 +188,13 @@ export function Match({ onAction, matchCode, onLeave }: MatchProps) {
       )}
       {showClaim && <ClaimBar onAction={onAction} seat={seat} />}
       {state.lastResult && <ResultPanel onAction={onAction} mySeat={seat} isHost={isHost} />}
+      <SettingsPanel
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        isHost={isHost}
+        turnTimeoutMs={state.rules.turnTimeoutMs}
+        onTurnTimeoutChange={onTurnTimeoutChange}
+      />
     </div>
   );
 }
