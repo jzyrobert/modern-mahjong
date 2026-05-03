@@ -5,7 +5,9 @@ import { vibrateLight } from '../native/init.js';
 import { INK, SANS } from '../native/theme.js';
 import { isSeatHost, nameForSeat, useGame } from '../state/game.js';
 import { randomSeed } from '../util.js';
+import { useMediaQuery } from '../util/useMediaQuery.js';
 import { ClaimBar } from './ClaimBar.js';
+import { MobileMatch } from './MobileMatch.js';
 import { ResultPanel } from './ResultPanel.js';
 import { RulePanel } from './RulePanel.js';
 import { Scoreboard } from './Scoreboard.js';
@@ -23,16 +25,27 @@ interface MatchProps {
   onLeave: () => void;
 }
 
+const MOBILE_LANDSCAPE_QUERY = '(max-width: 900px) and (orientation: landscape)';
+const PORTRAIT_PHONE_QUERY = '(max-width: 700px) and (orientation: portrait)';
+
+/**
+ * Top-level live-match orchestrator. Owns the SortPicker mode + Settings
+ * panel state, and picks between the desktop shell (this file's
+ * DesktopMatchBody) and the mobile shell (`MobileMatch`) based on
+ * viewport. Portrait phone viewports get a "rotate your device" prompt
+ * (a simplified portrait shell is queued in TODO.md).
+ */
 export function Match({ onAction, matchCode, onLeave }: MatchProps) {
   const state = useGame((s) => s.state);
   const you = useGame((s) => s.you);
   const lobby = useGame((s) => s.lobby);
   const settings = useGame((s) => s.settings);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  // When auto-sort is on, lock the user's hand to 'suit' order; otherwise
-  // start in 'manual' so the SortPicker matches the persisted preference.
   const initialSort: SortMode = settings.autoSort ? 'suit' : 'manual';
   const [sortMode, setSortMode] = useState<SortMode>(initialSort);
+
+  const isMobileLandscape = useMediaQuery(MOBILE_LANDSCAPE_QUERY);
+  const isPortraitPhone = useMediaQuery(PORTRAIT_PHONE_QUERY);
 
   // If autoSort flips on while a match is in progress, snap the local sort
   // mode back to 'suit' so the user immediately sees the preference take
@@ -41,27 +54,8 @@ export function Match({ onAction, matchCode, onLeave }: MatchProps) {
     if (settings.autoSort) setSortMode('suit');
   }, [settings.autoSort]);
 
-  const myTurn = !!state && state.phase === 'turn' && state.turn === you;
   const seat = you !== null && you !== 'spectator' ? you : null;
   const isHost = isSeatHost(lobby, seat);
-  const needsDraw = myTurn && !!state && !state.hasDrawn;
-
-  const onDiscard = useCallback(
-    (t: MTile) => {
-      if (myTurn && seat !== null) {
-        onAction({ t: 'discard', seat, tile: t });
-        void vibrateLight();
-      }
-    },
-    [myTurn, seat, onAction],
-  );
-
-  const wallSlices = useMemo(() => distributeWall(state?.wall ?? []), [state?.wall]);
-
-  const onDrawNext = useMemo(
-    () => (needsDraw && seat !== null ? () => onAction({ t: 'draw', seat }) : undefined),
-    [needsDraw, seat, onAction],
-  );
 
   const onTurnTimeoutChange = useCallback(
     (turnTimeoutMs: number) => onAction({ t: 'setRules', rules: { turnTimeoutMs } }),
@@ -94,10 +88,97 @@ export function Match({ onAction, matchCode, onLeave }: MatchProps) {
     );
   }
 
-  // Show the claim bar only when the seat actually has something they could
-  // claim against this discard (peng / gong / chi, or a winning hu). If the
-  // only legal action is `pass`, there's no decision to surface — the engine
-  // will auto-pass when the claim window expires.
+  if (isPortraitPhone) {
+    return <PortraitFallback />;
+  }
+
+  const settingsPanel = (
+    <SettingsPanel
+      open={settingsOpen}
+      onClose={() => setSettingsOpen(false)}
+      isHost={isHost}
+      turnTimeoutMs={state.rules.turnTimeoutMs}
+      onTurnTimeoutChange={onTurnTimeoutChange}
+    />
+  );
+
+  if (isMobileLandscape) {
+    return (
+      <>
+        <MobileMatch
+          onAction={onAction}
+          matchCode={matchCode}
+          onLeave={onLeave}
+          sortMode={sortMode}
+          onSortModeChange={setSortMode}
+          onOpenSettings={() => setSettingsOpen(true)}
+        />
+        {settingsPanel}
+      </>
+    );
+  }
+
+  return (
+    <>
+      <DesktopMatchBody
+        onAction={onAction}
+        matchCode={matchCode}
+        onLeave={onLeave}
+        seat={seat}
+        sortMode={sortMode}
+        onSortModeChange={setSortMode}
+        onOpenSettings={() => setSettingsOpen(true)}
+      />
+      {settingsPanel}
+    </>
+  );
+}
+
+interface DesktopMatchBodyProps {
+  onAction: (action: Action) => void;
+  matchCode: string | null;
+  onLeave: () => void;
+  seat: Seat;
+  sortMode: SortMode;
+  onSortModeChange: (mode: SortMode) => void;
+  onOpenSettings: () => void;
+}
+
+function DesktopMatchBody({
+  onAction,
+  matchCode,
+  onLeave,
+  seat,
+  sortMode,
+  onSortModeChange,
+  onOpenSettings,
+}: DesktopMatchBodyProps) {
+  const state = useGame((s) => s.state)!;
+  const you = useGame((s) => s.you);
+  const lobby = useGame((s) => s.lobby);
+  const settings = useGame((s) => s.settings);
+
+  const myTurn = state.phase === 'turn' && state.turn === you;
+  const isHost = isSeatHost(lobby, seat);
+  const needsDraw = myTurn && !state.hasDrawn;
+
+  const onDiscard = useCallback(
+    (t: MTile) => {
+      if (myTurn) {
+        onAction({ t: 'discard', seat, tile: t });
+        void vibrateLight();
+      }
+    },
+    [myTurn, seat, onAction],
+  );
+
+  const wallSlices = useMemo(() => distributeWall(state.wall), [state.wall]);
+
+  const onDrawNext = useMemo(
+    () => (needsDraw ? () => onAction({ t: 'draw', seat }) : undefined),
+    [needsDraw, seat, onAction],
+  );
+
   const showClaim = (() => {
     if (state.phase !== 'awaitingClaims') return false;
     if (!state.lastDiscard || state.lastDiscard.from === seat) return false;
@@ -111,10 +192,6 @@ export function Match({ onAction, matchCode, onLeave }: MatchProps) {
     });
   })();
 
-  // Tsumo (self-drawn win) is only legal when it's the player's turn, they've
-  // drawn (have 14 tiles), and that hand is in a winning shape. Hide the
-  // button entirely otherwise — previously it rendered always-disabled
-  // outside that window, which read as "I'm broken".
   const canTsumo =
     myTurn &&
     state.hasDrawn &&
@@ -134,12 +211,8 @@ export function Match({ onAction, matchCode, onLeave }: MatchProps) {
         padding: 12,
         color: INK,
         fontFamily: SANS,
-        // Viewport-aware tile sizing — tiles scale down on cramped landscape phones
-        // and back up on desktop. The 22/30 floor keeps them tappable on tiny
-        // screens while letting 14 hand tiles fit in a single row at 800x360.
         ['--tile-w' as string]: 'max(22px, 3.6vmin)',
         ['--tile-h' as string]: 'max(30px, 5vmin)',
-        // Skin overrides — Table.tsx and Tile.tsx read these via CSS vars.
         ['--felt-1' as string]: felt.top,
         ['--felt-2' as string]: felt.bottom,
         ['--tile-back-1' as string]: tileBack.top,
@@ -162,7 +235,7 @@ export function Match({ onAction, matchCode, onLeave }: MatchProps) {
           wallCount={state.wall.length}
           isMyTurn={myTurn}
         />
-        <TopBar gameId={matchCode} onLeave={onLeave} onSettings={() => setSettingsOpen(true)} />
+        <TopBar gameId={matchCode} onLeave={onLeave} onSettings={onOpenSettings} />
       </div>
       <Scoreboard />
       <Table
@@ -177,7 +250,7 @@ export function Match({ onAction, matchCode, onLeave }: MatchProps) {
         ownHandClickable={myTurn ? onDiscard : undefined}
         onDrawNext={onDrawNext}
         sortMode={sortMode}
-        onSortModeChange={setSortMode}
+        onSortModeChange={onSortModeChange}
       />
       {canTsumo && (
         <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
@@ -188,13 +261,32 @@ export function Match({ onAction, matchCode, onLeave }: MatchProps) {
       )}
       {showClaim && <ClaimBar onAction={onAction} seat={seat} />}
       {state.lastResult && <ResultPanel onAction={onAction} mySeat={seat} isHost={isHost} />}
-      <SettingsPanel
-        open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-        isHost={isHost}
-        turnTimeoutMs={state.rules.turnTimeoutMs}
-        onTurnTimeoutChange={onTurnTimeoutChange}
-      />
+    </div>
+  );
+}
+
+function PortraitFallback() {
+  return (
+    <div
+      style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 24,
+        textAlign: 'center',
+        fontFamily: SANS,
+        color: INK,
+      }}
+    >
+      <div style={{ maxWidth: 320 }}>
+        <div style={{ fontSize: 32, marginBottom: 12 }}>🔄</div>
+        <h2 style={{ margin: '0 0 8px', fontWeight: 900 }}>Rotate your device</h2>
+        <p style={{ margin: 0, fontSize: 14, opacity: 0.7 }}>
+          Modern Mahjong is built for landscape on phones. A simplified portrait shell is on the
+          roadmap — for now, please rotate to landscape to play.
+        </p>
+      </div>
     </div>
   );
 }
@@ -210,6 +302,5 @@ function distributeWall(wall: readonly MTile[]): Record<Seat, readonly MTile[]> 
   for (const [i, tile] of wall.entries()) {
     out[(i % 4) as Seat].push(tile);
   }
-  // Hand back as readonly to discourage downstream mutation.
   return out as Record<Seat, readonly MTile[]>;
 }
