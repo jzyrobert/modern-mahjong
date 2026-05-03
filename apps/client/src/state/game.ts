@@ -1,4 +1,4 @@
-import type { GameState, Seat } from '@mahjong/game-logic';
+import type { Event as EngineEvent, GameState, Seat } from '@mahjong/game-logic';
 import type { PublicPlayer, RuleConfig } from '@mahjong/protocol';
 import { create } from 'zustand';
 import { getPreference, setPreference } from '../native/preferences.js';
@@ -93,6 +93,18 @@ export async function hydrateSettings(): Promise<void> {
   }
 }
 
+/**
+ * One ring-buffer entry. The engine emits `Event[]` per `apply`; the client
+ * keeps the last `LOG_CAPACITY` events tagged with a monotonic `seq` so the
+ * UI can render a stable list keyed off it.
+ */
+export interface LogEntry {
+  seq: number;
+  event: EngineEvent;
+}
+
+const LOG_CAPACITY = 12;
+
 interface ClientGameStore {
   state: GameState | null;
   you: Seat | 'spectator' | null;
@@ -107,15 +119,21 @@ interface ClientGameStore {
   /**
    * User preferences — felt skin, tile-back, sort behaviour, animations,
    * sound. Loaded from localStorage on init; mirrored back on every
-   * `setSettings` call. Mirroring to `@capacitor/preferences` (so the
-   * settings survive a WebView wipe on native) is queued — see the
-   * "Settings persistence wiring" entry in TODO.md.
+   * `setSettings` call. Also mirrored to `@capacitor/preferences` so they
+   * survive a WebView wipe on native.
    */
   settings: UserSettings;
+  /**
+   * Last `LOG_CAPACITY` engine events the server broadcast on this match.
+   * Cleared on reset; populated by `appendEvents(events)` from the
+   * server's `delta` messages.
+   */
+  log: LogEntry[];
   setState: (state: GameState, you?: Seat | 'spectator') => void;
   setLobby: (l: LobbyState) => void;
   setShuffling: (shuffling: boolean) => void;
   setSettings: (patch: Partial<UserSettings>) => void;
+  appendEvents: (events: EngineEvent[]) => void;
   reset: () => void;
 }
 
@@ -125,6 +143,7 @@ export const useGame = create<ClientGameStore>((set) => ({
   lobby: null,
   shuffling: false,
   settings: loadSettings(),
+  log: [],
   setState: (state, you) => set((prev) => ({ state, you: you ?? prev.you })),
   setLobby: (lobby) => set({ lobby }),
   setShuffling: (shuffling) => set({ shuffling }),
@@ -134,7 +153,16 @@ export const useGame = create<ClientGameStore>((set) => ({
       persistSettings(next);
       return { settings: next };
     }),
-  reset: () => set({ state: null, you: null, lobby: null, shuffling: false }),
+  appendEvents: (events) =>
+    set((prev) => {
+      if (events.length === 0) return prev;
+      const baseSeq = prev.log.length > 0 ? prev.log[prev.log.length - 1]!.seq + 1 : 0;
+      const fresh = events.map((event, i) => ({ seq: baseSeq + i, event }));
+      const next = [...prev.log, ...fresh];
+      // Keep only the most recent LOG_CAPACITY entries.
+      return { log: next.length > LOG_CAPACITY ? next.slice(-LOG_CAPACITY) : next };
+    }),
+  reset: () => set({ state: null, you: null, lobby: null, shuffling: false, log: [] }),
 }));
 
 export function playerForSeat(lobby: LobbyState | null, seat: Seat | null): PublicPlayer | null {
