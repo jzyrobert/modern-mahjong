@@ -2,6 +2,7 @@ import type { OpeningRolls, Seat } from '@mahjong/game-logic';
 import { SEATS } from '@mahjong/game-logic';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
+import { HAIRLINE, INK, INK_3, PAPER_HI, RED, SANS } from '../native/theme.js';
 import { nameForSeat, useGame } from '../state/game.js';
 
 /**
@@ -71,7 +72,9 @@ export function DiceCeremony() {
           style={{
             position: 'fixed',
             inset: 0,
-            background: '#000a',
+            background: 'oklch(0.2 0.02 60 / 0.5)',
+            backdropFilter: 'blur(6px)',
+            WebkitBackdropFilter: 'blur(6px)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -93,17 +96,20 @@ function Panel({ rolls, dealer }: { rolls: OpeningRolls; dealer: Seat }) {
   return (
     <div
       style={{
-        background: '#1a1f2e',
-        color: '#eee',
+        background: PAPER_HI,
+        color: INK,
+        border: `1px solid ${HAIRLINE}`,
         padding: 24,
-        borderRadius: 12,
-        boxShadow: '0 12px 40px #000a',
+        borderRadius: 16,
+        boxShadow: '0 24px 60px rgba(0,0,0,0.2), 0 6px 16px rgba(0,0,0,0.1)',
         textAlign: 'center',
         minWidth: 320,
-        fontFamily: 'system-ui, sans-serif',
+        fontFamily: SANS,
       }}
     >
-      <h3 style={{ marginTop: 0 }}>{rolls.fullRoll ? 'Opening rolls' : 'Dealer rolls'}</h3>
+      <h3 style={{ margin: '0 0 16px', fontWeight: 900, color: INK }}>
+        {rolls.fullRoll ? 'Opening rolls' : 'Dealer rolls'}
+      </h3>
       <div style={{ display: 'flex', gap: 24, justifyContent: 'center', flexWrap: 'wrap' }}>
         {rolling.map((seat) => {
           const pair = rolls.dice[seat]!;
@@ -112,22 +118,24 @@ function Panel({ rolls, dealer }: { rolls: OpeningRolls; dealer: Seat }) {
               key={seat}
               style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}
             >
-              <div style={{ fontSize: 11, opacity: 0.65 }}>{nameForSeat(lobby, seat)}</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: INK_3 }}>
+                {nameForSeat(lobby, seat)}
+              </div>
               <div style={{ display: 'flex', gap: 6 }}>
                 <Die value={pair[0]} delay={0} />
                 <Die value={pair[1]} delay={0.12} />
               </div>
-              <div style={{ fontSize: 12, opacity: 0.85 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: INK }}>
                 <b>{pair[0] + pair[1]}</b>
               </div>
             </div>
           );
         })}
       </div>
-      <div style={{ marginTop: 14, fontSize: 13 }}>
-        Dealer: seat <b>{dealer}</b> ({nameForSeat(lobby, dealer)})
+      <div style={{ marginTop: 18, fontSize: 13, color: INK }}>
+        Dealer: seat <b style={{ color: RED }}>{dealer}</b> ({nameForSeat(lobby, dealer)})
       </div>
-      <div style={{ marginTop: 4, fontSize: 11, opacity: 0.55 }}>Tap anywhere to dismiss</div>
+      <div style={{ marginTop: 6, fontSize: 11, color: INK_3 }}>Tap anywhere to dismiss</div>
     </div>
   );
 }
@@ -141,11 +149,11 @@ function Die({ value, delay }: { value: number; delay: number }) {
       style={{
         width: 44,
         height: 44,
-        background: '#fafafa',
-        color: '#222',
-        border: '1px solid #0008',
+        background: 'linear-gradient(135deg, white, oklch(0.94 0.02 85))',
+        color: INK,
+        border: `1px solid ${HAIRLINE}`,
         borderRadius: 8,
-        boxShadow: '0 2px 6px #0007',
+        boxShadow: '0 2px 6px rgba(0,0,0,0.18), inset 0 -2px 0 rgba(0,0,0,0.06)',
         display: 'grid',
         gridTemplateColumns: '1fr 1fr 1fr',
         gridTemplateRows: '1fr 1fr 1fr',
@@ -164,7 +172,7 @@ function Die({ value, delay }: { value: number; delay: number }) {
             width: 7,
             height: 7,
             borderRadius: '50%',
-            background: '#222',
+            background: RED,
           }}
         />
       ))}

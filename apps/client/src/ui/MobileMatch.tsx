@@ -135,7 +135,11 @@ export function MobileMatch({
     top: state.discards[placements.find((p) => p.position === 'top')!.seat],
     left: state.discards[placements.find((p) => p.position === 'left')!.seat],
   };
-  const latestId = state.lastDiscard ? tileId(state.lastDiscard.tile) : null;
+  // Highlight the live discard only while a claim is on offer; outside
+  // `awaitingClaims` the discard already resolved and the halo would be
+  // stale.
+  const latestId =
+    state.phase === 'awaitingClaims' && state.lastDiscard ? tileId(state.lastDiscard.tile) : null;
   const felt = FELT_SKINS[settings.felt];
 
   return (

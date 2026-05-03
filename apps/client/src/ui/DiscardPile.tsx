@@ -1,5 +1,6 @@
 import type { Tile as MTile } from '@mahjong/game-logic';
 import { mulberry32, tileId } from '@mahjong/game-logic';
+import { motion } from 'framer-motion';
 import type { CSSProperties } from 'react';
 import { Tile } from './Tile.js';
 
@@ -13,6 +14,12 @@ interface DiscardPileProps {
    * - `90`  left: column-reverse, tiles' tops point right → upright from their seat.
    */
   rotate?: number;
+  /**
+   * Engine `tileId` of the latest discard, set while `phase === 'awaitingClaims'`.
+   * The matching tile in this pile gets a pulsing red halo so claimers can
+   * track which tile is on offer across the table.
+   */
+  latestId?: number | null;
 }
 
 const TILE_VARS: CSSProperties = {
@@ -23,7 +30,17 @@ const TILE_VARS: CSSProperties = {
 /** Max +/- jitter in degrees added on top of the seat orientation, so each tile lands at a slightly different angle. */
 const MAX_TOSS_DEGREES = 8;
 
-export function DiscardPile({ tiles, rotate = 0 }: DiscardPileProps) {
+const HALO_ANIMATE = {
+  scale: [1, 1.18, 1],
+  opacity: [0.7, 0, 0.7],
+};
+const HALO_TRANSITION = {
+  duration: 1.4,
+  repeat: Number.POSITIVE_INFINITY,
+  ease: 'easeInOut',
+} as const;
+
+export function DiscardPile({ tiles, rotate = 0, latestId = null }: DiscardPileProps) {
   const flexDirection = flowFor(rotate);
   const isVertical = rotate === 90 || rotate === -90;
   return (
@@ -43,6 +60,27 @@ export function DiscardPile({ tiles, rotate = 0 }: DiscardPileProps) {
       {tiles.map((t) => {
         const id = tileId(t);
         const tossOffset = (mulberry32(id)() - 0.5) * 2 * MAX_TOSS_DEGREES;
+        const isLatest = latestId === id;
+        if (isLatest) {
+          return (
+            <div key={id} style={{ position: 'relative', display: 'inline-block' }}>
+              <motion.div
+                aria-hidden="true"
+                animate={HALO_ANIMATE}
+                transition={HALO_TRANSITION}
+                style={{
+                  position: 'absolute',
+                  inset: -2,
+                  borderRadius: 8,
+                  background: 'oklch(0.65 0.2 28)',
+                  pointerEvents: 'none',
+                  zIndex: 1,
+                }}
+              />
+              <Tile tile={t} rotate={rotate + tossOffset} />
+            </div>
+          );
+        }
         return <Tile key={id} tile={t} rotate={rotate + tossOffset} />;
       })}
     </div>

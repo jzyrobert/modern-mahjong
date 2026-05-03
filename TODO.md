@@ -77,11 +77,13 @@ Tracker for outstanding plan work. The full design lives in [`docs/PLAN.md`](./d
 
 The first design pass (cream-paper / sage-felt language, refined SVG tile faces, depth-gradient tile body) is in. The structural redesigns from `/tmp/design/design/{menu,app,app-mobile}.jsx` are queued.
 
-- [ ] Lobby v2: rebuild against `menu.jsx` — hero with `WindEmblem` 東 + 麻雀, three `ModeCard`s (Online / Practice / LAN), `LobbyPreview` with 東南西北 wind glyphs and dashed open-seat boxes, scattered tile decorations.
-- [ ] Desktop table chrome: new `GameStatusBar` pill (live wall count, prevailing wind, dealer name, my-turn pulse), `TopBar` with game id + Leave + Settings, `OpponentSeat` badges with avatar / seat wind / score / active-turn glow, four `WallEdge` perimeter walls, exposed-meld strips per opponent.
-- [ ] Hand UX: `SortPicker` (Suit / Number / Manual), drawn-tile separated with a soft glow, drag-to-reorder under manual mode, `CallButton` style for `ClaimBar.tsx` (Chow/Pung/Kong/Win/Pass with bilingual labels and gradient backgrounds).
-- [ ] Settings panel: modal toggled from `TopBar` with bindings for turn-timer seconds (host-only), sound, felt color skin, auto-sort hand, animations override, tile back colour. Below: 136-tile reference grouped by suit using the new `TileGlyph`.
-- [ ] Mobile/desktop shell split: viewport-driven — landscape mobile (≤900×500) renders a new `MobileMatch.tsx` (glass top-bars, `OppHandStrip`, shared discard pool with seat-color underlines, bottom sheets); portrait mobile shows a "rotate your device" message; desktop renders the existing/new `Match`.
+- [x] Lobby v2: rebuild against `menu.jsx` — hero with `WindEmblem` 東 + 麻雀, three `ModeCard`s (Online / Practice / LAN), `LobbyPreview` with 東南西北 wind glyphs and dashed open-seat boxes, scattered tile decorations. _Shipped in #39._
+- [x] Desktop table chrome: new `GameStatusBar` pill (live wall count, prevailing wind, dealer name, my-turn pulse), `TopBar` with game id + Leave + Settings, `OpponentSeat` badges with avatar / seat wind / score / active-turn glow, exposed-meld strips per opponent. _Shipped in #40 (existing `Wall` retained instead of perimeter `WallEdge`)._
+- [x] Hand UX: `SortPicker` (Suit / Number / Manual), `CallButton` style for `ClaimBar.tsx` (Chow/Pung/Kong/Win/Pass with bilingual labels and gradient backgrounds). _Shipped in #41._
+- [ ] Hand UX residue: drawn-tile separated with a soft glow; drag-to-reorder under manual mode. (Engine doesn't tag the just-drawn tile — see "Per-tile discard sequence number" below; same pattern.)
+- [x] Settings panel: modal toggled from `TopBar` with bindings for turn-timer seconds (host-only), sound, felt color skin, auto-sort hand, animations override, tile back colour. Below: 136-tile reference grouped by suit using the new `TileGlyph`. _Shipped in #42._
+- [x] Mobile/desktop shell split: viewport-driven — landscape mobile (≤900) renders `MobileMatch.tsx` (glass top-bars, `OppHandStrip`, shared discard pool with seat-color underlines); portrait mobile shows a "rotate your device" message; desktop renders the `DesktopMatchBody`. _Shipped in #43._
+- [ ] Mobile bottom sheets: menu / 136-tile reference / players panels from the design's `app-mobile.jsx`.
 - [ ] Last-discarded tile highlight: `state.lastDiscard.tile` already exists; pulse the matching `tileId` on the discard pile while `phase === 'awaitingClaims'`.
 - [ ] Per-tile discard sequence number on the engine so the mobile shared pool can sort chronologically without the design's interleaving heuristic.
 - [ ] Settings persistence: mirror `useGame.settings` (felt skin, sort mode, sound on/off, animations override, tile back) to `@capacitor/preferences` so they survive app restart — reuse the identity hydrate pattern.
@@ -89,7 +91,7 @@ The first design pass (cream-paper / sage-felt language, refined SVG tile faces,
 - [ ] Chat / emotes: 6-emote `ChatBar` (👍😎🎉🤔😅🔥) over the existing `ClientMessage.t === 'chat'` (already typed in `packages/protocol`).
 - [ ] Spectator viewer count (server-side): track non-seated connections in `MatchSession`, expose count to clients.
 - [ ] Game log buffer: ring-buffer the engine `Event[]` per `apply` in `useGame`; surface as a "Last 12 actions" sheet on mobile.
-- [ ] Leave-game flow: client-side path that sends `ClientMessage.t === 'leave'` (already in protocol) and navigates back to lobby.
+- [x] Leave-game flow: client-side path that sends `ClientMessage.t === 'leave'` (already in protocol) and navigates back to lobby. _Shipped in #40._
 - [ ] Win celebration animation: design comp doesn't include this but a celebratory overlay (confetti / glow / faan readout) on `state.lastResult.kind === 'win'` would land well.
 - [ ] DiceCeremony / ShuffleOverlay restyle: warm-paper instead of dark slate so they don't read as a separate UI layer when the rest of the table chrome moves to the cream-paper language.
 

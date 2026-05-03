@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
-import { TILE_BACK_BG } from '../native/theme.js';
+import { HAIRLINE, INK_2, SANS, TILE_BACK_BG } from '../native/theme.js';
 import { useGame } from '../state/game.js';
 
 const SHUFFLE_MS = 1700;
@@ -62,7 +62,13 @@ export function ShuffleOverlay() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            background: 'radial-gradient(circle at center, #000c 10%, #0001 70%)',
+            // Soft cream backdrop with a deeper centre — keeps the swirl
+            // readable while the table tiles animating behind via
+            // layoutId stay visible at the edges.
+            background:
+              'radial-gradient(circle at center, oklch(0.93 0.02 85 / 0.85) 10%, oklch(0.93 0.02 85 / 0.1) 70%)',
+            backdropFilter: 'blur(2px)',
+            WebkitBackdropFilter: 'blur(2px)',
             zIndex: 90,
             pointerEvents: 'none',
           }}
@@ -78,10 +84,11 @@ export function ShuffleOverlay() {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                color: '#eee',
+                color: INK_2,
                 fontSize: 13,
-                opacity: 0.85,
-                fontFamily: 'system-ui, sans-serif',
+                fontWeight: 800,
+                letterSpacing: 0.6,
+                fontFamily: SANS,
               }}
             >
               Shuffling…
@@ -117,10 +124,13 @@ function SpinningTile({ index }: { index: number }) {
         marginLeft: -16,
         width: 32,
         height: 44,
-        background: TILE_BACK_BG,
+        // Falls back to TILE_BACK_BG when run outside a Match (no
+        // --tile-back-1/2 CSS vars set); inside a Match the Settings
+        // panel's tile-back skin overrides apply.
+        background: `linear-gradient(180deg, var(--tile-back-1, ${TILE_BACK_BG}), var(--tile-back-2, ${TILE_BACK_BG}))`,
         borderRadius: 4,
-        boxShadow: '0 2px 4px #0007',
-        border: '1px solid #2228',
+        boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
+        border: `1px solid ${HAIRLINE}`,
       }}
     />
   );

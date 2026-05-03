@@ -40,6 +40,12 @@ interface TableProps {
   /** Sort mode for the user's hand. */
   sortMode: SortMode;
   onSortModeChange: (mode: SortMode) => void;
+  /**
+   * Engine `tileId` of the latest discard, set while
+   * `phase === 'awaitingClaims'`. The matching tile in the discarder's
+   * pile gets a pulsing red halo so claimers can track it.
+   */
+  latestDiscardId?: number | null;
   centerHud?: ReactNode;
 }
 
@@ -71,6 +77,7 @@ export function Table({
   onDrawNext,
   sortMode,
   onSortModeChange,
+  latestDiscardId = null,
   centerHud,
 }: TableProps) {
   const positions = layoutFor(mySeat);
@@ -173,7 +180,7 @@ export function Table({
               ...p.align,
             }}
           >
-            <DiscardPile tiles={discards[p.seat]} rotate={p.rotate} />
+            <DiscardPile tiles={discards[p.seat]} rotate={p.rotate} latestId={latestDiscardId} />
           </div>
         ))}
         <div
