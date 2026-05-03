@@ -93,7 +93,7 @@ The first design pass (cream-paper / sage-felt language, refined SVG tile faces,
 - [x] Per-tile discard sequence number on the engine: new `state.discardOrder: { tile; from }[]` log appended on every `discard` reducer + popped on `applyClaim`. The mobile shared pool now reads this directly and renders in true turn order. _Shipped in #51._
 - [x] Sound effects: discard thud (every `discarded` event) + win fanfare (C-major arpeggio on `lastResult.kind === 'win'`). Synthesised via Web Audio API — no asset bloat. Off by default; toggleable in Settings; suppressed when `settings.animations === false` (reduced-motion). _Shipped in #50._
 - [x] Chat / emotes: 6-emote `ChatBar` (👍😎🎉🤔😅🔥) wired through `ClientMessage.t === 'chat'`. Server broadcasts as `ServerMessage.t === 'chat'` tagged with sender seat + ts; client renders floating bubble near the sender via `ChatBubbles`, auto-dismisses after 3.5s. _Shipped in #52._
-- [ ] Spectator viewer count (server-side): track non-seated connections in `MatchSession`, expose count to clients.
+- [x] Spectator viewer count (server-side): `MatchSession.spectators` tracks non-seated connections (clients that joined a full room). Lobby broadcast carries the live `viewers` count; `TopBar` shows 👁 N next to the live pill. _Shipped in #53._
 
 ## Out of scope until a maintainer decides
 

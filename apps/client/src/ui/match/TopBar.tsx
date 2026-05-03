@@ -3,21 +3,19 @@ import { INK, INK_3, RED, SANS } from '../../native/theme.js';
 interface TopBarProps {
   /** Match code shown in the live pill — e.g. `A7K2`. Pass null to hide. */
   gameId: string | null;
+  /** Spectator count from `useGame.lobby.viewers`. Hidden when 0 or null. */
+  viewers?: number | null;
   onSettings?: () => void;
   onLog?: () => void;
   onLeave: () => void;
 }
 
 /**
- * Top-right cluster on the live table — live pill (game id), settings
- * cog (stub), and a Leave button that closes the current match. Ported
- * from `/tmp/design/design/app.jsx::TopBar`.
- *
- * The viewer count from the design is omitted: the server doesn't track
- * spectator connections yet — see the "Spectator viewer count" entry in
- * TODO.md → Design port follow-ups.
+ * Top-right cluster on the live table — live pill (game id + spectator
+ * count), settings cog, game log, and a Leave button. Ported from
+ * `/tmp/design/design/app.jsx::TopBar`.
  */
-export function TopBar({ gameId, onSettings, onLog, onLeave }: TopBarProps) {
+export function TopBar({ gameId, viewers, onSettings, onLog, onLeave }: TopBarProps) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
       {gameId ? (
@@ -50,6 +48,14 @@ export function TopBar({ gameId, onSettings, onLog, onLeave }: TopBarProps) {
             }}
           />
           <span>Live · #{gameId}</span>
+          {viewers !== null && viewers !== undefined && viewers > 0 ? (
+            <>
+              <span aria-hidden style={{ opacity: 0.5 }}>
+                ·
+              </span>
+              <span title={`${viewers} watching`}>👁 {viewers}</span>
+            </>
+          ) : null}
         </div>
       ) : null}
       {onLog ? (

@@ -284,6 +284,7 @@ function DesktopMatchBody({
         />
         <TopBar
           gameId={matchCode}
+          viewers={lobby?.viewers ?? null}
           onLeave={onLeave}
           onSettings={onOpenSettings}
           onLog={onOpenLog}
