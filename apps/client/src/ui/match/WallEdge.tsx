@@ -55,9 +55,14 @@ const PULSE_TRANSITION = {
   ease: 'easeInOut',
 } as const;
 
+// Wall tiles are smaller than the user's hand tiles so 36 slots per
+// side comfortably fit on a typical desktop viewport — this drives both
+// the wall row width and (after rotation) the side opponents' row
+// height, so a too-large value pushes the table past the viewport. The
+// `WALL_LENGTH` calc in `Table.tsx` must stay in sync with `--tile-w`.
 const WALL_TILE_VARS: React.CSSProperties = {
-  ['--tile-w' as string]: 'max(16px, 2.6vmin)',
-  ['--tile-h' as string]: 'max(22px, 3.6vmin)',
+  ['--tile-w' as string]: 'clamp(11px, 1.4vmin, 18px)',
+  ['--tile-h' as string]: 'clamp(15px, 1.9vmin, 22px)',
 };
 
 export function WallEdge({

@@ -94,6 +94,17 @@ interface SeatPosition {
  */
 const INNER_GAP_RAW = 'clamp(40px, 8vmin, 80px)';
 
+/**
+ * Per-slot wall tile width — mirrors `WALL_TILE_VARS` in `match/WallEdge.tsx`.
+ * Drives the post-rotation bounding box for side opponents so the
+ * rotated 36-slot wall doesn't visually overflow into the top/bottom
+ * seats. Tile size is intentionally smaller than the user's hand tiles
+ * so the four 36-slot walls fit on a typical desktop viewport.
+ */
+const WALL_TILE_W = 'clamp(11px, 1.4vmin, 18px)';
+const WALL_TILE_H = 'clamp(15px, 1.9vmin, 22px)';
+const WALL_LENGTH = `calc(36 * ${WALL_TILE_W} + 35 * 1px)`;
+
 export function Table({
   mySeat,
   dealer,
@@ -225,18 +236,21 @@ export function Table({
             {p.wrapTransform ? (
               // Reserve the *post-rotation* bounding box so the badge
               // above and the meld strip below can't sit on top of the
-              // rotated tile rows. Pre-rotation the inner column is
-              // ~14 hand tiles wide × (wall row + hand row + INNER_GAP) —
-              // after the 90° rotation those swap. The wall sits on the
-              // inner side of the rotation (toward the discard pool); the
-              // hand stays at the outer edge.
+              // rotated tile rows. Pre-rotation the inner column is the
+              // 36-slot wall row (widest element) × (wall + hand + INNER_GAP)
+              // tall — after the 90° rotation those swap. The wall sits
+              // on the inner side of the rotation (toward the discard
+              // pool); the hand stays at the outer edge. Sizing on the
+              // wall (not the hand) avoids the rotated row overflowing
+              // into the top/bottom seats now that the outer grid uses
+              // `auto auto auto`.
               <div
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  width: `calc(2 * max(22px, 3.6vmin) + ${INNER_GAP_RAW})`,
-                  height: 'calc(14 * max(16px, 2.6vmin) + 13 * 4px)',
+                  width: `calc(${WALL_TILE_H} + max(22px, 3.6vmin) + ${INNER_GAP_RAW})`,
+                  height: WALL_LENGTH,
                 }}
               >
                 <div style={{ transform: p.wrapTransform, whiteSpace: 'nowrap' }}>
