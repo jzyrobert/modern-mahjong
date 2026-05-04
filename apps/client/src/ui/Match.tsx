@@ -213,8 +213,6 @@ function DesktopMatchBody({
     [myTurn, seat, onAction],
   );
 
-  const wallSlices = useMemo(() => distributeWall(state.wall), [state.wall]);
-
   const onDrawNext = useMemo(
     () => (needsDraw ? () => onAction({ t: 'draw', seat }) : undefined),
     [needsDraw, seat, onAction],
@@ -300,7 +298,6 @@ function DesktopMatchBody({
         scoreboard={state.scoreboard}
         hands={state.hands}
         discards={state.discards}
-        wallSlices={wallSlices}
         lobby={lobby}
         ownHandClickable={myTurn ? onDiscard : undefined}
         onDrawNext={onDrawNext}
@@ -310,6 +307,9 @@ function DesktopMatchBody({
         drawnTileId={drawnTileId}
         manualOrder={manualOrder}
         onReorder={setManualOrder}
+        breakPosition={state.openingRolls?.breakPosition}
+        liveWallCount={state.wall.length}
+        nextDrawTile={state.wall.length > 0 ? state.wall[state.wall.length - 1] : null}
       />
       {canTsumo && (
         <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
@@ -348,18 +348,4 @@ function PortraitFallback() {
       </div>
     </div>
   );
-}
-
-/**
- * Split the live wall into per-seat slices by index modulo 4. Keeping the
- * draw order stable across seats means seat 0's slice is `[wall[0], wall[4],
- * wall[8], …]` — so the next-to-draw tile is always `slice[0]` on the
- * dealer's wall.
- */
-function distributeWall(wall: readonly MTile[]): Record<Seat, readonly MTile[]> {
-  const out: Record<Seat, MTile[]> = { 0: [], 1: [], 2: [], 3: [] };
-  for (const [i, tile] of wall.entries()) {
-    out[(i % 4) as Seat].push(tile);
-  }
-  return out as Record<Seat, readonly MTile[]>;
 }

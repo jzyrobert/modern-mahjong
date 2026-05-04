@@ -11,10 +11,11 @@ import type { ReactNode } from 'react';
 import type { LobbyState } from '../state/game.js';
 import { DiscardPile } from './DiscardPile.js';
 import { Hand } from './Hand.js';
-import { Wall } from './Wall.js';
 import { MeldStrip } from './match/MeldStrip.js';
 import { PlayerBadge } from './match/PlayerBadge.js';
 import { type SortMode, SortPicker } from './match/SortPicker.js';
+import { WallEdge } from './match/WallEdge.js';
+import { LIVE_WALL_TILES, computeWallLayout } from './match/wallLayout.js';
 
 interface TableProps {
   /** The viewer's seat — placed at the bottom. */
@@ -27,8 +28,6 @@ interface TableProps {
   scoreboard: Record<Seat, number>;
   hands: Record<Seat, MTile[]>;
   discards: Record<Seat, MTile[]>;
-  /** Live wall split per seat (engine `state.wall` distributed by index modulo 4). */
-  wallSlices: Record<Seat, readonly MTile[]>;
   /** Lobby snapshot — drives PlayerBadge name + initials. */
   lobby: LobbyState | null;
   ownHandClickable?: ((t: MTile) => void) | undefined;
@@ -55,6 +54,20 @@ interface TableProps {
   manualOrder?: readonly number[] | undefined;
   /** Commit a new manual order after a drag. */
   onReorder?: ((ids: number[]) => void) | undefined;
+  /**
+   * Sum of the opening dice from `state.openingRolls.breakPosition`. Drives
+   * which seat's wall is broken and where; `undefined` falls back to a
+   * "no break, all live" wall display.
+   */
+  breakPosition?: number | undefined;
+  /** Live tiles still in the engine wall (drives drawn count + count badge). */
+  liveWallCount: number;
+  /**
+   * Engine `Tile` at the next-to-draw position, used as the `layoutId`
+   * source for the wall→hand FLIP animation. Falls back to null if
+   * `state.wall` is empty.
+   */
+  nextDrawTile?: MTile | null | undefined;
   centerHud?: ReactNode;
 }
 
@@ -88,7 +101,6 @@ export function Table({
   scoreboard,
   hands,
   discards,
-  wallSlices,
   lobby,
   ownHandClickable,
   onDrawNext,
@@ -98,11 +110,37 @@ export function Table({
   drawnTileId = null,
   manualOrder,
   onReorder,
+  breakPosition,
+  liveWallCount,
+  nextDrawTile = null,
   centerHud,
 }: TableProps) {
   const positions = layoutFor(mySeat);
   const me = positions[0];
   const opponents = [positions[1], positions[2], positions[3]];
+
+  // Drawn count = LIVE_WALL_TILES (130) − live count remaining. The dice
+  // rules walk drawn tiles CCW from the break, so the layout helper turns
+  // engine `wall.length` into per-seat slot statuses.
+  const wallLayout = computeWallLayout({
+    dealer,
+    breakPosition,
+    drawn: Math.max(0, LIVE_WALL_TILES - liveWallCount),
+    allowDraw: onDrawNext !== undefined,
+  });
+
+  const renderWall = (seat: Seat, opts: { reverse?: boolean; isMe?: boolean }) => (
+    <WallEdge
+      seatKey={seat}
+      slots={wallLayout.slots[seat]}
+      liveCount={liveWallCount}
+      showCount={opts.isMe === true}
+      reverse={opts.reverse}
+      nextDrawTile={wallLayout.nextDrawSeat === seat ? nextDrawTile : null}
+      onDrawNext={wallLayout.nextDrawSeat === seat ? onDrawNext : undefined}
+      enableDrawTestId={wallLayout.nextDrawSeat === seat}
+    />
+  );
 
   return (
     <div
@@ -150,7 +188,11 @@ export function Table({
             <Hand tiles={hands[p.seat]} faceDown rotate={p.wrapTransform ? 0 : p.rotate} />
           </div>
         );
-        const wallTile = <Wall tiles={wallSlices[p.seat]} rows={1} showCount={false} />;
+        // Left/top opponents render their walls in normal order; the right
+        // opponent's wall mirrors so its physical "right end" stays on the
+        // outer edge after the -90° rotation. Bottom user has its own
+        // render below.
+        const wallTile = renderWall(p.seat, { reverse: p.position === 'right' });
         const meldStrip = <MeldStrip orientation={p.position === 'top' ? 'horiz' : 'vert'} />;
         return (
           <div
@@ -270,9 +312,7 @@ export function Table({
           gap: 6,
         }}
       >
-        <div style={{ marginBottom: INNER_GAP_RAW }}>
-          <Wall tiles={wallSlices[me.seat]} rows={1} onDrawNext={onDrawNext} />
-        </div>
+        <div style={{ marginBottom: INNER_GAP_RAW }}>{renderWall(me.seat, { isMe: true })}</div>
         <PlayerBadge
           seat={me.seat}
           position="bottom"
