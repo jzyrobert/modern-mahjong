@@ -1,0 +1,97 @@
+import type { GameState, Seat, Tile as MTile } from '@mahjong/game-logic';
+import { tileId } from '@mahjong/game-logic';
+import { Text, View } from 'react-native';
+import { Tile } from '../Tile';
+
+interface SharedDiscardPoolProps {
+  discardOrder: GameState['discardOrder'];
+  /** Map from seat → visual position so each tile gets a colour underline. */
+  seatToPosition: Record<Seat, 'bottom' | 'right' | 'top' | 'left'>;
+  /** TileId of the live discard while in awaitingClaims; pulses (static halo for Phase 4). */
+  latestId: number | null;
+}
+
+const SEAT_COLOR: Record<'bottom' | 'right' | 'top' | 'left', string> = {
+  bottom: 'oklch(0.68 0.18 28)', // coral — you
+  right: 'oklch(0.68 0.14 165)', // jade
+  top: 'oklch(0.68 0.14 320)', // mauve
+  left: 'oklch(0.68 0.14 240)', // sky
+};
+
+const TILE_W = 24;
+const TILE_H = 32;
+
+/**
+ * Centre-of-table discard pool. Tiles in true turn order, each with a
+ * colour underline keying the discarder's visual position. Native port
+ * of `_legacy/src/ui/match/SharedDiscardPool.tsx`. The pulse-halo on
+ * the live claim-window tile is deferred to Phase 6; for now we just
+ * gold-tint its border.
+ */
+export function SharedDiscardPool({
+  discardOrder,
+  seatToPosition,
+  latestId,
+}: SharedDiscardPoolProps) {
+  if (discardOrder.length === 0) {
+    return (
+      <View style={{ padding: 16, alignItems: 'center' }}>
+        <Text style={{ fontSize: 11, color: 'oklch(0.55 0.04 60)' }}>No discards yet</Text>
+      </View>
+    );
+  }
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 4,
+        justifyContent: 'center',
+        padding: 8,
+        backgroundColor: 'rgba(0,0,0,0.05)',
+        borderRadius: 12,
+      }}
+    >
+      {discardOrder.map((entry, i) => {
+        const id = tileId(entry.tile);
+        const pos = seatToPosition[entry.from];
+        const live = id === latestId;
+        return (
+          <View
+            // biome-ignore lint/suspicious/noArrayIndexKey: discardOrder is append-only and indexed by turn order
+            key={`${id}-${i}`}
+            style={{
+              alignItems: 'center',
+              gap: 2,
+            }}
+          >
+            <View
+              style={{
+                ...(live && {
+                  shadowColor: 'oklch(0.78 0.16 75)',
+                  shadowOpacity: 0.7,
+                  shadowRadius: 6,
+                  shadowOffset: { width: 0, height: 0 },
+                  elevation: 4,
+                  borderWidth: 1.5,
+                  borderColor: 'oklch(0.78 0.16 75)',
+                  borderRadius: 4,
+                }),
+              }}
+            >
+              <Tile tile={entry.tile} width={TILE_W} height={TILE_H} />
+            </View>
+            <View
+              style={{
+                width: TILE_W - 4,
+                height: 2,
+                borderRadius: 1,
+                backgroundColor: SEAT_COLOR[pos],
+              }}
+            />
+          </View>
+        );
+      })}
+    </View>
+  );
+}

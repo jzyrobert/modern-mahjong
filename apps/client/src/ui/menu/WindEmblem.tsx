@@ -33,12 +33,12 @@ export function WindEmblem({ wind = '東', size = 100 }: WindEmblemProps) {
       <Svg width={size} height={h} viewBox={`0 0 ${size} ${h}`}>
         <Defs>
           <LinearGradient id="we-side" x1="0" x2="0" y1="0" y2="1">
-            <Stop offset="0%" stopColor="oklch(0.92 0.02 85)" />
-            <Stop offset="100%" stopColor="oklch(0.78 0.03 85)" />
+            <Stop offset="0%" stopColor="#e3d8c0" />
+            <Stop offset="100%" stopColor="#bfae8c" />
           </LinearGradient>
           <LinearGradient id="we-face" x1="0" x2="0" y1="0" y2="1">
-            <Stop offset="0%" stopColor="oklch(0.99 0.005 85)" />
-            <Stop offset="100%" stopColor="oklch(0.94 0.015 85)" />
+            <Stop offset="0%" stopColor="#fbf8f0" />
+            <Stop offset="100%" stopColor="#ece4d3" />
           </LinearGradient>
         </Defs>
         <Rect x={0} y={size * 0.05} width={size} height={size * 1.27} rx={r} fill="url(#we-side)" />
@@ -50,7 +50,7 @@ export function WindEmblem({ wind = '東', size = 100 }: WindEmblemProps) {
           height={size * 1.21 - 4}
           rx={r - 1}
           fill="none"
-          stroke="oklch(0.85 0.02 85)"
+          stroke="#cdc1ad"
           strokeWidth={1.2}
         />
       </Svg>
