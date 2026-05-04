@@ -99,9 +99,9 @@ The first design pass (cream-paper / sage-felt language, refined SVG tile faces,
 
 Tracking concrete fixes from the in-repo React code review.
 
-- [ ] **Critical** — `WinCelebration.tsx`: invalid HTML (`<button>` containing `<div>`) — switch to `motion.div role="dialog"` with `aria-modal` + window Escape listener.
-- [ ] **Critical** — `Hand.tsx`: document `pointermove`/`pointerup`/`pointercancel` listeners leak when a tile unmounts mid-long-press; clean up via `AbortController` + unmount effect.
-- [ ] **High** — `RulePanel.tsx`: `SecondsInput` syncs prop to state via `useEffect`; reset via `key={ms}` from the parent and drop the effect.
+- [x] **Critical** — `WinCelebration.tsx`: invalid HTML (`<button>` containing `<div>`) — switch to `motion.div role="dialog"` with `aria-modal` + window Escape listener. _Shipped in #67._
+- [x] **Critical** — `Hand.tsx`: document `pointermove`/`pointerup`/`pointercancel` listeners leak when a tile unmounts mid-long-press; clean up via `AbortController` + unmount effect. _Shipped in #67._
+- [x] **High** — `RulePanel.tsx`: `SecondsInput` syncs prop to state via `useEffect`; reset via `key={ms}` from the parent and drop the effect. _Shipped in #68._
 - [ ] **High** — `DiceCeremony.tsx`: backdrop dismissal isn't keyboard-accessible — add a window Escape listener mirroring `Modal.tsx`.
 - [ ] **High** — `HostLanModal.tsx`: Host URL input has no accessible label (`<Label>` is a styled `<div>`); replace with `TextField` from `buttons.tsx` or wire `htmlFor`/`id`.
 - [ ] **Medium** — `buttons.tsx` (`TextField`) and `ChatBar.tsx`: drop direct DOM style mutation in favour of CSS pseudo-classes (`:focus-visible`, `:active`); current touch pressed-state doesn't fire on `pointerdown`/`pointerup`.
