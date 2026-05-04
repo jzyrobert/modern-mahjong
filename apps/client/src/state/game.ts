@@ -2,7 +2,6 @@ import type { Event as EngineEvent, GameState, Seat } from '@mahjong/game-logic'
 import { tileId } from '@mahjong/game-logic';
 import type { PublicPlayer, RuleConfig } from '@mahjong/protocol';
 import { create } from 'zustand';
-import { getPreference, setPreference } from '../native/preferences.js';
 
 export interface LobbyState {
   players: PublicPlayer[];
@@ -59,41 +58,6 @@ function persistSettings(s: UserSettings): void {
       /* storage might be full or disabled in private mode — silent skip */
     }
   }
-  // Mirror to native Preferences so settings survive a WebView wipe on
-  // iOS / Android. No-op on web where the plugin import fails silently.
-  void setPreference(SETTINGS_STORAGE_KEY, json);
-}
-
-/**
- * Sync settings between localStorage and native Preferences. Mirrors the
- * `hydrateIdentity` pattern: if the WebView wiped localStorage, reseed
- * from Preferences; conversely if Preferences is empty (first launch
- * after a web → installed-app upgrade), push localStorage in. Idempotent.
- *
- * Call once at app startup before the first render.
- */
-export async function hydrateSettings(): Promise<void> {
-  if (typeof localStorage === 'undefined') return;
-  let local: string | null = null;
-  try {
-    local = localStorage.getItem(SETTINGS_STORAGE_KEY);
-  } catch {
-    /* localStorage might be disabled */
-  }
-  const stored = await getPreference(SETTINGS_STORAGE_KEY);
-  if (local && !stored) {
-    await setPreference(SETTINGS_STORAGE_KEY, local);
-  } else if (!local && stored) {
-    try {
-      localStorage.setItem(SETTINGS_STORAGE_KEY, stored);
-      // Also push the rehydrated value into the live store so the UI
-      // reflects it without a refresh.
-      const parsed = JSON.parse(stored) as Partial<UserSettings>;
-      useGame.getState().setSettings(parsed);
-    } catch {
-      /* invalid JSON or storage error — fall back to defaults */
-    }
-  }
 }
 
 /**
@@ -122,8 +86,10 @@ interface ClientGameStore {
   /**
    * User preferences — felt skin, tile-back, sort behaviour, animations,
    * sound. Loaded from localStorage on init; mirrored back on every
-   * `setSettings` call. Also mirrored to `@capacitor/preferences` so they
-   * survive a WebView wipe on native.
+   * `setSettings` call. On native, the `expo-sqlite/localStorage/install`
+   * polyfill imported at app startup makes localStorage durable across
+   * WebView wipes / app reinstalls, so no separate native-preferences
+   * mirror is needed.
    */
   settings: UserSettings;
   /**

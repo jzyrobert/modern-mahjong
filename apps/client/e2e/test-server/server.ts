@@ -17,7 +17,12 @@ interface RoomCtx {
   session: MatchSession;
   /** Live connection id → ws so `Outbound.kind === 'sendTo'` can target one. */
   connections: Map<string, WebSocket>;
-  alarmTimer: NodeJS.Timeout | null;
+  // `setTimeout` returns `number` under the Expo/DOM-typed `tsconfig.json`
+  // (extends `expo/tsconfig.base` → `lib: ["DOM", "ESNext"]`), even though
+  // this file actually runs in Node — Node's setTimeout return value is
+  // assignment-compatible with `number` at runtime, so we type it as
+  // `ReturnType<typeof setTimeout>` to stay portable.
+  alarmTimer: ReturnType<typeof setTimeout> | null;
 }
 
 export interface TestServerHandle {
