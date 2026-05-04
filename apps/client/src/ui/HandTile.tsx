@@ -166,6 +166,12 @@ export function HandTile({
   return (
     <Animated.View
       {...responder.panHandlers}
+      // The clickable surface lives on this outer Animated.View (the
+      // PanResponder catches the tap and routes through `onTapRef`).
+      // The inner Tile has no `onPress`, so its `testID` would be
+      // silently dropped — pin the testID here instead so Playwright
+      // can target it via `getByTestId('own-hand-tile').click()`.
+      testID={onTap ? 'own-hand-tile' : undefined}
       style={{
         transform: [{ translateX }, { translateY: liftedY }, { scale: liftedScale }],
         zIndex: dragging ? 10 : 0,
@@ -178,7 +184,6 @@ export function HandTile({
           raised={isDrawn || dragging}
           width={width}
           height={height}
-          testID={onTap ? 'own-hand-tile' : undefined}
         />
       </View>
     </Animated.View>
