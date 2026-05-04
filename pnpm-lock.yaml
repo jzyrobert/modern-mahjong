@@ -69,6 +69,9 @@ importers:
       '@lhci/cli':
         specifier: ^0.15.1
         version: 0.15.1
+      '@mahjong/server':
+        specifier: workspace:*
+        version: link:../server
       '@playwright/test':
         specifier: ^1.59.1
         version: 1.59.1
@@ -78,6 +81,9 @@ importers:
       '@types/react-dom':
         specifier: 19.0.1
         version: 19.0.1
+      '@types/ws':
+        specifier: ^8.5.13
+        version: 8.18.1
       '@vitejs/plugin-react':
         specifier: 4.3.4
         version: 4.3.4(vite@5.4.21(@types/node@22.10.1))
@@ -87,6 +93,9 @@ importers:
       vite:
         specifier: 5.4.21
         version: 5.4.21(@types/node@22.10.1)
+      ws:
+        specifier: ^8.18.0
+        version: 8.20.0
 
   apps/server:
     dependencies:
@@ -947,6 +956,9 @@ packages:
 
   '@types/slice-ansi@4.0.0':
     resolution: {integrity: sha512-+OpjSaq85gvlZAYINyzKpLeiFkSC4EsC6IIiT6v6TLSU5k5U83fHGj9Lel8oKEXM0HqgrMVCjXPDPVICtxF7EQ==}
+
+  '@types/ws@8.18.1':
+    resolution: {integrity: sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg==}
 
   '@types/yauzl@2.10.3':
     resolution: {integrity: sha512-oJoftv0LSuaDZE3Le4DbKX+KS9G36NzOeSap90UIK0yMA/NhKJhqlSGtNDORNRaIbQfzjXDrQa0ytJ6mNRGz/Q==}
@@ -3475,6 +3487,10 @@ snapshots:
       csstype: 3.2.3
 
   '@types/slice-ansi@4.0.0': {}
+
+  '@types/ws@8.18.1':
+    dependencies:
+      '@types/node': 22.10.1
 
   '@types/yauzl@2.10.3':
     dependencies:
