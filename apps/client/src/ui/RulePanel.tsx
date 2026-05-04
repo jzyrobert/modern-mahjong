@@ -1,6 +1,6 @@
 import { FAAN_OPTIONS } from '@mahjong/game-logic';
 import type { Action, RuleConfig } from '@mahjong/protocol';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { HAIRLINE, PAPER } from '../native/theme.js';
 
 interface RulePanelProps {
@@ -84,6 +84,10 @@ export function RulePanel({ rules, isHost, onAction }: RulePanelProps) {
         </label>
 
         <SecondsInput
+          // `key={ms}` re-mounts the input whenever the prop value changes
+          // externally (e.g., another host action edited the rules), which
+          // keeps the local draft state in sync without a prop→state effect.
+          key={turnTimerOff ? TURN_TIMER_DEFAULT_MS : rules.turnTimeoutMs}
           label="Turn timeout"
           disabled={disabled || turnTimerOff}
           ms={turnTimerOff ? TURN_TIMER_DEFAULT_MS : rules.turnTimeoutMs}
@@ -92,6 +96,7 @@ export function RulePanel({ rules, isHost, onAction }: RulePanelProps) {
           onCommit={(ms) => set({ turnTimeoutMs: ms })}
         />
         <SecondsInput
+          key={rules.claimWindowMs}
           label="Claim window"
           disabled={disabled}
           ms={rules.claimWindowMs}
@@ -120,15 +125,12 @@ interface SecondsInputProps {
 
 /**
  * Number input that only dispatches an action on blur — typing two characters
- * (e.g., "30") would otherwise emit one action per keystroke.
+ * (e.g., "30") would otherwise emit one action per keystroke. The parent
+ * passes `key={ms}` so an external change re-mounts the input and the draft
+ * state is reseeded from the new `ms` prop without a prop→state effect.
  */
 function SecondsInput({ label, disabled, ms, min, max, onCommit }: SecondsInputProps) {
-  const initial = Math.round(ms / 1000);
-  const [draft, setDraft] = useState<number>(initial);
-
-  useEffect(() => {
-    setDraft(initial);
-  }, [initial]);
+  const [draft, setDraft] = useState(() => Math.round(ms / 1000));
 
   const commit = () => {
     const clamped = Math.min(max, Math.max(min, draft || min));
