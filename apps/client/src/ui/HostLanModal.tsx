@@ -1,9 +1,9 @@
 import { generateMatchCode } from '@mahjong/protocol';
 import { useEffect, useRef, useState } from 'react';
 import { isLanServerAvailable } from '../native/lan-server.js';
-import { CREAM, HAIRLINE, INK, INK_3, MONO, PAPER_HI, SANS } from '../native/theme.js';
+import { CREAM, HAIRLINE, INK, INK_3, MONO } from '../native/theme.js';
 import { Modal } from './Modal.js';
-import { GhostButton, PrimaryButton } from './buttons.js';
+import { GhostButton, PrimaryButton, TextField } from './buttons.js';
 
 interface HostLanModalProps {
   open: boolean;
@@ -44,30 +44,17 @@ export function HostLanModal({ open, onClose, onHosted }: HostLanModalProps) {
           : 'Native LAN-server plugin not available in this build. Paste the host address you want to advertise; guests on the same Wi-Fi can join with the match code below.'}
       </div>
 
-      <div style={{ marginBottom: 14 }}>
-        <Label>Host URL</Label>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <input
-            value={hostUrl}
-            onChange={(e) => setHostUrl(e.target.value)}
-            placeholder="http://192.168.1.42:7777"
-            style={{
-              flex: 1,
-              padding: '10px 12px',
-              borderRadius: 8,
-              border: `1px solid ${HAIRLINE}`,
-              background: PAPER_HI,
-              fontFamily: SANS,
-              fontSize: 14,
-              fontWeight: 600,
-              color: INK,
-              outline: 'none',
-            }}
-          />
-          <GhostButton onClick={copyHostUrl} disabled={!hostUrl}>
-            {copyState === 'copied' ? 'Copied' : copyState === 'error' ? 'Failed' : 'Copy'}
-          </GhostButton>
-        </div>
+      <div style={{ marginBottom: 14, display: 'flex', alignItems: 'flex-end', gap: 8 }}>
+        <TextField
+          label="Host URL"
+          value={hostUrl}
+          onChange={setHostUrl}
+          placeholder="http://192.168.1.42:7777"
+          style={{ flex: 1 }}
+        />
+        <GhostButton onClick={copyHostUrl} disabled={!hostUrl}>
+          {copyState === 'copied' ? 'Copied' : copyState === 'error' ? 'Failed' : 'Copy'}
+        </GhostButton>
       </div>
 
       <div
