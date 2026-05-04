@@ -146,8 +146,13 @@ export function Table({
     <div
       style={{
         display: 'grid',
-        gridTemplateColumns: 'auto 1fr auto',
-        gridTemplateRows: 'auto 1fr auto',
+        // All tracks are content-sized so the four walls hug the central
+        // discard area — replicates the tight square footprint of a real
+        // mahjong table. `placeContent: 'center'` keeps the resulting
+        // (smaller) grid centred inside the felt's `minHeight`.
+        gridTemplateColumns: 'auto auto auto',
+        gridTemplateRows: 'auto auto auto',
+        placeContent: 'center',
         gap: 'clamp(4px, 1vmin, 12px)',
         // Scale the table to whatever vertical space is available — on a
         // landscape phone (~360px tall) this collapses to ~360px instead of
@@ -193,7 +198,9 @@ export function Table({
         // outer edge after the -90° rotation. Bottom user has its own
         // render below.
         const wallTile = renderWall(p.seat, { reverse: p.position === 'right' });
-        const meldStrip = <MeldStrip orientation={p.position === 'top' ? 'horiz' : 'vert'} />;
+        // Top opponent's meld strip is rendered separately in the top-left
+        // corner cell so it doesn't push the wall row away from the centre.
+        const meldStrip = p.position === 'top' ? null : <MeldStrip orientation="vert" />;
         return (
           <div
             key={p.seat}
@@ -263,6 +270,20 @@ export function Table({
           </div>
         );
       })}
+
+      {/* Top opponent's meld strip lives in the top-left corner cell so the
+          wall row above can sit flush against the central discard area
+          rather than being pushed outward by an inline meld strip. */}
+      <div
+        style={{
+          gridColumn: 1,
+          gridRow: 1,
+          alignSelf: 'end',
+          justifySelf: 'center',
+        }}
+      >
+        <MeldStrip orientation="vert" />
+      </div>
 
       <div
         style={{
