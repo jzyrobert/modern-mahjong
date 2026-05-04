@@ -135,7 +135,12 @@ export function Match() {
           style={{ flex: 1 }}
           contentContainerStyle={{ padding: 24, maxWidth: 760, alignSelf: 'center', width: '100%' }}
         >
-          <Text style={{ fontSize: 28, fontWeight: '900', color: COLORS.ink }}>Lobby</Text>
+          <Text
+            accessibilityRole="header"
+            style={{ fontSize: 28, fontWeight: '900', color: COLORS.ink }}
+          >
+            Lobby
+          </Text>
           <Text style={{ marginTop: 4, marginBottom: 12, fontSize: 13, color: COLORS.ink3 }}>
             {isHost
               ? 'Share the match code with friends. Start when everyone is ready.'

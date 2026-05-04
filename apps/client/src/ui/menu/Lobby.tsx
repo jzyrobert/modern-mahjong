@@ -227,6 +227,11 @@ function Hero() {
         }}
       >
         <Text
+          accessibilityRole="header"
+          // RN-Web maps `accessibilityRole="header"` to `<h1 role="heading">`,
+          // which Playwright's `getByRole('heading', { name: ... })`
+          // expects. The smaller brand mark in `TopBar` stays a plain
+          // Text since there's only one h1 per route.
           style={{
             fontWeight: '900',
             fontSize: 36,

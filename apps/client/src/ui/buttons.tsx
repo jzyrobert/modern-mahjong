@@ -42,6 +42,13 @@ export function PrimaryButton({
     <Pressable
       onPress={disabled ? undefined : onPress}
       disabled={disabled}
+      // accessibilityRole + accessibilityState surface the right ARIA
+      // attributes through RN-Web (`role="button"`, `aria-disabled`) so
+      // Playwright's `getByRole('button', { name })` and assistive tech
+      // can find the control. Without these the Pressable renders as a
+      // plain `<div>`.
+      accessibilityRole="button"
+      accessibilityState={{ disabled }}
       style={({ pressed }) => ({
         backgroundColor: disabled ? '#c9c1b3' : pressed ? COLORS.redHot : COLORS.red,
         borderRadius: 10,
@@ -88,6 +95,8 @@ export function GhostButton({
     <Pressable
       onPress={disabled ? undefined : onPress}
       disabled={disabled}
+      accessibilityRole="button"
+      accessibilityState={{ disabled }}
       style={({ pressed }) => ({
         backgroundColor: pressed && !disabled ? COLORS.paper : 'white',
         borderColor: COLORS.hairline,
@@ -163,6 +172,12 @@ export function TextField({
         onBlur={() => setFocused(false)}
         placeholder={placeholder}
         placeholderTextColor={COLORS.ink3}
+        // `accessibilityLabel` flows to RN-Web as `aria-label`, which
+        // is what Playwright's `getByLabel('Match code')` resolves to
+        // in the absence of a real `<label>` element. The visible
+        // `<Text>` above is purely decorative — without this, screen
+        // readers would announce only the placeholder.
+        accessibilityLabel={label}
         maxLength={maxLength}
         autoCapitalize={autoCapitalize}
         autoCorrect={autoCorrect}

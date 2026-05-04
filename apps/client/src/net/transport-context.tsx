@@ -42,24 +42,27 @@ const TransportContext = createContext<TransportContextValue | null>(null);
 
 /**
  * Resolve the online-match server URL with this precedence:
- * 1. `expo-constants` `extra.serverUrl` — set via `app.config.ts` or
+ * 1. **Web only** — `?serverUrl=…` query string. Used by the
+ *    Playwright multi-player e2e (`apps/client/e2e/online-multi-
+ *    player.spec.ts`) to point the browser at an in-process test
+ *    server. Native has no URL bar so this is a no-op there.
+ * 2. `expo-constants` `extra.serverUrl` — set via `app.config.ts` or
  *    EAS build profile env override.
- * 2. `EXPO_PUBLIC_SERVER_URL` — runtime env, baked at build time but
+ * 3. `EXPO_PUBLIC_SERVER_URL` — runtime env, baked at build time but
  *    overridable via `.env`.
- * 3. Dev fallback: derive the host from Expo's dev-server `hostUri`
- *    (LAN IP, e.g. `192.168.1.5:8081` → `http://192.168.1.5:8787`). This
- *    reaches the dev wrangler server from both Android emulator and a
- *    physical device on the same network, as long as wrangler is bound
- *    to `0.0.0.0` (see `apps/server/package.json`'s `dev` script).
- * 4. Last-resort `http://localhost:8787` — only useful in iOS simulator
+ * 4. Dev fallback: derive the host from Expo's dev-server `hostUri`
+ *    (LAN IP, e.g. `192.168.1.5:8081` → `http://192.168.1.5:8787`).
+ *    Reaches the dev wrangler server from both Android emulator and
+ *    a physical device on the same network, as long as wrangler is
+ *    bound to `0.0.0.0` (see `apps/server/package.json`'s `dev` script).
+ * 5. Last-resort `http://localhost:8787` — only useful in iOS simulator
  *    or with `adb reverse tcp:8787 tcp:8787` configured.
- *
- * The legacy `?serverUrl=` query-string override doesn't apply on
- * native (no URL bar). The Playwright multi-player e2e against the web
- * target re-uses it — see `app.config.ts` if/when the spec is migrated
- * to Expo Web.
  */
 function resolveServerHost(): string {
+  if (typeof window !== 'undefined' && typeof window.location !== 'undefined') {
+    const fromQuery = new URLSearchParams(window.location.search).get('serverUrl');
+    if (fromQuery) return fromQuery;
+  }
   const extra = Constants.expoConfig?.extra as { serverUrl?: string } | undefined;
   if (extra?.serverUrl) return extra.serverUrl;
   if (process.env.EXPO_PUBLIC_SERVER_URL) return process.env.EXPO_PUBLIC_SERVER_URL;
