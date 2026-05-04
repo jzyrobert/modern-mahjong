@@ -1,15 +1,21 @@
-import { Text, View } from 'react-native';
+import { useEffect } from 'react';
+import { useRouter } from 'expo-router';
+import { useGame } from '@/src/state/game';
+import { Lobby } from '@/src/ui/menu/Lobby';
 
 /**
- * Phase 1 placeholder. Confirms the Expo Router + NativeWind toolchain
- * boots end-to-end without any of the legacy web UI mounted. Phase 3
- * replaces this with the real lobby (`Lobby.tsx` port).
+ * Root route. The lobby renders here while no transport is open. Once a
+ * transport delivers its first `state` message the zustand store sets
+ * `state` non-null; we forward to `/match` so the match screen takes
+ * over (Phase 4 fills in the match UI; for now `/match` is a stub).
  */
 export default function Index() {
-  return (
-    <View className="flex-1 items-center justify-center bg-cream">
-      <Text className="text-3xl font-extrabold text-ink">Modern Mahjong</Text>
-      <Text className="mt-2 text-sm text-ink-3">Expo migration · Phase 1</Text>
-    </View>
-  );
+  const router = useRouter();
+  const state = useGame((s) => s.state);
+
+  useEffect(() => {
+    if (state) router.replace('/match');
+  }, [state, router]);
+
+  return <Lobby />;
 }
