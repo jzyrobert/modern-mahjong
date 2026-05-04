@@ -5,14 +5,6 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
-    inputs:
-      buildMobile:
-        description: 'Build the Android APK via EAS local'
-        type: choice
-        options:
-          - 'no'
-          - 'yes'
-        default: 'no'
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -20,38 +12,10 @@ concurrency:
 
 env:
   # OpenSSL legacy provider keeps Node 20 + older crypto-using build
-  # tools (lhci, certain expo plugins) happy. Memory headroom for
-  # `eas build --local` on the Android job.
+  # tools (lhci, certain expo plugins) happy.
   NODE_OPTIONS: --openssl-legacy-provider --max_old_space_size=4096
 
 jobs:
-  # Detect which top-level workspace a PR touches so the heavy mobile
-  # build can skip when only the server / packages changed. Pushes to
-  # main and manual workflow_dispatch runs always emit `client: 'true'`
-  # via the fallback below.
-  changed:
-    runs-on: ubuntu-latest
-    outputs:
-      client: ${{ steps.filter.outputs.client }}
-    steps:
-      - uses: actions/checkout@v4
-      - id: filter
-        uses: dorny/paths-filter@v3
-        with:
-          # `pull_request` runs filter against the PR's changed-file
-          # list. `push` / `workflow_dispatch` lack that context, so
-          # we set `client` true unconditionally — the
-          # `build-mobile-android` `if:` below ORs the explicit event
-          # checks anyway, but keeping this consistent makes the
-          # output usable from any caller.
-          filters: |
-            client:
-              - 'apps/client/**'
-              - 'packages/**'
-              - 'pnpm-lock.yaml'
-              - 'biome.json'
-              - 'tsconfig.base.json'
-
   test:
     runs-on: ubuntu-latest
     steps:
@@ -94,76 +58,6 @@ jobs:
           path: apps/client/dist
           if-no-files-found: error
           retention-days: 7
-
-  build-mobile-android:
-    # Build the Android APK on every push to main, on PRs that touch
-    # the client (or any of its transitive deps — see the `changed`
-    # job's filter list), or on manual workflow_dispatch with
-    # `buildMobile=yes`. PRs that only touch server / docs / CI yaml
-    # skip this job to keep CI quick.
-    #
-    # The previous gate was buggy — `github.event.pull_request.
-    # changed_files` is the *count* (an integer), not a path list, so
-    # `contains(..., 'apps/client/')` always returned false and the
-    # job silently skipped on every PR.
-    if: |
-      github.event_name == 'push' ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.buildMobile == 'yes') ||
-      needs.changed.outputs.client == 'true'
-    runs-on: ubuntu-latest
-    needs: [test, changed]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup
-
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-
-      - name: Install EAS CLI
-        run: pnpm add -g eas-cli@latest
-
-      - name: Verify EAS CLI
-        run: eas --version
-
-      - name: Cache Gradle
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('apps/client/package.json', 'apps/client/app.json', 'pnpm-lock.yaml') }}
-          restore-keys: |
-            gradle-${{ runner.os }}-
-
-      # `eas build --local` runs the entire Android build on this
-      # runner (no EAS cloud minutes consumed). Output is a debug
-      # APK we upload as an artifact, mirroring the previous
-      # Capacitor `build-android` flow.
-      #
-      # `EXPO_TOKEN` deliberately omitted — the local build path
-      # doesn't need EAS-side auth (the dev-client APK is unsigned /
-      # uses the debug keystore), and presence of the token triggers
-      # EAS's robot-user gate which demands a registered EAS project
-      # ID via `eas init`. The project isn't registered (not yet on
-      # EAS Build cloud), so the gate aborts with "EAS project not
-      # configured." The deploy workflow keeps the token for the
-      # production submit path that does require auth.
-      - name: Build development APK
-        working-directory: apps/client
-        run: |
-          eas build --platform android --profile development --local --non-interactive --output=./app-dev.apk
-        env:
-          NODE_ENV: development
-
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: client-apk-debug
-          path: apps/client/app-dev.apk
-          if-no-files-found: error
-          retention-days: 14
 
   e2e:
     # Web Playwright spec, run against the Expo Web export. The

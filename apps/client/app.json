@@ -21,7 +21,11 @@
       "adaptiveIcon": {
         "backgroundColor": "#f1eadc"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -46,6 +50,13 @@
     "experiments": {
       "typedRoutes": true,
       "tsconfigPaths": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "450b36a7-da19-47a7-9b05-f8e924785bdb"
+      }
+    },
+    "owner": "robertjin"
   }
 }
