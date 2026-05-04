@@ -15,10 +15,26 @@ const NAME_KEY = 'mahjong.displayName';
 export function getPlayerId(): string {
   let id = localStorage.getItem(ID_KEY);
   if (!id) {
-    id = crypto.randomUUID();
+    id = newPlayerId();
     localStorage.setItem(ID_KEY, id);
   }
   return id;
+}
+
+/**
+ * Generate a UUID-v4-shaped ID. We don't need cryptographic strength
+ * (this just identifies one device's player handle within a match
+ * room), so a `Math.random`-based generator is fine. RN's Hermes
+ * runtime doesn't expose `globalThis.crypto.randomUUID`, so the
+ * legacy `crypto.randomUUID()` call from the web build doesn't work
+ * here.
+ */
+function newPlayerId(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
 }
 
 export function getDisplayName(): string {

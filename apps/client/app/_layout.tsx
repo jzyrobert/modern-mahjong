@@ -5,7 +5,6 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { TransportProvider } from '@/src/net/transport-context';
-import '../global.css';
 
 /**
  * Root layout. Mounts the providers every screen needs:

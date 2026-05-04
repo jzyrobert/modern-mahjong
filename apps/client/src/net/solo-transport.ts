@@ -9,7 +9,7 @@ import {
   reduce,
 } from '@mahjong/game-logic';
 import type { ServerMessage } from '@mahjong/protocol';
-import type { Transport, TransportStatus } from './transport.js';
+import type { Transport, TransportStatus } from './transport';
 
 interface SoloOptions {
   playerId: string;

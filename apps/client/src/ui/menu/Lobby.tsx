@@ -1,13 +1,13 @@
 import { generateMatchCode } from '@mahjong/protocol';
 import { type ReactNode, useState } from 'react';
 import { Alert, ScrollView, Text, TextInput, View, useWindowDimensions } from 'react-native';
-import { getDisplayName, setDisplayName } from '../../identity.js';
-import { useTransport } from '../../net/transport-context.js';
-import { useGame } from '../../state/game.js';
-import { GhostButton, PrimaryButton, TextField } from '../buttons.js';
-import { LobbyPreview } from './LobbyPreview.js';
-import { WindEmblem } from './WindEmblem.js';
-import { BotIcon, BoxIcon, GlobeIcon, WifiIcon } from './icons.js';
+import { getDisplayName, setDisplayName } from '../../identity';
+import { useTransport } from '../../net/transport-context';
+import { useGame } from '../../state/game';
+import { GhostButton, PrimaryButton, TextField } from '../buttons';
+import { LobbyPreview } from './LobbyPreview';
+import { WindEmblem } from './WindEmblem';
+import { BotIcon, BoxIcon, GlobeIcon, WifiIcon } from './icons';
 
 /**
  * Top-level menu screen. Native port of `_legacy/src/ui/Lobby.tsx`.

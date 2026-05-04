@@ -1,6 +1,6 @@
 import { SEATS } from '@mahjong/game-logic';
 import { Text, View, useWindowDimensions } from 'react-native';
-import type { LobbyState } from '../../state/game.js';
+import type { LobbyState } from '../../state/game';
 
 interface LobbyPreviewProps {
   lobby: LobbyState;

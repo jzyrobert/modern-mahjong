@@ -12,15 +12,15 @@ import {
   useState,
 } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
-import { getDisplayName, getPlayerId } from '../identity.js';
-import { useGame } from '../state/game.js';
-import { playDiscard } from '../sound.js';
-import { createSoloTransport } from './solo-transport.js';
+import { getDisplayName, getPlayerId } from '../identity';
+import { useGame } from '../state/game';
+import { playDiscard } from '../sound';
+import { createSoloTransport } from './solo-transport';
 import {
   type Transport,
   createLanTransport,
   createOnlineTransport,
-} from './transport.js';
+} from './transport';
 
 interface TransportContextValue {
   matchCode: string | null;

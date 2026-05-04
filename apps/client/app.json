@@ -7,9 +7,7 @@
     "orientation": "landscape",
     "newArchEnabled": true,
     "userInterfaceStyle": "light",
-    "icon": "./assets/icon.png",
     "splash": {
-      "image": "./assets/splash.png",
       "resizeMode": "cover",
       "backgroundColor": "#f1eadc"
     },
@@ -21,15 +19,13 @@
     "android": {
       "package": "com.modernmahjong.app",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#f1eadc"
       },
       "edgeToEdgeEnabled": true
     },
     "web": {
       "bundler": "metro",
-      "output": "static",
-      "favicon": "./assets/favicon.png"
+      "output": "static"
     },
     "plugins": [
       "expo-router",

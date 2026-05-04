@@ -9,16 +9,26 @@ interface PrimaryButtonProps {
   size?: 'sm' | 'md' | 'lg';
 }
 
-const PRIMARY_PADDING = { sm: 'py-1.5 px-3', md: 'py-2.5 px-4', lg: 'py-3 px-5' };
-const PRIMARY_FONT = { sm: 'text-[11px]', md: 'text-[13px]', lg: 'text-[14px]' };
+const PRIMARY_PADDING: Record<'sm' | 'md' | 'lg', { vertical: number; horizontal: number }> = {
+  sm: { vertical: 6, horizontal: 12 },
+  md: { vertical: 10, horizontal: 16 },
+  lg: { vertical: 12, horizontal: 20 },
+};
+const PRIMARY_FONT: Record<'sm' | 'md' | 'lg', number> = { sm: 11, md: 13, lg: 14 };
+
+const COLORS = {
+  red: 'oklch(0.55 0.18 25)',
+  redHot: 'oklch(0.62 0.2 28)',
+  ink: 'oklch(0.25 0.04 60)',
+  hairline: 'oklch(0.86 0.02 80)',
+  paper: 'oklch(0.97 0.01 80)',
+  paperHi: 'oklch(0.99 0.005 85)',
+  ink3: 'oklch(0.55 0.04 60)',
+};
 
 /**
  * Brand-red primary button with active-press visual feedback. Native
  * port of the legacy `_legacy/src/ui/buttons.tsx::PrimaryButton`.
- *
- * Active-state styling uses Pressable's pressed callback rather than
- * NativeWind's `active:` modifier so the lift transform composes
- * cleanly with the disabled gray-out below.
  */
 export function PrimaryButton({
   children,
@@ -27,21 +37,29 @@ export function PrimaryButton({
   full = false,
   size = 'md',
 }: PrimaryButtonProps) {
+  const padding = PRIMARY_PADDING[size];
   return (
     <Pressable
       onPress={disabled ? undefined : onPress}
       disabled={disabled}
       style={({ pressed }) => ({
+        backgroundColor: disabled ? 'oklch(0.85 0.02 60)' : pressed ? COLORS.redHot : COLORS.red,
+        borderRadius: 10,
+        paddingVertical: padding.vertical,
+        paddingHorizontal: padding.horizontal,
         opacity: disabled ? 0.6 : 1,
         transform: [{ translateY: pressed && !disabled ? -1 : 0 }],
         alignSelf: full ? 'stretch' : 'auto',
       })}
-      className={`rounded-[10px] ${PRIMARY_PADDING[size]} ${
-        disabled ? 'bg-stone-300' : 'bg-red active:bg-red-hot'
-      }`}
     >
       <Text
-        className={`text-center font-extrabold tracking-wide text-white ${PRIMARY_FONT[size]}`}
+        style={{
+          color: 'white',
+          fontWeight: '800',
+          fontSize: PRIMARY_FONT[size],
+          letterSpacing: 0.3,
+          textAlign: 'center',
+        }}
       >
         {children}
       </Text>
@@ -71,13 +89,26 @@ export function GhostButton({
       onPress={disabled ? undefined : onPress}
       disabled={disabled}
       style={({ pressed }) => ({
+        backgroundColor: pressed && !disabled ? COLORS.paper : 'white',
+        borderColor: COLORS.hairline,
+        borderWidth: 1,
+        borderRadius: 10,
+        paddingVertical: 10,
+        paddingHorizontal: 16,
         opacity: disabled ? 0.5 : 1,
         alignSelf: full ? 'stretch' : 'auto',
-        backgroundColor: pressed && !disabled ? 'oklch(0.97 0.01 80)' : 'white',
       })}
-      className="rounded-[10px] border border-hairline px-4 py-2.5"
     >
-      <Text className="text-center text-[13px] font-bold text-ink">{children}</Text>
+      <Text
+        style={{
+          color: COLORS.ink,
+          fontWeight: '700',
+          fontSize: 13,
+          textAlign: 'center',
+        }}
+      >
+        {children}
+      </Text>
     </Pressable>
   );
 }
@@ -114,8 +145,16 @@ export function TextField({
   const [focused, setFocused] = useState(false);
   return (
     <View>
-      <Text className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-ink-3">
-        {label}
+      <Text
+        style={{
+          marginBottom: 6,
+          fontSize: 11,
+          fontWeight: '700',
+          color: COLORS.ink3,
+          letterSpacing: 0.6,
+        }}
+      >
+        {label.toUpperCase()}
       </Text>
       <TextInput
         value={value}
@@ -123,30 +162,33 @@ export function TextField({
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         placeholder={placeholder}
-        placeholderTextColor="oklch(0.55 0.04 60)"
+        placeholderTextColor={COLORS.ink3}
         maxLength={maxLength}
         autoCapitalize={autoCapitalize}
         autoCorrect={autoCorrect}
         style={{
-          borderColor: focused ? 'oklch(0.55 0.18 25)' : 'oklch(0.86 0.02 80)',
-          backgroundColor: 'oklch(0.99 0.005 85)',
-          fontFamily: mono ? 'JetBrains Mono' : 'Nunito',
+          borderColor: focused ? COLORS.red : COLORS.hairline,
+          borderWidth: 1,
+          borderRadius: 8,
+          paddingVertical: 10,
+          paddingHorizontal: 12,
+          backgroundColor: COLORS.paperHi,
           fontSize: mono ? 16 : 14,
           fontWeight: '600',
-          color: 'oklch(0.25 0.04 60)',
+          color: COLORS.ink,
           letterSpacing: mono ? 3 : 0,
-          textTransform: mono ? 'uppercase' : 'none',
           ...(focused && {
-            shadowColor: 'oklch(0.55 0.18 25)',
+            shadowColor: COLORS.red,
             shadowOpacity: 0.15,
             shadowRadius: 4,
             shadowOffset: { width: 0, height: 0 },
             elevation: 2,
           }),
         }}
-        className="rounded-lg border px-3 py-2.5"
       />
-      {hint ? <Text className="mt-1.5 text-[11px] text-ink-3">{hint}</Text> : null}
+      {hint ? (
+        <Text style={{ marginTop: 6, fontSize: 11, color: COLORS.ink3 }}>{hint}</Text>
+      ) : null}
     </View>
   );
 }
