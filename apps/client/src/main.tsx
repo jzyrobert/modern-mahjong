@@ -16,6 +16,21 @@ import { Match } from './ui/Match.js';
 import { ShuffleOverlay } from './ui/ShuffleOverlay.js';
 import { WinCelebration } from './ui/WinCelebration.js';
 
+/**
+ * Resolve the online-match server URL. Query-string `?serverUrl=...`
+ * wins (used by the multi-player e2e to point pages at the in-process
+ * test server), then build-time `VITE_SERVER_URL`, then the localhost
+ * dev default. Stays on the browser side; the URL is read at the time a
+ * transport is created, not baked at build.
+ */
+function serverHost(): string {
+  if (typeof window !== 'undefined') {
+    const fromQuery = new URLSearchParams(window.location.search).get('serverUrl');
+    if (fromQuery) return fromQuery;
+  }
+  return import.meta.env.VITE_SERVER_URL ?? 'http://localhost:8787';
+}
+
 function App() {
   const [transport, setTransport] = useState<Transport | null>(null);
   const [matchCode, setMatchCode] = useState<string | null>(null);
@@ -39,7 +54,7 @@ function App() {
     (code: string) => {
       swap(
         createOnlineTransport({
-          host: import.meta.env.VITE_SERVER_URL ?? 'http://localhost:8787',
+          host: serverHost(),
           matchCode: code,
           playerId: getPlayerId(),
           displayName: getDisplayName(),
