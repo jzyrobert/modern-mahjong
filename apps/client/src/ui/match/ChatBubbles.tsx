@@ -1,6 +1,6 @@
 import type { Seat } from '@mahjong/game-logic';
 import { AnimatePresence, motion } from 'framer-motion';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { HAIRLINE, INK, PAPER_HI, SANS } from '../../native/theme.js';
 import { useGame } from '../../state/game.js';
 
@@ -22,14 +22,21 @@ export function ChatBubbles({ seatToPosition }: ChatBubblesProps) {
   const chats = useGame((s) => s.chats);
   const dismissChat = useGame((s) => s.dismissChat);
 
+  // Schedule one auto-dismiss timer per chat seq. The previous version
+  // cleared and re-created every in-flight timer whenever `chats` changed
+  // (i.e., on each new emote) — correct, but churn-heavy. Tracking which
+  // seqs already have a timer in a ref lets us schedule each at most once.
+  const scheduled = useRef(new Set<number>());
   useEffect(() => {
-    if (chats.length === 0) return;
-    const timers = chats.map((c) =>
-      window.setTimeout(() => dismissChat(c.seq), DISMISS_MS - (Date.now() - c.ts)),
-    );
-    return () => {
-      for (const t of timers) window.clearTimeout(t);
-    };
+    for (const c of chats) {
+      if (scheduled.current.has(c.seq)) continue;
+      scheduled.current.add(c.seq);
+      const remaining = Math.max(0, DISMISS_MS - (Date.now() - c.ts));
+      window.setTimeout(() => {
+        dismissChat(c.seq);
+        scheduled.current.delete(c.seq);
+      }, remaining);
+    }
   }, [chats, dismissChat]);
 
   return (
