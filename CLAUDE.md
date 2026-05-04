@@ -14,7 +14,7 @@ a PR merges, branch off `main` again for the next chunk:
 ```sh
 git fetch origin main
 git checkout -b claude/<short-slug> origin/main
-# ...do the work, commit, push, open PR, wait for CI, merge...
+# ...do the work, commit, push, open PR. Auto-merge takes it from here...
 ```
 
 This keeps the repo's branch history clean and avoids force-pushes that
@@ -29,17 +29,18 @@ rather than reusing the named one across multiple PRs.
 1. Run the full check pipeline locally before pushing: `pnpm -r typecheck`,
    `pnpm lint`, `pnpm test`, and where relevant `pnpm --filter @mahjong/client
    e2e` + a build. Pushing red-on-CI burns a CI cycle for nothing.
-2. After opening the PR, **poll the CI status every ~2 minutes** until every
-   check is green, then squash-merge. Webhook activity events for the
-   subscribed PR are unreliable — treat them as a hint, not a source of
-   truth, and always re-check via `mcp__github__pull_request_read` with
-   `method: 'get_check_runs'`.
-3. After merge, sync `main` (`git fetch origin main && git reset --hard
-   origin/main` is fine on the working branch since it's just been
-   incorporated) and branch off again for the next PR.
-4. Squash-merge by default. The repo's history reads cleanest with one
-   commit per PR; the title format is `<change summary> (#NN)` (the GitHub
-   default).
+2. Open the PR and stop. **Auto-merge is enabled on this repo**, so the PR
+   will squash-merge itself once CI passes — do NOT poll CI or call
+   `mcp__github__merge_pull_request` yourself. If a webhook reports a CI
+   failure, investigate and push a fix; otherwise treat opening the PR as
+   the end of the chunk and move on to the next task.
+3. After merge (signalled by the `merged` webhook event), sync `main`
+   (`git fetch origin main && git reset --hard origin/main` is fine on the
+   working branch since it's just been incorporated) and branch off again
+   for the next PR.
+4. Squash-merge is configured as the auto-merge strategy. The repo's
+   history reads cleanest with one commit per PR; the title format is
+   `<change summary> (#NN)` (the GitHub default).
 
 ## Commit messages
 
