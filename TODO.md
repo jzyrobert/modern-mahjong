@@ -108,7 +108,7 @@ Tracking concrete fixes from the in-repo React code review.
 - [x] **Medium** — `Match.tsx` / `MobileMatch.tsx`: build a typed `byPosition` map once instead of repeating `placements.find(...)` four times per render. _Shipped in #72._
 - [x] **Medium** — `Match.tsx`: `DesktopMatchBody` re-subscribes to `useGame((s) => s.state)!` and asserts non-null; pass `state` + `seat` from the parent that already validated them. _Shipped in #72._
 - [x] **Medium** — `Match.tsx`: memoize `seatToPosition` and the `--tile-w`/`--tile-h`/`--felt-1`/`--felt-2` style object so consumers can adopt `React.memo` without inline-prop churn defeating it. _Shipped in #72._
-- [ ] **Medium** — `ChatBubbles.tsx`: schedule a single timer per chat seq via a ref-tracked `Set` instead of clearing-and-rebuilding all timers on every `chats` change.
+- [x] **Medium** — `ChatBubbles.tsx`: schedule a single timer per chat seq via a ref-tracked `Set` instead of clearing-and-rebuilding all timers on every `chats` change. _Shipped in #73._
 - [x] **Low** — `buttons.tsx` (`PrimaryButton`, `GhostButton`) and `Lobby.tsx` (`ModeCard`): replace `useState(hover)` + `onMouseEnter`/`onMouseLeave` with CSS `:hover` / `:focus-visible`. _Shipped in #71._
 - [ ] **Low** — `Lobby.tsx`: switch `useState(getDisplayName())` to a lazy initialiser `useState(() => getDisplayName())`.
 - [ ] **Low** — `Tile.tsx`: every visible tile re-renders on `useGame((s) => s.shuffling)` flips; lift the spring choice to the wall/match container or split into an inner `<TileMotion>`.
