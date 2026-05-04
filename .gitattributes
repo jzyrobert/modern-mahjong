@@ -1,0 +1,20 @@
+# Force LF line endings on text files so Windows checkouts don't
+# reintroduce CRLF and trip biome's formatter on CI. Without this,
+# git's `core.autocrlf` setting can swap LF → CRLF in the working
+# tree on Windows; the file ends up CRLF on disk but committed as LF
+# (or vice-versa), which works fine until biome runs and rejects the
+# format mismatch.
+*               text=auto eol=lf
+
+# Binary blobs we never want munged (defensive — biome ignores
+# binaries already, but git's autocrlf shouldn't touch them either).
+*.png           binary
+*.jpg           binary
+*.jpeg          binary
+*.gif           binary
+*.ico           binary
+*.wav           binary
+*.mp3           binary
+*.ttf           binary
+*.otf           binary
+*.zip           binary
