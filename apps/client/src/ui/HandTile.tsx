@@ -174,6 +174,7 @@ export function HandTile({
       <View>
         <Tile
           tile={tile}
+          flipId={`tile-${id}`}
           raised={isDrawn || dragging}
           width={width}
           height={height}

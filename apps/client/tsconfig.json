@@ -25,6 +25,7 @@
     "test-results",
     "babel.config.js",
     "metro.config.js",
-    "postcss.config.mjs"
+    "postcss.config.mjs",
+    "modules"
   ]
 }

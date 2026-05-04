@@ -3,6 +3,7 @@ import { memo } from 'react';
 import { Pressable, View, type ViewStyle } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { useGame } from '../state/game';
+import { FlipView } from './FlipBag';
 import { TileGlyph } from './TileGlyph';
 import { TILE_BACK_SKINS } from './match/skins';
 
@@ -25,6 +26,12 @@ interface TileProps {
   style?: ViewStyle;
   /** RN test id (used by Playwright via web target / Detox). */
   testID?: string | undefined;
+  /** When set, wraps the tile body in `<FlipView>` so it auto-FLIPs via
+   *  the FlipBag cache when its position changes (e.g. wall→hand on
+   *  draw, hand→discard, discard→meld, between-hand dispense). Use the
+   *  engine `tileId` so identity survives across components. Omit for
+   *  decorative / static tile renders that shouldn't animate. */
+  flipId?: string | undefined;
 }
 
 /**
@@ -53,6 +60,7 @@ function TileComponent({
   height = 50,
   style,
   testID,
+  flipId,
 }: TileProps) {
   // Subscribe to the user's tile-back skin so face-down tiles repaint
   // when the SettingsPanel changes it. The selector returns a string id
@@ -101,8 +109,8 @@ function TileComponent({
     </View>
   );
 
-  if (!onPress) return body;
-  return (
+  // Inner element is either the static body or a Pressable wrapping it.
+  const inner = onPress ? (
     <Pressable
       onPress={onPress}
       testID={testID}
@@ -112,7 +120,18 @@ function TileComponent({
     >
       {body}
     </Pressable>
+  ) : (
+    body
   );
+  // FLIP wrapping: when the caller passes `flipId`, every layout pass
+  // checks the FlipBag cache and animates from the previously-recorded
+  // screen rect. Skipped when `flipId` is undefined so decorative
+  // tiles (lobby ScatteredTiles, ScoringBreakdownModal preview) don't
+  // ride the animation pipeline.
+  if (flipId !== undefined) {
+    return <FlipView flipId={flipId}>{inner}</FlipView>;
+  }
+  return inner;
 }
 
 export const Tile = memo(TileComponent);

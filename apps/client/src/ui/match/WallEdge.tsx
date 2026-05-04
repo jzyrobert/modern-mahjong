@@ -1,4 +1,4 @@
-import type { Tile as MTile, Seat } from '@mahjong/game-logic';
+import { type Tile as MTile, type Seat, tileId } from '@mahjong/game-logic';
 import { useEffect, useRef } from 'react';
 import { Animated, Easing, Pressable, Text, View } from 'react-native';
 import { Tile } from '../Tile';
@@ -152,7 +152,13 @@ function SlotCell({
           style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
         >
           <PulseHalo width={tileW} height={tileH}>
-            <Tile tile={nextDrawTile} faceDown width={tileW} height={tileH} />
+            <Tile
+              tile={nextDrawTile}
+              flipId={`tile-${tileId(nextDrawTile)}`}
+              faceDown
+              width={tileW}
+              height={tileH}
+            />
           </PulseHalo>
         </Pressable>
         <PlaceholderBack width={tileW} height={tileH} dim={false} />

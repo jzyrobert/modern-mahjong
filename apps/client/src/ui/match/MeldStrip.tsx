@@ -35,7 +35,13 @@ export function MeldStrip({ melds, tileWidth = 18, tileHeight = 24 }: MeldStripP
           }}
         >
           {meld.tiles.map((t) => (
-            <Tile key={tileId(t)} tile={t} width={tileWidth} height={tileHeight} />
+            <Tile
+              key={tileId(t)}
+              tile={t}
+              flipId={`tile-${tileId(t)}`}
+              width={tileWidth}
+              height={tileHeight}
+            />
           ))}
           <View style={{ alignSelf: 'flex-end', paddingLeft: 4 }}>
             <Text style={{ fontSize: 8, fontWeight: '700', color: '#918275' }}>

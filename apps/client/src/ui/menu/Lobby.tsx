@@ -1,10 +1,12 @@
 import { useTransport } from '@/src/net/transport-context';
 import { generateMatchCode } from '@mahjong/protocol';
 import { type ReactNode, useState } from 'react';
-import { Alert, ScrollView, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { ScrollView, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getDisplayName, setDisplayName } from '../../identity';
 import { useGame } from '../../state/game';
+import { HostLanModal } from '../HostLanModal';
+import { JoinLanModal } from '../JoinLanModal';
 import { GhostButton, PrimaryButton, TextField } from '../buttons';
 import { LobbyPreview } from './LobbyPreview';
 import { ScatteredTiles } from './ScatteredTiles';
@@ -14,14 +16,14 @@ import { BotIcon, BoxIcon, GlobeIcon, WifiIcon } from './icons';
 /**
  * Top-level menu screen. Native port of `_legacy/src/ui/Lobby.tsx`.
  * Hero with the wind emblem + bilingual title, three mode cards
- * (Online / Practice / LAN), and a live `LobbyPreview` of the current
- * `useGame.lobby` once the user has joined a match.
+ * (Online / Practice / LAN), `<ScatteredTiles />` decoration, and a
+ * live `LobbyPreview` of the current `useGame.lobby` once the user
+ * has joined a match.
  *
- * The decorative `<ScatteredTiles />` background and the LAN modals
- * (`HostLanModal` / `JoinLanModal`) are deferred — `ScatteredTiles`
- * comes back in Phase 6 (animations), the LAN modals in Phase 8 (LAN
- * native modules). For Phase 3 the LAN buttons surface an Alert
- * explaining the deferral.
+ * `HostLanModal` / `JoinLanModal` open from the LAN card's two
+ * buttons. The host modal will populate its URL automatically once
+ * the LanServer Expo native module is available (a dev client build);
+ * until then the user pastes their own host address.
  */
 export function Lobby() {
   const transport = useTransport();
@@ -30,6 +32,8 @@ export function Lobby() {
   // only want to run it on first mount, not on every render.
   const [name, setName] = useState(() => getDisplayName());
   const [code, setCode] = useState('');
+  const [hostLanOpen, setHostLanOpen] = useState(false);
+  const [joinLanOpen, setJoinLanOpen] = useState(false);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#f1eadc' }} edges={['top']}>
@@ -113,26 +117,8 @@ export function Lobby() {
               Works offline. No accounts. No data leaves your network.
             </InlineHint>
             <ButtonRow>
-              <PrimaryButton
-                onPress={() =>
-                  Alert.alert(
-                    'Coming soon',
-                    'LAN host requires the native bridge — Phase 8 of the Expo port.',
-                  )
-                }
-              >
-                Host LAN match
-              </PrimaryButton>
-              <GhostButton
-                onPress={() =>
-                  Alert.alert(
-                    'Coming soon',
-                    'LAN join requires the native bridge — Phase 8 of the Expo port.',
-                  )
-                }
-              >
-                Join LAN match
-              </GhostButton>
+              <PrimaryButton onPress={() => setHostLanOpen(true)}>Host LAN match</PrimaryButton>
+              <GhostButton onPress={() => setJoinLanOpen(true)}>Join LAN match</GhostButton>
             </ButtonRow>
           </ModeCard>
         </ModeGrid>
@@ -145,6 +131,22 @@ export function Lobby() {
           </View>
         ) : null}
       </ScrollView>
+      <HostLanModal
+        open={hostLanOpen}
+        onClose={() => setHostLanOpen(false)}
+        onHosted={(hostUrl, matchCode) => {
+          setHostLanOpen(false);
+          transport.joinLan(hostUrl, matchCode);
+        }}
+      />
+      <JoinLanModal
+        open={joinLanOpen}
+        onClose={() => setJoinLanOpen(false)}
+        onJoin={(hostUrl, matchCode) => {
+          setJoinLanOpen(false);
+          transport.joinLan(hostUrl, matchCode);
+        }}
+      />
     </SafeAreaView>
   );
 }

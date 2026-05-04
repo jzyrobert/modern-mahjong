@@ -98,7 +98,13 @@ export function SeatDiscardPile({
               }),
             }}
           >
-            <Tile tile={t} width={tileW} height={tileH} rotate={rotate + tossOffset} />
+            <Tile
+              tile={t}
+              flipId={`tile-${id}`}
+              width={tileW}
+              height={tileH}
+              rotate={rotate + tossOffset}
+            />
           </View>
         );
       })}

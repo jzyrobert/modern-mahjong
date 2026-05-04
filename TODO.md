@@ -137,19 +137,20 @@ Tracking the gaps between `claude/expo-migration` and the legacy `main` build. P
 - [x] Pulse halo on the next-draw `WallEdge` stack — gold border + scale+opacity loop via RN core `Animated.loop`, useNativeDriver.
 - [x] Active-turn glow on `PlayerBadge` — red bg + gold border + 1.04× scale loop while `isActive`.
 - [x] `DiceCeremony` / `ShuffleOverlay` / `WinCelebration` — rewritten in RN core `Animated` (replaces reanimated `useSharedValue`/`useAnimatedStyle`/`withRepeat`). Mounted at root in `_layout.tsx` so they layer over both `/` and `/match`.
-- [ ] **Wall→hand FLIP on `draw`** — still queued. Needs measure-source-then-target ghost-tile approach from the plan; the next-draw `Tile` already carries a real engine `Tile` so the source rect is reachable.
-- [ ] Discard-toss (hand → discard pile slot) — queued.
-- [ ] Discard→meld claim (discard pile → claimer's meld strip) — queued.
-- [ ] Between-hand dispense (per-tile staggered slide) — queued.
+- [x] **All four FLIP transitions** — new `FlipBag` context + `<FlipView>` wrapper (`apps/client/src/ui/FlipBag.tsx`) caches each tileId's last screen rect via `measureInWindow`. `Tile.tsx` now takes an optional `flipId`; setting it wraps the tile body in `FlipView`, which on layout re-measures and snaps the wrapper's `translateX/Y` to the cached rect then animates back to identity. Wired at every call-site that renders a real engine tile: `Hand` (via `HandTile`), `WallEdge` next-draw stack, `SeatDiscardPile`, `MeldStrip`. Wall→hand on draw, hand→discard, discard→meld, and between-hand dispense all auto-FLIP through the same mechanism. Cache clears on the rising edge of `useGame.shuffling` so the previous hand's positions don't pull the new hand's tiles. Honours `settings.animations: false` (skips the snap-back, leaves the no-anim visual).
 
-**Phase 8 (LAN native modules — deferred, off the critical path):**
-- [ ] Expo native module: Swift (Telegraph/Swifter HTTP+WS) + Kotlin (NanoHTTPD-WebSockets). Lobby's "Host LAN match" / "Join LAN match" buttons currently surface an Alert "Coming soon — Phase 8 of the Expo port."
-- [ ] Port `_legacy/src/ui/HostLanModal.tsx` + `JoinLanModal.tsx` once the native module exists.
+**Phase 8 (LAN native modules — partially landed, full activation needs a dev client):**
+- [x] Local Expo module skeleton at `apps/client/modules/expo-lan-server/` — `expo-module.config.json`, TS bridge (`src/LanServer.ts` using `requireOptionalNativeModule`), Android Kotlin module fully implemented via NanoHTTPD-WebSockets (`LanServerModule.kt` with start/stop/send/connection-message-close events + LAN address discovery via WifiManager + NetworkInterface), iOS Swift skeleton (throws — Telegraph integration TODO'd inline). Module is **not auto-linked** — `apps/client/package.json` deliberately doesn't depend on it so Expo Go bundling stays clean. Activation is `add file:./modules/expo-lan-server to deps` + `pnpm install` + `npx expo prebuild --no-install` + `eas build --profile development --platform android --local`. Full README at `modules/expo-lan-server/README.md`.
+- [x] `HostLanModal.tsx` + `JoinLanModal.tsx` ported (RN). Lobby's "Host LAN match" / "Join LAN match" buttons now open them. The host modal explains the dev-client requirement in the (current) Expo Go state and falls back to manual URL entry; once the dev client is built `isLanServerAvailable()` flips true and the host URL auto-populates.
+- [ ] iOS Swift implementation (Telegraph or Swifter HTTP+WS) — skeleton in place, throws on call.
+- [ ] mDNS host advertisement so guests can discover hosts without typing a URL.
+- [ ] Static-asset HTTP route in the Kotlin module to serve the Expo Web bundle, so guests can join from a plain browser tab without installing the app.
 
 **Phase 11 (squash-merge to `main`):**
 - [ ] Final visual-parity pass against the legacy build (lobby + match + each overlay).
 - [ ] Background/foreground lifecycle smoke (background mid-hand, foreground after >30s, verify `MatchSession.snapshot()` resume).
 - [ ] Cloudflare Pages deploy of `expo export -p web` artefact under the existing URL paths.
+- [ ] Decide whether to ship Phase 8 LAN as part of the squash-merge (currently activates via dev client only — no impact on Expo Go path) or hold for a later commit.
 - [ ] Squash-merge — single mainline commit titled "Expo migration: replace Vite + Capacitor with Expo Router + Metro across the client."
 
 ## Out of scope until a maintainer decides
