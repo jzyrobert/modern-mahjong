@@ -34,12 +34,25 @@ export function WinCelebration() {
   const visible = !!result && result.kind === 'win' && !dismissed;
   const win = result && result.kind === 'win' ? result : null;
 
+  // Window-level Escape so keyboard users can dismiss without focusing the
+  // backdrop (mirrors the pattern in `Modal.tsx`).
+  useEffect(() => {
+    if (!visible) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setDismissed(true);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [visible]);
+
   return (
     <AnimatePresence>
       {visible && win ? (
-        <motion.button
-          type="button"
-          aria-label="Dismiss win celebration"
+        // biome-ignore lint/a11y/useSemanticElements: native <dialog> needs showModal() to be truly modal, which doesn't compose with framer-motion enter/exit
+        <motion.div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="win-celebration-title"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -55,10 +68,9 @@ export function WinCelebration() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            border: 'none',
-            cursor: 'pointer',
             padding: 24,
             fontFamily: SANS,
+            cursor: 'pointer',
           }}
         >
           <Confetti />
@@ -81,6 +93,40 @@ export function WinCelebration() {
               cursor: 'default',
             }}
           >
+            <button
+              type="button"
+              onClick={() => setDismissed(true)}
+              aria-label="Dismiss win celebration"
+              style={{
+                position: 'absolute',
+                top: 8,
+                right: 8,
+                width: 28,
+                height: 28,
+                border: 'none',
+                background: 'transparent',
+                color: INK_3,
+                cursor: 'pointer',
+                borderRadius: 8,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: 0,
+              }}
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                aria-hidden="true"
+              >
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
             <motion.div
               animate={{ scale: [1, 1.12, 1], rotate: [-3, 3, -3] }}
               transition={{ duration: 1.6, repeat: Number.POSITIVE_INFINITY, ease: 'easeInOut' }}
@@ -109,6 +155,7 @@ export function WinCelebration() {
               Winner
             </div>
             <div
+              id="win-celebration-title"
               style={{
                 fontSize: 22,
                 fontWeight: 900,
@@ -154,7 +201,7 @@ export function WinCelebration() {
               Tap anywhere to dismiss
             </div>
           </motion.div>
-        </motion.button>
+        </motion.div>
       ) : null}
     </AnimatePresence>
   );

@@ -1,6 +1,6 @@
 import type { Tile as MTile, Suit } from '@mahjong/game-logic';
 import { sortHand, tileId } from '@mahjong/game-logic';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Tile } from './Tile.js';
 import type { SortMode } from './match/SortPicker.js';
 
@@ -209,23 +209,48 @@ function TileWrapper({
   onPointerDragCommit,
   onPointerDragCancel,
 }: TileWrapperProps) {
+  // Tracks the in-flight long-press gesture so we can abort it on unmount.
+  // Without this, a tile that unmounts while the user is still touching it
+  // (claim resolves, route change, etc.) leaves the document-level pointer
+  // listeners attached and pins this component's closures in memory.
+  const gestureRef = useRef<{ abort: AbortController; timer: number } | null>(null);
+  useEffect(
+    () => () => {
+      const g = gestureRef.current;
+      if (g) {
+        window.clearTimeout(g.timer);
+        g.abort.abort();
+        gestureRef.current = null;
+      }
+    },
+    [],
+  );
+
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!draggable) return;
     if (e.pointerType === 'mouse') return; // mouse uses HTML5 dnd
+    // Cancel any prior in-flight gesture before starting a new one.
+    const prior = gestureRef.current;
+    if (prior) {
+      window.clearTimeout(prior.timer);
+      prior.abort.abort();
+    }
     const startX = e.clientX;
     const startY = e.clientY;
+    const ac = new AbortController();
     let armed = false;
     const armTimer = window.setTimeout(() => {
       armed = true;
       onPointerDragStart?.(startX, startY);
     }, LONG_PRESS_MS);
+    gestureRef.current = { abort: ac, timer: armTimer };
 
     const cleanup = () => {
-      document.removeEventListener('pointermove', onMove);
-      document.removeEventListener('pointerup', onUp);
-      document.removeEventListener('pointercancel', onCancel);
+      window.clearTimeout(armTimer);
+      ac.abort();
+      if (gestureRef.current?.abort === ac) gestureRef.current = null;
     };
-    function onMove(ev: PointerEvent) {
+    const onMove = (ev: PointerEvent) => {
       if (!armed) {
         if (
           Math.abs(ev.clientX - startX) > TAP_TOLERANCE_PX ||
@@ -233,29 +258,26 @@ function TileWrapper({
         ) {
           // The user moved before the threshold — they're scrolling, not
           // dragging. Cancel the long-press timer so the gesture stays a tap.
-          window.clearTimeout(armTimer);
           cleanup();
         }
         return;
       }
       ev.preventDefault();
       onPointerDragMove?.(ev.clientX, ev.clientY);
-    }
-    function onUp() {
-      window.clearTimeout(armTimer);
+    };
+    const onUp = () => {
       if (armed) onPointerDragCommit?.();
       // Otherwise, do nothing — the synthetic click will fire on the
       // button below and `Hand.handleTileClick` will run.
       cleanup();
-    }
-    function onCancel() {
-      window.clearTimeout(armTimer);
+    };
+    const onCancel = () => {
       onPointerDragCancel?.();
       cleanup();
-    }
-    document.addEventListener('pointermove', onMove);
-    document.addEventListener('pointerup', onUp);
-    document.addEventListener('pointercancel', onCancel);
+    };
+    document.addEventListener('pointermove', onMove, { signal: ac.signal });
+    document.addEventListener('pointerup', onUp, { signal: ac.signal });
+    document.addEventListener('pointercancel', onCancel, { signal: ac.signal });
   };
 
   const isPointerDragging = pointerOffset !== null && pointerOffset !== undefined;
