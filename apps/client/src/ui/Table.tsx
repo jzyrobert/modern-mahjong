@@ -95,15 +95,18 @@ interface SeatPosition {
 const INNER_GAP_RAW = 'clamp(40px, 8vmin, 80px)';
 
 /**
- * Per-slot wall tile width — mirrors `WALL_TILE_VARS` in `match/WallEdge.tsx`.
- * Drives the post-rotation bounding box for side opponents so the
- * rotated 36-slot wall doesn't visually overflow into the top/bottom
- * seats. Tile size is intentionally smaller than the user's hand tiles
- * so the four 36-slot walls fit on a typical desktop viewport.
+ * Per-tile wall sizing — must mirror `WALL_TILE_VARS` in
+ * `match/WallEdge.tsx`. Drives the post-rotation bounding box for the
+ * side opponents so the rotated wall doesn't visually overflow into
+ * the top/bottom seats. The wall is 17 stacks × 2 tiles per side
+ * (matching the engine's 136-tile total), so the wall row is
+ * `17 * tile_w + 16 * 1px-gap` along its length and `2 * tile_h + 1px`
+ * across its thickness.
  */
-const WALL_TILE_W = 'clamp(11px, 1.4vmin, 18px)';
-const WALL_TILE_H = 'clamp(15px, 1.9vmin, 22px)';
-const WALL_LENGTH = `calc(36 * ${WALL_TILE_W} + 35 * 1px)`;
+const WALL_TILE_W = 'max(16px, 2.6vmin)';
+const WALL_TILE_H = 'max(22px, 3.6vmin)';
+const WALL_LENGTH = `calc(17 * ${WALL_TILE_W} + 16 * 1px)`;
+const WALL_THICKNESS = `calc(2 * ${WALL_TILE_H} + 1px)`;
 
 export function Table({
   mySeat,
@@ -249,7 +252,11 @@ export function Table({
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  width: `calc(${WALL_TILE_H} + max(22px, 3.6vmin) + ${INNER_GAP_RAW})`,
+                  // Pre-rotation height (post-rotation width) of the
+                  // inner column = wall stack thickness + INNER_GAP +
+                  // hand row thickness. The wall is 2 tiles tall, the
+                  // opp hand row is 1 tile tall.
+                  width: `calc(${WALL_THICKNESS} + ${INNER_GAP_RAW} + ${WALL_TILE_H})`,
                   height: WALL_LENGTH,
                 }}
               >
