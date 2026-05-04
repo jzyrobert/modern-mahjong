@@ -103,7 +103,7 @@ Tracking concrete fixes from the in-repo React code review.
 - [x] **Critical** — `Hand.tsx`: document `pointermove`/`pointerup`/`pointercancel` listeners leak when a tile unmounts mid-long-press; clean up via `AbortController` + unmount effect. _Shipped in #67._
 - [x] **High** — `RulePanel.tsx`: `SecondsInput` syncs prop to state via `useEffect`; reset via `key={ms}` from the parent and drop the effect. _Shipped in #68._
 - [x] **High** — `DiceCeremony.tsx`: backdrop dismissal isn't keyboard-accessible — add a window Escape listener mirroring `Modal.tsx`. _Shipped in #69._
-- [ ] **High** — `HostLanModal.tsx`: Host URL input has no accessible label (`<Label>` is a styled `<div>`); replace with `TextField` from `buttons.tsx` or wire `htmlFor`/`id`.
+- [x] **High** — `HostLanModal.tsx`: Host URL input has no accessible label (`<Label>` is a styled `<div>`); replace with `TextField` from `buttons.tsx` or wire `htmlFor`/`id`. _Shipped in #70._
 - [ ] **Medium** — `buttons.tsx` (`TextField`) and `ChatBar.tsx`: drop direct DOM style mutation in favour of CSS pseudo-classes (`:focus-visible`, `:active`); current touch pressed-state doesn't fire on `pointerdown`/`pointerup`.
 - [ ] **Medium** — `Match.tsx` / `MobileMatch.tsx`: build a typed `byPosition` map once instead of repeating `placements.find(...)` four times per render.
 - [ ] **Medium** — `Match.tsx`: `DesktopMatchBody` re-subscribes to `useGame((s) => s.state)!` and asserts non-null; pass `state` + `seat` from the parent that already validated them.
