@@ -41,7 +41,9 @@ interface LobbyProps {
 export function Lobby({ onJoinOnline, onJoinLan, onJoinSolo }: LobbyProps) {
   const lanGuest = isLanOrigin();
   const lanOrigin = lanGuest && typeof window !== 'undefined' ? window.location.origin : '';
-  const [name, setName] = useState(getDisplayName());
+  // Lazy initialiser — `getDisplayName()` reads from preferences, so we
+  // only want to run it on first mount, not on every render.
+  const [name, setName] = useState(() => getDisplayName());
   const [code, setCode] = useState('');
   const [hostLanOpen, setHostLanOpen] = useState(false);
   const [joinLanOpen, setJoinLanOpen] = useState(lanGuest);

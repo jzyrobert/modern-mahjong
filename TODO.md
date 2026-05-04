@@ -110,9 +110,9 @@ Tracking concrete fixes from the in-repo React code review.
 - [x] **Medium** — `Match.tsx`: memoize `seatToPosition` and the `--tile-w`/`--tile-h`/`--felt-1`/`--felt-2` style object so consumers can adopt `React.memo` without inline-prop churn defeating it. _Shipped in #72._
 - [x] **Medium** — `ChatBubbles.tsx`: schedule a single timer per chat seq via a ref-tracked `Set` instead of clearing-and-rebuilding all timers on every `chats` change. _Shipped in #73._
 - [x] **Low** — `buttons.tsx` (`PrimaryButton`, `GhostButton`) and `Lobby.tsx` (`ModeCard`): replace `useState(hover)` + `onMouseEnter`/`onMouseLeave` with CSS `:hover` / `:focus-visible`. _Shipped in #71._
-- [ ] **Low** — `Lobby.tsx`: switch `useState(getDisplayName())` to a lazy initialiser `useState(() => getDisplayName())`.
+- [x] **Low** — `Lobby.tsx`: switch `useState(getDisplayName())` to a lazy initialiser `useState(() => getDisplayName())`. _Shipped in #74._
 - [ ] **Low** — `Tile.tsx`: every visible tile re-renders on `useGame((s) => s.shuffling)` flips; lift the spring choice to the wall/match container or split into an inner `<TileMotion>`.
-- [ ] **Low** — `ScoringBreakdownModal`/index-key callsites: prefer stable composite keys (`${name}-${i}`) over bare `key={i}` where a stable id is already in scope.
+- [x] **Low** — `ScoringBreakdownModal`/index-key callsites: prefer stable composite keys (`${name}-${i}`) over bare `key={i}` where a stable id is already in scope. _Shipped in #74._
 - [ ] **Low** — File decomposition (component size > 300 lines): extract `Lobby.tsx` icon SVGs into `ui/menu/icons.tsx`; pull `TileReference` + swatch helpers out of `SettingsPanel.tsx`; split `TileWrapper` from `Hand.tsx` into `ui/HandTile.tsx`.
 
 ## Out of scope until a maintainer decides
