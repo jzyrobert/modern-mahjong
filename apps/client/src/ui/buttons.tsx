@@ -53,7 +53,12 @@ interface GhostButtonProps {
  * Cream ghost button with hairline border. Hover visuals come from the
  * `.mh-ghost-btn` rules in `src/styles.css`.
  */
-export function GhostButton({ children, onClick, disabled = false, full = false }: GhostButtonProps) {
+export function GhostButton({
+  children,
+  onClick,
+  disabled = false,
+  full = false,
+}: GhostButtonProps) {
   return (
     <button
       type="button"
