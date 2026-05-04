@@ -14,11 +14,11 @@ const OPTIONS: { id: SortMode; label: string }[] = [
 ];
 
 const COLORS = {
-  ink: 'oklch(0.25 0.04 60)',
-  ink3: 'oklch(0.55 0.04 60)',
-  paperHi: 'oklch(0.99 0.005 85)',
-  hairline: 'oklch(0.86 0.02 80)',
-  red: 'oklch(0.55 0.18 25)',
+  ink: '#3a3328',
+  ink3: '#918275',
+  paperHi: '#fbf8f0',
+  hairline: '#cdc1ad',
+  red: '#b14d3a',
 };
 
 /**
@@ -49,9 +49,9 @@ export function SortPicker({ mode, onChange }: SortPickerProps) {
               paddingHorizontal: 12,
               borderRadius: 6,
               backgroundColor: active
-                ? 'oklch(0.96 0.04 30)'
+                ? '#fbe5d9'
                 : pressed
-                  ? 'oklch(0.95 0.02 85)'
+                  ? '#ece4d3'
                   : 'transparent',
             })}
           >

@@ -12,12 +12,12 @@ interface ResultPanelProps {
 }
 
 const COLORS = {
-  ink: 'oklch(0.25 0.04 60)',
-  ink3: 'oklch(0.55 0.04 60)',
-  paper: 'oklch(0.97 0.01 80)',
-  hairline: 'oklch(0.86 0.02 80)',
-  red: 'oklch(0.55 0.18 25)',
-  gold: 'oklch(0.78 0.14 80)',
+  ink: '#3a3328',
+  ink3: '#918275',
+  paper: '#f1ebe0',
+  hairline: '#cdc1ad',
+  red: '#b14d3a',
+  gold: '#d8a85a',
 };
 
 /**

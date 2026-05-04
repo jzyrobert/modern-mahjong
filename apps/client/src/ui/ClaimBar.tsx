@@ -19,10 +19,10 @@ const LABELS: Record<CallKind, { en: string; zh: string; tone: 'red' | 'gold' | 
 };
 
 const TONE: Record<'red' | 'gold' | 'jade' | 'slate', { bg: string; pressed: string; fg: string }> = {
-  red: { bg: 'oklch(0.55 0.18 25)', pressed: 'oklch(0.62 0.2 28)', fg: 'white' },
-  gold: { bg: 'oklch(0.78 0.16 75)', pressed: 'oklch(0.72 0.18 70)', fg: 'oklch(0.25 0.04 60)' },
-  jade: { bg: 'oklch(0.7 0.14 150)', pressed: 'oklch(0.65 0.16 145)', fg: 'white' },
-  slate: { bg: 'oklch(0.65 0.02 240)', pressed: 'oklch(0.55 0.03 240)', fg: 'white' },
+  red: { bg: '#b14d3a', pressed: '#d05746', fg: 'white' },
+  gold: { bg: '#dc9f4f', pressed: '#d99c44', fg: '#3a3328' },
+  jade: { bg: '#58c280', pressed: '#4ba668', fg: 'white' },
+  slate: { bg: '#95a0aa', pressed: '#5d6d84', fg: 'white' },
 };
 
 const ORDER: readonly CallKind[] = ['chi', 'peng', 'gong', 'hu', 'pass'];
@@ -53,8 +53,8 @@ export function ClaimBar({ onAction, seat }: ClaimBarProps) {
         gap: 10,
         flexWrap: 'wrap',
         padding: 12,
-        backgroundColor: 'oklch(0.99 0.005 85)',
-        borderColor: 'oklch(0.86 0.02 80)',
+        backgroundColor: '#fbf8f0',
+        borderColor: '#cdc1ad',
         borderWidth: 1,
         borderRadius: 12,
         shadowColor: '#000',
@@ -64,7 +64,7 @@ export function ClaimBar({ onAction, seat }: ClaimBarProps) {
         elevation: 3,
       }}
     >
-      <Text style={{ fontSize: 11, fontWeight: '800', color: 'oklch(0.55 0.04 60)', letterSpacing: 0.5 }}>
+      <Text style={{ fontSize: 11, fontWeight: '800', color: '#918275', letterSpacing: 0.5 }}>
         CLAIM?
       </Text>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>

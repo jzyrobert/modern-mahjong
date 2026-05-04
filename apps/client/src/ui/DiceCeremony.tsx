@@ -17,11 +17,11 @@ const PIPS: Record<number, [number, number][]> = {
 const DISMISS_MS = 3500;
 
 const COLORS = {
-  ink: 'oklch(0.25 0.04 60)',
-  ink3: 'oklch(0.55 0.04 60)',
-  paperHi: 'oklch(0.99 0.005 85)',
-  hairline: 'oklch(0.86 0.02 80)',
-  red: 'oklch(0.55 0.18 25)',
+  ink: '#3a3328',
+  ink3: '#918275',
+  paperHi: '#fbf8f0',
+  hairline: '#cdc1ad',
+  red: '#b14d3a',
 };
 
 /**

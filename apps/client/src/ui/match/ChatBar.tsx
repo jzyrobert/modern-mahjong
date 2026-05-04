@@ -7,9 +7,9 @@ interface ChatBarProps {
 const EMOTES = ['👍', '😎', '🎉', '🤔', '😅', '🔥'] as const;
 
 const COLORS = {
-  ink3: 'oklch(0.55 0.04 60)',
-  paperHi: 'oklch(0.99 0.005 85)',
-  hairline: 'oklch(0.86 0.02 80)',
+  ink3: '#918275',
+  paperHi: '#fbf8f0',
+  hairline: '#cdc1ad',
 };
 
 /**

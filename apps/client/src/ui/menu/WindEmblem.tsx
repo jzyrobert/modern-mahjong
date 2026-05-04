@@ -73,7 +73,7 @@ export function WindEmblem({ wind = '東', size = 100 }: WindEmblemProps) {
             fontWeight: '700',
             fontSize: size * 0.78,
             lineHeight: size * 0.78,
-            color: 'oklch(0.55 0.18 25)',
+            color: '#b14d3a',
           }}
         >
           {wind}

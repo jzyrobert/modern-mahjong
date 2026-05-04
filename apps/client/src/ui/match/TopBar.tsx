@@ -7,12 +7,12 @@ interface TopBarProps {
 }
 
 const COLORS = {
-  ink: 'oklch(0.25 0.04 60)',
-  ink3: 'oklch(0.55 0.04 60)',
-  paperHi: 'oklch(0.99 0.005 85)',
-  hairline: 'oklch(0.86 0.02 80)',
-  red: 'oklch(0.55 0.18 25)',
-  green: 'oklch(0.7 0.14 150)',
+  ink: '#3a3328',
+  ink3: '#918275',
+  paperHi: '#fbf8f0',
+  hairline: '#cdc1ad',
+  red: '#b14d3a',
+  green: '#58c280',
 };
 
 /**
@@ -60,7 +60,7 @@ export function TopBar({ matchCode, viewers, onLeave }: TopBarProps) {
           paddingHorizontal: 10,
           paddingVertical: 4,
           borderRadius: 8,
-          backgroundColor: pressed ? 'oklch(0.95 0.02 85)' : 'transparent',
+          backgroundColor: pressed ? '#ece4d3' : 'transparent',
           borderColor: COLORS.hairline,
           borderWidth: 1,
         })}

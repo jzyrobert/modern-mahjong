@@ -17,13 +17,13 @@ const PRIMARY_PADDING: Record<'sm' | 'md' | 'lg', { vertical: number; horizontal
 const PRIMARY_FONT: Record<'sm' | 'md' | 'lg', number> = { sm: 11, md: 13, lg: 14 };
 
 const COLORS = {
-  red: 'oklch(0.55 0.18 25)',
-  redHot: 'oklch(0.62 0.2 28)',
-  ink: 'oklch(0.25 0.04 60)',
-  hairline: 'oklch(0.86 0.02 80)',
-  paper: 'oklch(0.97 0.01 80)',
-  paperHi: 'oklch(0.99 0.005 85)',
-  ink3: 'oklch(0.55 0.04 60)',
+  red: '#b14d3a',
+  redHot: '#d05746',
+  ink: '#3a3328',
+  hairline: '#cdc1ad',
+  paper: '#f1ebe0',
+  paperHi: '#fbf8f0',
+  ink3: '#918275',
 };
 
 /**
@@ -43,7 +43,7 @@ export function PrimaryButton({
       onPress={disabled ? undefined : onPress}
       disabled={disabled}
       style={({ pressed }) => ({
-        backgroundColor: disabled ? 'oklch(0.85 0.02 60)' : pressed ? COLORS.redHot : COLORS.red,
+        backgroundColor: disabled ? '#c9c1b3' : pressed ? COLORS.redHot : COLORS.red,
         borderRadius: 10,
         paddingVertical: padding.vertical,
         paddingHorizontal: padding.horizontal,

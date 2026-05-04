@@ -59,7 +59,7 @@ function TileComponent({
     transform: [{ rotate: `${rotate ?? 0}deg` }, { translateY: lift }],
     opacity: dim ? 0.85 : 1,
     ...(raised && {
-      shadowColor: 'oklch(0.78 0.16 75)',
+      shadowColor: '#dc9f4f',
       shadowOpacity: 0.7,
       shadowRadius: 8,
       shadowOffset: { width: 0, height: 0 },

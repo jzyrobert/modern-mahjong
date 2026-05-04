@@ -21,12 +21,12 @@ const WALL_FULL = 70;
 const LOW_THRESHOLD = 14;
 
 const COLORS = {
-  ink: 'oklch(0.25 0.04 60)',
-  ink3: 'oklch(0.55 0.04 60)',
-  red: 'oklch(0.55 0.18 25)',
-  redHot: 'oklch(0.65 0.2 28)',
-  green: 'oklch(0.7 0.14 150)',
-  hairline: 'oklch(0.86 0.02 80)',
+  ink: '#3a3328',
+  ink3: '#918275',
+  red: '#b14d3a',
+  redHot: '#db5d4a',
+  green: '#58c280',
+  hairline: '#cdc1ad',
 };
 
 /**
@@ -62,7 +62,7 @@ export function GameStatusBar({ prevailing, dealerName, wallCount, isMyTurn }: G
           width: 26,
           height: 26,
           borderRadius: 13,
-          backgroundColor: 'oklch(0.92 0.04 85)',
+          backgroundColor: '#ecd9b8',
           alignItems: 'center',
           justifyContent: 'center',
         }}
@@ -85,7 +85,7 @@ export function GameStatusBar({ prevailing, dealerName, wallCount, isMyTurn }: G
           style={{
             fontSize: 10,
             letterSpacing: 0.4,
-            color: low ? 'oklch(0.55 0.18 30)' : COLORS.ink,
+            color: low ? '#b2503b' : COLORS.ink,
             fontWeight: '700',
           }}
         >
@@ -96,7 +96,7 @@ export function GameStatusBar({ prevailing, dealerName, wallCount, isMyTurn }: G
             width: 90,
             height: 4,
             borderRadius: 2,
-            backgroundColor: 'oklch(0.92 0.012 85)',
+            backgroundColor: '#e9e0d2',
             overflow: 'hidden',
           }}
         >
@@ -104,7 +104,7 @@ export function GameStatusBar({ prevailing, dealerName, wallCount, isMyTurn }: G
             style={{
               width: `${pct}%`,
               height: '100%',
-              backgroundColor: low ? 'oklch(0.7 0.18 30)' : COLORS.green,
+              backgroundColor: low ? '#e07555' : COLORS.green,
             }}
           />
         </View>

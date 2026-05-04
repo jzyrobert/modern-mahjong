@@ -27,8 +27,8 @@ export function LobbyPreview({ lobby, matchCode }: LobbyPreviewProps) {
     <View
       style={{
         marginTop: 20,
-        backgroundColor: 'oklch(0.99 0.005 85)',
-        borderColor: 'oklch(0.86 0.02 80)',
+        backgroundColor: '#fbf8f0',
+        borderColor: '#cdc1ad',
         borderWidth: 1,
         borderRadius: 14,
         padding: 18,
@@ -50,21 +50,21 @@ export function LobbyPreview({ lobby, matchCode }: LobbyPreviewProps) {
               width: 8,
               height: 8,
               borderRadius: 4,
-              backgroundColor: 'oklch(0.65 0.18 145)',
+              backgroundColor: '#44ad60',
             }}
           />
-          <Text style={{ fontSize: 14, fontWeight: '900', color: 'oklch(0.25 0.04 60)' }}>
+          <Text style={{ fontSize: 14, fontWeight: '900', color: '#3a3328' }}>
             In lobby
           </Text>
-          <Text style={{ fontSize: 11, color: 'oklch(0.55 0.04 60)', fontWeight: '700' }}>
+          <Text style={{ fontSize: 11, color: '#918275', fontWeight: '700' }}>
             · waiting for players
           </Text>
         </View>
         {matchCode ? (
           <View
             style={{
-              backgroundColor: 'oklch(0.95 0.02 85)',
-              borderColor: 'oklch(0.86 0.02 80)',
+              backgroundColor: '#ece4d3',
+              borderColor: '#cdc1ad',
               borderWidth: 1,
               borderRadius: 8,
               paddingVertical: 4,
@@ -77,7 +77,7 @@ export function LobbyPreview({ lobby, matchCode }: LobbyPreviewProps) {
                 fontSize: 13,
                 fontWeight: '800',
                 letterSpacing: 3,
-                color: 'oklch(0.25 0.04 60)',
+                color: '#3a3328',
               }}
             >
               {matchCode}
@@ -95,8 +95,8 @@ export function LobbyPreview({ lobby, matchCode }: LobbyPreviewProps) {
               style={{
                 flexBasis: cardBasis,
                 flexGrow: 1,
-                backgroundColor: p ? 'oklch(0.95 0.02 85)' : 'transparent',
-                borderColor: 'oklch(0.86 0.02 80)',
+                backgroundColor: p ? '#ece4d3' : 'transparent',
+                borderColor: '#cdc1ad',
                 borderWidth: 1,
                 borderStyle: p ? 'solid' : 'dashed',
                 borderRadius: 10,
@@ -110,7 +110,7 @@ export function LobbyPreview({ lobby, matchCode }: LobbyPreviewProps) {
                   style={{
                     fontFamily: 'Noto Serif TC',
                     fontSize: 16,
-                    color: 'oklch(0.55 0.18 25)',
+                    color: '#b14d3a',
                     fontWeight: '700',
                   }}
                 >
@@ -120,7 +120,7 @@ export function LobbyPreview({ lobby, matchCode }: LobbyPreviewProps) {
                   style={{
                     fontSize: 10,
                     fontWeight: '800',
-                    color: 'oklch(0.55 0.04 60)',
+                    color: '#918275',
                     letterSpacing: 0.6,
                   }}
                 >
@@ -133,7 +133,7 @@ export function LobbyPreview({ lobby, matchCode }: LobbyPreviewProps) {
                     style={{
                       fontSize: 13,
                       fontWeight: '800',
-                      color: 'oklch(0.25 0.04 60)',
+                      color: '#3a3328',
                       lineHeight: 16,
                     }}
                   >
@@ -145,7 +145,7 @@ export function LobbyPreview({ lobby, matchCode }: LobbyPreviewProps) {
                 <Text
                   style={{
                     fontSize: 12,
-                    color: 'oklch(0.55 0.04 60)',
+                    color: '#918275',
                     fontStyle: 'italic',
                     fontWeight: '600',
                   }}
@@ -164,10 +164,10 @@ export function LobbyPreview({ lobby, matchCode }: LobbyPreviewProps) {
 function StatusPill({ kind }: { kind: 'bot' | 'online' | 'offline' }) {
   const palette =
     kind === 'bot'
-      ? { color: 'oklch(0.5 0.1 280)', bg: 'oklch(0.95 0.04 280)', label: 'Bot' }
+      ? { color: '#735aa3', bg: '#e1d3ed', label: 'Bot' }
       : kind === 'online'
-        ? { color: 'oklch(0.45 0.15 145)', bg: 'oklch(0.95 0.06 145)', label: 'Online' }
-        : { color: 'oklch(0.55 0.04 60)', bg: 'oklch(0.95 0.02 85)', label: 'Disconnected' };
+        ? { color: '#2d8645', bg: '#c2e2c5', label: 'Online' }
+        : { color: '#918275', bg: '#ece4d3', label: 'Disconnected' };
   return (
     <View
       style={{

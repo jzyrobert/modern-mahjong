@@ -27,8 +27,8 @@ export function MeldStrip({ melds, tileWidth = 18, tileHeight = 24 }: MeldStripP
           style={{
             flexDirection: 'row',
             gap: 1,
-            backgroundColor: 'oklch(0.95 0.02 85)',
-            borderColor: 'oklch(0.86 0.02 80)',
+            backgroundColor: '#ece4d3',
+            borderColor: '#cdc1ad',
             borderWidth: 1,
             borderRadius: 4,
             padding: 2,
@@ -38,7 +38,7 @@ export function MeldStrip({ melds, tileWidth = 18, tileHeight = 24 }: MeldStripP
             <Tile key={tileId(t)} tile={t} width={tileWidth} height={tileHeight} />
           ))}
           <View style={{ alignSelf: 'flex-end', paddingLeft: 4 }}>
-            <Text style={{ fontSize: 8, fontWeight: '700', color: 'oklch(0.55 0.04 60)' }}>
+            <Text style={{ fontSize: 8, fontWeight: '700', color: '#918275' }}>
               {meld.kind.toUpperCase()}
             </Text>
           </View>

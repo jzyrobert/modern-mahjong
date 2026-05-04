@@ -12,10 +12,10 @@ interface SharedDiscardPoolProps {
 }
 
 const SEAT_COLOR: Record<'bottom' | 'right' | 'top' | 'left', string> = {
-  bottom: 'oklch(0.68 0.18 28)', // coral — you
-  right: 'oklch(0.68 0.14 165)', // jade
-  top: 'oklch(0.68 0.14 320)', // mauve
-  left: 'oklch(0.68 0.14 240)', // sky
+  bottom: '#de7660', // coral — you
+  right: '#5db698', // jade
+  top: '#c581b7', // mauve
+  left: '#729fc6', // sky
 };
 
 const TILE_W = 24;
@@ -36,7 +36,7 @@ export function SharedDiscardPool({
   if (discardOrder.length === 0) {
     return (
       <View style={{ padding: 16, alignItems: 'center' }}>
-        <Text style={{ fontSize: 11, color: 'oklch(0.55 0.04 60)' }}>No discards yet</Text>
+        <Text style={{ fontSize: 11, color: '#918275' }}>No discards yet</Text>
       </View>
     );
   }
@@ -68,13 +68,13 @@ export function SharedDiscardPool({
             <View
               style={{
                 ...(live && {
-                  shadowColor: 'oklch(0.78 0.16 75)',
+                  shadowColor: '#dc9f4f',
                   shadowOpacity: 0.7,
                   shadowRadius: 6,
                   shadowOffset: { width: 0, height: 0 },
                   elevation: 4,
                   borderWidth: 1.5,
-                  borderColor: 'oklch(0.78 0.16 75)',
+                  borderColor: '#dc9f4f',
                   borderRadius: 4,
                 }),
               }}

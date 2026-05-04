@@ -1,6 +1,7 @@
 import { generateMatchCode } from '@mahjong/protocol';
 import { type ReactNode, useState } from 'react';
 import { Alert, ScrollView, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { getDisplayName, setDisplayName } from '../../identity';
 import { useTransport } from '../../net/transport-context';
 import { useGame } from '../../state/game';
@@ -30,8 +31,8 @@ export function Lobby() {
   const [code, setCode] = useState('');
 
   return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#f1eadc' }} edges={['top']}>
     <ScrollView
-      contentInsetAdjustmentBehavior="automatic"
       style={{ flex: 1, backgroundColor: '#f1eadc' }}
       contentContainerStyle={{ paddingBottom: 40 }}
     >
@@ -48,7 +49,7 @@ export function Lobby() {
           accent
           title="Online match"
           subtitle="Play with friends over the internet"
-          icon={<GlobeIcon color="oklch(0.55 0.18 25)" />}
+          icon={<GlobeIcon color="#b14d3a" />}
         >
           <TextField
             label="Match code"
@@ -81,15 +82,15 @@ export function Lobby() {
         <ModeCard
           title="Practice vs bots"
           subtitle="Single device · no connection"
-          icon={<BotIcon color="oklch(0.4 0.04 60)" />}
+          icon={<BotIcon color="#65594c" />}
         >
-          <Text style={{ fontSize: 12, color: 'oklch(0.55 0.04 60)', lineHeight: 18 }}>
+          <Text style={{ fontSize: 12, color: '#918275', lineHeight: 18 }}>
             Three opponents at varying skill —{' '}
-            <Text style={{ color: 'oklch(0.4 0.04 60)', fontWeight: '800' }}>heuristic</Text>
+            <Text style={{ color: '#65594c', fontWeight: '800' }}>heuristic</Text>
             ,{' '}
-            <Text style={{ color: 'oklch(0.4 0.04 60)', fontWeight: '800' }}>simple</Text>
+            <Text style={{ color: '#65594c', fontWeight: '800' }}>simple</Text>
             , and{' '}
-            <Text style={{ color: 'oklch(0.4 0.04 60)', fontWeight: '800' }}>passive</Text>
+            <Text style={{ color: '#65594c', fontWeight: '800' }}>passive</Text>
             . Runs entirely on this device.
           </Text>
           <TagRow tags={['Heuristic', 'Simple', 'Passive']} />
@@ -101,13 +102,13 @@ export function Lobby() {
         <ModeCard
           title="LAN / offline"
           subtitle="Same-Wi-Fi matches"
-          icon={<WifiIcon color="oklch(0.4 0.04 60)" />}
+          icon={<WifiIcon color="#65594c" />}
         >
-          <Text style={{ fontSize: 12, color: 'oklch(0.55 0.04 60)', lineHeight: 18 }}>
+          <Text style={{ fontSize: 12, color: '#918275', lineHeight: 18 }}>
             Four-player matches over local Wi-Fi. Host shares the URL; guests paste it into any
             browser on the same network.
           </Text>
-          <InlineHint icon={<BoxIcon color="oklch(0.55 0.04 60)" />}>
+          <InlineHint icon={<BoxIcon color="#918275" />}>
             Works offline. No accounts. No data leaves your network.
           </InlineHint>
           <ButtonRow>
@@ -127,6 +128,7 @@ export function Lobby() {
         </View>
       ) : null}
     </ScrollView>
+    </SafeAreaView>
   );
 }
 
@@ -149,7 +151,7 @@ function TopBar({ name, onChangeName }: { name: string; onChangeName: (v: string
             width: 32,
             height: 32,
             borderRadius: 8,
-            backgroundColor: 'oklch(0.4 0.05 145)',
+            backgroundColor: '#506a51',
             alignItems: 'center',
             justifyContent: 'center',
           }}
@@ -157,7 +159,7 @@ function TopBar({ name, onChangeName }: { name: string; onChangeName: (v: string
           <Text
             style={{
               fontFamily: 'Noto Serif TC',
-              color: 'oklch(0.78 0.14 80)',
+              color: '#d8a85a',
               fontSize: 18,
               fontWeight: '700',
               lineHeight: 18,
@@ -170,7 +172,7 @@ function TopBar({ name, onChangeName }: { name: string; onChangeName: (v: string
           style={{
             fontWeight: '900',
             fontSize: 14,
-            color: 'oklch(0.25 0.04 60)',
+            color: '#3a3328',
             letterSpacing: 0.3,
           }}
         >
@@ -209,7 +211,7 @@ function Hero() {
           style={{
             fontWeight: '900',
             fontSize: 36,
-            color: 'oklch(0.25 0.04 60)',
+            color: '#3a3328',
             letterSpacing: -0.5,
             lineHeight: 36,
           }}
@@ -221,7 +223,7 @@ function Hero() {
             fontFamily: 'Noto Serif TC',
             fontWeight: '700',
             fontSize: 28,
-            color: 'oklch(0.55 0.18 25)',
+            color: '#b14d3a',
             lineHeight: 28,
           }}
         >
@@ -232,7 +234,7 @@ function Hero() {
         style={{
           fontSize: 14,
           fontWeight: '600',
-          color: 'oklch(0.55 0.04 60)',
+          color: '#918275',
           maxWidth: 580,
           textAlign: 'center',
           lineHeight: 21,
@@ -279,8 +281,8 @@ function IdentityCard({ name, onChange }: { name: string; onChange: (v: string) 
         flexDirection: 'row',
         alignItems: 'center',
         gap: 8,
-        backgroundColor: 'oklch(0.99 0.005 85)',
-        borderColor: 'oklch(0.86 0.02 80)',
+        backgroundColor: '#fbf8f0',
+        borderColor: '#cdc1ad',
         borderWidth: 1,
         borderRadius: 10,
         paddingVertical: 6,
@@ -293,7 +295,7 @@ function IdentityCard({ name, onChange }: { name: string; onChange: (v: string) 
           width: 30,
           height: 30,
           borderRadius: 7,
-          backgroundColor: 'oklch(0.62 0.16 25)',
+          backgroundColor: '#c66b58',
           alignItems: 'center',
           justifyContent: 'center',
         }}
@@ -304,12 +306,12 @@ function IdentityCard({ name, onChange }: { name: string; onChange: (v: string) 
         value={name}
         onChangeText={onChange}
         placeholder="Display name"
-        placeholderTextColor="oklch(0.55 0.04 60)"
+        placeholderTextColor="#918275"
         style={{
           fontFamily: 'Nunito',
           fontSize: 13,
           fontWeight: '700',
-          color: 'oklch(0.25 0.04 60)',
+          color: '#3a3328',
           width: 140,
           padding: 0,
         }}
@@ -330,8 +332,8 @@ function ModeCard({ title, subtitle, icon, accent = false, children }: ModeCardP
   return (
     <View
       style={{
-        backgroundColor: 'oklch(0.99 0.005 85)',
-        borderColor: accent ? 'oklch(0.78 0.13 30)' : 'oklch(0.86 0.02 80)',
+        backgroundColor: '#fbf8f0',
+        borderColor: accent ? '#ec9275' : '#cdc1ad',
         borderWidth: 1,
         borderRadius: 16,
         padding: 22,
@@ -353,8 +355,8 @@ function ModeCard({ title, subtitle, icon, accent = false, children }: ModeCardP
             width: 40,
             height: 40,
             borderRadius: 10,
-            backgroundColor: accent ? 'oklch(0.96 0.04 30)' : 'oklch(0.95 0.015 80)',
-            borderColor: accent ? 'oklch(0.86 0.06 30)' : 'oklch(0.86 0.02 80)',
+            backgroundColor: accent ? '#fbe5d9' : '#ede5d3',
+            borderColor: accent ? '#d8b09f' : '#cdc1ad',
             borderWidth: 1,
             alignItems: 'center',
             justifyContent: 'center',
@@ -363,13 +365,13 @@ function ModeCard({ title, subtitle, icon, accent = false, children }: ModeCardP
           {icon}
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={{ fontSize: 16, fontWeight: '900', color: 'oklch(0.25 0.04 60)', lineHeight: 18 }}>
+          <Text style={{ fontSize: 16, fontWeight: '900', color: '#3a3328', lineHeight: 18 }}>
             {title}
           </Text>
           <Text
             style={{
               fontSize: 12,
-              color: 'oklch(0.55 0.04 60)',
+              color: '#918275',
               marginTop: 2,
               fontWeight: '600',
             }}
@@ -388,8 +390,8 @@ function RecommendedBadge() {
   return (
     <View
       style={{
-        backgroundColor: 'oklch(0.96 0.04 30)',
-        borderColor: 'oklch(0.86 0.06 30)',
+        backgroundColor: '#fbe5d9',
+        borderColor: '#d8b09f',
         borderWidth: 1,
         borderRadius: 6,
         paddingHorizontal: 7,
@@ -398,7 +400,7 @@ function RecommendedBadge() {
     >
       <Text
         style={{
-          color: 'oklch(0.55 0.18 25)',
+          color: '#b14d3a',
           fontSize: 9,
           fontWeight: '900',
           letterSpacing: 0.7,
@@ -421,8 +423,8 @@ function TagRow({ tags }: { tags: readonly string[] }) {
         <View
           key={t}
           style={{
-            backgroundColor: 'oklch(0.96 0.03 280)',
-            borderColor: 'oklch(0.88 0.04 280)',
+            backgroundColor: '#e8def0',
+            borderColor: '#c9bbe0',
             borderWidth: 1,
             borderRadius: 6,
             paddingHorizontal: 7,
@@ -434,7 +436,7 @@ function TagRow({ tags }: { tags: readonly string[] }) {
               fontSize: 10,
               fontWeight: '800',
               letterSpacing: 0.4,
-              color: 'oklch(0.45 0.1 280)',
+              color: '#6a5292',
             }}
           >
             {t}
@@ -452,8 +454,8 @@ function InlineHint({ icon, children }: { icon: ReactNode; children: ReactNode }
         flexDirection: 'row',
         alignItems: 'center',
         gap: 8,
-        backgroundColor: 'oklch(0.95 0.02 85)',
-        borderColor: 'oklch(0.86 0.02 80)',
+        backgroundColor: '#ece4d3',
+        borderColor: '#cdc1ad',
         borderWidth: 1,
         borderRadius: 8,
         paddingHorizontal: 10,
@@ -461,7 +463,7 @@ function InlineHint({ icon, children }: { icon: ReactNode; children: ReactNode }
       }}
     >
       {icon}
-      <Text style={{ flex: 1, fontSize: 11, color: 'oklch(0.55 0.04 60)', fontWeight: '600' }}>
+      <Text style={{ flex: 1, fontSize: 11, color: '#918275', fontWeight: '600' }}>
         {children}
       </Text>
     </View>

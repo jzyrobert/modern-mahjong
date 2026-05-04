@@ -69,8 +69,8 @@ export function ChatBubbles({ seatToPosition }: ChatBubblesProps) {
               {
                 position: 'absolute',
                 transform,
-                backgroundColor: 'oklch(0.99 0.005 85)',
-                borderColor: 'oklch(0.86 0.02 80)',
+                backgroundColor: '#fbf8f0',
+                borderColor: '#cdc1ad',
                 borderWidth: 1,
                 borderRadius: 14,
                 paddingVertical: 6,

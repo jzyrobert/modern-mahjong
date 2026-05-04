@@ -14,6 +14,7 @@ import {
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTransport } from '../net/transport-context';
 import { isSeatHost, useGame } from '../state/game';
 import { ClaimBar } from './ClaimBar';
@@ -42,12 +43,17 @@ interface SeatPlacement {
 
 const COLORS = {
   cream: '#f1eadc',
-  ink: 'oklch(0.25 0.04 60)',
-  ink3: 'oklch(0.55 0.04 60)',
-  paper: 'oklch(0.97 0.01 80)',
-  paperHi: 'oklch(0.99 0.005 85)',
-  hairline: 'oklch(0.86 0.02 80)',
-  felt: 'oklch(0.4 0.05 145)',
+  ink: '#3a3328',
+  ink3: '#918275',
+  paper: '#f1ebe0',
+  paperHi: '#fbf8f0',
+  hairline: '#cdc1ad',
+  // Sage felt — matches the legacy table-surface tones from
+  // `_legacy/src/native/theme.ts`. Convert oklch → hex so RN inline
+  // backgroundColor renders consistently across iOS / Android (RN
+  // Android paint rejects oklch in some contexts).
+  felt: '#506a51',
+  feltDeep: '#3e574c',
 };
 
 /**
@@ -103,9 +109,9 @@ export function Match() {
 
   if (state.phase === 'waiting') {
     return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.cream }} edges={['top']}>
       <ScrollView
-        contentInsetAdjustmentBehavior="automatic"
-        style={{ flex: 1, backgroundColor: COLORS.cream }}
+        style={{ flex: 1 }}
         contentContainerStyle={{ padding: 24, maxWidth: 760, alignSelf: 'center', width: '100%' }}
       >
         <Text style={{ fontSize: 28, fontWeight: '900', color: COLORS.ink }}>Lobby</Text>
@@ -126,6 +132,7 @@ export function Match() {
           <GhostButton onPress={onLeave}>Leave</GhostButton>
         </View>
       </ScrollView>
+      </SafeAreaView>
     );
   }
 
@@ -170,9 +177,9 @@ export function Match() {
     lobby?.players.find((p) => p.seat === state.dealer)?.displayName ?? `Seat ${state.dealer}`;
 
   return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.felt }} edges={['top']}>
     <ScrollView
-      contentInsetAdjustmentBehavior="automatic"
-      style={{ flex: 1, backgroundColor: COLORS.cream }}
+      style={{ flex: 1, backgroundColor: COLORS.felt }}
       contentContainerStyle={{ padding: 12, gap: 12 }}
     >
       <View
@@ -205,8 +212,8 @@ export function Match() {
 
       <View
         style={{
-          backgroundColor: 'oklch(0.94 0.04 145 / 0.15)',
-          borderColor: COLORS.hairline,
+          backgroundColor: COLORS.feltDeep,
+          borderColor: 'rgba(255,255,255,0.12)',
           borderWidth: 1,
           borderRadius: 12,
           padding: 8,
@@ -214,7 +221,12 @@ export function Match() {
         }}
       >
         <Text
-          style={{ fontSize: 11, fontWeight: '800', color: COLORS.ink3, letterSpacing: 0.5 }}
+          style={{
+            fontSize: 11,
+            fontWeight: '800',
+            color: 'rgba(255,255,255,0.7)',
+            letterSpacing: 0.5,
+          }}
         >
           DISCARDS
         </Text>
@@ -227,7 +239,7 @@ export function Match() {
 
       {state.melds[seat].length > 0 ? (
         <View style={{ gap: 4 }}>
-          <Text style={{ fontSize: 11, fontWeight: '800', color: COLORS.ink3, letterSpacing: 0.5 }}>
+          <Text style={{ fontSize: 11, fontWeight: '800', color: 'rgba(255,255,255,0.7)', letterSpacing: 0.5 }}>
             YOUR MELDS
           </Text>
           <MeldStrip melds={state.melds[seat]} />
@@ -236,7 +248,7 @@ export function Match() {
 
       <View style={{ gap: 6 }}>
         <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <Text style={{ fontSize: 11, fontWeight: '800', color: COLORS.ink3, letterSpacing: 0.5 }}>
+          <Text style={{ fontSize: 11, fontWeight: '800', color: 'rgba(255,255,255,0.7)', letterSpacing: 0.5 }}>
             YOUR HAND
           </Text>
           <SortPicker mode={sortMode} onChange={setSortMode} />
@@ -276,6 +288,7 @@ export function Match() {
       {/* Floating emote bubbles overlay (absolute-positioned). */}
       <ChatBubbles seatToPosition={seatToPosition} />
     </ScrollView>
+    </SafeAreaView>
   );
 }
 
@@ -316,13 +329,13 @@ function DrawCue({ tile, onPress }: { tile: MTile; onPress: () => void }) {
         paddingVertical: 8,
         paddingHorizontal: 12,
         borderRadius: 10,
-        backgroundColor: pressed ? 'oklch(0.95 0.02 85)' : 'white',
-        borderColor: 'oklch(0.78 0.16 75)',
+        backgroundColor: pressed ? '#ece4d3' : 'white',
+        borderColor: '#dc9f4f',
         borderWidth: 2,
       })}
     >
       <Tile tile={tile} faceDown width={28} height={38} />
-      <Text style={{ fontSize: 13, fontWeight: '800', color: 'oklch(0.55 0.18 25)' }}>Draw</Text>
+      <Text style={{ fontSize: 13, fontWeight: '800', color: '#b14d3a' }}>Draw</Text>
     </Pressable>
   );
 }

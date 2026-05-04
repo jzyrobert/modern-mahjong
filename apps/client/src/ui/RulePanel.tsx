@@ -13,13 +13,13 @@ const TURN_TIMER_OFF = 0;
 const TURN_TIMER_DEFAULT_MS = 20_000;
 
 const COLORS = {
-  paper: 'oklch(0.97 0.01 80)',
-  paperHi: 'oklch(0.99 0.005 85)',
-  hairline: 'oklch(0.86 0.02 80)',
-  ink: 'oklch(0.25 0.04 60)',
-  ink3: 'oklch(0.55 0.04 60)',
-  red: 'oklch(0.55 0.18 25)',
-  green: 'oklch(0.7 0.14 150)',
+  paper: '#f1ebe0',
+  paperHi: '#fbf8f0',
+  hairline: '#cdc1ad',
+  ink: '#3a3328',
+  ink3: '#918275',
+  red: '#b14d3a',
+  green: '#58c280',
 };
 
 /**
@@ -64,9 +64,9 @@ export function RulePanel({ rules, isHost, onAction }: RulePanelProps) {
                   borderWidth: 1,
                   borderColor: active ? COLORS.red : COLORS.hairline,
                   backgroundColor: active
-                    ? 'oklch(0.96 0.04 30)'
+                    ? '#fbe5d9'
                     : pressed && !disabled
-                      ? 'oklch(0.95 0.02 85)'
+                      ? '#ece4d3'
                       : 'white',
                   borderRadius: 8,
                   paddingHorizontal: 12,
