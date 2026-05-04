@@ -205,20 +205,20 @@ export function Match() {
     lobby?.players.find((p) => p.seat === state.dealer)?.displayName ?? `Seat ${state.dealer}`;
 
   if (isDesktop) {
+    // The desktop center HUD only shows the tsumo button (when winning)
+    // or a passive wall count. The legacy `<DrawCue>` is redundant on
+    // this layout — `WallEdge` already wraps the next-draw stack with a
+    // pulsing halo + the `wall-draw-next` testID + the click handler;
+    // rendering `DrawCue` here too would surface a second
+    // `wall-draw-next` element and break Playwright's strict locator.
     const centerHud = (
       <View style={{ alignItems: 'center', gap: 6 }}>
-        {needsDraw && state.wall.length > 0 ? (
-          <DrawCue
-            tile={state.wall[state.wall.length - 1]!}
-            onPress={() => onAction({ t: 'draw', seat })}
-          />
-        ) : null}
         {canTsumo ? (
           <PrimaryButton onPress={() => onAction({ t: 'declareWin', seat, selfDraw: true })}>
             Declare win (tsumo)
           </PrimaryButton>
         ) : null}
-        {!needsDraw && !canTsumo ? (
+        {!canTsumo ? (
           <Text
             style={{
               color: 'rgba(255,255,255,0.7)',
