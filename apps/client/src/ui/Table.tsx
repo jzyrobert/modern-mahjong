@@ -134,11 +134,11 @@ export function Table({
       seatKey={seat}
       slots={wallLayout.slots[seat]}
       liveCount={liveWallCount}
-      showCount={opts.isMe}
+      showCount={opts.isMe === true}
       reverse={opts.reverse}
       nextDrawTile={wallLayout.nextDrawSeat === seat ? nextDrawTile : null}
-      onDrawNext={wallLayout.nextDrawSeat === seat && opts.isMe ? onDrawNext : undefined}
-      enableDrawTestId={wallLayout.nextDrawSeat === seat && opts.isMe}
+      onDrawNext={wallLayout.nextDrawSeat === seat ? onDrawNext : undefined}
+      enableDrawTestId={wallLayout.nextDrawSeat === seat}
     />
   );
 
