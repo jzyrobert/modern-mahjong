@@ -111,7 +111,7 @@ Tracking concrete fixes from the in-repo React code review.
 - [x] **Medium** — `ChatBubbles.tsx`: schedule a single timer per chat seq via a ref-tracked `Set` instead of clearing-and-rebuilding all timers on every `chats` change. _Shipped in #73._
 - [x] **Low** — `buttons.tsx` (`PrimaryButton`, `GhostButton`) and `Lobby.tsx` (`ModeCard`): replace `useState(hover)` + `onMouseEnter`/`onMouseLeave` with CSS `:hover` / `:focus-visible`. _Shipped in #71._
 - [x] **Low** — `Lobby.tsx`: switch `useState(getDisplayName())` to a lazy initialiser `useState(() => getDisplayName())`. _Shipped in #74._
-- [ ] **Low** — `Tile.tsx`: every visible tile re-renders on `useGame((s) => s.shuffling)` flips; lift the spring choice to the wall/match container or split into an inner `<TileMotion>`.
+- [x] **Low** — `Tile.tsx`: every visible tile re-renders on `useGame((s) => s.shuffling)` flips; lift the spring choice to the wall/match container or split into an inner `<TileMotion>`. _Shipped in #75._
 - [x] **Low** — `ScoringBreakdownModal`/index-key callsites: prefer stable composite keys (`${name}-${i}`) over bare `key={i}` where a stable id is already in scope. _Shipped in #74._
 - [ ] **Low** — File decomposition (component size > 300 lines): extract `Lobby.tsx` icon SVGs into `ui/menu/icons.tsx`; pull `TileReference` + swatch helpers out of `SettingsPanel.tsx`; split `TileWrapper` from `Hand.tsx` into `ui/HandTile.tsx`.
 
