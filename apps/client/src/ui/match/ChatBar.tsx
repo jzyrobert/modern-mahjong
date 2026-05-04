@@ -1,63 +1,71 @@
-import { HAIRLINE, INK_3, PAPER_HI, SANS } from '../../native/theme.js';
+import { Pressable, Text, View } from 'react-native';
 
 interface ChatBarProps {
-  /** Send a chat message. Caller wires this to the live transport. */
   onSend: (text: string) => void;
 }
 
 const EMOTES = ['👍', '😎', '🎉', '🤔', '😅', '🔥'] as const;
 
+const COLORS = {
+  ink3: '#918275',
+  paperHi: '#fbf8f0',
+  hairline: '#cdc1ad',
+};
+
 /**
- * Six-emote chat bar — taps send `ClientMessage.t === 'chat'` over the
- * live transport. The server broadcasts the message back to all
- * connected clients tagged with the sender's seat, and `ChatBubbles`
- * renders a floating bubble near the sender. Ported from
- * `/tmp/design/design/app.jsx::ChatBar`.
+ * Six-emote chat bar. Native port of
+ * `_legacy/src/ui/match/ChatBar.tsx`. Each tap fires `onSend` with
+ * the emoji string; the server broadcasts back as `chat` and
+ * `<ChatBubbles>` renders a floating bubble near the sender.
  */
 export function ChatBar({ onSend }: ChatBarProps) {
   return (
-    <div
+    <View
       style={{
-        display: 'inline-flex',
+        flexDirection: 'row',
         alignItems: 'center',
         gap: 4,
         padding: 4,
         borderRadius: 12,
-        background: PAPER_HI,
-        border: `1px solid ${HAIRLINE}`,
-        boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
-        backdropFilter: 'blur(8px)',
-        WebkitBackdropFilter: 'blur(8px)',
+        backgroundColor: COLORS.paperHi,
+        borderColor: COLORS.hairline,
+        borderWidth: 1,
+        shadowColor: '#000',
+        shadowOpacity: 0.08,
+        shadowRadius: 10,
+        shadowOffset: { width: 0, height: 2 },
+        elevation: 2,
+        alignSelf: 'flex-start',
       }}
-      aria-label="Send emote"
     >
-      <span
+      <Text
         style={{
           fontSize: 9,
-          fontWeight: 800,
+          fontWeight: '800',
           letterSpacing: 0.6,
-          textTransform: 'uppercase',
-          color: INK_3,
-          fontFamily: SANS,
-          padding: '0 6px',
+          color: COLORS.ink3,
+          paddingHorizontal: 6,
         }}
       >
-        Emote
-      </span>
+        EMOTE
+      </Text>
       {EMOTES.map((emote) => (
-        // Press scale comes from the `.mh-emote-btn:active` rule in
-        // `src/styles.css` — `:active` fires on touch where mousedown/up
-        // don't, so this also gives mobile users press feedback.
-        <button
+        <Pressable
           key={emote}
-          type="button"
-          className="mh-emote-btn"
-          onClick={() => onSend(emote)}
-          aria-label={`Send ${emote}`}
+          onPress={() => onSend(emote)}
+          accessibilityLabel={`Send ${emote}`}
+          style={({ pressed }) => ({
+            width: 30,
+            height: 30,
+            borderRadius: 8,
+            alignItems: 'center',
+            justifyContent: 'center',
+            transform: [{ scale: pressed ? 0.92 : 1 }],
+          })}
         >
-          {emote}
-        </button>
+          <Text style={{ fontSize: 18, lineHeight: 22 }}>{emote}</Text>
+        </Pressable>
       ))}
-    </div>
+    </View>
   );
 }

@@ -1,9 +1,9 @@
 import { generateMatchCode } from '@mahjong/protocol';
-import { useEffect, useRef, useState } from 'react';
-import { isLanServerAvailable } from '../native/lan-server.js';
-import { CREAM, HAIRLINE, INK, INK_3, MONO } from '../native/theme.js';
-import { Modal } from './Modal.js';
-import { GhostButton, PrimaryButton, TextField } from './buttons.js';
+import { useEffect, useState } from 'react';
+import { Text, View } from 'react-native';
+import { isLanServerAvailable } from '../native/lan-server';
+import { Modal } from './Modal';
+import { GhostButton, PrimaryButton, TextField } from './buttons';
 
 interface HostLanModalProps {
   open: boolean;
@@ -11,109 +11,115 @@ interface HostLanModalProps {
   onHosted: (hostUrl: string, matchCode: string) => void;
 }
 
+const COLORS = {
+  ink: '#3a3328',
+  ink3: '#918275',
+  cream: '#f1eadc',
+  hairline: '#cdc1ad',
+};
+
+/**
+ * Host-side modal for starting a LAN match. Native port of
+ * `_legacy/src/ui/HostLanModal.tsx`. Generates a fresh match code on
+ * first open and shows the host URL the user must advertise to
+ * guests.
+ *
+ * When the LanServer Expo native module isn't available (i.e. running
+ * in Expo Go), the copy explains the limitation and the user has to
+ * paste in their own LAN address. Once the dev client ships the
+ * native module, `LanServer.start()` will populate `hostUrl`
+ * automatically and the user just hits "Start hosting".
+ */
 export function HostLanModal({ open, onClose, onHosted }: HostLanModalProps) {
   const [hostUrl, setHostUrl] = useState('');
-  const [matchCode] = useState(() => generateMatchCode());
-  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'error'>('idle');
-  const resetTimer = useRef<number | null>(null);
+  const [matchCode, setMatchCode] = useState('');
 
-  useEffect(
-    () => () => {
-      if (resetTimer.current !== null) window.clearTimeout(resetTimer.current);
-    },
-    [],
-  );
-
-  async function copyHostUrl() {
-    if (!hostUrl) return;
-    try {
-      await navigator.clipboard.writeText(hostUrl);
-      setCopyState('copied');
-    } catch {
-      setCopyState('error');
+  useEffect(() => {
+    if (open) {
+      setHostUrl('');
+      setMatchCode(generateMatchCode());
     }
-    if (resetTimer.current !== null) window.clearTimeout(resetTimer.current);
-    resetTimer.current = window.setTimeout(() => setCopyState('idle'), 1500);
-  }
+  }, [open]);
 
   return (
-    <Modal open={open} onClose={onClose} title="Host LAN match">
-      <div style={{ fontSize: 12, color: INK_3, lineHeight: 1.5, marginBottom: 14 }}>
-        {isLanServerAvailable()
-          ? 'Share the URL and match code with anyone on the same Wi-Fi.'
-          : 'Native LAN-server plugin not available in this build. Paste the host address you want to advertise; guests on the same Wi-Fi can join with the match code below.'}
-      </div>
+    <Modal open={open} onClose={onClose} title="Host LAN match" maxWidth={460}>
+      <View style={{ padding: 18, gap: 14 }}>
+        <Text style={{ fontSize: 12, color: COLORS.ink3, lineHeight: 18, fontWeight: '600' }}>
+          {isLanServerAvailable()
+            ? 'Share the URL and match code with anyone on the same Wi-Fi.'
+            : "LAN hosting requires a development client (the native LanServer module isn't bundled in Expo Go). Until then, paste a host address you control; guests on the same Wi-Fi can connect with the match code below."}
+        </Text>
 
-      <div style={{ marginBottom: 14, display: 'flex', alignItems: 'flex-end', gap: 8 }}>
         <TextField
           label="Host URL"
           value={hostUrl}
-          onChange={setHostUrl}
+          onChangeText={setHostUrl}
           placeholder="http://192.168.1.42:7777"
-          style={{ flex: 1 }}
         />
-        <GhostButton onClick={copyHostUrl} disabled={!hostUrl}>
-          {copyState === 'copied' ? 'Copied' : copyState === 'error' ? 'Failed' : 'Copy'}
-        </GhostButton>
-      </div>
 
-      <div
-        style={{
-          background: CREAM,
-          border: `1px solid ${HAIRLINE}`,
-          borderRadius: 10,
-          padding: '12px 14px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          marginBottom: 18,
-          gap: 12,
-          flexWrap: 'wrap',
-        }}
-      >
-        <div>
-          <Label>Match code</Label>
-          <div
+        <View
+          style={{
+            backgroundColor: COLORS.cream,
+            borderColor: COLORS.hairline,
+            borderWidth: 1,
+            borderRadius: 10,
+            paddingVertical: 12,
+            paddingHorizontal: 14,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            flexWrap: 'wrap',
+          }}
+        >
+          <View>
+            <Text
+              style={{
+                fontSize: 11,
+                fontWeight: '700',
+                color: COLORS.ink3,
+                letterSpacing: 0.6,
+              }}
+            >
+              MATCH CODE
+            </Text>
+            <Text
+              style={{
+                fontFamily: 'Courier',
+                fontSize: 22,
+                fontWeight: '800',
+                letterSpacing: 5,
+                color: COLORS.ink,
+                marginTop: 2,
+              }}
+              selectable
+            >
+              {matchCode}
+            </Text>
+          </View>
+          <Text
             style={{
-              fontFamily: MONO,
-              fontSize: 22,
-              fontWeight: 800,
-              letterSpacing: 5,
-              color: INK,
-              marginTop: 2,
+              fontSize: 11,
+              color: COLORS.ink3,
+              fontWeight: '600',
+              maxWidth: 140,
+              textAlign: 'right',
             }}
           >
-            {matchCode}
-          </div>
-        </div>
-        <div style={{ fontSize: 11, color: INK_3, textAlign: 'right', maxWidth: 140 }}>
-          Share with guests so they can find this match.
-        </div>
-      </div>
+            Share with guests so they can find this match.
+          </Text>
+        </View>
 
-      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-        <GhostButton onClick={onClose}>Cancel</GhostButton>
-        <PrimaryButton onClick={() => onHosted(hostUrl, matchCode)} disabled={!hostUrl}>
-          Start hosting
-        </PrimaryButton>
-      </div>
+        <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
+          <GhostButton onPress={onClose}>Cancel</GhostButton>
+          <PrimaryButton
+            onPress={() => onHosted(hostUrl.trim(), matchCode)}
+            disabled={!hostUrl.trim()}
+          >
+            Start hosting
+          </PrimaryButton>
+        </View>
+      </View>
     </Modal>
-  );
-}
-
-function Label({ children }: { children: string }) {
-  return (
-    <div
-      style={{
-        fontSize: 11,
-        fontWeight: 700,
-        color: INK_3,
-        textTransform: 'uppercase',
-        letterSpacing: 0.6,
-        marginBottom: 6,
-      }}
-    >
-      {children}
-    </div>
   );
 }

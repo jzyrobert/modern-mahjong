@@ -1,14 +1,9 @@
 import type { OpeningRolls, Seat } from '@mahjong/game-logic';
 import { SEATS } from '@mahjong/game-logic';
-import { AnimatePresence, motion } from 'framer-motion';
-import { useEffect, useState } from 'react';
-import { HAIRLINE, INK, INK_3, PAPER_HI, RED, SANS } from '../native/theme.js';
-import { nameForSeat, useGame } from '../state/game.js';
+import { useEffect, useRef, useState } from 'react';
+import { Animated, Easing, Pressable, Text, View } from 'react-native';
+import { nameForSeat, useGame } from '../state/game';
 
-/**
- * Pip positions on a d6 face. Coordinates are 1-indexed grid cells of a
- * 3×3 layout (`[row, col]`). Centered values use row=2 / col=2.
- */
 const PIPS: Record<number, [number, number][]> = {
   1: [[2, 2]],
   2: [
@@ -45,148 +40,174 @@ const PIPS: Record<number, [number, number][]> = {
 
 const DISMISS_MS = 3500;
 
+const COLORS = {
+  ink: '#3a3328',
+  ink3: '#918275',
+  paperHi: '#fbf8f0',
+  hairline: '#cdc1ad',
+  red: '#b14d3a',
+};
+
+/**
+ * Opening-rolls overlay. Native port of
+ * `_legacy/src/ui/DiceCeremony.tsx`. Triggered by a fresh
+ * `state.openingRolls`. Auto-dismisses after `DISMISS_MS`; tap anywhere
+ * on the backdrop to dismiss early. Animations are RN core `Animated`
+ * (no reanimated) so it works in Expo Go.
+ */
 export function DiceCeremony() {
   const rolls = useGame((s) => s.state?.openingRolls);
   const dealer = useGame((s) => s.state?.dealer);
+  const lobby = useGame((s) => s.lobby);
   const [dismissed, setDismissed] = useState(false);
+  const fade = useRef(new Animated.Value(0)).current;
 
-  // Each new hand allocates a fresh `openingRolls` reference, so this effect
-  // resets the dismissed flag and starts a fresh auto-dismiss timer per hand.
   useEffect(() => {
     if (!rolls) return;
     setDismissed(false);
-    const timer = setTimeout(() => setDismissed(true), DISMISS_MS);
+    Animated.timing(fade, { toValue: 1, duration: 250, useNativeDriver: true }).start();
+    const timer = setTimeout(() => {
+      Animated.timing(fade, { toValue: 0, duration: 250, useNativeDriver: true }).start(() =>
+        setDismissed(true),
+      );
+    }, DISMISS_MS);
     return () => clearTimeout(timer);
-  }, [rolls]);
+  }, [rolls, fade]);
 
   const visible = !!rolls && !dismissed && dealer !== undefined;
-
-  // Window-level Escape so keyboard users can dismiss without focusing the
-  // backdrop (mirrors `Modal.tsx`).
-  useEffect(() => {
-    if (!visible) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setDismissed(true);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [visible]);
-
-  return (
-    <AnimatePresence>
-      {visible && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.25 }}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'oklch(0.2 0.02 60 / 0.5)',
-            backdropFilter: 'blur(6px)',
-            WebkitBackdropFilter: 'blur(6px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 100,
-          }}
-          onClick={() => setDismissed(true)}
-        >
-          <Panel rolls={rolls} dealer={dealer} />
-        </motion.div>
-      )}
-    </AnimatePresence>
-  );
-}
-
-function Panel({ rolls, dealer }: { rolls: OpeningRolls; dealer: Seat }) {
-  const lobby = useGame((s) => s.lobby);
+  if (!visible) return null;
   const rolling = SEATS.filter((s) => rolls.dice[s]);
 
   return (
-    <div
+    <Pressable
+      onPress={() => {
+        Animated.timing(fade, { toValue: 0, duration: 250, useNativeDriver: true }).start(() =>
+          setDismissed(true),
+        );
+      }}
       style={{
-        background: PAPER_HI,
-        color: INK,
-        border: `1px solid ${HAIRLINE}`,
-        padding: 24,
-        borderRadius: 16,
-        boxShadow: '0 24px 60px rgba(0,0,0,0.2), 0 6px 16px rgba(0,0,0,0.1)',
-        textAlign: 'center',
-        minWidth: 320,
-        fontFamily: SANS,
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        top: 0,
+        bottom: 0,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(40, 30, 20, 0.5)',
+        zIndex: 100,
       }}
     >
-      <h3 style={{ margin: '0 0 16px', fontWeight: 900, color: INK }}>
-        {rolls.fullRoll ? 'Opening rolls' : 'Dealer rolls'}
-      </h3>
-      <div style={{ display: 'flex', gap: 24, justifyContent: 'center', flexWrap: 'wrap' }}>
-        {rolling.map((seat) => {
-          const pair = rolls.dice[seat]!;
-          return (
-            <div
-              key={seat}
-              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}
-            >
-              <div style={{ fontSize: 11, fontWeight: 700, color: INK_3 }}>
-                {nameForSeat(lobby, seat)}
-              </div>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <Die value={pair[0]} delay={0} />
-                <Die value={pair[1]} delay={0.12} />
-              </div>
-              <div style={{ fontSize: 12, fontWeight: 800, color: INK }}>
-                <b>{pair[0] + pair[1]}</b>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      <div style={{ marginTop: 18, fontSize: 13, color: INK }}>
-        Dealer: seat <b style={{ color: RED }}>{dealer}</b> ({nameForSeat(lobby, dealer)})
-      </div>
-      <div style={{ marginTop: 6, fontSize: 11, color: INK_3 }}>Tap anywhere to dismiss</div>
-    </div>
+      <Animated.View
+        style={{
+          opacity: fade,
+          backgroundColor: COLORS.paperHi,
+          borderColor: COLORS.hairline,
+          borderWidth: 1,
+          padding: 24,
+          borderRadius: 16,
+          alignItems: 'center',
+          minWidth: 320,
+          shadowColor: '#000',
+          shadowOpacity: 0.2,
+          shadowRadius: 60,
+          shadowOffset: { width: 0, height: 24 },
+          elevation: 12,
+        }}
+      >
+        <Text style={{ fontSize: 18, fontWeight: '900', color: COLORS.ink, marginBottom: 16 }}>
+          {rolls.fullRoll ? 'Opening rolls' : 'Dealer rolls'}
+        </Text>
+        <View style={{ flexDirection: 'row', gap: 24, justifyContent: 'center', flexWrap: 'wrap' }}>
+          {rolling.map((seat) => {
+            const pair = rolls.dice[seat];
+            if (!pair) return null;
+            return (
+              <View key={seat} style={{ alignItems: 'center', gap: 6 }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: COLORS.ink3 }}>
+                  {nameForSeat(lobby, seat as Seat)}
+                </Text>
+                <View style={{ flexDirection: 'row', gap: 6 }}>
+                  <Die value={pair[0]} delay={0} />
+                  <Die value={pair[1]} delay={120} />
+                </View>
+                <Text style={{ fontSize: 12, fontWeight: '800', color: COLORS.ink }}>
+                  {pair[0] + pair[1]}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+        <Text style={{ marginTop: 18, fontSize: 13, color: COLORS.ink }}>
+          Dealer: seat <Text style={{ color: COLORS.red, fontWeight: '700' }}>{dealer}</Text> (
+          {nameForSeat(lobby, dealer as Seat)})
+        </Text>
+        <Text style={{ marginTop: 6, fontSize: 11, color: COLORS.ink3 }}>
+          Tap anywhere to dismiss
+        </Text>
+      </Animated.View>
+    </Pressable>
   );
 }
 
 function Die({ value, delay }: { value: number; delay: number }) {
+  const t = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.sequence([
+      Animated.delay(delay),
+      Animated.spring(t, { toValue: 1, friction: 6, tension: 100, useNativeDriver: true }),
+    ]).start();
+  }, [delay, t]);
+  const scale = t.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] });
+  const rotate = t.interpolate({ inputRange: [0, 1], outputRange: ['-90deg', '0deg'] });
   return (
-    <motion.div
-      initial={{ rotate: -90, scale: 0.6, opacity: 0 }}
-      animate={{ rotate: 0, scale: 1, opacity: 1 }}
-      transition={{ type: 'spring', stiffness: 280, damping: 18, delay }}
+    <Animated.View
       style={{
         width: 44,
         height: 44,
-        background: 'linear-gradient(135deg, white, oklch(0.94 0.02 85))',
-        color: INK,
-        border: `1px solid ${HAIRLINE}`,
+        backgroundColor: '#fdfaf2',
+        borderColor: COLORS.hairline,
+        borderWidth: 1,
         borderRadius: 8,
-        boxShadow: '0 2px 6px rgba(0,0,0,0.18), inset 0 -2px 0 rgba(0,0,0,0.06)',
-        display: 'grid',
-        gridTemplateColumns: '1fr 1fr 1fr',
-        gridTemplateRows: '1fr 1fr 1fr',
         padding: 6,
+        shadowColor: '#000',
+        shadowOpacity: 0.18,
+        shadowRadius: 6,
+        shadowOffset: { width: 0, height: 2 },
+        elevation: 3,
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        opacity: t,
+        transform: [{ scale }, { rotate }],
       }}
-      aria-label={`${value}`}
     >
-      {(PIPS[value] ?? []).map(([row, col]) => (
-        <span
-          key={`${row}-${col}`}
-          style={{
-            gridRow: row,
-            gridColumn: col,
-            justifySelf: 'center',
-            alignSelf: 'center',
-            width: 7,
-            height: 7,
-            borderRadius: '50%',
-            background: RED,
-          }}
-        />
-      ))}
-    </motion.div>
+      {Array.from({ length: 9 }, (_, i) => {
+        const row = Math.floor(i / 3) + 1;
+        const col = (i % 3) + 1;
+        const filled = (PIPS[value] ?? []).some(([r, c]) => r === row && c === col);
+        return (
+          <View
+            // biome-ignore lint/suspicious/noArrayIndexKey: 3x3 grid is fixed
+            key={i}
+            style={{
+              width: '33.33%',
+              height: '33.33%',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            {filled ? (
+              <View
+                style={{
+                  width: 7,
+                  height: 7,
+                  borderRadius: 4,
+                  backgroundColor: COLORS.red,
+                }}
+              />
+            ) : null}
+          </View>
+        );
+      })}
+    </Animated.View>
   );
 }

@@ -2,8 +2,8 @@
   "ci": {
     "collect": {
       "url": ["http://127.0.0.1:4173/"],
-      "startServerCommand": "pnpm preview --host 127.0.0.1 --port 4173",
-      "startServerReadyPattern": "Local:",
+      "startServerCommand": "npx --yes serve dist -l 4173 -s",
+      "startServerReadyPattern": "Accepting connections",
       "numberOfRuns": 1,
       "settings": {
         "preset": "desktop",

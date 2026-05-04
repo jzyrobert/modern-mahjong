@@ -1,4 +1,5 @@
-import { RED, SERIF } from '../../native/theme.js';
+import { Text, View } from 'react-native';
+import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
 interface WindEmblemProps {
   /** Wind glyph to show on the emblem face — defaults to 東. */
@@ -9,69 +10,75 @@ interface WindEmblemProps {
 
 /**
  * Hero emblem on the lobby — a single ivory wind-tile with a deep-red
- * Chinese character on its face. Ported from
- * `/tmp/design/design/menu.jsx::WindEmblem`. Decorative, no interaction.
+ * Chinese character on its face. Native port of
+ * `_legacy/src/ui/menu/WindEmblem.tsx`. Decorative, no interaction.
  */
 export function WindEmblem({ wind = '東', size = 100 }: WindEmblemProps) {
   const r = size * 0.14;
   const h = size * 1.32;
   return (
-    <div
+    <View
       style={{
         width: size,
         height: h,
         position: 'relative',
-        filter: 'drop-shadow(0 8px 18px rgba(0,0,0,0.18)) drop-shadow(0 2px 4px rgba(0,0,0,0.1))',
+        // RN drop-shadow lives on `shadow*` props (iOS) + `elevation` (Android)
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.18,
+        shadowRadius: 18,
+        elevation: 6,
       }}
     >
-      <svg
-        width={size}
-        height={h}
-        viewBox={`0 0 ${size} ${h}`}
-        style={{ display: 'block' }}
-        aria-hidden="true"
-      >
-        <defs>
-          <linearGradient id="we-side" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="oklch(0.92 0.02 85)" />
-            <stop offset="100%" stopColor="oklch(0.78 0.03 85)" />
-          </linearGradient>
-          <linearGradient id="we-face" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="oklch(0.99 0.005 85)" />
-            <stop offset="100%" stopColor="oklch(0.94 0.015 85)" />
-          </linearGradient>
-        </defs>
-        <rect x={0} y={size * 0.05} width={size} height={size * 1.27} rx={r} fill="url(#we-side)" />
-        <rect x={0} y={0} width={size} height={size * 1.21} rx={r} fill="url(#we-face)" />
-        <rect
+      <Svg width={size} height={h} viewBox={`0 0 ${size} ${h}`}>
+        <Defs>
+          <LinearGradient id="we-side" x1="0" x2="0" y1="0" y2="1">
+            <Stop offset="0%" stopColor="#e3d8c0" />
+            <Stop offset="100%" stopColor="#bfae8c" />
+          </LinearGradient>
+          <LinearGradient id="we-face" x1="0" x2="0" y1="0" y2="1">
+            <Stop offset="0%" stopColor="#fbf8f0" />
+            <Stop offset="100%" stopColor="#ece4d3" />
+          </LinearGradient>
+        </Defs>
+        <Rect x={0} y={size * 0.05} width={size} height={size * 1.27} rx={r} fill="url(#we-side)" />
+        <Rect x={0} y={0} width={size} height={size * 1.21} rx={r} fill="url(#we-face)" />
+        <Rect
           x={2}
           y={2}
           width={size - 4}
           height={size * 1.21 - 4}
           rx={r - 1}
           fill="none"
-          stroke="oklch(0.85 0.02 85)"
-          strokeWidth="1.2"
+          stroke="#cdc1ad"
+          strokeWidth={1.2}
         />
-      </svg>
-      <div
+      </Svg>
+      <View
         style={{
           position: 'absolute',
-          inset: 0,
-          display: 'flex',
+          left: 0,
+          right: 0,
+          top: 0,
+          bottom: 0,
           alignItems: 'center',
           justifyContent: 'center',
-          fontFamily: SERIF,
-          fontWeight: 700,
-          fontSize: size * 0.78,
-          lineHeight: 1,
-          color: RED,
-          // The face sits in the upper portion of the tile (matches Tile.tsx geometry).
           paddingBottom: size * 0.13,
         }}
+        pointerEvents="none"
       >
-        {wind}
-      </div>
-    </div>
+        <Text
+          style={{
+            fontFamily: 'Noto Serif TC',
+            fontWeight: '700',
+            fontSize: size * 0.78,
+            lineHeight: size * 0.78,
+            color: '#b14d3a',
+          }}
+        >
+          {wind}
+        </Text>
+      </View>
+    </View>
   );
 }

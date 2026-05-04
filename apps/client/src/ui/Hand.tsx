@@ -1,167 +1,119 @@
 import type { Tile as MTile, Suit } from '@mahjong/game-logic';
 import { sortHand, tileId } from '@mahjong/game-logic';
-import { useMemo, useRef, useState } from 'react';
-import { HandTile } from './HandTile.js';
-import type { SortMode } from './match/SortPicker.js';
+import { useCallback, useMemo } from 'react';
+import { View } from 'react-native';
+import { useGame } from '../state/game';
+import { HandTile } from './HandTile';
+import type { SortMode } from './match/SortPicker';
 
 interface HandProps {
   tiles: readonly MTile[];
   faceDown?: boolean | undefined;
   onTileClick?: ((t: MTile) => void) | undefined;
-  rotate?: number | undefined;
-  /**
-   * Sort mode for the user's own hand. Opponent face-down hands ignore this
-   * and always render in engine order. Defaults to 'suit'.
-   */
+  /** Sort mode for the user's own hand. */
   sortMode?: SortMode;
-  /**
-   * Engine `tileId` of the just-drawn tile (driven by `useGame.drawnTileId`).
-   * When this matches a tile in the row, that tile gets a soft gold drop-
-   * shadow glow + lift to mark it as the freshly drawn tile.
-   */
+  /** Engine `tileId` of the freshly-drawn tile — gets a soft glow + lift. */
   drawnTileId?: number | null;
-  /**
-   * Persisted manual order (tileIds). Ignored unless `sortMode === 'manual'`.
-   * Tiles not in this list fall to the end of the row in engine order.
-   */
-  manualOrder?: readonly number[] | undefined;
-  /** Commit a new manual order (after a drag drop). */
-  onReorder?: ((ids: number[]) => void) | undefined;
+  tileWidth?: number;
+  tileHeight?: number;
 }
 
-const POST_DRAG_CLICK_SUPPRESS_MS = 250;
+const TILE_W_DEFAULT = 36;
+const TILE_H_DEFAULT = 50;
+const GAP = 4;
 
-interface PointerDragState {
-  id: number;
-  startX: number;
-  startY: number;
-  x: number;
-  y: number;
-}
-
+/**
+ * Native port of `_legacy/src/ui/Hand.tsx` with Phase 5 drag-to-
+ * reorder wired up via `HandTile`. Manual mode uses
+ * `useGame.manualOrder` from the store; tap-to-discard still works
+ * via the gesture's Tap branch (long-press is required to enter
+ * drag mode, so a quick tap goes straight to `onTileClick`).
+ */
 export function Hand({
   tiles,
   faceDown,
   onTileClick,
-  rotate,
   sortMode = 'suit',
   drawnTileId = null,
-  manualOrder,
-  onReorder,
+  tileWidth = TILE_W_DEFAULT,
+  tileHeight = TILE_H_DEFAULT,
 }: HandProps) {
+  const manualOrder = useGame((s) => s.manualOrder);
+  const setManualOrder = useGame((s) => s.setManualOrder);
+
   const ordered = useMemo(() => {
     if (faceDown) return [...tiles];
-    if (sortMode === 'manual' && manualOrder && manualOrder.length > 0) {
+    if (sortMode === 'manual' && manualOrder.length > 0) {
       return manualOrderHand(tiles, manualOrder);
     }
     return orderHand(tiles, sortMode);
   }, [tiles, faceDown, sortMode, manualOrder]);
 
-  const draggable = !faceDown && sortMode === 'manual' && !!onReorder;
-
-  const [draggingId, setDraggingId] = useState<number | null>(null);
-  const [dragOverId, setDragOverId] = useState<number | null>(null);
-  const [pointerDrag, setPointerDrag] = useState<PointerDragState | null>(null);
-  const rowRef = useRef<HTMLDivElement | null>(null);
-  // Set right before a drag commits or cancels — `handleTileClick` checks
-  // this and ignores synthetic clicks that fire from the same pointer
-  // gesture, so a long-press drag on touch doesn't also trigger a discard.
-  const dragEndedAtRef = useRef<number>(0);
-
   const orderedIds = useMemo(() => ordered.map((t) => tileId(t)), [ordered]);
 
-  const commitReorder = (fromId: number, toId: number) => {
-    if (fromId === toId) return;
-    const idx = orderedIds.slice();
-    const fromIdx = idx.indexOf(fromId);
-    const toIdx = idx.indexOf(toId);
-    if (fromIdx < 0 || toIdx < 0) return;
-    const [moved] = idx.splice(fromIdx, 1);
-    if (moved === undefined) return;
-    idx.splice(toIdx, 0, moved);
-    onReorder?.(idx);
-  };
+  const onReorder = useCallback(
+    (fromIndex: number, toIndex: number) => {
+      if (fromIndex === toIndex) return;
+      const next = orderedIds.slice();
+      const [moved] = next.splice(fromIndex, 1);
+      if (moved === undefined) return;
+      next.splice(toIndex, 0, moved);
+      setManualOrder(next);
+    },
+    [orderedIds, setManualOrder],
+  );
 
-  const finishDrag = () => {
-    dragEndedAtRef.current = Date.now();
-    setDraggingId(null);
-    setDragOverId(null);
-    setPointerDrag(null);
-  };
+  const draggable = !faceDown && sortMode === 'manual' && !!setManualOrder;
+  const step = tileWidth + GAP;
 
-  const handleTileClick = (t: MTile) => {
-    if (Date.now() - dragEndedAtRef.current < POST_DRAG_CLICK_SUPPRESS_MS) return;
-    onTileClick?.(t);
-  };
+  // Face-down hands aren't used by the current Match layout (we render
+  // opponents via `<OppHandStrip>` instead), so the face-down branch
+  // is a thin pass-through. `rotate` is ignored for now — opponent
+  // sideways hands would need separate composition.
+  if (faceDown || !onTileClick) {
+    return (
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP }}>
+        {ordered.map((t, i) => {
+          const id = tileId(t);
+          return (
+            <HandTile
+              key={id}
+              tile={t}
+              index={i}
+              total={ordered.length}
+              step={step}
+              draggable={false}
+              drawnTileId={drawnTileId}
+              width={tileWidth}
+              height={tileHeight}
+            />
+          );
+        })}
+      </View>
+    );
+  }
 
   return (
-    <div
-      ref={rowRef}
-      style={{
-        display: 'flex',
-        gap: 4,
-        flexWrap: 'wrap',
-        alignItems: 'flex-end',
-        // Block native scrolling under the hand row when manual drag is
-        // active so a long-press-and-drag on touch doesn't pan the page.
-        touchAction: draggable ? 'none' : 'auto',
-      }}
-    >
-      {ordered.map((t) => {
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP }}>
+      {ordered.map((t, i) => {
         const id = tileId(t);
-        const isDrawn = !faceDown && drawnTileId === id;
-        const isDragging = draggingId === id;
-        const isDragOver = dragOverId === id && draggingId !== id;
-        const pointerOffset =
-          pointerDrag && pointerDrag.id === id
-            ? { x: pointerDrag.x - pointerDrag.startX, y: pointerDrag.y - pointerDrag.startY }
-            : null;
         return (
           <HandTile
             key={id}
             tile={t}
-            tileIdValue={id}
-            faceDown={faceDown}
-            rotate={rotate}
-            onClick={onTileClick ? () => handleTileClick(t) : undefined}
-            isDrawn={isDrawn}
+            index={i}
+            total={ordered.length}
+            step={step}
             draggable={draggable}
-            isDragging={isDragging}
-            isDragOver={isDragOver}
-            pointerOffset={pointerOffset}
-            onDragStartTile={() => setDraggingId(id)}
-            onDragEnterTile={() => {
-              if (draggingId !== null && draggingId !== id) setDragOverId(id);
-            }}
-            onDragEndTile={finishDrag}
-            onDropTile={(fromId) => {
-              commitReorder(fromId, id);
-              finishDrag();
-            }}
-            onPointerDragStart={(clientX, clientY) => {
-              setDraggingId(id);
-              setPointerDrag({ id, startX: clientX, startY: clientY, x: clientX, y: clientY });
-            }}
-            onPointerDragMove={(clientX, clientY) => {
-              setPointerDrag((prev) =>
-                prev && prev.id === id ? { ...prev, x: clientX, y: clientY } : prev,
-              );
-              // Hit-test against everything except the dragging tile so the
-              // floating tile doesn't "snap to itself" while the pointer
-              // hovers over its own translated bounding box.
-              const target = closestTileId(rowRef.current, clientX, clientY, id);
-              if (target !== null && target !== id) setDragOverId(target);
-            }}
-            onPointerDragCommit={() => {
-              const overId = dragOverId;
-              if (overId !== null && overId !== id) commitReorder(id, overId);
-              finishDrag();
-            }}
-            onPointerDragCancel={finishDrag}
+            onTap={onTileClick ? () => onTileClick(t) : undefined}
+            onReorder={(toIndex) => onReorder(i, toIndex)}
+            drawnTileId={drawnTileId}
+            width={tileWidth}
+            height={tileHeight}
           />
         );
       })}
-    </div>
+    </View>
   );
 }
 
@@ -171,7 +123,6 @@ const HONOR_ORDER: Record<string, number> = { E: 0, S: 1, W: 2, N: 3, Z: 4, F: 5
 function orderHand(tiles: readonly MTile[], mode: SortMode): MTile[] {
   if (mode === 'manual') return [...tiles];
   if (mode === 'suit') return sortHand(tiles);
-  // 'num' — numeric rank first, suit as tiebreak; honors stay grouped at the end.
   return [...tiles].sort((a, b) => {
     if (a.kind === 'suit' && b.kind === 'suit') {
       if (a.rank !== b.rank) return a.rank - b.rank;
@@ -189,39 +140,9 @@ function manualOrderHand(tiles: readonly MTile[], order: readonly number[]): MTi
   return [...tiles].sort((a, b) => {
     const ia = indexById.get(tileId(a));
     const ib = indexById.get(tileId(b));
-    // Tiles not in `order` (e.g. just drew a fresh one before appendEvents
-    // fired) fall to the end and keep their engine relative order.
     if (ia === undefined && ib === undefined) return 0;
     if (ia === undefined) return 1;
     if (ib === undefined) return -1;
     return ia - ib;
   });
-}
-
-function closestTileId(
-  row: HTMLElement | null,
-  clientX: number,
-  clientY: number,
-  excludeId: number | null = null,
-): number | null {
-  if (!row) return null;
-  const els = Array.from(row.querySelectorAll<HTMLElement>('[data-mh-tile="1"]'));
-  let bestId: number | null = null;
-  let bestDist = Number.POSITIVE_INFINITY;
-  for (const el of els) {
-    const raw = el.getAttribute('data-mh-id');
-    if (raw === null) continue;
-    const id = Number.parseInt(raw, 10);
-    if (!Number.isFinite(id)) continue;
-    if (excludeId !== null && id === excludeId) continue;
-    const r = el.getBoundingClientRect();
-    const cx = r.left + r.width / 2;
-    const cy = r.top + r.height / 2;
-    const d = Math.hypot(clientX - cx, clientY - cy);
-    if (d < bestDist) {
-      bestDist = d;
-      bestId = id;
-    }
-  }
-  return bestId;
 }

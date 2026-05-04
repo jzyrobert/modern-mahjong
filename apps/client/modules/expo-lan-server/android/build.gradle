@@ -1,0 +1,26 @@
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
+apply plugin: 'expo-module-gradle-plugin'
+
+group = 'expo.modules.lanserver'
+version = '0.0.0'
+
+android {
+    namespace 'expo.modules.lanserver'
+
+    defaultConfig {
+        versionCode 1
+        versionName '0.0.0'
+    }
+
+    lintOptions {
+        abortOnError false
+    }
+}
+
+dependencies {
+    // NanoHTTPD-WebSockets — a small embeddable HTTP server with
+    // WebSocket upgrade support. Same library the legacy plan named.
+    implementation 'org.nanohttpd:nanohttpd:2.3.1'
+    implementation 'org.nanohttpd:nanohttpd-websocket:2.3.1'
+}

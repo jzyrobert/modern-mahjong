@@ -1,15 +1,16 @@
 import type { Seat, Wind } from '@mahjong/game-logic';
-import { INK, RED, SANS, SEAT_COLOR, SERIF } from '../../native/theme.js';
-import type { LobbyState } from '../../state/game.js';
-import { nameForSeat } from '../../state/game.js';
+import { useEffect, useRef } from 'react';
+import { Animated, Easing, Text, View } from 'react-native';
+import type { LobbyState } from '../../state/game';
+import { nameForSeat } from '../../state/game';
 
 interface PlayerBadgeProps {
   seat: Seat;
-  /** Visual seat slot — drives flex direction + initials placement. */
+  /** Visual seat slot — drives flex direction + accent color. */
   position: 'top' | 'left' | 'right' | 'bottom';
   /** Wind glyph for this seat (E/S/W/N relative to dealer). */
   seatWind: Wind;
-  /** Lobby snapshot — used for the display name; pulls bot/disconnect status from PublicPlayer. */
+  /** Lobby snapshot — drives display name lookup. */
   lobby: LobbyState | null;
   /** Score from `state.scoreboard[seat]`. */
   score: number;
@@ -18,14 +19,29 @@ interface PlayerBadgeProps {
 
 const WIND_GLYPH: Record<Wind, string> = { E: '東', S: '南', W: '西', N: '北' };
 
+const SEAT_COLOR: Record<'top' | 'left' | 'right' | 'bottom', string> = {
+  bottom: '#de7660',
+  right: '#5db698',
+  top: '#c581b7',
+  left: '#729fc6',
+};
+
+const COLORS = {
+  ink: '#3a3328',
+  red: '#b14d3a',
+  redHot: '#db5d4a',
+  paperHi: 'rgba(255,255,255,0.92)',
+};
+
 /**
- * Per-seat badge — circular avatar with the player's initials + name + seat
- * wind glyph + cumulative score, with an active-turn glow when it's the
- * seat's turn. Ported from `/tmp/design/design/app.jsx::PlayerBadge`.
+ * Per-seat badge — coloured avatar circle with player initials, display
+ * name, seat-wind glyph, and cumulative score. Active-turn glow applies
+ * when it's the seat's turn. Native port of
+ * `_legacy/src/ui/match/PlayerBadge.tsx`.
  *
- * Avatar background derives from the per-seat colour token (`SEAT_COLOR`
- * keyed by visual position, which the new mobile shell will reuse for the
- * shared discard pool's seat-color underlines).
+ * The legacy gradient + backdrop-filter blur become a solid red
+ * background + scaled shadow on active — RN doesn't support
+ * `backdrop-filter`, and the gradient lookup wasn't carrying its weight.
  */
 export function PlayerBadge({
   seat,
@@ -39,92 +55,109 @@ export function PlayerBadge({
   const initials = computeInitials(name);
   const avatarBg = SEAT_COLOR[position];
 
-  const dir =
-    position === 'top'
-      ? 'row'
-      : position === 'left'
-        ? 'row'
-        : position === 'right'
-          ? 'row-reverse'
-          : 'row';
+  // Soft scale pulse while active — driven on the native thread so it
+  // doesn't compete with engine-side state updates. Interpolated up to
+  // 1.04 over 1.4s with easeInOut, looping. Stops cleanly when the seat
+  // is no longer active.
+  const pulse = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!isActive) {
+      pulse.setValue(0);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 700,
+          useNativeDriver: true,
+          easing: Easing.inOut(Easing.ease),
+        }),
+        Animated.timing(pulse, {
+          toValue: 0,
+          duration: 700,
+          useNativeDriver: true,
+          easing: Easing.inOut(Easing.ease),
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [isActive, pulse]);
+  const scale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.04] });
 
   return (
-    <div
+    <Animated.View
       style={{
-        display: 'flex',
-        flexDirection: dir,
+        flexDirection: 'row',
         alignItems: 'center',
-        gap: 10,
-        padding: '6px 12px',
-        borderRadius: 16,
-        background: isActive
-          ? 'linear-gradient(135deg, oklch(0.78 0.10 30), oklch(0.7 0.14 28))'
-          : 'oklch(1 0 0 / 0.92)',
-        boxShadow: isActive
-          ? '0 6px 20px oklch(0.7 0.14 28 / 0.45), 0 0 0 3px oklch(0.78 0.10 30 / 0.25)'
-          : '0 2px 10px rgba(0,0,0,0.08)',
-        color: isActive ? 'white' : INK,
-        backdropFilter: 'blur(8px)',
-        WebkitBackdropFilter: 'blur(8px)',
-        transition: 'all 240ms',
+        gap: 8,
+        paddingVertical: 6,
+        paddingHorizontal: 10,
+        borderRadius: 14,
+        backgroundColor: isActive ? COLORS.redHot : COLORS.paperHi,
+        shadowColor: isActive ? COLORS.redHot : '#000',
+        shadowOpacity: isActive ? 0.45 : 0.1,
+        shadowRadius: isActive ? 12 : 6,
+        shadowOffset: { width: 0, height: 4 },
+        elevation: isActive ? 6 : 2,
+        borderWidth: isActive ? 2 : 0,
+        borderColor: isActive ? '#f3c54a' : 'transparent',
+        transform: isActive ? [{ scale }] : undefined,
       }}
     >
-      <div
+      <View
         style={{
-          width: 32,
-          height: 32,
-          borderRadius: '50%',
-          background: avatarBg,
-          display: 'flex',
+          width: 30,
+          height: 30,
+          borderRadius: 15,
+          backgroundColor: avatarBg,
           alignItems: 'center',
           justifyContent: 'center',
-          fontFamily: SANS,
-          fontWeight: 800,
-          fontSize: 13,
-          color: 'white',
-          boxShadow: 'inset 0 -2px 0 rgba(0,0,0,0.18), 0 1px 3px rgba(0,0,0,0.15)',
-          flexShrink: 0,
+          shadowColor: '#000',
+          shadowOpacity: 0.18,
+          shadowRadius: 2,
+          shadowOffset: { width: 0, height: 1 },
+          elevation: 2,
         }}
       >
-        {initials}
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 1, lineHeight: 1.1 }}>
-        <div
-          style={{
-            fontFamily: SANS,
-            fontWeight: 800,
-            fontSize: 12,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 5,
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {name}
-          <span
+        <Text style={{ color: 'white', fontWeight: '800', fontSize: 12 }}>{initials}</Text>
+      </View>
+      <View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+          <Text
+            numberOfLines={1}
             style={{
-              fontFamily: SERIF,
+              fontWeight: '800',
+              fontSize: 12,
+              color: isActive ? 'white' : COLORS.ink,
+              maxWidth: 110,
+            }}
+          >
+            {name}
+          </Text>
+          <Text
+            style={{
+              fontFamily: 'Noto Serif TC',
               fontSize: 13,
-              color: isActive ? 'rgba(255,255,255,0.9)' : RED,
-              fontWeight: 600,
+              color: isActive ? 'rgba(255,255,255,0.9)' : COLORS.red,
+              fontWeight: '700',
             }}
           >
             {WIND_GLYPH[seatWind]}
-          </span>
-        </div>
-        <div
+          </Text>
+        </View>
+        <Text
           style={{
             fontSize: 10,
-            fontWeight: 700,
-            opacity: 0.7,
-            fontFamily: SANS,
-            fontVariantNumeric: 'tabular-nums',
+            fontWeight: '700',
+            color: isActive ? 'rgba(255,255,255,0.85)' : 'rgba(58,51,40,0.7)',
           }}
         >
           {score} pt
-        </div>
-      </div>
-    </div>
+        </Text>
+      </View>
+    </Animated.View>
   );
 }
 

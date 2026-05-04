@@ -1,108 +1,99 @@
 import type { ReactNode } from 'react';
-import { useEffect } from 'react';
-import { HAIRLINE, INK, INK_3, PAPER_HI, SANS } from '../native/theme.js';
+import { Pressable, Modal as RNModal, Text, View } from 'react-native';
 
 interface ModalProps {
   open: boolean;
   title: string;
   onClose: () => void;
   children: ReactNode;
+  /** Optional max-width for the dialog content (default 460). */
+  maxWidth?: number;
 }
 
+const COLORS = {
+  ink: '#3a3328',
+  ink3: '#918275',
+  paper: '#fbf8f0',
+  hairline: '#cdc1ad',
+  cream: '#f1eadc',
+  scrim: 'rgba(20,15,10,0.55)',
+};
+
 /**
- * Modal frame ported from `/tmp/design/design/menu.jsx::Modal`. Blurred ink
- * backdrop, cream-paper card with soft drop shadow, title row + close (×)
- * button, escape-to-close, click-outside-to-close.
+ * Native port of `_legacy/src/ui/Modal.tsx`. Cream-paper dialog over an
+ * ink scrim, title row with × close button, click-outside to dismiss,
+ * back-button to dismiss on Android (via `onRequestClose`). The legacy
+ * `backdrop-filter: blur` doesn't translate to RN — the scrim alpha is
+ * tuned a bit darker to compensate.
+ *
+ * Used by `SettingsPanel`, `ScoringBreakdownModal`, and `GameLog`.
  */
-export function Modal({ open, title, onClose, children }: ModalProps) {
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
-
-  if (!open) return null;
-
+export function Modal({ open, title, onClose, children, maxWidth = 460 }: ModalProps) {
   return (
-    <div
-      role="presentation"
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 100,
-        background: 'oklch(0.2 0.03 60 / 0.5)',
-        backdropFilter: 'blur(4px)',
-        WebkitBackdropFilter: 'blur(4px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 20,
-      }}
-      onClick={onClose}
-      onKeyDown={() => {
-        /* escape handled at the window level */
-      }}
+    <RNModal
+      visible={open}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+      statusBarTranslucent
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => e.stopPropagation()}
+      <Pressable
         style={{
-          background: PAPER_HI,
-          color: INK,
-          border: `1px solid ${HAIRLINE}`,
-          borderRadius: 16,
-          padding: 24,
-          width: '100%',
-          maxWidth: 460,
-          boxShadow: '0 24px 60px rgba(0,0,0,0.2), 0 6px 16px rgba(0,0,0,0.1)',
-          fontFamily: SANS,
+          flex: 1,
+          backgroundColor: COLORS.scrim,
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: 20,
         }}
+        onPress={onClose}
       >
-        <div
+        <Pressable
+          // Eat the backdrop's onPress when the user taps inside.
+          onPress={() => {}}
           style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            marginBottom: 16,
+            width: '100%',
+            maxWidth,
+            maxHeight: '90%',
+            backgroundColor: COLORS.paper,
+            borderRadius: 16,
+            borderWidth: 1,
+            borderColor: COLORS.hairline,
+            overflow: 'hidden',
+            shadowColor: '#000',
+            shadowOpacity: 0.18,
+            shadowRadius: 24,
+            shadowOffset: { width: 0, height: 12 },
+            elevation: 8,
           }}
         >
-          <div style={{ fontSize: 18, fontWeight: 900, color: INK }}>{title}</div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
+          <View
             style={{
-              background: 'transparent',
-              border: 'none',
-              cursor: 'pointer',
-              width: 28,
-              height: 28,
-              borderRadius: 8,
-              display: 'flex',
+              flexDirection: 'row',
               alignItems: 'center',
-              justifyContent: 'center',
-              color: INK_3,
+              justifyContent: 'space-between',
+              paddingHorizontal: 18,
+              paddingVertical: 14,
+              borderBottomWidth: 1,
+              borderColor: COLORS.hairline,
             }}
           >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              aria-hidden="true"
+            <Text style={{ fontSize: 16, fontWeight: '900', color: COLORS.ink }}>{title}</Text>
+            <Pressable
+              onPress={onClose}
+              accessibilityLabel="Close"
+              style={({ pressed }) => ({
+                paddingHorizontal: 10,
+                paddingVertical: 4,
+                borderRadius: 8,
+                backgroundColor: pressed ? COLORS.cream : 'transparent',
+              })}
             >
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
-        </div>
-        {children}
-      </div>
-    </div>
+              <Text style={{ fontSize: 18, color: COLORS.ink3, fontWeight: '700' }}>×</Text>
+            </Pressable>
+          </View>
+          {children}
+        </Pressable>
+      </Pressable>
+    </RNModal>
   );
 }

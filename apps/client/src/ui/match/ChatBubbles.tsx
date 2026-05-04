@@ -1,38 +1,39 @@
 import type { Seat } from '@mahjong/game-logic';
-import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useRef } from 'react';
-import { HAIRLINE, INK, PAPER_HI, SANS } from '../../native/theme.js';
-import { useGame } from '../../state/game.js';
+import { Text, View, type ViewStyle } from 'react-native';
+import { useGame } from '../../state/game';
 
 interface ChatBubblesProps {
-  /** Map seat → visual position so each bubble anchors next to the sender. */
   seatToPosition: Record<Seat, 'bottom' | 'right' | 'top' | 'left'>;
 }
 
 const DISMISS_MS = 3500;
 
+const ANCHOR: Record<'bottom' | 'right' | 'top' | 'left', ViewStyle> = {
+  bottom: { left: '50%' as const, bottom: 120 },
+  right: { right: 24, top: '50%' as const },
+  top: { left: '50%' as const, top: 120 },
+  left: { left: 24, top: '50%' as const },
+};
+
 /**
- * Floating emote bubbles. Renders one per `useGame.chats` entry near the
- * sender's visual position; auto-dismisses after `DISMISS_MS`. Stacks
- * multiple from the same seat by indexing the matching subset and
- * offsetting subsequent bubbles upward. Ported from
- * `/tmp/design/design/app.jsx::ChatBar` (the receiving half).
+ * Floating emote bubbles. Phase 7 stub — Reanimated FadeIn/FadeOut
+ * temporarily replaced with plain View while we triage the Expo Go
+ * TurboModule registration mismatch. The auto-dismiss + per-seq timer
+ * scheduling logic is unchanged; only the entry/exit animation is
+ * stripped.
  */
 export function ChatBubbles({ seatToPosition }: ChatBubblesProps) {
   const chats = useGame((s) => s.chats);
   const dismissChat = useGame((s) => s.dismissChat);
 
-  // Schedule one auto-dismiss timer per chat seq. The previous version
-  // cleared and re-created every in-flight timer whenever `chats` changed
-  // (i.e., on each new emote) — correct, but churn-heavy. Tracking which
-  // seqs already have a timer in a ref lets us schedule each at most once.
   const scheduled = useRef(new Set<number>());
   useEffect(() => {
     for (const c of chats) {
       if (scheduled.current.has(c.seq)) continue;
       scheduled.current.add(c.seq);
       const remaining = Math.max(0, DISMISS_MS - (Date.now() - c.ts));
-      window.setTimeout(() => {
+      setTimeout(() => {
         dismissChat(c.seq);
         scheduled.current.delete(c.seq);
       }, remaining);
@@ -40,68 +41,48 @@ export function ChatBubbles({ seatToPosition }: ChatBubblesProps) {
   }, [chats, dismissChat]);
 
   return (
-    <div
-      aria-live="polite"
+    <View
+      pointerEvents="none"
       style={{
-        position: 'fixed',
-        inset: 0,
-        pointerEvents: 'none',
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        top: 0,
+        bottom: 0,
         zIndex: 80,
       }}
     >
-      <AnimatePresence>
-        {chats.map((c, i) => {
-          // Stack offset per chat from the same seat — newer bubbles ride
-          // above older ones so they don't hide the previous emote.
-          const sameFromOlder = chats.slice(0, i).filter((other) => other.from === c.from).length;
-          const position = c.from === 'spectator' ? 'top' : seatToPosition[c.from];
-          const anchor = ANCHOR[position];
-          return (
-            <motion.div
-              key={c.seq}
-              initial={{ opacity: 0, scale: 0.6, y: 0 }}
-              animate={{ opacity: 1, scale: 1, y: -sameFromOlder * 38 }}
-              exit={{ opacity: 0, scale: 0.6 }}
-              transition={{ type: 'spring', stiffness: 320, damping: 22 }}
-              style={{
+      {chats.map((c) => {
+        const position = c.from === 'spectator' ? 'top' : seatToPosition[c.from];
+        const anchor = ANCHOR[position];
+        const horiz = position === 'top' || position === 'bottom';
+        const transform = horiz ? [{ translateX: -20 }] : [{ translateY: -16 }];
+        return (
+          <View
+            key={c.seq}
+            style={[
+              {
                 position: 'absolute',
-                left: anchor.left,
-                right: anchor.right,
-                top: anchor.top,
-                bottom: anchor.bottom,
-                transform: anchor.transform,
-                background: PAPER_HI,
-                color: INK,
-                border: `1px solid ${HAIRLINE}`,
+                transform,
+                backgroundColor: '#fbf8f0',
+                borderColor: '#cdc1ad',
+                borderWidth: 1,
                 borderRadius: 14,
-                padding: '6px 12px',
-                fontFamily: SANS,
-                fontSize: 22,
-                lineHeight: 1,
-                boxShadow: '0 6px 18px rgba(0,0,0,0.18)',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {c.text}
-            </motion.div>
-          );
-        })}
-      </AnimatePresence>
-    </div>
+                paddingVertical: 6,
+                paddingHorizontal: 12,
+                shadowColor: '#000',
+                shadowOpacity: 0.18,
+                shadowRadius: 6,
+                shadowOffset: { width: 0, height: 2 },
+                elevation: 4,
+              },
+              anchor,
+            ]}
+          >
+            <Text style={{ fontSize: 22, lineHeight: 24 }}>{c.text}</Text>
+          </View>
+        );
+      })}
+    </View>
   );
 }
-
-interface AnchorPosition {
-  left?: string;
-  right?: string;
-  top?: string;
-  bottom?: string;
-  transform?: string;
-}
-
-const ANCHOR: Record<'bottom' | 'right' | 'top' | 'left', AnchorPosition> = {
-  bottom: { left: '50%', bottom: '120px', transform: 'translateX(-50%)' },
-  right: { right: '24px', top: '50%', transform: 'translateY(-50%)' },
-  top: { left: '50%', top: '120px', transform: 'translateX(-50%)' },
-  left: { left: '24px', top: '50%', transform: 'translateY(-50%)' },
-};

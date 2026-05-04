@@ -1,11 +1,11 @@
 import type { Action, Seat } from '@mahjong/game-logic';
 import { nextDealer } from '@mahjong/game-logic';
 import { useState } from 'react';
-import { HAIRLINE, PAPER } from '../native/theme.js';
-import { useGame } from '../state/game.js';
-import { randomSeed } from '../util.js';
-import { RulePanel } from './RulePanel.js';
-import { ScoringBreakdownModal } from './ScoringBreakdownModal.js';
+import { Text, View } from 'react-native';
+import { useGame } from '../state/game';
+import { RulePanel } from './RulePanel';
+import { ScoringBreakdownModal } from './ScoringBreakdownModal';
+import { GhostButton, PrimaryButton } from './buttons';
 
 interface ResultPanelProps {
   onAction: (a: Action) => void;
@@ -13,59 +13,83 @@ interface ResultPanelProps {
   isHost: boolean;
 }
 
+const COLORS = {
+  ink: '#3a3328',
+  ink3: '#918275',
+  paper: '#f1ebe0',
+  hairline: '#cdc1ad',
+  red: '#b14d3a',
+  gold: '#d8a85a',
+};
+
+/**
+ * End-of-hand result. Native port of `_legacy/src/ui/ResultPanel.tsx`.
+ * Wins show a one-line summary + a "View breakdown" button that opens
+ * `ScoringBreakdownModal` with the per-pattern faan list.
+ */
 export function ResultPanel({ onAction, mySeat, isHost }: ResultPanelProps) {
-  const state = useGame((s) => s.state)!;
-  const r = state.lastResult!;
-  const dealerForNext = nextDealer(state);
+  const state = useGame((s) => s.state);
   const [breakdownOpen, setBreakdownOpen] = useState(false);
+  if (!state || !state.lastResult) return null;
+  const r = state.lastResult;
+  const dealerForNext = nextDealer(state);
+
   return (
-    <div
+    <View
       style={{
         marginTop: 16,
-        padding: 12,
-        background: PAPER,
-        border: `1px solid ${HAIRLINE}`,
-        borderRadius: 6,
+        padding: 14,
+        backgroundColor: COLORS.paper,
+        borderColor: COLORS.hairline,
+        borderWidth: 1,
+        borderRadius: 8,
+        gap: 10,
       }}
     >
       {r.kind === 'win' ? (
-        <>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            <strong>Seat {r.winner} wins!</strong>
-            <span>
-              {r.faan} faan ({r.selfDraw ? 'self-draw' : `from seat ${r.from}`})
-            </span>
-            <button
-              type="button"
-              onClick={() => setBreakdownOpen(true)}
-              style={{ marginLeft: 'auto' }}
-            >
-              Scoring breakdown
-            </button>
-          </div>
-          <ScoringBreakdownModal
-            open={breakdownOpen}
-            onClose={() => setBreakdownOpen(false)}
-            result={r}
-            faanMin={state.rules.faanMin}
-          />
-        </>
+        <View style={{ gap: 6 }}>
+          <Text style={{ fontSize: 18, fontWeight: '900', color: COLORS.ink }}>
+            Seat {r.winner} wins!
+          </Text>
+          <Text style={{ fontSize: 13, color: COLORS.ink3 }}>
+            {r.faan} faan ({r.selfDraw ? 'self-draw 自摸' : `from seat ${r.from}`})
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+            <GhostButton onPress={() => setBreakdownOpen(true)}>View breakdown</GhostButton>
+          </View>
+        </View>
       ) : (
-        <strong>Drawn game (wall empty)</strong>
+        <Text style={{ fontSize: 18, fontWeight: '900', color: COLORS.ink }}>
+          Drawn game (wall empty)
+        </Text>
       )}
+
       <RulePanel rules={state.rules} isHost={isHost} onAction={onAction} />
-      <div style={{ marginTop: 8 }}>
-        <button
-          type="button"
+
+      <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <PrimaryButton
           disabled={!isHost}
-          onClick={() => onAction({ t: 'startHand', seed: randomSeed(), dealer: dealerForNext })}
+          onPress={() => onAction({ t: 'startHand', seed: randomSeed(), dealer: dealerForNext })}
         >
           Start next hand
-        </button>{' '}
-        <span style={{ fontSize: 12, opacity: 0.7 }}>
-          (you are seat {mySeat}; next dealer will be seat {dealerForNext})
-        </span>
-      </div>
-    </div>
+        </PrimaryButton>
+        <Text style={{ fontSize: 12, color: COLORS.ink3 }}>
+          (seat {mySeat}; next dealer: seat {dealerForNext})
+        </Text>
+      </View>
+
+      {r.kind === 'win' ? (
+        <ScoringBreakdownModal
+          open={breakdownOpen}
+          onClose={() => setBreakdownOpen(false)}
+          result={r}
+          faanMin={state.rules.faanMin}
+        />
+      ) : null}
+    </View>
   );
+}
+
+function randomSeed(): number {
+  return Math.floor(Math.random() * 0xffffffff);
 }

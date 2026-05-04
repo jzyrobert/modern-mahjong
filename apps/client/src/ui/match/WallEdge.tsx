@@ -1,6 +1,7 @@
-import type { Tile as MTile, Seat } from '@mahjong/game-logic';
-import { motion } from 'framer-motion';
-import { Tile } from '../Tile.js';
+import { type Tile as MTile, type Seat, tileId } from '@mahjong/game-logic';
+import { useEffect, useRef } from 'react';
+import { Animated, Easing, Pressable, Text, View } from 'react-native';
+import { Tile } from '../Tile';
 
 /**
  * Visual wall edge for one seat. Renders the seat's physical wall as 17
@@ -8,20 +9,18 @@ import { Tile } from '../Tile.js';
  * tiles total). Each stack is drawn as a 2-tile-tall pillbox; status
  * comes from the dice break and the engine's draw progress:
  *
- *   - `live`  — face-down, drawable (full 2-tile stack)
- *   - `dead`  — face-down, dimmed (kong replacements; never drawn except
- *               on a kong declaration)
- *   - `drawn` — empty (both tiles already left this stack on their way
- *               to a hand)
+ *   - `live`     — face-down, drawable (full 2-tile stack)
+ *   - `dead`     — face-down, dimmed (kong replacements; never drawn
+ *                  except on a kong declaration)
+ *   - `drawn`    — empty (both tiles already left this stack)
+ *   - `nextDraw` — the next-to-draw stack; renders the engine's actual
+ *                  next `Tile` on top so future Phase 6 FLIP animations
+ *                  have a real tile object to track. Pulse halo deferred.
  *
- * The slot whose status is `nextDraw` gets the existing pulse halo +
- * the engine's actual next-to-draw `Tile` rendered as the **top** of
- * the stack (the order tiles are physically taken). All other slots
- * are placeholder face-down rectangles — sufficient since the player
- * can't tell tile faces from the back anyway.
- *
- * The break direction wraps onto the next wall (counter-clockwise) when
- * the count exceeds the current wall — see `wallLayout.ts`.
+ * Native port of `_legacy/src/ui/match/WallEdge.tsx`. The framer-motion
+ * pulse halo is intentionally omitted — animations belong to Phase 6
+ * (Reanimated worklets / Animated API). For now the next-draw slot is
+ * highlighted with a static gold border so it's still a visible cue.
  */
 
 export type SlotStatus = 'live' | 'dead' | 'drawn' | 'nextDraw';
@@ -33,167 +32,223 @@ interface WallEdgeProps {
   nextDrawTile?: MTile | null | undefined;
   /** Click handler when the next-to-draw slot is on this seat's wall. */
   onDrawNext?: (() => void) | undefined;
-  /** Hide the count badge entirely (used for opponents). */
-  showCount?: boolean | undefined;
-  /** Total live remaining tiles for the count badge. */
-  liveCount: number;
-  /** Reverse the slot rendering order — used so left/right walls draw in the same physical direction after rotation. */
+  /** Render order: when true, slot 0 stays visually rightmost. Used for
+   *  the right-side wall so the break math reads consistently across
+   *  seats once the column is rotated. */
   reverse?: boolean | undefined;
-  /** Test harness signal for the click target — proxies to the existing `wall-draw-next` testId. */
+  /** Stack orientation — horizontal row (top/bottom seats) or vertical
+   *  column (left/right seats). The 2-tile pillbox direction flips to
+   *  match. */
+  orient: 'row' | 'column';
+  /** Tile width. Defaults to 14 — matches the existing OppHandStrip
+   *  face-down strip so opp-hand and wall sizes look consistent. */
+  tileW?: number;
+  /** Tile height. Defaults to 20. */
+  tileH?: number;
+  /** Live tiles still in the wall. Renders a small badge on the user's
+   *  wall when set; opponent walls pass undefined to hide it. */
+  liveCount?: number | undefined;
+  /** Test harness signal for the click target. Proxies to the existing
+   *  `wall-draw-next` testID so the existing solo-match e2e keeps
+   *  working. */
   enableDrawTestId?: boolean | undefined;
-  /** Visual seat key — drives the absolute key for animations. */
   seatKey: Seat;
 }
 
-const PULSE_HALO_ANIMATE = {
-  scale: [1, 1.18, 1],
-  opacity: [0.6, 0, 0.6],
-};
-const PULSE_TRANSITION = {
-  duration: 1.4,
-  repeat: Number.POSITIVE_INFINITY,
-  ease: 'easeInOut',
-} as const;
-
-// Wall tiles match the opponent hand sizing (`max(16px, 2.6vmin)` × `max(22px, 3.6vmin)`)
-// so the four walls and the face-down opponent hands look consistent.
-// `WALL_LENGTH` / `WALL_THICKNESS` in `Table.tsx` must stay in sync.
-const WALL_TILE_VARS: React.CSSProperties = {
-  ['--tile-w' as string]: 'max(16px, 2.6vmin)',
-  ['--tile-h' as string]: 'max(22px, 3.6vmin)',
+const COLORS = {
+  back1: '#7fa9c1',
+  back2: '#5a8cb0',
+  backEdge: 'rgba(50,80,100,0.6)',
+  drawHalo: '#dc9f4f',
+  countBg: 'rgba(0,0,0,0.35)',
+  countFg: 'rgba(255,255,255,0.85)',
 };
 
 export function WallEdge({
   slots,
   nextDrawTile,
   onDrawNext,
-  showCount = true,
-  liveCount,
   reverse = false,
+  orient,
+  tileW = 14,
+  tileH = 20,
+  liveCount,
   enableDrawTestId,
   seatKey,
 }: WallEdgeProps) {
   const ordered = reverse ? [...slots].reverse() : slots;
+  const stackDir = orient === 'row' ? 'column' : 'row';
   return (
-    <div
-      style={{
-        ...WALL_TILE_VARS,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        gap: 4,
-      }}
-    >
-      <div style={{ display: 'flex', gap: 1, alignItems: 'flex-end' }}>
+    <View style={{ alignItems: 'center', gap: 4 }}>
+      <View style={{ flexDirection: orient, gap: 1 }}>
         {ordered.map((status, i) => (
           <SlotCell
-            // biome-ignore lint/suspicious/noArrayIndexKey: slot positions are fixed (17 stacks per seat); index IS the canonical identity here
+            // biome-ignore lint/suspicious/noArrayIndexKey: 17 fixed stack positions per seat — index IS the canonical identity
             key={`${seatKey}-${i}`}
             status={status}
+            stackDir={stackDir}
+            tileW={tileW}
+            tileH={tileH}
             nextDrawTile={status === 'nextDraw' ? (nextDrawTile ?? null) : null}
-            onClick={status === 'nextDraw' ? onDrawNext : undefined}
-            enableDrawTestId={enableDrawTestId && status === 'nextDraw'}
+            onPress={status === 'nextDraw' ? onDrawNext : undefined}
+            enableDrawTestId={enableDrawTestId === true && status === 'nextDraw'}
           />
         ))}
-      </div>
-      {showCount ? (
-        <span
+      </View>
+      {liveCount !== undefined ? (
+        <View
           style={{
-            fontSize: 11,
-            opacity: 0.7,
-            fontVariantNumeric: 'tabular-nums',
+            paddingHorizontal: 8,
+            paddingVertical: 2,
+            borderRadius: 8,
+            backgroundColor: COLORS.countBg,
           }}
         >
-          {liveCount} left
-        </span>
+          <Text style={{ color: COLORS.countFg, fontSize: 10, fontWeight: '700' }}>
+            {liveCount} left
+          </Text>
+        </View>
       ) : null}
-    </div>
+    </View>
   );
 }
 
 interface SlotCellProps {
   status: SlotStatus;
+  /** Layout direction for the inner 2-tile stack. 'row' = stacked
+   *  horizontally (used when the wall row is vertical); 'column' =
+   *  stacked vertically (used when the wall row is horizontal). */
+  stackDir: 'row' | 'column';
+  tileW: number;
+  tileH: number;
   nextDrawTile: MTile | null;
-  onClick?: (() => void) | undefined;
-  enableDrawTestId?: boolean | undefined;
+  onPress?: (() => void) | undefined;
+  enableDrawTestId: boolean;
 }
 
-const STACK_STYLE: React.CSSProperties = {
-  display: 'inline-flex',
-  flexDirection: 'column',
-  gap: 1,
-};
-
-function SlotCell({ status, nextDrawTile, onClick, enableDrawTestId }: SlotCellProps) {
+function SlotCell({
+  status,
+  stackDir,
+  tileW,
+  tileH,
+  nextDrawTile,
+  onPress,
+  enableDrawTestId,
+}: SlotCellProps) {
   if (status === 'drawn') {
-    // Empty 2-tile-tall span keeps row geometry stable so live stacks
-    // don't reflow as more are drawn.
-    return (
-      <span
-        aria-hidden
-        style={{
-          width: 'var(--tile-w, 16px)',
-          height: 'calc(2 * var(--tile-h, 22px) + 1px)',
-          display: 'inline-block',
-        }}
-      />
-    );
+    // Empty span keeps the row geometry stable so live stacks don't
+    // reflow as more are drawn.
+    const w = stackDir === 'column' ? tileW : tileW * 2 + 1;
+    const h = stackDir === 'column' ? tileH * 2 + 1 : tileH;
+    return <View style={{ width: w, height: h }} />;
   }
 
   if (status === 'nextDraw' && nextDrawTile) {
-    // Top of the stack is the next tile that physically gets taken; the
-    // bottom remains a placeholder until the next draw.
     return (
-      <span style={STACK_STYLE}>
-        <span style={{ position: 'relative', display: 'inline-block' }}>
-          <motion.span
-            aria-hidden="true"
-            animate={PULSE_HALO_ANIMATE}
-            transition={PULSE_TRANSITION}
-            style={{
-              position: 'absolute',
-              inset: 0,
-              borderRadius: 6,
-              background: '#f3c54a',
-              pointerEvents: 'none',
-            }}
-          />
-          <Tile
-            tile={nextDrawTile}
-            faceDown
-            onClick={onClick}
-            testId={enableDrawTestId ? 'wall-draw-next' : undefined}
-          />
-        </span>
-        <PlaceholderBack status="live" />
-      </span>
+      <View style={{ flexDirection: stackDir, gap: 1 }}>
+        <Pressable
+          onPress={onPress}
+          testID={enableDrawTestId ? 'wall-draw-next' : undefined}
+          style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
+        >
+          <PulseHalo width={tileW} height={tileH}>
+            <Tile
+              tile={nextDrawTile}
+              flipId={`tile-${tileId(nextDrawTile)}`}
+              faceDown
+              width={tileW}
+              height={tileH}
+            />
+          </PulseHalo>
+        </Pressable>
+        <PlaceholderBack width={tileW} height={tileH} dim={false} />
+      </View>
     );
   }
 
   // live or dead — render as a 2-tile-tall placeholder stack. Dead wall
   // uses dim opacity so the player can read the boundary.
+  const dim = status === 'dead';
   return (
-    <span style={STACK_STYLE}>
-      <PlaceholderBack status={status} />
-      <PlaceholderBack status={status} />
-    </span>
+    <View style={{ flexDirection: stackDir, gap: 1 }}>
+      <PlaceholderBack width={tileW} height={tileH} dim={dim} />
+      <PlaceholderBack width={tileW} height={tileH} dim={dim} />
+    </View>
   );
 }
 
-function PlaceholderBack({ status }: { status: SlotStatus }) {
-  const dim = status === 'dead';
+/**
+ * Pulse halo wrapper for the next-draw stack — gold border + scale +
+ * opacity loop using RN core `Animated`. Replaces the framer-motion
+ * `motion.span animate={PULSE_HALO_ANIMATE}` from the legacy build.
+ * Compositor-only properties (transform + opacity), `useNativeDriver`
+ * so the JS thread stays free during animation.
+ */
+function PulseHalo({
+  width,
+  height,
+  children,
+}: { width: number; height: number; children: React.ReactNode }) {
+  const t = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(t, {
+          toValue: 1,
+          duration: 700,
+          useNativeDriver: true,
+          easing: Easing.inOut(Easing.ease),
+        }),
+        Animated.timing(t, {
+          toValue: 0,
+          duration: 700,
+          useNativeDriver: true,
+          easing: Easing.inOut(Easing.ease),
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [t]);
+  const scale = t.interpolate({ inputRange: [0, 1], outputRange: [1, 1.18] });
+  const opacity = t.interpolate({ inputRange: [0, 1], outputRange: [0.6, 0] });
   return (
-    <span
-      aria-hidden
+    <View
       style={{
-        display: 'inline-block',
-        width: 'var(--tile-w, 16px)',
-        height: 'var(--tile-h, 22px)',
         borderRadius: 4,
-        background:
-          'linear-gradient(180deg, var(--tile-back-1, oklch(0.72 0.08 200)), var(--tile-back-2, oklch(0.62 0.09 210)))',
-        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.25), inset 0 -1px 0 rgba(0,0,0,0.2)',
-        border: '0.5px solid oklch(0.45 0.06 215 / 0.6)',
+        borderWidth: 1.5,
+        borderColor: COLORS.drawHalo,
+      }}
+    >
+      <Animated.View
+        pointerEvents="none"
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width,
+          height,
+          borderRadius: 4,
+          backgroundColor: COLORS.drawHalo,
+          opacity,
+          transform: [{ scale }],
+        }}
+      />
+      {children}
+    </View>
+  );
+}
+
+function PlaceholderBack({ width, height, dim }: { width: number; height: number; dim: boolean }) {
+  return (
+    <View
+      style={{
+        width,
+        height,
+        borderRadius: 3,
+        backgroundColor: COLORS.back1,
+        borderColor: COLORS.backEdge,
+        borderWidth: 0.5,
         opacity: dim ? 0.45 : 1,
       }}
     />

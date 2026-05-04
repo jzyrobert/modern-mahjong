@@ -1,58 +1,56 @@
-import type { FeltSkin, TileBackSkin } from '../../state/game.js';
+import type { FeltSkin, TileBackSkin } from '../../state/game';
 
 /**
- * Felt skin presets — each pair `(top, bottom)` are the gradient stops the
- * Match container injects as `--felt-1` and `--felt-2`. `Table.tsx` uses
- * those CSS vars on the table background; the deeper-sage inner ring +
- * gold halo + corner shadow stay constant across skins.
+ * Felt + tile-back skin presets — hex translations of the legacy
+ * `_legacy/src/ui/match/skins.ts` (which used `oklch()` for browser-only
+ * gradient stops). RN inline `backgroundColor` rejects oklch on Android,
+ * so the table commits to hex everywhere now (matches the visual-polish
+ * commit 697a7cb's "oklch → hex everywhere" pivot).
  */
+
 export const FELT_SKINS: Record<FeltSkin, { name: string; top: string; bottom: string }> = {
   sage: {
     name: 'Sage',
-    top: 'oklch(0.5 0.06 145)',
-    bottom: 'oklch(0.32 0.06 150)',
+    top: '#506a51',
+    bottom: '#3e574c',
   },
   jade: {
     name: 'Jade',
-    top: 'oklch(0.55 0.1 170)',
-    bottom: 'oklch(0.36 0.1 175)',
+    top: '#3a8b6a',
+    bottom: '#1f5a44',
   },
   ocean: {
     name: 'Ocean',
-    top: 'oklch(0.5 0.08 220)',
-    bottom: 'oklch(0.32 0.09 225)',
+    top: '#4a6f8a',
+    bottom: '#2c4a63',
   },
   rose: {
     name: 'Rose',
-    top: 'oklch(0.55 0.07 25)',
-    bottom: 'oklch(0.36 0.08 25)',
+    top: '#9c5a4a',
+    bottom: '#683425',
   },
 };
 
-/**
- * Tile-back skin presets — each pair drives `--tile-back-1` / `--tile-back-2`
- * which `Tile.tsx` reads via the `mj-tile-back` linearGradient.
- */
 export const TILE_BACK_SKINS: Record<TileBackSkin, { name: string; top: string; bottom: string }> =
   {
     cream: {
       name: 'Cream',
-      top: 'oklch(0.92 0.02 85)',
-      bottom: 'oklch(0.78 0.03 85)',
+      top: '#ece4d3',
+      bottom: '#c5b89f',
     },
     blue: {
       name: 'Blue',
-      top: 'oklch(0.72 0.08 220)',
-      bottom: 'oklch(0.6 0.1 230)',
+      top: '#7fa9c1',
+      bottom: '#5a8cb0',
     },
     plum: {
       name: 'Plum',
-      top: 'oklch(0.7 0.1 320)',
-      bottom: 'oklch(0.58 0.13 325)',
+      top: '#b87fb6',
+      bottom: '#9a5598',
     },
     mint: {
       name: 'Mint',
-      top: 'oklch(0.78 0.08 165)',
-      bottom: 'oklch(0.66 0.1 170)',
+      top: '#84cdb4',
+      bottom: '#5cae93',
     },
   };

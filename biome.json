@@ -8,11 +8,15 @@
       "**/build",
       "**/coverage",
       "**/node_modules",
+      "apps/client/_legacy",
+      "apps/client/.expo",
       "apps/client/ios",
       "apps/client/android",
       "apps/client/test-results",
       "apps/client/playwright-report",
-      "apps/client/.lighthouseci"
+      "apps/client/.lighthouseci",
+      "apps/client/modules/expo-lan-server/android",
+      "apps/client/modules/expo-lan-server/ios"
     ]
   },
   "formatter": {

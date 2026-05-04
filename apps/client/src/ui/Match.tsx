@@ -1,5 +1,10 @@
-import type { Action, GameState, Tile as MTile, Seat } from '@mahjong/game-logic';
+import { useTransport } from '@/src/net/transport-context';
 import {
+  type Action,
+  type Tile as MTile,
+  type Seat,
+  WINDS,
+  type Wind,
   acrossSeat,
   isWinning,
   legalClaimsFor,
@@ -7,260 +12,176 @@ import {
   prevSeat,
   tileId,
 } from '@mahjong/game-logic';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { vibrateLight } from '../native/init.js';
-import { INK, SANS } from '../native/theme.js';
-import {
-  type LobbyState,
-  type UserSettings,
-  isSeatHost,
-  nameForSeat,
-  useGame,
-} from '../state/game.js';
-import { randomSeed } from '../util.js';
-import { useMediaQuery } from '../util/useMediaQuery.js';
-import { ClaimBar } from './ClaimBar.js';
-import { MobileMatch } from './MobileMatch.js';
-import { ResultPanel } from './ResultPanel.js';
-import { RulePanel } from './RulePanel.js';
-import { Scoreboard } from './Scoreboard.js';
-import { Table } from './Table.js';
-import { GhostButton, PrimaryButton } from './buttons.js';
-import { ChatBar } from './match/ChatBar.js';
-import { ChatBubbles } from './match/ChatBubbles.js';
-import { GameLog } from './match/GameLog.js';
-import { GameStatusBar } from './match/GameStatusBar.js';
-import { SettingsPanel } from './match/SettingsPanel.js';
-import type { SortMode } from './match/SortPicker.js';
-import { TopBar } from './match/TopBar.js';
-import { FELT_SKINS, TILE_BACK_SKINS } from './match/skins.js';
-import { LobbyPreview } from './menu/LobbyPreview.js';
-
-interface MatchProps {
-  onAction: (action: Action) => void;
-  /** Send a chat / emote over the live transport. */
-  onChat: (text: string) => void;
-  /** Match code shown in the top-right "Live · #ABC" pill. Null hides the pill. */
-  matchCode: string | null;
-  onLeave: () => void;
-}
-
-const MOBILE_LANDSCAPE_QUERY = '(max-width: 900px) and (orientation: landscape)';
-const PORTRAIT_PHONE_QUERY = '(max-width: 700px) and (orientation: portrait)';
+import { useRouter } from 'expo-router';
+import { useMemo, useState } from 'react';
+import { Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { isSeatHost, useGame } from '../state/game';
+import { ClaimBar } from './ClaimBar';
+import { Hand } from './Hand';
+import { ResultPanel } from './ResultPanel';
+import { RulePanel } from './RulePanel';
+import { Scoreboard } from './Scoreboard';
+import { Tile } from './Tile';
+import { GhostButton, PrimaryButton } from './buttons';
+import { ChatBar } from './match/ChatBar';
+import { ChatBubbles } from './match/ChatBubbles';
+import { DesktopTable } from './match/DesktopTable';
+import { GameLog } from './match/GameLog';
+import { GameStatusBar } from './match/GameStatusBar';
+import { MeldStrip } from './match/MeldStrip';
+import { OppHandStrip } from './match/OppHandStrip';
+import { SettingsPanel } from './match/SettingsPanel';
+import { SharedDiscardPool } from './match/SharedDiscardPool';
+import { type SortMode, SortPicker } from './match/SortPicker';
+import { TopBar } from './match/TopBar';
+import { FELT_SKINS } from './match/skins';
+import { LobbyPreview } from './menu/LobbyPreview';
 
 /**
- * Top-level live-match orchestrator. Owns the SortPicker mode + Settings
- * panel state, and picks between the desktop shell (this file's
- * DesktopMatchBody) and the mobile shell (`MobileMatch`) based on
- * viewport. Portrait phone viewports get a "rotate your device" prompt
- * (a simplified portrait shell is queued in TODO.md).
+ * Viewport thresholds above which the Match screen renders the
+ * `DesktopTable` shell (felt with seats around the perimeter) instead
+ * of the vertical-stack mobile body. Both axes must clear the
+ * threshold:
+ *   - width ≥ 768  → iPad mini portrait passes (768×1024).
+ *   - height ≥ 600 → keeps phones in landscape (~430 tall) on the
+ *                    mobile shell, where vertical space is too tight
+ *                    for top opp + felt + own hand stacked.
  */
-export function Match({ onAction, onChat, matchCode, onLeave }: MatchProps) {
+const DESKTOP_WIDTH = 768;
+const DESKTOP_HEIGHT = 600;
+
+type Position = 'bottom' | 'right' | 'top' | 'left';
+interface SeatPlacement {
+  seat: Seat;
+  position: Position;
+  seatWind: Wind;
+}
+
+const COLORS = {
+  cream: '#f1eadc',
+  ink: '#3a3328',
+  ink3: '#918275',
+  paperHi: '#fbf8f0',
+  hairline: '#cdc1ad',
+};
+
+/**
+ * Live-match orchestrator. Native port of `_legacy/src/ui/Match.tsx`.
+ * Picks between two playing-state bodies based on viewport:
+ *   - **Desktop** (width ≥ DESKTOP_WIDTH, height ≥ DESKTOP_HEIGHT):
+ *     `<DesktopTable>` — felt with seats around the perimeter and
+ *     per-seat discard piles in the centre. Used for tablets, desktop
+ *     web, and any landscape device with enough vertical room.
+ *   - **Mobile** (everything smaller): vertically-stacked body with
+ *     `<OppHandStrip>` rows + a `<SharedDiscardPool>`. Native port of
+ *     the legacy `_legacy/src/ui/MobileMatch.tsx`.
+ * The pre-game `state.phase === 'waiting'` lobby + the "Waiting for the
+ * game to start…" placeholder are platform-agnostic and rendered above
+ * the split.
+ */
+export function Match() {
+  const router = useRouter();
+  const transport = useTransport();
   const state = useGame((s) => s.state);
-  const you = useGame((s) => s.you);
   const lobby = useGame((s) => s.lobby);
+  const you = useGame((s) => s.you);
+  const drawnTileId = useGame((s) => s.drawnTileId);
   const settings = useGame((s) => s.settings);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [logOpen, setLogOpen] = useState(false);
+  const { width: viewportWidth, height: viewportHeight } = useWindowDimensions();
+  const isDesktop = viewportWidth >= DESKTOP_WIDTH && viewportHeight >= DESKTOP_HEIGHT;
   const initialSort: SortMode = settings.autoSort ? 'suit' : 'manual';
   const [sortMode, setSortMode] = useState<SortMode>(initialSort);
-
-  const isMobileLandscape = useMediaQuery(MOBILE_LANDSCAPE_QUERY);
-  const isPortraitPhone = useMediaQuery(PORTRAIT_PHONE_QUERY);
-
-  // If autoSort flips on while a match is in progress, snap the local sort
-  // mode back to 'suit' so the user immediately sees the preference take
-  // effect — otherwise the toggle would silently no-op until the next hand.
-  useEffect(() => {
-    if (settings.autoSort) setSortMode('suit');
-  }, [settings.autoSort]);
-
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [logOpen, setLogOpen] = useState(false);
+  const felt = FELT_SKINS[settings.felt];
   const seat = you !== null && you !== 'spectator' ? you : null;
   const isHost = isSeatHost(lobby, seat);
 
-  const onTurnTimeoutChange = useCallback(
-    (turnTimeoutMs: number) => onAction({ t: 'setRules', rules: { turnTimeoutMs } }),
-    [onAction],
-  );
+  const onAction = (action: Action) => transport.send(action);
+  const onLeave = () => {
+    transport.leave();
+    router.replace('/');
+  };
 
-  // Seat-to-visual-position map (drives `ChatBubbles` anchoring + the
-  // mobile shared-discard pool's per-seat colour underline). The user is
-  // always at the bottom; the others rotate via nextSeat / acrossSeat /
-  // prevSeat. Memoised so a stable reference can flow into memoised
-  // children without churning on every render.
-  const seatToPosition = useMemo<Record<Seat, 'bottom' | 'right' | 'top' | 'left'>>(() => {
-    const m: Record<Seat, 'bottom' | 'right' | 'top' | 'left'> = {
-      0: 'bottom',
-      1: 'bottom',
-      2: 'bottom',
-      3: 'bottom',
-    };
-    if (seat === null) return m;
-    m[seat] = 'bottom';
-    m[nextSeat(seat)] = 'right';
-    m[acrossSeat(seat)] = 'top';
-    m[prevSeat(seat)] = 'left';
+  const placements = useMemo(
+    () => (state && seat !== null ? layoutFor(seat, state.dealer) : null),
+    [state, seat],
+  );
+  const byPosition = useMemo(() => {
+    if (!placements) return null;
+    const m = {} as Record<Position, SeatPlacement>;
+    for (const p of placements) m[p.position] = p;
     return m;
-  }, [seat]);
+  }, [placements]);
+  const seatToPosition = useMemo(() => {
+    const m: Record<Seat, Position> = { 0: 'bottom', 1: 'bottom', 2: 'bottom', 3: 'bottom' };
+    if (placements) for (const p of placements) m[p.seat] = p.position;
+    return m;
+  }, [placements]);
 
   if (!state || seat === null) {
-    return <div>Waiting for the game to start…</div>;
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+        <Text style={{ color: COLORS.ink3 }}>Waiting for the game to start…</Text>
+      </View>
+    );
   }
 
   if (state.phase === 'waiting') {
     return (
-      <div
-        style={{
-          padding: 24,
-          color: INK,
-          fontFamily: SANS,
-          maxWidth: 760,
-          margin: '0 auto',
-        }}
-      >
-        <h2 style={{ margin: '0 0 4px', fontWeight: 900 }}>Lobby</h2>
-        <p style={{ margin: '0 0 12px', fontSize: 13, opacity: 0.7 }}>
-          {isHost
-            ? 'Share the match code with friends. Start when everyone is ready.'
-            : 'Waiting for the host to start the match.'}
-        </p>
-        {lobby ? <LobbyPreview lobby={lobby} matchCode={matchCode} /> : null}
-        <RulePanel rules={state.rules} isHost={isHost} onAction={onAction} />
-        <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-          <PrimaryButton
-            disabled={!isHost}
-            onClick={() => onAction({ t: 'startHand', seed: randomSeed(), dealer: 0 })}
+      <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.cream }} edges={['top']}>
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ padding: 24, maxWidth: 760, alignSelf: 'center', width: '100%' }}
+        >
+          <Text
+            accessibilityRole="header"
+            style={{ fontSize: 28, fontWeight: '900', color: COLORS.ink }}
           >
-            Start match
-          </PrimaryButton>
-          <GhostButton onClick={onLeave}>Leave</GhostButton>
-        </div>
-      </div>
+            Lobby
+          </Text>
+          <Text style={{ marginTop: 4, marginBottom: 12, fontSize: 13, color: COLORS.ink3 }}>
+            {isHost
+              ? 'Share the match code with friends. Start when everyone is ready.'
+              : 'Waiting for the host to start the match.'}
+          </Text>
+          {lobby ? <LobbyPreview lobby={lobby} matchCode={transport.matchCode} /> : null}
+          <RulePanel rules={state.rules} isHost={isHost} onAction={onAction} />
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+            <PrimaryButton
+              disabled={!isHost}
+              onPress={() => onAction({ t: 'startHand', seed: randomSeed(), dealer: 0 })}
+            >
+              Start match
+            </PrimaryButton>
+            <GhostButton onPress={onLeave}>Leave</GhostButton>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
     );
   }
 
-  if (isPortraitPhone) {
-    return <PortraitFallback />;
-  }
-
-  const overlays = (
-    <>
-      <SettingsPanel
-        open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-        isHost={isHost}
-        turnTimeoutMs={state.rules.turnTimeoutMs}
-        onTurnTimeoutChange={onTurnTimeoutChange}
-      />
-      <GameLog open={logOpen} onClose={() => setLogOpen(false)} />
-      <ChatBubbles seatToPosition={seatToPosition} />
-    </>
-  );
-
-  if (isMobileLandscape) {
-    return (
-      <>
-        <MobileMatch
-          onAction={onAction}
-          onChat={onChat}
-          matchCode={matchCode}
-          onLeave={onLeave}
-          sortMode={sortMode}
-          onSortModeChange={setSortMode}
-          onOpenSettings={() => setSettingsOpen(true)}
-          onOpenLog={() => setLogOpen(true)}
-        />
-        {overlays}
-      </>
-    );
-  }
-
-  return (
-    <>
-      <DesktopMatchBody
-        onAction={onAction}
-        onChat={onChat}
-        matchCode={matchCode}
-        onLeave={onLeave}
-        seat={seat}
-        state={state}
-        lobby={lobby}
-        settings={settings}
-        sortMode={sortMode}
-        onSortModeChange={setSortMode}
-        onOpenSettings={() => setSettingsOpen(true)}
-        onOpenLog={() => setLogOpen(true)}
-      />
-      {overlays}
-    </>
-  );
-}
-
-interface DesktopMatchBodyProps {
-  onAction: (action: Action) => void;
-  onChat: (text: string) => void;
-  matchCode: string | null;
-  onLeave: () => void;
-  seat: Seat;
-  /** Current engine state — already non-null-validated by the parent. */
-  state: GameState;
-  lobby: LobbyState | null;
-  settings: UserSettings;
-  sortMode: SortMode;
-  onSortModeChange: (mode: SortMode) => void;
-  onOpenSettings: () => void;
-  onOpenLog: () => void;
-}
-
-function DesktopMatchBody({
-  onAction,
-  onChat,
-  matchCode,
-  onLeave,
-  seat,
-  state,
-  lobby,
-  settings,
-  sortMode,
-  onSortModeChange,
-  onOpenSettings,
-  onOpenLog,
-}: DesktopMatchBodyProps) {
-  const drawnTileId = useGame((s) => s.drawnTileId);
-  const manualOrder = useGame((s) => s.manualOrder);
-  const setManualOrder = useGame((s) => s.setManualOrder);
-
+  // Playing state. Compute turn-flow flags + claim availability.
   const myTurn = state.phase === 'turn' && state.turn === seat;
-  const isHost = isSeatHost(lobby, seat);
   const needsDraw = myTurn && !state.hasDrawn;
+  const allowSpecial = state.rules.allowSevenPairs || state.rules.allowThirteenOrphans;
 
-  const onDiscard = useCallback(
-    (t: MTile) => {
-      if (myTurn) {
-        onAction({ t: 'discard', seat, tile: t });
-        void vibrateLight();
-      }
-    },
-    [myTurn, seat, onAction],
-  );
-
-  const onDrawNext = useMemo(
-    () => (needsDraw ? () => onAction({ t: 'draw', seat }) : undefined),
-    [needsDraw, seat, onAction],
-  );
-
-  const showClaim = (() => {
-    if (state.phase !== 'awaitingClaims') return false;
-    if (!state.lastDiscard || state.lastDiscard.from === seat) return false;
-    const legal = legalClaimsFor(state, seat).filter((k) => k !== 'pass');
-    if (legal.length > 0) return true;
-    const handPlusTile = [...state.hands[seat], state.lastDiscard.tile];
-    return isWinning({
-      hand: handPlusTile,
-      exposedMelds: state.melds[seat].length,
-      allowSpecial: state.rules.allowSevenPairs || state.rules.allowThirteenOrphans,
-    });
-  })();
+  const showClaim =
+    state.phase === 'awaitingClaims' &&
+    state.lastDiscard !== undefined &&
+    state.lastDiscard.from !== seat;
+  // We rely on `ClaimBar` itself to compute the legal kinds + always show
+  // `hu` / `pass`; here we only decide whether the bar appears at all.
+  const hasClaimOption =
+    showClaim &&
+    (legalClaimsFor(state, seat).some((k) => k !== 'pass') ||
+      (state.lastDiscard !== undefined &&
+        isWinning({
+          hand: [...state.hands[seat], state.lastDiscard.tile],
+          exposedMelds: state.melds[seat].length,
+          allowSpecial,
+        })));
 
   const canTsumo =
     myTurn &&
@@ -268,121 +189,338 @@ function DesktopMatchBody({
     isWinning({
       hand: state.hands[seat],
       exposedMelds: state.melds[seat].length,
-      allowSpecial: state.rules.allowSevenPairs || state.rules.allowThirteenOrphans,
+      allowSpecial,
     });
 
-  const felt = FELT_SKINS[settings.felt];
-  const tileBack = TILE_BACK_SKINS[settings.tileBack];
-
-  // Stable reference for the CSS-var bag — avoids re-creating the style
-  // object every render so a future `React.memo`-wrapped Table consumer
-  // wouldn't have it defeated by inline-prop churn.
-  const containerStyle = useMemo(
-    (): React.CSSProperties => ({
-      position: 'relative',
-      padding: 12,
-      color: INK,
-      fontFamily: SANS,
-      ['--tile-w' as string]: 'max(22px, 3.6vmin)',
-      ['--tile-h' as string]: 'max(30px, 5vmin)',
-      ['--felt-1' as string]: felt.top,
-      ['--felt-2' as string]: felt.bottom,
-      ['--tile-back-1' as string]: tileBack.top,
-      ['--tile-back-2' as string]: tileBack.bottom,
-    }),
-    [felt.top, felt.bottom, tileBack.top, tileBack.bottom],
-  );
-
-  // While someone is deciding whether to claim, pulse the live tile in the
-  // discarder's pile so claimers can track which tile is on offer.
   const latestDiscardId =
     state.phase === 'awaitingClaims' && state.lastDiscard ? tileId(state.lastDiscard.tile) : null;
 
-  return (
-    <div style={containerStyle}>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'flex-start',
-          justifyContent: 'center',
-          gap: 12,
-          marginBottom: 12,
-          flexWrap: 'wrap',
-        }}
-      >
-        <GameStatusBar
-          prevailing={state.prevailingWind}
-          dealerName={nameForSeat(lobby, state.dealer)}
-          wallCount={state.wall.length}
-          isMyTurn={myTurn}
-        />
-        <TopBar
-          gameId={matchCode}
-          viewers={lobby?.viewers ?? null}
-          onLeave={onLeave}
-          onSettings={onOpenSettings}
-          onLog={onOpenLog}
-        />
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8, flexWrap: 'wrap' }}>
-        <ChatBar onSend={onChat} />
-      </div>
-      <Scoreboard />
-      <Table
-        mySeat={seat}
-        dealer={state.dealer}
-        turn={state.turn}
-        scoreboard={state.scoreboard}
-        hands={state.hands}
-        discards={state.discards}
-        lobby={lobby}
-        ownHandClickable={myTurn ? onDiscard : undefined}
-        onDrawNext={onDrawNext}
-        sortMode={sortMode}
-        onSortModeChange={onSortModeChange}
-        latestDiscardId={latestDiscardId}
-        drawnTileId={drawnTileId}
-        manualOrder={manualOrder}
-        onReorder={setManualOrder}
-        breakPosition={state.openingRolls?.breakPosition}
-        liveWallCount={state.wall.length}
-        nextDrawTile={state.wall.length > 0 ? state.wall[state.wall.length - 1] : null}
-      />
-      {canTsumo && (
-        <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
-          <button type="button" onClick={() => onAction({ t: 'declareWin', seat, selfDraw: true })}>
+  const onTileTap = (t: MTile) => {
+    if (myTurn && state.hasDrawn) {
+      onAction({ t: 'discard', seat, tile: t });
+    }
+  };
+
+  const dealerName =
+    lobby?.players.find((p) => p.seat === state.dealer)?.displayName ?? `Seat ${state.dealer}`;
+
+  if (isDesktop) {
+    // The desktop center HUD only shows the tsumo button (when winning)
+    // or a passive wall count. The legacy `<DrawCue>` is redundant on
+    // this layout — `WallEdge` already wraps the next-draw stack with a
+    // pulsing halo + the `wall-draw-next` testID + the click handler;
+    // rendering `DrawCue` here too would surface a second
+    // `wall-draw-next` element and break Playwright's strict locator.
+    const centerHud = (
+      <View style={{ alignItems: 'center', gap: 6 }}>
+        {canTsumo ? (
+          <PrimaryButton onPress={() => onAction({ t: 'declareWin', seat, selfDraw: true })}>
             Declare win (tsumo)
-          </button>
-        </div>
-      )}
-      {showClaim && <ClaimBar onAction={onAction} seat={seat} />}
-      {state.lastResult && <ResultPanel onAction={onAction} mySeat={seat} isHost={isHost} />}
-    </div>
+          </PrimaryButton>
+        ) : null}
+        {!canTsumo ? (
+          <Text
+            style={{
+              color: 'rgba(255,255,255,0.7)',
+              fontSize: 11,
+              fontWeight: '800',
+              letterSpacing: 0.5,
+            }}
+          >
+            {state.wall.length} TILES IN WALL
+          </Text>
+        ) : null}
+      </View>
+    );
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.cream }} edges={['top']}>
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{
+            padding: 16,
+            gap: 12,
+            maxWidth: 1320,
+            alignSelf: 'center',
+            width: '100%',
+          }}
+        >
+          <View
+            style={{
+              flexDirection: 'row',
+              flexWrap: 'wrap',
+              alignItems: 'flex-start',
+              justifyContent: 'space-between',
+              gap: 8,
+            }}
+          >
+            <GameStatusBar
+              prevailing={state.prevailingWind}
+              dealerName={dealerName}
+              wallCount={state.wall.length}
+              isMyTurn={myTurn}
+            />
+            <TopBar
+              matchCode={transport.matchCode}
+              viewers={lobby?.viewers ?? null}
+              onLeave={onLeave}
+              onOpenSettings={() => setSettingsOpen(true)}
+              onOpenLog={() => setLogOpen(true)}
+            />
+          </View>
+
+          <Scoreboard />
+
+          <DesktopTable
+            mySeat={seat}
+            dealer={state.dealer}
+            turn={state.turn}
+            phase={state.phase}
+            hands={state.hands}
+            melds={state.melds}
+            discards={state.discards}
+            scoreboard={state.scoreboard}
+            lobby={lobby}
+            ownHandClickable={myTurn && state.hasDrawn ? onTileTap : undefined}
+            sortMode={sortMode}
+            onSortModeChange={setSortMode}
+            drawnTileId={drawnTileId}
+            latestDiscardId={latestDiscardId}
+            centerHud={centerHud}
+            liveWallCount={state.wall.length}
+            nextDrawTile={state.wall.length > 0 ? state.wall[state.wall.length - 1]! : null}
+            breakPosition={state.openingRolls?.breakPosition}
+            onDrawNext={needsDraw ? () => onAction({ t: 'draw', seat }) : undefined}
+          />
+
+          {hasClaimOption ? <ClaimBar onAction={onAction} seat={seat} /> : null}
+
+          <View style={{ alignItems: 'center', paddingVertical: 4 }}>
+            <ChatBar onSend={transport.sendChat} />
+          </View>
+
+          {state.lastResult ? (
+            <ResultPanel onAction={onAction} mySeat={seat} isHost={isHost} />
+          ) : null}
+
+          <ChatBubbles seatToPosition={seatToPosition} />
+          <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+          <GameLog open={logOpen} onClose={() => setLogOpen(false)} />
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: felt.top }} edges={['top']}>
+      <ScrollView
+        style={{ flex: 1, backgroundColor: felt.top }}
+        contentContainerStyle={{ padding: 12, gap: 12 }}
+      >
+        <View
+          style={{
+            flexDirection: 'row',
+            flexWrap: 'wrap',
+            alignItems: 'flex-start',
+            justifyContent: 'space-between',
+            gap: 8,
+          }}
+        >
+          <GameStatusBar
+            prevailing={state.prevailingWind}
+            dealerName={dealerName}
+            wallCount={state.wall.length}
+            isMyTurn={myTurn}
+          />
+          <TopBar
+            matchCode={transport.matchCode}
+            viewers={lobby?.viewers ?? null}
+            onLeave={onLeave}
+            onOpenSettings={() => setSettingsOpen(true)}
+            onOpenLog={() => setLogOpen(true)}
+          />
+        </View>
+
+        <Scoreboard />
+
+        {byPosition ? (
+          <View style={{ gap: 6 }}>
+            <SeatRow placement={byPosition.top} state={state} lobby={lobby} />
+            <SeatRow placement={byPosition.left} state={state} lobby={lobby} />
+            <SeatRow placement={byPosition.right} state={state} lobby={lobby} />
+          </View>
+        ) : null}
+
+        <View
+          style={{
+            backgroundColor: felt.bottom,
+            borderColor: 'rgba(255,255,255,0.12)',
+            borderWidth: 1,
+            borderRadius: 12,
+            padding: 8,
+            gap: 6,
+          }}
+        >
+          <Text
+            style={{
+              fontSize: 11,
+              fontWeight: '800',
+              color: 'rgba(255,255,255,0.7)',
+              letterSpacing: 0.5,
+            }}
+          >
+            DISCARDS
+          </Text>
+          <SharedDiscardPool
+            discardOrder={state.discardOrder}
+            seatToPosition={seatToPosition}
+            latestId={latestDiscardId}
+          />
+        </View>
+
+        {state.melds[seat].length > 0 ? (
+          <View style={{ gap: 4 }}>
+            <Text
+              style={{
+                fontSize: 11,
+                fontWeight: '800',
+                color: 'rgba(255,255,255,0.7)',
+                letterSpacing: 0.5,
+              }}
+            >
+              YOUR MELDS
+            </Text>
+            <MeldStrip melds={state.melds[seat]} />
+          </View>
+        ) : null}
+
+        <View style={{ gap: 6 }}>
+          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <Text
+              style={{
+                fontSize: 11,
+                fontWeight: '800',
+                color: 'rgba(255,255,255,0.7)',
+                letterSpacing: 0.5,
+              }}
+            >
+              YOUR HAND
+            </Text>
+            <SortPicker mode={sortMode} onChange={setSortMode} />
+          </View>
+          <Hand
+            tiles={state.hands[seat]}
+            onTileClick={myTurn && state.hasDrawn ? onTileTap : undefined}
+            sortMode={sortMode}
+            drawnTileId={drawnTileId}
+          />
+        </View>
+
+        <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+          {needsDraw && state.wall.length > 0 ? (
+            <DrawCue
+              tile={state.wall[state.wall.length - 1]!}
+              onPress={() => onAction({ t: 'draw', seat })}
+            />
+          ) : null}
+          {canTsumo ? (
+            <PrimaryButton onPress={() => onAction({ t: 'declareWin', seat, selfDraw: true })}>
+              Declare win (tsumo)
+            </PrimaryButton>
+          ) : null}
+        </View>
+
+        {hasClaimOption ? <ClaimBar onAction={onAction} seat={seat} /> : null}
+
+        <View style={{ alignItems: 'center', paddingVertical: 4 }}>
+          <ChatBar onSend={transport.sendChat} />
+        </View>
+
+        {state.lastResult ? (
+          <ResultPanel onAction={onAction} mySeat={seat} isHost={isHost} />
+        ) : null}
+
+        {/* Floating emote bubbles overlay (absolute-positioned). */}
+        <ChatBubbles seatToPosition={seatToPosition} />
+        <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
-function PortraitFallback() {
+interface SeatRowProps {
+  placement: SeatPlacement;
+  state: NonNullable<ReturnType<typeof useGame.getState>['state']>;
+  lobby: ReturnType<typeof useGame.getState>['lobby'];
+}
+
+function SeatRow({ placement, state, lobby }: SeatRowProps) {
+  const isActive = state.turn === placement.seat && state.phase === 'turn';
+  const handBacks = state.hands[placement.seat].length;
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 24,
-        textAlign: 'center',
-        fontFamily: SANS,
-        color: INK,
-      }}
-    >
-      <div style={{ maxWidth: 320 }}>
-        <div style={{ fontSize: 32, marginBottom: 12 }}>🔄</div>
-        <h2 style={{ margin: '0 0 8px', fontWeight: 900 }}>Rotate your device</h2>
-        <p style={{ margin: 0, fontSize: 14, opacity: 0.7 }}>
-          Modern Mahjong is built for landscape on phones. A simplified portrait shell is on the
-          roadmap — for now, please rotate to landscape to play.
-        </p>
-      </div>
-    </div>
+    <View style={{ gap: 4 }}>
+      <OppHandStrip
+        seat={placement.seat}
+        seatWind={placement.seatWind}
+        lobby={lobby}
+        handBacks={handBacks}
+        isActive={isActive}
+      />
+      {state.melds[placement.seat].length > 0 ? (
+        <MeldStrip melds={state.melds[placement.seat]} tileWidth={14} tileHeight={20} />
+      ) : null}
+    </View>
   );
+}
+
+function DrawCue({ tile, onPress }: { tile: MTile; onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      testID="wall-draw-next"
+      style={({ pressed }) => ({
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        paddingVertical: 8,
+        paddingHorizontal: 12,
+        borderRadius: 10,
+        backgroundColor: pressed ? '#ece4d3' : 'white',
+        borderColor: '#dc9f4f',
+        borderWidth: 2,
+      })}
+    >
+      <Tile tile={tile} faceDown width={28} height={38} />
+      <Text style={{ fontSize: 13, fontWeight: '800', color: '#b14d3a' }}>Draw</Text>
+    </Pressable>
+  );
+}
+
+function layoutFor(mySeat: Seat, dealer: Seat): SeatPlacement[] {
+  return [
+    { seat: mySeat, position: 'bottom', seatWind: seatWindFor(dealer, mySeat) },
+    {
+      seat: nextSeat(mySeat),
+      position: 'right',
+      seatWind: seatWindFor(dealer, nextSeat(mySeat)),
+    },
+    {
+      seat: acrossSeat(mySeat),
+      position: 'top',
+      seatWind: seatWindFor(dealer, acrossSeat(mySeat)),
+    },
+    {
+      seat: prevSeat(mySeat),
+      position: 'left',
+      seatWind: seatWindFor(dealer, prevSeat(mySeat)),
+    },
+  ];
+}
+
+function seatWindFor(dealer: Seat, seat: Seat): Wind {
+  const offset = (seat - dealer + 4) % 4;
+  return WINDS[offset]!;
+}
+
+function randomSeed(): number {
+  return Math.floor(Math.random() * 0xffffffff);
 }

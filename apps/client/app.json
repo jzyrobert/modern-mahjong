@@ -1,0 +1,59 @@
+{
+  "expo": {
+    "name": "Modern Mahjong",
+    "slug": "modern-mahjong",
+    "version": "0.0.0",
+    "scheme": "modernmahjong",
+    "orientation": "landscape",
+    "newArchEnabled": true,
+    "userInterfaceStyle": "light",
+    "splash": {
+      "resizeMode": "cover",
+      "backgroundColor": "#f1eadc"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.modernmahjong.app",
+      "requireFullScreen": true
+    },
+    "android": {
+      "package": "com.modernmahjong.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#f1eadc"
+      },
+      "edgeToEdgeEnabled": true,
+      "permissions": ["android.permission.RECORD_AUDIO", "android.permission.MODIFY_AUDIO_SETTINGS"]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-screen-orientation",
+        {
+          "initialOrientation": "LANDSCAPE"
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": false
+        }
+      ],
+      "expo-sqlite"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "tsconfigPaths": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "450b36a7-da19-47a7-9b05-f8e924785bdb"
+      }
+    },
+    "owner": "robertjin"
+  }
+}

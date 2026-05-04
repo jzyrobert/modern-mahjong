@@ -1,102 +1,137 @@
 import type { Action, Claim, Seat } from '@mahjong/game-logic';
 import { legalClaimsFor } from '@mahjong/game-logic';
-import { HAIRLINE, INK, INK_3, PAPER_HI, SANS } from '../native/theme.js';
-import { useGame } from '../state/game.js';
-import { type CallAction, CallButton } from './match/CallButton.js';
+import { Pressable, Text, View } from 'react-native';
+import { useGame } from '../state/game';
 
 interface ClaimBarProps {
   onAction: (a: Action) => void;
   seat: Seat;
 }
 
-interface ClaimChoice {
-  /** Engine claim kind. */
-  kind: Claim['kind'];
-  /** Visual label / colour scheme. */
-  action: CallAction;
-}
+type CallKind = 'chi' | 'peng' | 'gong' | 'hu' | 'pass';
+type Tone = 'jade' | 'blue' | 'plum' | 'gold' | 'cream';
 
-const CHOICES: readonly ClaimChoice[] = [
-  { kind: 'chi', action: 'chow' },
-  { kind: 'peng', action: 'pung' },
-  { kind: 'gong', action: 'kong' },
-  { kind: 'hu', action: 'win' },
-  { kind: 'pass', action: 'pass' },
-];
+const LABELS: Record<CallKind, { en: string; zh: string; tone: Tone }> = {
+  chi: { en: 'Chow', zh: '吃', tone: 'jade' },
+  peng: { en: 'Pung', zh: '碰', tone: 'blue' },
+  gong: { en: 'Kong', zh: '槓', tone: 'plum' },
+  hu: { en: 'Win', zh: '糊', tone: 'gold' },
+  pass: { en: 'Pass', zh: '過', tone: 'cream' },
+};
+
+// Per-action colours — closer to the legacy CallButton's per-kind
+// gradient-by-hue palette. RN can't render the original 135° linear
+// gradients without an extra package, so we approximate with a flat
+// hex + a darker pressed state + an inner shadow on press.
+const TONE: Record<Tone, { bg: string; pressed: string; fg: string }> = {
+  jade: { bg: '#58c280', pressed: '#4ba668', fg: 'white' },
+  blue: { bg: '#5b9ad9', pressed: '#467fbf', fg: 'white' },
+  plum: { bg: '#9d6dc7', pressed: '#7e54a8', fg: 'white' },
+  gold: { bg: '#dc9f4f', pressed: '#c98a37', fg: '#3a3328' },
+  cream: { bg: '#ece4d3', pressed: '#d8cdb4', fg: '#3a3328' },
+};
+
+const ORDER: readonly CallKind[] = ['chi', 'peng', 'gong', 'hu', 'pass'];
 
 /**
- * Claim bar shown when the local seat has an actual claim opportunity
- * against the latest discard. Renders the design's CallButton style with
- * gradient + bilingual labels (吃 Chow / 碰 Pung / 槓 Kong / 糊 Win / 過 Pass).
+ * Claim flow buttons. Native port of `_legacy/src/ui/ClaimBar.tsx`.
  *
- * Gating logic from PR #35 is unchanged — Match.tsx checks
- * `legalClaimsFor + isWinning` before rendering this bar at all, so the
- * inner buttons just need to disable any individual options that aren't
- * legal for this seat.
+ * Renders one button per legal claim kind for this seat against the
+ * current discard. `hu` and `pass` are always shown (server validates
+ * winning hands; pass is always legal). `chi` is shown when chi is
+ * legal — but submitting a chi requires picking the two completing
+ * tiles in hand, which we don't have UI for yet, so we drop it from
+ * the rendered set until Phase 4 polish wires up the picker. Until
+ * then chi → just doesn't appear.
  */
 export function ClaimBar({ onAction, seat }: ClaimBarProps) {
   const state = useGame((s) => s.state);
-  const legal = state ? new Set(legalClaimsFor(state, seat)) : new Set<Claim['kind']>();
-  // hu requires a shanten/scoring check we don't repeat client-side; let the
-  // server reject it if the seat's hand isn't actually winning.
+  const legal = new Set<CallKind>(state ? legalClaimsFor(state, seat) : []);
   legal.add('hu');
   legal.add('pass');
+  const visible = ORDER.filter((k) => legal.has(k)).filter((k) => k !== 'chi');
 
   return (
-    <div
+    <View
       style={{
-        marginTop: 12,
-        padding: '12px 16px',
-        background: PAPER_HI,
-        border: `1px solid ${HAIRLINE}`,
-        borderRadius: 14,
-        boxShadow: '0 6px 18px rgba(0,0,0,0.08)',
-        display: 'flex',
+        flexDirection: 'row',
         alignItems: 'center',
-        gap: 12,
+        gap: 10,
         flexWrap: 'wrap',
+        padding: 12,
+        backgroundColor: '#fbf8f0',
+        borderColor: '#cdc1ad',
+        borderWidth: 1,
+        borderRadius: 12,
+        shadowColor: '#000',
+        shadowOpacity: 0.08,
+        shadowRadius: 12,
+        shadowOffset: { width: 0, height: 4 },
+        elevation: 3,
       }}
     >
-      <span
-        style={{
-          fontFamily: SANS,
-          fontSize: 11,
-          fontWeight: 800,
-          letterSpacing: 0.6,
-          textTransform: 'uppercase',
-          color: INK_3,
-        }}
-      >
-        Claim?
-      </span>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        {CHOICES.filter((c) => legal.has(c.kind)).map((c) => (
+      <Text style={{ fontSize: 11, fontWeight: '800', color: '#918275', letterSpacing: 0.5 }}>
+        CLAIM?
+      </Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        {visible.map((kind) => (
           <CallButton
-            key={c.kind}
-            action={c.action}
-            onClick={() => onAction({ t: 'declareClaim', seat, claim: claimFor(c.kind) })}
+            key={kind}
+            kind={kind}
+            onPress={() => onAction({ t: 'declareClaim', seat, claim: claimFor(kind) })}
           />
         ))}
-      </div>
-      <span
-        style={{
-          marginLeft: 'auto',
-          fontFamily: SANS,
-          fontSize: 11,
-          fontWeight: 700,
-          color: INK,
-          opacity: 0.6,
-        }}
-      >
-        Auto-pass when the timer runs out.
-      </span>
-    </div>
+      </View>
+    </View>
   );
 }
 
-function claimFor(kind: Claim['kind']): Claim {
-  if (kind === 'chi') {
-    throw new Error('chi requires explicit tile selection — not used by ClaimBar');
-  }
+function CallButton({ kind, onPress }: { kind: CallKind; onPress: () => void }) {
+  const meta = LABELS[kind];
+  const tone = TONE[meta.tone];
+  const isCream = meta.tone === 'cream';
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => ({
+        backgroundColor: pressed ? tone.pressed : tone.bg,
+        paddingVertical: 10,
+        paddingHorizontal: 18,
+        borderRadius: 14,
+        borderWidth: isCream ? 1.5 : 0,
+        borderColor: isCream ? '#cdc1ad' : 'transparent',
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        shadowColor: '#000',
+        shadowOpacity: isCream ? 0 : 0.18,
+        shadowRadius: 6,
+        shadowOffset: { width: 0, height: 4 },
+        elevation: isCream ? 0 : 4,
+      })}
+    >
+      <Text
+        style={{ fontFamily: 'Noto Serif TC', fontSize: 18, fontWeight: '700', color: tone.fg }}
+      >
+        {meta.zh}
+      </Text>
+      <Text
+        style={{
+          fontSize: 12,
+          fontWeight: '900',
+          color: tone.fg,
+          letterSpacing: 0.6,
+          textTransform: 'uppercase',
+        }}
+      >
+        {meta.en}
+      </Text>
+    </Pressable>
+  );
+}
+
+function claimFor(kind: Exclude<CallKind, 'chi'>): Claim {
+  // chi requires the two completing tiles — UI-side picker not built
+  // yet. Other kinds are bare tags.
   return { kind } as Claim;
 }

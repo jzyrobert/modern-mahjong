@@ -1,12 +1,22 @@
 # Deployment
 
-This repo ships two deployable artifacts, both built and deployed by GitHub Actions on every push to `main`:
+This repo ships three deployable artifacts, all built (and the first
+two deployed) by GitHub Actions on every push to `main`:
 
 | Surface         | Where it runs                                | Tier needed                                            |
 | --------------- | -------------------------------------------- | ------------------------------------------------------ |
 | Client (web)    | Cloudflare Pages (`modern-mahjong`)          | Free                                                   |
 | Server          | Cloudflare Workers + Durable Objects         | Workers Paid ($5/mo) — Durable Objects require this    |
 | Client (Android) | APK uploaded as a workflow artifact          | Free                                                   |
+
+> **Migration note (Phase 9 / 10).** The client was rebuilt on top of
+> Expo Router + Metro (replacing Vite + Capacitor) — see
+> `~/.claude/plans/gleaming-coalescing-pond.md`. The web bundle is
+> now produced by `expo export --platform web` instead of `vite
+> build`, but it still lands in `apps/client/dist/`, so Cloudflare
+> Pages picks it up identically. Expect the first post-migration
+> deploy to surface any URL-routing or asset-base differences;
+> rollback plan is documented at the end of this file.
 
 > **Heads-up.** The free Workers plan does *not* include Durable Objects. Because partyserver rooms are DOs, the server deploy needs **Workers Paid**. Pages and the Android APK both stay free.
 
@@ -31,20 +41,21 @@ You'll do this once, in this order. The workflow at [`.github/workflows/deploy.y
 
 In **GitHub → Settings → Secrets and variables → Actions → New repository secret**, add:
 
-| Name                  | Value                                                                                                       |
-| --------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `CLOUDFLARE_API_TOKEN`| The token from step 2.                                                                                      |
-| `CLOUDFLARE_ACCOUNT_ID`| Your account ID from step 1.                                                                              |
-| `VITE_SERVER_URL`     | The deployed Worker's URL — fill in **after the first server deploy** (see below). Example: `https://modern-mahjong-server.your-subdomain.workers.dev`. |
+| Name                       | Value                                                                                                                                                  |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `CLOUDFLARE_API_TOKEN`     | The token from step 2.                                                                                                                                 |
+| `CLOUDFLARE_ACCOUNT_ID`    | Your account ID from step 1.                                                                                                                           |
+| `EXPO_PUBLIC_SERVER_URL`   | The deployed Worker's URL — fill in **after the first server deploy** (see below). Example: `https://modern-mahjong-server.your-subdomain.workers.dev`. (Replaces the legacy `VITE_SERVER_URL` after the Phase 1 toolchain swap. Expo's runtime reads any env var prefixed with `EXPO_PUBLIC_*`.) |
+| `EXPO_TOKEN`               | Generated at `expo.dev → Account Settings → Access Tokens`. Authenticates `eas build --local` on the GitHub Actions runner. No EAS cloud usage; just identity for the CLI. Required for the `build-mobile-android` job. |
 
 ### 4. First deploy
 
 Push any commit to `main`. The workflow will:
 
 1. **Deploy the Worker first.** On success, look at the Action logs — wrangler prints the worker URL (e.g. `https://modern-mahjong-server.your-subdomain.workers.dev`).
-2. **Deploy Pages second.** The `deploy-client` job runs `wrangler pages project create modern-mahjong` (idempotent — succeeds if the project already exists) and then deploys the bundle. The build picks up `VITE_SERVER_URL` if you've set it; otherwise it hard-fails the job.
+2. **Deploy Pages second.** The `deploy-client` job runs `wrangler pages project create modern-mahjong` (idempotent — succeeds if the project already exists), runs `pnpm --filter @mahjong/client export-web` to produce `apps/client/dist/`, then deploys the bundle. The build picks up `EXPO_PUBLIC_SERVER_URL` if you've set it; otherwise it hard-fails the job.
 
-If this is the *very* first deploy, `VITE_SERVER_URL` is still empty and the `deploy-client` job will **fail loudly** rather than silently bake `http://localhost:8787` into the production bundle. Fix it by adding the secret (step 3 above) and re-running the workflow:
+If this is the *very* first deploy, `EXPO_PUBLIC_SERVER_URL` is still empty and the `deploy-client` job will **fail loudly** rather than silently bake `http://localhost:8787` into the production bundle. Fix it by adding the secret (step 3 above) and re-running the workflow:
 
 - **Actions → deploy → Re-run all jobs**, or
 - push another commit.
@@ -73,20 +84,83 @@ By default you'll get:
 
 To use your own domain:
 - **Pages**: project settings → Custom domains → add.
-- **Workers**: `wrangler.toml` → add `routes = [{ pattern = "api.example.com/*", custom_domain = true }]` and set `VITE_SERVER_URL=https://api.example.com` in GitHub secrets.
+- **Workers**: `wrangler.toml` → add `routes = [{ pattern = "api.example.com/*", custom_domain = true }]` and set `EXPO_PUBLIC_SERVER_URL=https://api.example.com` in GitHub secrets.
 
 ## Local-only development
 
-Nothing in this guide is required to run the app locally. `pnpm dev` (in `apps/server` and `apps/client`) starts the same code against `localhost:8787` / `localhost:5173`. LAN play runs entirely peer-to-peer between devices on the same Wi-Fi and never touches Cloudflare.
+Nothing in this guide is required to run the app locally. The
+client uses Expo Router + Metro now; the developer flow is:
+
+- `pnpm --filter @mahjong/client start` — Metro dev server. With
+  an Android emulator running, hit `a` (or `expo start --android`)
+  to install Expo Go and load the JS bundle. The first run on a
+  fresh emulator needs `adb reverse tcp:8081 tcp:8081` so Expo
+  Go can reach Metro at the host's localhost.
+- `pnpm --filter @mahjong/server dev` — `wrangler dev` against
+  `localhost:8787`. The client's transport defaults to that URL
+  if `EXPO_PUBLIC_SERVER_URL` is unset.
+- LAN play runs entirely peer-to-peer between devices on the same
+  Wi-Fi and never touches Cloudflare. **The native LAN host bridge
+  is currently a stub (Phase 8 of the migration); LAN play needs
+  its own Swift / Kotlin Expo Module before it works on native.**
 
 ## Android APK
 
-Every CI run on `main` (and on PRs touching the client) produces a debug-signed APK and uploads it as the `client-apk-debug` workflow artifact. Download from the run summary page — it expires after 14 days.
+Every CI run on `main` (and on PRs touching `apps/client/`)
+produces a debug-signed APK via `eas build --local` on the GitHub
+Actions runner and uploads it as the `client-apk-debug` workflow
+artifact. Download from the run summary page — it expires after
+14 days.
 
-To install on a device, enable "Install unknown apps" for your browser/file manager, transfer the APK, and tap to install. For production / Play Store releases you'll need to add a release-signing keystore and switch the gradle task from `assembleDebug` to `assembleRelease` — left for the maintainer when you're ready to publish.
+The local-EAS flow runs entirely on the GitHub runner — no EAS
+cloud minutes / paid plan needed. The `EXPO_TOKEN` repo secret is
+required for CLI authentication only; nothing actually flows
+through Expo's build infrastructure.
+
+To install on a device, enable "Install unknown apps" for your
+browser/file manager, transfer the APK, and tap to install. For
+production / Play Store releases you'll need to add a release-
+signing keystore and switch to the `production-apk` (or
+`production` app-bundle) profile in `apps/client/eas.json` —
+configured but not wired into the workflow until release time.
+
+## iOS
+
+Deferred. iOS builds need a `macos-latest` runner + Apple
+Developer signing certs; the EAS local build flow we use for
+Android works on macOS too, but it's unwired in the current
+workflow. Until then, iOS dev is local-only via
+`pnpm --filter @mahjong/client ios` (Xcode required).
+
+## Migration rollback
+
+If the post-Phase-9 web deploy surfaces issues (URL routing,
+asset base, runtime errors that don't reproduce on Android), the
+fastest rollback is to redeploy the last Vite-based artifact:
+
+1. Find the last green pre-migration deploy commit (anything
+   before `claude/expo-migration` was squash-merged). Look at
+   the deploy log to confirm the build was Vite-based.
+2. **Cloudflare Pages dashboard → modern-mahjong → Deployments**
+   → find that deploy → "Rollback to this deployment".
+3. The page root URL flips back to the rollback target within
+   ~30s; no code change required.
+
+After diagnosing, fix forward on a new branch and re-deploy.
 
 ## Why these tools
 
-- **Cloudflare Pages** for the client: free, edge-cached, deploys from GitHub in ~30s, gives you `https://` for free (needed for camera APIs in the future).
-- **Cloudflare Workers + Durable Objects** for the server: partyserver is built on DOs; the same code works locally (`wrangler dev`) and in production with no rewrites. Each match code maps 1:1 to a single-threaded DO, which is what makes claim resolution race-condition-proof.
-- **GitHub-hosted runners** for the Android APK: no Android Studio needed locally — `setup-java` + Capacitor + Gradle do everything in a clean `ubuntu-latest` runner. APKs are reproducible from the source tree alone.
+- **Cloudflare Pages** for the client: free, edge-cached, deploys
+  from GitHub in ~30s, gives you `https://` for free (needed for
+  camera APIs in the future).
+- **Cloudflare Workers + Durable Objects** for the server:
+  partyserver is built on DOs; the same code works locally
+  (`wrangler dev`) and in production with no rewrites. Each match
+  code maps 1:1 to a single-threaded DO, which is what makes
+  claim resolution race-condition-proof. The migration didn't
+  touch the server.
+- **GitHub-hosted runners + EAS local** for the Android APK: no
+  Android Studio needed locally; `setup-java` + EAS CLI + Gradle
+  do everything in a clean `ubuntu-latest` runner. APKs are
+  reproducible from the source tree alone. Replaces the previous
+  Capacitor + `npx cap add android` + `assembleDebug` flow.

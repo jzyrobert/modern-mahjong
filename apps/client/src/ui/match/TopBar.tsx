@@ -1,148 +1,109 @@
-import type { CSSProperties } from 'react';
-import { INK, INK_3, RED, SANS } from '../../native/theme.js';
-
-const iconBtnStyle: CSSProperties = {
-  width: 38,
-  height: 38,
-  borderRadius: 12,
-  background: 'oklch(1 0 0 / 0.92)',
-  border: 'none',
-  boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
-  cursor: 'pointer',
-  fontSize: 16,
-  color: INK,
-  fontFamily: SANS,
-};
+import { Pressable, Text, View } from 'react-native';
 
 interface TopBarProps {
-  /** Match code shown in the live pill — e.g. `A7K2`. Pass null to hide. */
-  gameId: string | null;
-  /** Spectator count from `useGame.lobby.viewers`. Hidden when 0 or null. */
-  viewers?: number | null;
-  onSettings?: () => void;
-  onLog?: () => void;
-  /**
-   * Toggle the browser's fullscreen mode. Wired only by the mobile shell
-   * (the desktop window is already large enough that the toggle would be
-   * noise) and only when the Fullscreen API is supported.
-   */
-  onFullscreen?: () => void;
-  /** Whether the browser is currently in fullscreen — drives the icon. */
-  fullscreenActive?: boolean;
+  matchCode: string | null;
+  viewers: number | null;
   onLeave: () => void;
+  /** Optional — if provided, renders a "⚙" button that opens the
+   *  in-match SettingsPanel. Match.tsx wires this to local state.
+   *  Pre-game lobby renders TopBar without it. */
+  onOpenSettings?: () => void;
+  /** Optional — if provided, renders a "📜" button that opens the
+   *  GameLog modal listing the recent engine events. */
+  onOpenLog?: () => void;
 }
 
+const COLORS = {
+  ink: '#3a3328',
+  ink3: '#918275',
+  paperHi: '#fbf8f0',
+  hairline: '#cdc1ad',
+  red: '#b14d3a',
+  green: '#58c280',
+};
+
 /**
- * Top-right cluster on the live table — live pill (game id + spectator
- * count), settings cog, game log, optional fullscreen toggle (mobile),
- * and a Leave button. Ported from `/tmp/design/design/app.jsx::TopBar`.
+ * Top-right corner — Live · #CODE pill, viewer count, Settings button,
+ * Leave button. The legacy GameLog + Fullscreen buttons are deferred
+ * (still queued in TODO.md's Expo migration follow-ups).
  */
-export function TopBar({
-  gameId,
-  viewers,
-  onSettings,
-  onLog,
-  onFullscreen,
-  fullscreenActive,
-  onLeave,
-}: TopBarProps) {
+export function TopBar({ matchCode, viewers, onLeave, onOpenSettings, onOpenLog }: TopBarProps) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      {gameId ? (
-        <div
-          style={{
-            padding: '6px 12px',
-            borderRadius: 14,
-            background: 'oklch(1 0 0 / 0.85)',
-            backdropFilter: 'blur(8px)',
-            WebkitBackdropFilter: 'blur(8px)',
-            boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
-            fontFamily: SANS,
-            fontSize: 11,
-            fontWeight: 700,
-            color: INK_3,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            whiteSpace: 'nowrap',
-          }}
-        >
-          <span
-            aria-hidden
-            style={{
-              width: 6,
-              height: 6,
-              borderRadius: '50%',
-              background: 'oklch(0.7 0.18 145)',
-              boxShadow: '0 0 6px oklch(0.7 0.18 145)',
-            }}
-          />
-          <span>Live · #{gameId}</span>
-          {viewers !== null && viewers !== undefined && viewers > 0 ? (
-            <>
-              <span aria-hidden style={{ opacity: 0.5 }}>
-                ·
-              </span>
-              <span title={`${viewers} watching`}>👁 {viewers}</span>
-            </>
-          ) : null}
-        </div>
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        paddingVertical: 6,
+        paddingHorizontal: 10,
+        borderRadius: 16,
+        backgroundColor: 'rgba(255,255,255,0.88)',
+        shadowColor: '#000',
+        shadowOpacity: 0.08,
+        shadowRadius: 12,
+        shadowOffset: { width: 0, height: 3 },
+        elevation: 3,
+      }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.green }} />
+        <Text style={{ fontSize: 10, fontWeight: '800', color: COLORS.ink, letterSpacing: 0.4 }}>
+          LIVE
+        </Text>
+        {matchCode ? (
+          <Text style={{ fontSize: 11, fontWeight: '800', color: COLORS.red, letterSpacing: 1.2 }}>
+            #{matchCode}
+          </Text>
+        ) : null}
+      </View>
+      {viewers && viewers > 0 ? (
+        <Text style={{ fontSize: 11, color: COLORS.ink3, fontWeight: '600' }}>👁 {viewers}</Text>
       ) : null}
-      {onLog ? (
-        <button
-          type="button"
-          onClick={onLog}
-          aria-label="Game log"
-          title="Game log"
-          style={iconBtnStyle}
+      {onOpenLog ? (
+        <Pressable
+          onPress={onOpenLog}
+          accessibilityLabel="Open game log"
+          style={({ pressed }) => ({
+            paddingHorizontal: 8,
+            paddingVertical: 4,
+            borderRadius: 8,
+            backgroundColor: pressed ? '#ece4d3' : 'transparent',
+            borderColor: COLORS.hairline,
+            borderWidth: 1,
+          })}
         >
-          📜
-        </button>
+          <Text style={{ fontSize: 13, color: COLORS.ink }}>📜</Text>
+        </Pressable>
       ) : null}
-      {onFullscreen ? (
-        <button
-          type="button"
-          onClick={onFullscreen}
-          aria-label={fullscreenActive ? 'Exit fullscreen' : 'Enter fullscreen'}
-          aria-pressed={fullscreenActive}
-          title={fullscreenActive ? 'Exit fullscreen' : 'Fullscreen'}
-          style={iconBtnStyle}
+      {onOpenSettings ? (
+        <Pressable
+          onPress={onOpenSettings}
+          accessibilityLabel="Open settings"
+          style={({ pressed }) => ({
+            paddingHorizontal: 8,
+            paddingVertical: 4,
+            borderRadius: 8,
+            backgroundColor: pressed ? '#ece4d3' : 'transparent',
+            borderColor: COLORS.hairline,
+            borderWidth: 1,
+          })}
         >
-          {fullscreenActive ? '⤓' : '⛶'}
-        </button>
+          <Text style={{ fontSize: 13, color: COLORS.ink }}>⚙</Text>
+        </Pressable>
       ) : null}
-      <button
-        type="button"
-        onClick={onSettings}
-        aria-label="Settings"
-        title="Settings"
-        disabled={!onSettings}
-        style={{
-          ...iconBtnStyle,
-          cursor: onSettings ? 'pointer' : 'not-allowed',
-          opacity: onSettings ? 1 : 0.5,
-        }}
+      <Pressable
+        onPress={onLeave}
+        style={({ pressed }) => ({
+          paddingHorizontal: 10,
+          paddingVertical: 4,
+          borderRadius: 8,
+          backgroundColor: pressed ? '#ece4d3' : 'transparent',
+          borderColor: COLORS.hairline,
+          borderWidth: 1,
+        })}
       >
-        ⚙
-      </button>
-      <button
-        type="button"
-        onClick={onLeave}
-        style={{
-          padding: '9px 14px',
-          borderRadius: 12,
-          background: 'oklch(0.96 0.04 25 / 0.9)',
-          border: 'none',
-          boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
-          cursor: 'pointer',
-          fontFamily: SANS,
-          fontWeight: 800,
-          fontSize: 12,
-          color: RED,
-        }}
-      >
-        Leave
-      </button>
-    </div>
+        <Text style={{ fontSize: 11, fontWeight: '700', color: COLORS.ink }}>Leave</Text>
+      </Pressable>
+    </View>
   );
 }

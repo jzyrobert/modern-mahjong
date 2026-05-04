@@ -1,5 +1,5 @@
 import type { Seat } from '@mahjong/game-logic';
-import type { SlotStatus } from './WallEdge.js';
+import type { SlotStatus } from './WallEdge';
 
 /**
  * Hong Kong mahjong wall layout — given the dice break + drawn count,
@@ -33,7 +33,7 @@ export const STACKS_PER_WALL = 17;
 export const TILES_PER_STACK = 2;
 export const DEAD_WALL_STACKS = 7;
 export const LIVE_WALL_TILES =
-  STACKS_PER_WALL * 4 * TILES_PER_STACK - DEAD_WALL_STACKS * TILES_PER_STACK; // 122
+  STACKS_PER_WALL * 4 * TILES_PER_STACK - DEAD_WALL_STACKS * TILES_PER_STACK;
 
 export interface WallLayout {
   slots: Record<Seat, SlotStatus[]>;
@@ -52,7 +52,6 @@ interface ComputeOpts {
   allowDraw: boolean;
 }
 
-/** All slots `live` — used as a fallback when dice info is unavailable. */
 function emptyAllLive(): Record<Seat, SlotStatus[]> {
   return {
     0: Array.from({ length: STACKS_PER_WALL }, () => 'live' as SlotStatus),
@@ -71,10 +70,8 @@ export function computeWallLayout(opts: ComputeOpts): WallLayout {
   }
 
   const breakWall = ((dealer + (breakPosition - 1)) % 4) as Seat;
-  const breakStack = STACKS_PER_WALL - breakPosition; // stack 0..16
+  const breakStack = STACKS_PER_WALL - breakPosition;
 
-  // Mark dead wall: 7 stacks starting at `breakStack` walking RIGHT,
-  // wrapping onto the next wall if we run off the right end.
   let seat: Seat = breakWall;
   let slotIdx = breakStack;
   for (let k = 0; k < DEAD_WALL_STACKS; k++) {
@@ -86,10 +83,6 @@ export function computeWallLayout(opts: ComputeOpts): WallLayout {
     slotIdx++;
   }
 
-  // Mark drawn stacks: floor(drawn / 2) fully-drawn stacks starting at
-  // `breakStack - 1` walking LEFT, wrapping onto the previous wall when
-  // we pass stack 0. A stack with one tile drawn (drawn odd) is still
-  // shown as `nextDraw` since it's the active draw point.
   const drawnStacks = Math.floor(drawn / TILES_PER_STACK);
   seat = breakWall;
   slotIdx = breakStack - 1;

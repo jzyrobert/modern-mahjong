@@ -1,0 +1,16 @@
+{
+  "name": "expo-lan-server",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Local Expo native module for hosting an HTTP+WebSocket LAN server inside the Modern Mahjong app. Activates only on a custom dev client (not Expo Go).",
+  "main": "index.ts",
+  "types": "index.ts",
+  "files": ["index.ts", "src", "android", "ios", "expo-module.config.json"],
+  "keywords": ["expo", "expo-module", "lan", "websocket"],
+  "license": "MIT",
+  "peerDependencies": {
+    "expo": "*",
+    "react": "*",
+    "react-native": "*"
+  }
+}

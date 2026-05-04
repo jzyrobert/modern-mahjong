@@ -1,10 +1,10 @@
-import { INK, INK_3, PAPER, SANS } from '../../native/theme.js';
+import { Pressable, Text, View } from 'react-native';
 
 export type SortMode = 'suit' | 'num' | 'manual';
 
 interface SortPickerProps {
   mode: SortMode;
-  onChange: (mode: SortMode) => void;
+  onChange: (m: SortMode) => void;
 }
 
 const OPTIONS: { id: SortMode; label: string }[] = [
@@ -13,55 +13,57 @@ const OPTIONS: { id: SortMode; label: string }[] = [
   { id: 'manual', label: 'Manual' },
 ];
 
+const COLORS = {
+  ink: '#3a3328',
+  ink3: '#918275',
+  paperHi: '#fbf8f0',
+  hairline: '#cdc1ad',
+  red: '#b14d3a',
+};
+
 /**
- * Three-pill segmented toggle that drives how the user's hand is laid out.
- * Ported from `/tmp/design/design/app.jsx::SortPicker`.
- *
- * - `suit` → engine `sortHand` order (man → pin → sou → winds → dragons,
- *   ranks ascending within each suit).
- * - `num`  → numeric rank first, suits as tiebreak.
- * - `manual` → preserves the engine's hand array order. Drag-to-reorder is
- *   queued in TODO.md → Design port follow-ups.
+ * Three-way segmented picker for the user's hand sort mode. Native
+ * port of `_legacy/src/ui/match/SortPicker.tsx`. The 'manual' option
+ * is rendered but a no-op until Phase 5 wires up drag-to-reorder.
  */
 export function SortPicker({ mode, onChange }: SortPickerProps) {
   return (
-    <div
-      aria-label="Hand sort"
+    <View
       style={{
-        display: 'inline-flex',
-        gap: 0,
-        background: PAPER,
-        padding: 3,
-        borderRadius: 12,
-        boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.06)',
+        flexDirection: 'row',
+        backgroundColor: COLORS.paperHi,
+        borderColor: COLORS.hairline,
+        borderWidth: 1,
+        borderRadius: 8,
+        padding: 2,
       }}
     >
       {OPTIONS.map((o) => {
         const active = mode === o.id;
         return (
-          <button
+          <Pressable
             key={o.id}
-            type="button"
-            aria-pressed={active}
-            onClick={() => onChange(o.id)}
-            style={{
-              padding: '5px 10px',
-              border: 'none',
-              borderRadius: 9,
-              fontFamily: SANS,
-              fontWeight: 700,
-              fontSize: 11,
-              cursor: 'pointer',
-              background: active ? 'white' : 'transparent',
-              color: active ? INK : INK_3,
-              boxShadow: active ? '0 1px 4px rgba(0,0,0,0.1)' : 'none',
-              transition: 'all 160ms',
-            }}
+            onPress={() => onChange(o.id)}
+            style={({ pressed }) => ({
+              paddingVertical: 6,
+              paddingHorizontal: 12,
+              borderRadius: 6,
+              backgroundColor: active ? '#fbe5d9' : pressed ? '#ece4d3' : 'transparent',
+            })}
           >
-            {o.label}
-          </button>
+            <Text
+              style={{
+                fontSize: 11,
+                fontWeight: active ? '800' : '600',
+                color: active ? COLORS.red : COLORS.ink,
+                letterSpacing: 0.4,
+              }}
+            >
+              {o.label.toUpperCase()}
+            </Text>
+          </Pressable>
         );
       })}
-    </div>
+    </View>
   );
 }

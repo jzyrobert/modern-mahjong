@@ -1,6 +1,6 @@
 import { SEATS } from '@mahjong/game-logic';
-import { CREAM, HAIRLINE, INK, INK_3, MONO, PAPER_HI, RED, SERIF } from '../../native/theme.js';
-import type { LobbyState } from '../../state/game.js';
+import { Text, View, useWindowDimensions } from 'react-native';
+import type { LobbyState } from '../../state/game';
 
 interface LobbyPreviewProps {
   lobby: LobbyState;
@@ -10,27 +10,33 @@ interface LobbyPreviewProps {
 const WIND_GLYPH = ['東', '南', '西', '北'] as const;
 
 /**
- * Live preview of the four-seat lobby — wind glyph per seat, the player's
- * display name + connection status pill, dashed empty-seat boxes for open
- * slots. Ported from `/tmp/design/design/menu.jsx::LobbyPreview` and bound
- * to the engine's `LobbyState`.
+ * Live preview of the four-seat lobby. Native port of
+ * `_legacy/src/ui/menu/LobbyPreview.tsx` — same wind glyphs, same seat
+ * cards, same connection-status pills. Auto-fit grid replaced with a
+ * `useWindowDimensions`-driven flex-wrap so on narrow phones the four
+ * seats reflow to 2×2 instead of overflowing.
  */
 export function LobbyPreview({ lobby, matchCode }: LobbyPreviewProps) {
+  const { width } = useWindowDimensions();
   const players = SEATS.map((seat) => lobby.players.find((p) => p.seat === seat) ?? null);
+  // ≥620px → 4 cols (1fr each); below → 2 cols. Matches the legacy
+  // `repeat(auto-fit, minmax(140px, 1fr))` semantics.
+  const cardBasis = width >= 620 ? '23%' : '47%';
 
   return (
-    <div
+    <View
       style={{
         marginTop: 20,
-        background: PAPER_HI,
-        border: `1px solid ${HAIRLINE}`,
+        backgroundColor: '#fbf8f0',
+        borderColor: '#cdc1ad',
+        borderWidth: 1,
         borderRadius: 14,
         padding: 18,
       }}
     >
-      <div
+      <View
         style={{
-          display: 'flex',
+          flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'space-between',
           marginBottom: 12,
@@ -38,134 +44,148 @@ export function LobbyPreview({ lobby, matchCode }: LobbyPreviewProps) {
           flexWrap: 'wrap',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <span
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <View
             style={{
               width: 8,
               height: 8,
-              borderRadius: '50%',
-              background: 'oklch(0.65 0.18 145)',
-              flexShrink: 0,
+              borderRadius: 4,
+              backgroundColor: '#44ad60',
             }}
           />
-          <div style={{ fontSize: 14, fontWeight: 900, color: INK, whiteSpace: 'nowrap' }}>
-            In lobby
-          </div>
-          <div style={{ fontSize: 11, color: INK_3, fontWeight: 700, whiteSpace: 'nowrap' }}>
+          <Text style={{ fontSize: 14, fontWeight: '900', color: '#3a3328' }}>In lobby</Text>
+          <Text style={{ fontSize: 11, color: '#918275', fontWeight: '700' }}>
             · waiting for players
-          </div>
-        </div>
+          </Text>
+        </View>
         {matchCode ? (
-          <div
+          <View
             style={{
-              fontFamily: MONO,
-              fontSize: 13,
-              fontWeight: 800,
-              letterSpacing: 3,
-              color: INK,
-              background: CREAM,
-              padding: '4px 10px',
+              backgroundColor: '#ece4d3',
+              borderColor: '#cdc1ad',
+              borderWidth: 1,
               borderRadius: 8,
-              border: `1px solid ${HAIRLINE}`,
+              paddingVertical: 4,
+              paddingHorizontal: 10,
             }}
           >
-            {matchCode}
-          </div>
+            <Text
+              style={{
+                fontFamily: 'JetBrains Mono',
+                fontSize: 13,
+                fontWeight: '800',
+                letterSpacing: 3,
+                color: '#3a3328',
+              }}
+            >
+              {matchCode}
+            </Text>
+          </View>
         ) : null}
-      </div>
+      </View>
 
-      <div
-        style={{
-          display: 'grid',
-          // Auto-fit so the four cards reflow to 2×2 on narrow viewports
-          // (e.g. ~360px phones) instead of overflowing their fixed
-          // ~80px-wide boxes. On ≥620px the row stays as four columns.
-          gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-          gap: 8,
-        }}
-      >
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         {SEATS.map((seat) => {
           const p = players[seat];
           return (
-            <div
+            <View
               key={seat}
               style={{
-                background: p ? CREAM : 'transparent',
-                border: `1px ${p ? 'solid' : 'dashed'} ${HAIRLINE}`,
+                flexBasis: cardBasis,
+                flexGrow: 1,
+                backgroundColor: p ? '#ece4d3' : 'transparent',
+                borderColor: '#cdc1ad',
+                borderWidth: 1,
+                borderStyle: p ? 'solid' : 'dashed',
                 borderRadius: 10,
                 padding: 10,
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'flex-start',
                 gap: 6,
                 minHeight: 76,
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ fontFamily: SERIF, fontSize: 16, color: RED, fontWeight: 700 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text
+                  style={{
+                    fontFamily: 'Noto Serif TC',
+                    fontSize: 16,
+                    color: '#b14d3a',
+                    fontWeight: '700',
+                  }}
+                >
                   {WIND_GLYPH[seat]}
-                </span>
-                <span
+                </Text>
+                <Text
                   style={{
                     fontSize: 10,
-                    fontWeight: 800,
-                    color: INK_3,
-                    textTransform: 'uppercase',
+                    fontWeight: '800',
+                    color: '#918275',
                     letterSpacing: 0.6,
                   }}
                 >
-                  Seat {seat}
-                </span>
-              </div>
+                  SEAT {seat}
+                </Text>
+              </View>
               {p ? (
                 <>
-                  <div
+                  <Text
                     style={{
                       fontSize: 13,
-                      fontWeight: 800,
-                      color: INK,
-                      wordBreak: 'break-word',
-                      lineHeight: 1.2,
+                      fontWeight: '800',
+                      color: '#3a3328',
+                      lineHeight: 16,
                     }}
                   >
                     {p.displayName}
-                  </div>
+                  </Text>
                   <StatusPill kind={p.isBot ? 'bot' : p.connected ? 'online' : 'offline'} />
                 </>
               ) : (
-                <div style={{ fontSize: 12, color: INK_3, fontStyle: 'italic', fontWeight: 600 }}>
+                <Text
+                  style={{
+                    fontSize: 12,
+                    color: '#918275',
+                    fontStyle: 'italic',
+                    fontWeight: '600',
+                  }}
+                >
                   Open seat…
-                </div>
+                </Text>
               )}
-            </div>
+            </View>
           );
         })}
-      </div>
-    </div>
+      </View>
+    </View>
   );
 }
 
 function StatusPill({ kind }: { kind: 'bot' | 'online' | 'offline' }) {
   const palette =
     kind === 'bot'
-      ? { color: 'oklch(0.5 0.1 280)', bg: 'oklch(0.95 0.04 280)', label: 'Bot' }
+      ? { color: '#735aa3', bg: '#e1d3ed', label: 'Bot' }
       : kind === 'online'
-        ? { color: 'oklch(0.45 0.15 145)', bg: 'oklch(0.95 0.06 145)', label: 'Online' }
-        : { color: INK_3, bg: CREAM, label: 'Disconnected' };
+        ? { color: '#2d8645', bg: '#c2e2c5', label: 'Online' }
+        : { color: '#918275', bg: '#ece4d3', label: 'Disconnected' };
   return (
-    <div
+    <View
       style={{
-        fontSize: 9,
-        fontWeight: 800,
-        letterSpacing: 0.5,
-        textTransform: 'uppercase',
-        color: palette.color,
-        background: palette.bg,
-        padding: '2px 6px',
+        backgroundColor: palette.bg,
         borderRadius: 4,
+        paddingVertical: 2,
+        paddingHorizontal: 6,
+        alignSelf: 'flex-start',
       }}
     >
-      {palette.label}
-    </div>
+      <Text
+        style={{
+          fontSize: 9,
+          fontWeight: '800',
+          letterSpacing: 0.5,
+          color: palette.color,
+        }}
+      >
+        {palette.label.toUpperCase()}
+      </Text>
+    </View>
   );
 }

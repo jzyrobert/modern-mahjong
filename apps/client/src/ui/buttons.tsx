@@ -1,131 +1,207 @@
-import type { ReactNode } from 'react';
-import { INK_3, MONO, SANS } from '../native/theme.js';
+import { type ReactNode, useState } from 'react';
+import { Pressable, Text, TextInput, type TextInputProps, View } from 'react-native';
 
 interface PrimaryButtonProps {
   children: ReactNode;
-  onClick?: () => void;
+  onPress?: () => void;
   disabled?: boolean;
   full?: boolean;
   size?: 'sm' | 'md' | 'lg';
-  type?: 'button' | 'submit';
 }
 
+const PRIMARY_PADDING: Record<'sm' | 'md' | 'lg', { vertical: number; horizontal: number }> = {
+  sm: { vertical: 6, horizontal: 12 },
+  md: { vertical: 10, horizontal: 16 },
+  lg: { vertical: 12, horizontal: 20 },
+};
+const PRIMARY_FONT: Record<'sm' | 'md' | 'lg', number> = { sm: 11, md: 13, lg: 14 };
+
+const COLORS = {
+  red: '#b14d3a',
+  redHot: '#d05746',
+  ink: '#3a3328',
+  hairline: '#cdc1ad',
+  paper: '#f1ebe0',
+  paperHi: '#fbf8f0',
+  ink3: '#918275',
+};
+
 /**
- * Brand-red primary button with hover lift, shadow, and a disabled state.
- * Hover/focus/disabled visuals come from the `.mh-primary-btn` rules in
- * `src/styles.css` so we don't re-render the whole component on hover.
+ * Brand-red primary button with active-press visual feedback. Native
+ * port of the legacy `_legacy/src/ui/buttons.tsx::PrimaryButton`.
  */
 export function PrimaryButton({
   children,
-  onClick,
+  onPress,
   disabled = false,
   full = false,
   size = 'md',
-  type = 'button',
 }: PrimaryButtonProps) {
-  const padding = size === 'lg' ? '12px 20px' : size === 'sm' ? '6px 12px' : '10px 16px';
-  const fontSize = size === 'lg' ? 14 : size === 'sm' ? 11 : 13;
+  const padding = PRIMARY_PADDING[size];
   return (
-    <button
-      type={type === 'submit' ? 'submit' : 'button'}
-      className="mh-primary-btn"
-      onClick={onClick}
+    <Pressable
+      onPress={disabled ? undefined : onPress}
       disabled={disabled}
-      style={{
-        padding,
-        fontSize,
-        width: full ? '100%' : 'auto',
-      }}
+      // accessibilityRole + accessibilityState surface the right ARIA
+      // attributes through RN-Web (`role="button"`, `aria-disabled`) so
+      // Playwright's `getByRole('button', { name })` and assistive tech
+      // can find the control. Without these the Pressable renders as a
+      // plain `<div>`.
+      accessibilityRole="button"
+      accessibilityState={{ disabled }}
+      style={({ pressed }) => ({
+        backgroundColor: disabled ? '#c9c1b3' : pressed ? COLORS.redHot : COLORS.red,
+        borderRadius: 10,
+        paddingVertical: padding.vertical,
+        paddingHorizontal: padding.horizontal,
+        opacity: disabled ? 0.6 : 1,
+        transform: [{ translateY: pressed && !disabled ? -1 : 0 }],
+        alignSelf: full ? 'stretch' : 'auto',
+      })}
     >
-      {children}
-    </button>
+      <Text
+        style={{
+          color: 'white',
+          fontWeight: '800',
+          fontSize: PRIMARY_FONT[size],
+          letterSpacing: 0.3,
+          textAlign: 'center',
+        }}
+      >
+        {children}
+      </Text>
+    </Pressable>
   );
 }
 
 interface GhostButtonProps {
   children: ReactNode;
-  onClick?: () => void;
+  onPress?: () => void;
   disabled?: boolean;
   full?: boolean;
 }
 
 /**
- * Cream ghost button with hairline border. Hover visuals come from the
- * `.mh-ghost-btn` rules in `src/styles.css`.
+ * Cream-paper ghost button with hairline border. Native port of the
+ * legacy `_legacy/src/ui/buttons.tsx::GhostButton`.
  */
 export function GhostButton({
   children,
-  onClick,
+  onPress,
   disabled = false,
   full = false,
 }: GhostButtonProps) {
   return (
-    <button
-      type="button"
-      className="mh-ghost-btn"
-      onClick={onClick}
+    <Pressable
+      onPress={disabled ? undefined : onPress}
       disabled={disabled}
-      style={{ width: full ? '100%' : 'auto' }}
+      accessibilityRole="button"
+      accessibilityState={{ disabled }}
+      style={({ pressed }) => ({
+        backgroundColor: pressed && !disabled ? COLORS.paper : 'white',
+        borderColor: COLORS.hairline,
+        borderWidth: 1,
+        borderRadius: 10,
+        paddingVertical: 10,
+        paddingHorizontal: 16,
+        opacity: disabled ? 0.5 : 1,
+        alignSelf: full ? 'stretch' : 'auto',
+      })}
     >
-      {children}
-    </button>
+      <Text
+        style={{
+          color: COLORS.ink,
+          fontWeight: '700',
+          fontSize: 13,
+          textAlign: 'center',
+        }}
+      >
+        {children}
+      </Text>
+    </Pressable>
   );
 }
 
 interface TextFieldProps {
   label: string;
   value: string;
-  onChange: (v: string) => void;
+  onChangeText: (v: string) => void;
   placeholder?: string;
   mono?: boolean;
   maxLength?: number;
   hint?: string;
-  style?: React.CSSProperties;
+  autoCapitalize?: TextInputProps['autoCapitalize'];
+  autoCorrect?: boolean;
 }
 
 /**
- * Cream-paper text input with focused brand-red ring. The focus ring comes
- * from the `.mh-text-field-input:focus-visible` rule in `src/styles.css`,
- * so we don't mutate `e.target.style` on focus/blur from JS.
+ * Cream-paper text input with a focused brand-red ring. Native port of
+ * `_legacy/src/ui/buttons.tsx::TextField`. The focused ring is driven
+ * by local `useState(focused)` rather than CSS `:focus-visible` since
+ * RN's TextInput doesn't expose pseudo-classes.
  */
 export function TextField({
   label,
   value,
-  onChange,
+  onChangeText,
   placeholder,
   mono = false,
   maxLength,
   hint,
-  style,
+  autoCapitalize = 'none',
+  autoCorrect = false,
 }: TextFieldProps) {
+  const [focused, setFocused] = useState(false);
   return (
-    <label style={{ display: 'block', ...style }}>
-      <div
+    <View>
+      <Text
         style={{
-          fontSize: 11,
-          fontWeight: 700,
-          color: INK_3,
-          textTransform: 'uppercase',
-          letterSpacing: 0.6,
           marginBottom: 6,
+          fontSize: 11,
+          fontWeight: '700',
+          color: COLORS.ink3,
+          letterSpacing: 0.6,
         }}
       >
-        {label}
-      </div>
-      <input
-        className="mh-text-field-input"
+        {label.toUpperCase()}
+      </Text>
+      <TextInput
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChangeText={onChangeText}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
         placeholder={placeholder}
+        placeholderTextColor={COLORS.ink3}
+        // `accessibilityLabel` flows to RN-Web as `aria-label`, which
+        // is what Playwright's `getByLabel('Match code')` resolves to
+        // in the absence of a real `<label>` element. The visible
+        // `<Text>` above is purely decorative — without this, screen
+        // readers would announce only the placeholder.
+        accessibilityLabel={label}
         maxLength={maxLength}
+        autoCapitalize={autoCapitalize}
+        autoCorrect={autoCorrect}
         style={{
-          fontFamily: mono ? MONO : SANS,
+          borderColor: focused ? COLORS.red : COLORS.hairline,
+          borderWidth: 1,
+          borderRadius: 8,
+          paddingVertical: 10,
+          paddingHorizontal: 12,
+          backgroundColor: COLORS.paperHi,
           fontSize: mono ? 16 : 14,
+          fontWeight: '600',
+          color: COLORS.ink,
           letterSpacing: mono ? 3 : 0,
-          textTransform: mono ? 'uppercase' : 'none',
+          ...(focused && {
+            shadowColor: COLORS.red,
+            shadowOpacity: 0.15,
+            shadowRadius: 4,
+            shadowOffset: { width: 0, height: 0 },
+            elevation: 2,
+          }),
         }}
       />
-      {hint ? <div style={{ fontSize: 11, color: INK_3, marginTop: 6 }}>{hint}</div> : null}
-    </label>
+      {hint ? <Text style={{ marginTop: 6, fontSize: 11, color: COLORS.ink3 }}>{hint}</Text> : null}
+    </View>
   );
 }

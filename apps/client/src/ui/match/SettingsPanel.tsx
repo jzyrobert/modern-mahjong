@@ -1,307 +1,190 @@
-import { CREAM, HAIRLINE, INK, INK_3, PAPER, PAPER_HI, SANS } from '../../native/theme.js';
-import { type FeltSkin, type TileBackSkin, type UserSettings, useGame } from '../../state/game.js';
-import { SwatchRow } from './Swatches.js';
-import { TileReference } from './TileReference.js';
-import { FELT_SKINS, TILE_BACK_SKINS } from './skins.js';
+import { Pressable, ScrollView, Switch, Text, View } from 'react-native';
+import { type FeltSkin, type TileBackSkin, type UserSettings, useGame } from '../../state/game';
+import { Modal } from '../Modal';
+import { FELT_SKINS, TILE_BACK_SKINS } from './skins';
 
 interface SettingsPanelProps {
   open: boolean;
   onClose: () => void;
-  /** When true, the turn-timer setting is editable; otherwise read-only. */
-  isHost: boolean;
-  /** Live turn timeout from the engine (ms). */
-  turnTimeoutMs: number;
-  /** Host-only callback to commit a new turn timeout — wires to setRules. */
-  onTurnTimeoutChange: (ms: number) => void;
 }
 
+const COLORS = {
+  ink: '#3a3328',
+  ink3: '#918275',
+  cream: '#f1eadc',
+  hairline: '#cdc1ad',
+  red: '#b14d3a',
+};
+
 /**
- * Settings panel + 136-tile reference. Toggled from the in-match TopBar's
- * cog button. Ported from `/tmp/design/design/app.jsx::SettingsPanel`.
+ * In-match preferences modal. Native port of the legacy
+ * `_legacy/src/ui/match/SettingsPanel.tsx`. v1 covers the controls that
+ * actually affect the active match: felt skin picker, tile-back skin
+ * picker, auto-sort toggle, sound toggle, animations toggle. Turn-timer
+ * editor, GameLog button, and the 136-tile reference grid are deferred
+ * (turn-timer needs `state.rules` round-trip; the tile reference is
+ * decorative).
  *
- * Bindings:
- * - **Felt color skin** + **Tile back colour** → CSS-var overrides applied
- *   on the Match container; persisted via `useGame.setSettings`.
- * - **Auto-sort hand** → drives whether the SortPicker default re-applies
- *   on every fresh hand.
- * - **Animations** → in-app override of the OS `prefers-reduced-motion`,
- *   read by main.tsx's MotionConfig wrapper.
- * - **Sound** → no engine wiring yet (queued in TODO.md → "Sound effects").
- * - **Turn timer** → wires to engine via `setRules` (host-only); non-hosts
- *   see the current value as read-only.
- *
- * Below the controls is a 136-tile reference grouped by suit. Reuses the
- * new TileGlyph rendering, scaled up to 42×58px.
+ * Felt + tile-back picks flow through `useGame.setSettings`, which
+ * persists to localStorage on every write — the legacy
+ * `expo-sqlite/localStorage` polyfill keeps it durable on native.
  */
-export function SettingsPanel({
-  open,
-  onClose,
-  isHost,
-  turnTimeoutMs,
-  onTurnTimeoutChange,
-}: SettingsPanelProps) {
+export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
   const settings = useGame((s) => s.settings);
   const setSettings = useGame((s) => s.setSettings);
 
-  if (!open) return null;
-
   return (
-    <div
-      role="presentation"
-      onClick={onClose}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') onClose();
-      }}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 100,
-        background: 'oklch(0.2 0.02 60 / 0.4)',
-        backdropFilter: 'blur(6px)',
-        WebkitBackdropFilter: 'blur(6px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 20,
-        fontFamily: SANS,
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => e.stopPropagation()}
-        style={{
-          width: 'min(900px, 92%)',
-          maxHeight: '88vh',
-          background: PAPER_HI,
-          borderRadius: 24,
-          boxShadow: '0 24px 60px rgba(0,0,0,0.25)',
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
-        }}
-      >
-        <Header onClose={onClose} />
-        <div
-          style={{
-            overflowY: 'auto',
-            padding: 24,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 24,
-          }}
-        >
-          <SettingsGrid
-            settings={settings}
-            onPatch={setSettings}
-            isHost={isHost}
-            turnTimeoutMs={turnTimeoutMs}
-            onTurnTimeoutChange={onTurnTimeoutChange}
+    <Modal open={open} title="Settings" onClose={onClose} maxWidth={520}>
+      <ScrollView contentContainerStyle={{ padding: 18, gap: 18 }}>
+        <Section title="Felt skin">
+          <FeltSwatchRow value={settings.felt} onChange={(felt) => setSettings({ felt })} />
+        </Section>
+
+        <Section title="Tile back">
+          <TileBackSwatchRow
+            value={settings.tileBack}
+            onChange={(tileBack) => setSettings({ tileBack })}
           />
-          <TileReference />
-        </div>
-      </div>
-    </div>
+        </Section>
+
+        <Section title="Behaviour">
+          <ToggleRow
+            label="Auto-sort hand"
+            hint="Re-sort by suit on every state update."
+            value={settings.autoSort}
+            onChange={(autoSort) => setSettings({ autoSort })}
+          />
+          <ToggleRow
+            label="Sound effects"
+            hint="Discard thud + win fanfare."
+            value={settings.sound}
+            onChange={(sound) => setSettings({ sound })}
+          />
+          <ToggleRow
+            label="Animations"
+            hint="Override the OS reduced-motion preference."
+            value={settings.animations}
+            onChange={(animations) => setSettings({ animations })}
+          />
+        </Section>
+      </ScrollView>
+    </Modal>
   );
 }
 
-function Header({ onClose }: { onClose: () => void }) {
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div
-      style={{
-        padding: '18px 24px',
-        borderBottom: `1px solid ${HAIRLINE}`,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-      }}
-    >
-      <div>
-        <div style={{ fontWeight: 900, fontSize: 22, color: INK }}>
-          Settings &amp; Tile Reference
-        </div>
-        <div style={{ fontSize: 12, color: INK_3, marginTop: 2 }}>
-          Hong Kong Mahjong · 136 tiles · 34 unique faces × 4 copies
-        </div>
-      </div>
-      <button
-        type="button"
-        onClick={onClose}
-        aria-label="Close"
-        style={{
-          width: 36,
-          height: 36,
-          borderRadius: '50%',
-          border: 'none',
-          background: PAPER,
-          cursor: 'pointer',
-          fontSize: 16,
-          fontWeight: 700,
-          color: INK,
-        }}
-      >
-        ✕
-      </button>
-    </div>
+    <View style={{ gap: 8 }}>
+      <Text style={{ fontSize: 11, fontWeight: '900', color: COLORS.ink3, letterSpacing: 0.6 }}>
+        {title.toUpperCase()}
+      </Text>
+      {children}
+    </View>
   );
 }
 
-interface SettingsGridProps {
-  settings: UserSettings;
-  onPatch: (p: Partial<UserSettings>) => void;
-  isHost: boolean;
-  turnTimeoutMs: number;
-  onTurnTimeoutChange: (ms: number) => void;
-}
-
-function SettingsGrid({
-  settings,
-  onPatch,
-  isHost,
-  turnTimeoutMs,
-  onTurnTimeoutChange,
-}: SettingsGridProps) {
+function FeltSwatchRow({ value, onChange }: { value: FeltSkin; onChange: (v: FeltSkin) => void }) {
   return (
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-        gap: 16,
-        padding: 16,
-        background: CREAM,
-        borderRadius: 16,
-      }}
-    >
-      <SettingRow label="Felt color" hint="Table surface tone">
-        <SwatchRow<FeltSkin>
-          options={Object.entries(FELT_SKINS).map(([id, s]) => ({
-            id: id as FeltSkin,
-            name: s.name,
-            background: `linear-gradient(135deg, ${s.top}, ${s.bottom})`,
-            shape: 'square',
-          }))}
-          active={settings.felt}
-          onChange={(felt) => onPatch({ felt })}
-        />
-      </SettingRow>
-      <SettingRow label="Tile back" hint="Color on the back of unrevealed tiles">
-        <SwatchRow<TileBackSkin>
-          options={Object.entries(TILE_BACK_SKINS).map(([id, s]) => ({
-            id: id as TileBackSkin,
-            name: s.name,
-            background: `linear-gradient(180deg, ${s.top}, ${s.bottom})`,
-            shape: 'tile',
-          }))}
-          active={settings.tileBack}
-          onChange={(tileBack) => onPatch({ tileBack })}
-        />
-      </SettingRow>
-      <SettingRow label="Auto-sort hand" hint="Reorder by suit on draw">
-        <Toggle on={settings.autoSort} onChange={(v) => onPatch({ autoSort: v })} />
-      </SettingRow>
-      <SettingRow label="Animations" hint="Tile flights + dispenser glow">
-        <Toggle on={settings.animations} onChange={(v) => onPatch({ animations: v })} />
-      </SettingRow>
-      <SettingRow
-        label="Turn timer"
-        hint={
-          isHost
-            ? 'Seconds per turn (host only)'
-            : turnTimeoutMs === 0
-              ? 'Infinite — host only'
-              : `${turnTimeoutMs / 1000}s — host only`
-        }
-      >
-        <select
-          value={turnTimeoutMs}
-          disabled={!isHost}
-          onChange={(e) => onTurnTimeoutChange(Number(e.target.value))}
-          style={{
-            padding: '6px 10px',
-            borderRadius: 8,
-            border: `1px solid ${HAIRLINE}`,
-            fontFamily: SANS,
-            fontSize: 13,
-            fontWeight: 600,
-            background: 'white',
-            color: INK,
-            opacity: isHost ? 1 : 0.6,
-          }}
-        >
-          <option value={10000}>10s</option>
-          <option value={20000}>20s</option>
-          <option value={30000}>30s</option>
-          <option value={60000}>60s</option>
-          <option value={0}>∞ Infinite</option>
-        </select>
-      </SettingRow>
-      <SettingRow label="Sound" hint="Discard thuds &amp; win fanfare">
-        <Toggle on={settings.sound} onChange={(v) => onPatch({ sound: v })} />
-      </SettingRow>
-    </div>
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+      {(Object.keys(FELT_SKINS) as FeltSkin[]).map((id) => {
+        const skin = FELT_SKINS[id];
+        const selected = value === id;
+        return (
+          <Pressable
+            key={id}
+            onPress={() => onChange(id)}
+            style={({ pressed }) => ({
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+              padding: 6,
+              paddingRight: 10,
+              borderRadius: 10,
+              borderWidth: 2,
+              borderColor: selected ? COLORS.red : COLORS.hairline,
+              backgroundColor: pressed ? COLORS.cream : 'transparent',
+            })}
+          >
+            <View
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: 6,
+                backgroundColor: skin.top,
+                borderWidth: 2,
+                borderColor: skin.bottom,
+              }}
+            />
+            <Text style={{ fontSize: 12, fontWeight: '700', color: COLORS.ink }}>{skin.name}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
   );
 }
 
-function SettingRow({
-  label,
-  hint,
-  children,
-}: {
+function TileBackSwatchRow({
+  value,
+  onChange,
+}: { value: TileBackSkin; onChange: (v: TileBackSkin) => void }) {
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+      {(Object.keys(TILE_BACK_SKINS) as TileBackSkin[]).map((id) => {
+        const skin = TILE_BACK_SKINS[id];
+        const selected = value === id;
+        return (
+          <Pressable
+            key={id}
+            onPress={() => onChange(id)}
+            style={({ pressed }) => ({
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+              padding: 6,
+              paddingRight: 10,
+              borderRadius: 10,
+              borderWidth: 2,
+              borderColor: selected ? COLORS.red : COLORS.hairline,
+              backgroundColor: pressed ? COLORS.cream : 'transparent',
+            })}
+          >
+            <View
+              style={{
+                width: 22,
+                height: 30,
+                borderRadius: 4,
+                backgroundColor: skin.top,
+                borderWidth: 2,
+                borderColor: skin.bottom,
+              }}
+            />
+            <Text style={{ fontSize: 12, fontWeight: '700', color: COLORS.ink }}>{skin.name}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+interface ToggleRowProps {
   label: string;
   hint: string;
-  children: React.ReactNode;
-}) {
+  value: boolean;
+  onChange: (v: boolean) => void;
+}
+
+function ToggleRow({ label, hint, value, onChange }: ToggleRowProps) {
   return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: 12,
-      }}
-    >
-      <div>
-        <div style={{ fontWeight: 800, fontSize: 13, color: INK }}>{label}</div>
-        <div style={{ fontSize: 11, color: INK_3 }}>{hint}</div>
-      </div>
-      {children}
-    </div>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 4 }}>
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontSize: 13, fontWeight: '700', color: COLORS.ink }}>{label}</Text>
+        <Text style={{ fontSize: 11, color: COLORS.ink3, fontWeight: '600' }}>{hint}</Text>
+      </View>
+      <Switch value={value} onValueChange={onChange} />
+    </View>
   );
 }
 
-function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={on}
-      onClick={() => onChange(!on)}
-      style={{
-        width: 44,
-        height: 26,
-        borderRadius: 13,
-        border: 'none',
-        background: on ? 'oklch(0.7 0.14 150)' : 'oklch(0.85 0.012 85)',
-        position: 'relative',
-        cursor: 'pointer',
-        transition: 'all 200ms',
-        boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.1)',
-        padding: 0,
-      }}
-    >
-      <span
-        aria-hidden
-        style={{
-          position: 'absolute',
-          top: 2,
-          left: on ? 20 : 2,
-          width: 22,
-          height: 22,
-          borderRadius: '50%',
-          background: 'white',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-          transition: 'left 200ms',
-        }}
-      />
-    </button>
-  );
-}
+// Re-export for callers that just want the per-key types (used by
+// `useGame.setSettings` typing).
+export type { UserSettings };

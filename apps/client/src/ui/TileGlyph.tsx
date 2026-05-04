@@ -1,87 +1,58 @@
 import type { Tile as MTile } from '@mahjong/game-logic';
+import { Text, View } from 'react-native';
+import Svg, { Circle, Ellipse, G, Line, Path } from 'react-native-svg';
 
 /**
- * SVG glyph for a mahjong tile face. Ported from the design comp at
- * `/tmp/design/design/tile.jsx`. Drawn inside a 36×50 viewBox so it fits the
- * existing CSS-var driven `--tile-w` / `--tile-h` sizing without changes.
+ * Mahjong tile face. Native port of `_legacy/src/ui/TileGlyph.tsx` —
+ * same visual language (procedural geometry for pin dots and bamboo
+ * sticks, layered TC-serif character text for man / winds / dragons,
+ * and the traditional bird for sou-1).
  *
- * Layouts:
- * - Man (萬): big TC-serif numeral on top, smaller 萬 below — both deep red.
- * - Pin (筒): N concentric dots in classical mahjong patterns.
- * - Sou (索): N stylised bamboo sticks; sou-1 is the traditional bird.
- * - Winds: 東/南/西/北 in dark slate, TC serif.
- * - Dragons: 中 (red), 發 (green), 白 (slate) — TC serif at full body height.
+ * Rendering split: react-native-svg for geometry (circles, ellipses,
+ * paths). RN `<Text>` absolutely-positioned over the SVG for character
+ * glyphs — `react-native-svg`'s `SvgText` baseline alignment is
+ * inconsistent across iOS / Android / web, and we need precise
+ * alignment so the design language reads cleanly on every platform.
  *
- * The accessible label is owned by the wrapping button in `Tile.tsx`; the
- * SVG itself is decorative.
+ * Renders into the parent's full size; `width: '100%'` + `height: '100%'`.
+ * The 36×50 reference viewBox matches the legacy `--tile-w` / `--tile-h`
+ * geometry.
  */
 const W = 36;
 const H = 50;
 const CX = W / 2;
 const CY = H / 2;
+const MAN_FILL = '#7e2e21';
+const SERIF_FAMILY = 'Noto Serif TC';
 
 export function TileGlyph({ t }: { t: MTile }) {
   return (
-    <svg
-      viewBox={`0 0 ${W} ${H}`}
-      width="100%"
-      height="100%"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-      preserveAspectRatio="xMidYMid meet"
-      style={{ display: 'block', overflow: 'visible' }}
-    >
-      {renderFace(t)}
-    </svg>
+    <View style={{ width: '100%', height: '100%', position: 'relative' }}>
+      <Svg width="100%" height="100%" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet">
+        {renderSvg(t)}
+      </Svg>
+      {renderTextOverlay(t)}
+    </View>
   );
 }
 
-function renderFace(t: MTile) {
+function renderSvg(t: MTile) {
   if (t.kind === 'suit') {
-    if (t.suit === 'man') return <ManFace rank={t.rank} />;
-    if (t.suit === 'pin') return <PinFace rank={t.rank} />;
-    return <SouFace rank={t.rank} />;
+    if (t.suit === 'pin') return <PinSvg rank={t.rank} />;
+    if (t.suit === 'sou') return <SouSvg rank={t.rank} />;
   }
-  return <HonorFace honor={t.honor} />;
+  // man + honors are pure-text — no SVG geometry needed
+  return null;
 }
 
-const MAN_FILL = 'oklch(0.4 0.18 25)';
-const SERIF = "'Noto Serif TC', 'Noto Serif', serif";
-
-function ManFace({ rank }: { rank: number }) {
-  return (
-    <g>
-      <text
-        x={CX}
-        y={CY - H * 0.12}
-        textAnchor="middle"
-        fontFamily={SERIF}
-        fontSize={W * 0.42}
-        fontWeight="700"
-        fill={MAN_FILL}
-        dominantBaseline="middle"
-      >
-        {rank}
-      </text>
-      <text
-        x={CX}
-        y={CY + H * 0.18}
-        textAnchor="middle"
-        fontFamily={SERIF}
-        fontSize={W * 0.36}
-        fontWeight="600"
-        fill={MAN_FILL}
-        dominantBaseline="middle"
-      >
-        萬
-      </text>
-    </g>
-  );
+function renderTextOverlay(t: MTile) {
+  if (t.kind === 'suit' && t.suit === 'man') return <ManText rank={t.rank} />;
+  if (t.kind === 'honor') return <HonorText honor={t.honor} />;
+  return null;
 }
 
-// Layouts for 1-9 numbered tiles. Coordinates are relative to the tile
-// centre and assume the design's 60-unit reference width; they're rescaled
-// to our 36×50 viewBox via the parent <g transform>.
+// 9-position grid layouts for pin/sou. Coordinates relative to viewBox
+// centre, in the design's 60-unit reference space; rescaled to 36×50 below.
 const LAYOUTS: Record<number, ReadonlyArray<readonly [number, number]>> = {
   1: [[0, 0]],
   2: [
@@ -146,86 +117,135 @@ const LAYOUTS: Record<number, ReadonlyArray<readonly [number, number]>> = {
   ],
 };
 
-function PinDot({ x, y, r }: { x: number; y: number; r: number }) {
+function PinSvg({ rank }: { rank: number }) {
+  const layout = LAYOUTS[rank] ?? [];
+  const r = rank <= 4 ? 4.5 : rank <= 6 ? 3.8 : 3.2;
+  const sc = W / 60;
   return (
-    <g transform={`translate(${x},${y})`}>
-      <circle r={r} fill="oklch(0.45 0.18 230)" />
-      <circle r={r - 1.4} fill="none" stroke="oklch(0.95 0.02 85)" strokeWidth="0.8" />
-      <circle r={r - 2.6} fill="oklch(0.5 0.16 25)" opacity="0.8" />
-    </g>
+    <G transform={`translate(${CX},${CY}) scale(${sc})`}>
+      {layout.map(([x, y], i) => (
+        <PinDot
+          // biome-ignore lint/suspicious/noArrayIndexKey: layout is fixed per rank
+          key={i}
+          x={x}
+          y={y}
+          r={r}
+        />
+      ))}
+    </G>
   );
 }
 
-function PinFace({ rank }: { rank: number }) {
-  const layout = LAYOUTS[rank] ?? [];
-  const r = rank <= 4 ? 4.5 : rank <= 6 ? 3.8 : 3.2;
-  // The design's coordinates assume a 60-unit reference; scale to our 36px width.
-  const sc = W / 60;
+function PinDot({ x, y, r }: { x: number; y: number; r: number }) {
   return (
-    <g transform={`translate(${CX},${CY}) scale(${sc})`}>
+    <G transform={`translate(${x},${y})`}>
+      <Circle r={r} fill="#1a5b9e" />
+      <Circle r={r - 1.4} fill="none" stroke="#ece4d3" strokeWidth={0.8} />
+      <Circle r={r - 2.6} fill="#a83b2a" opacity={0.8} />
+    </G>
+  );
+}
+
+function SouSvg({ rank }: { rank: number }) {
+  if (rank === 1) {
+    // 1-sou: traditional bird. Procedural geometry — body, head, eye,
+    // wings, beak.
+    const sc = W / 44;
+    return (
+      <G transform={`translate(${CX},${CY}) scale(${sc})`}>
+        <Ellipse cx={0} cy={2} rx={10} ry={13} fill="#3e8749" />
+        <Circle cx={0} cy={-9} r={6} fill="#aa3f30" />
+        <Circle cx={2} cy={-10} r={1.2} fill="white" />
+        <Path
+          d="M -3 -2 Q -8 4 -10 8"
+          stroke="#306835"
+          strokeWidth={1.5}
+          fill="none"
+          strokeLinecap="round"
+        />
+        <Path
+          d="M 3 -2 Q 8 4 10 8"
+          stroke="#306835"
+          strokeWidth={1.5}
+          fill="none"
+          strokeLinecap="round"
+        />
+        <Path d="M 0 -3 L 4 -6" stroke="#a17b1c" strokeWidth={1.5} strokeLinecap="round" />
+      </G>
+    );
+  }
+  const layout = LAYOUTS[rank] ?? [];
+  const baseScale = rank <= 4 ? 0.75 : rank <= 6 ? 0.6 : 0.5;
+  const sc = (baseScale * (W / 44)) / 0.75;
+  return (
+    <G transform={`translate(${CX},${CY}) scale(${sc})`}>
       {layout.map(([x, y], i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: layout is fixed per rank
-        <PinDot key={i} x={x} y={y} r={r} />
+        <BambooStick
+          // biome-ignore lint/suspicious/noArrayIndexKey: layout is fixed per rank
+          key={i}
+          x={x}
+          y={y}
+          scale={0.75}
+        />
       ))}
-    </g>
+    </G>
   );
 }
 
 function BambooStick({ x, y, scale = 1 }: { x: number; y: number; scale?: number }) {
   return (
-    <g transform={`translate(${x},${y}) scale(${scale})`}>
-      <ellipse cx="0" cy="0" rx="3.2" ry="9" fill="oklch(0.55 0.13 150)" />
-      <ellipse cx="0" cy="-3" rx="3.2" ry="2" fill="oklch(0.7 0.15 150)" opacity="0.6" />
-      <line x1="-3.2" y1="0" x2="3.2" y2="0" stroke="oklch(0.35 0.1 150)" strokeWidth="0.6" />
-    </g>
+    <G transform={`translate(${x},${y}) scale(${scale})`}>
+      <Ellipse cx={0} cy={0} rx={3.2} ry={9} fill="#3e8749" />
+      <Ellipse cx={0} cy={-3} rx={3.2} ry={2} fill="#5dba6c" opacity={0.6} />
+      <Line x1={-3.2} y1={0} x2={3.2} y2={0} stroke="#284628" strokeWidth={0.6} />
+    </G>
   );
 }
 
-function SouFace({ rank }: { rank: number }) {
-  if (rank === 1) {
-    // 1-sou is traditionally a bird.
-    const sc = W / 44;
-    return (
-      <g transform={`translate(${CX},${CY}) scale(${sc})`}>
-        <ellipse cx="0" cy="2" rx="10" ry="13" fill="oklch(0.55 0.13 150)" />
-        <circle cx="0" cy="-9" r="6" fill="oklch(0.5 0.18 25)" />
-        <circle cx="2" cy="-10" r="1.2" fill="white" />
-        <path
-          d="M -3 -2 Q -8 4 -10 8"
-          stroke="oklch(0.4 0.1 150)"
-          strokeWidth="1.5"
-          fill="none"
-          strokeLinecap="round"
-        />
-        <path
-          d="M 3 -2 Q 8 4 10 8"
-          stroke="oklch(0.4 0.1 150)"
-          strokeWidth="1.5"
-          fill="none"
-          strokeLinecap="round"
-        />
-        <path
-          d="M 0 -3 L 4 -6"
-          stroke="oklch(0.5 0.18 80)"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-        />
-      </g>
-    );
-  }
-  const layout = LAYOUTS[rank] ?? [];
-  const sc = (rank <= 4 ? 0.75 : rank <= 6 ? 0.6 : 0.5) * (W / 44);
+function ManText({ rank }: { rank: number }) {
+  // Position = percentage of parent height (matches legacy text Y values
+  // CY - H*0.12 and CY + H*0.18 → ~38% and ~68% of H respectively).
   return (
-    <g transform={`translate(${CX},${CY}) scale(${sc / 0.75})`}>
-      {layout.map(([x, y], i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: layout is fixed per rank
-        <BambooStick key={i} x={x} y={y} scale={0.75} />
-      ))}
-    </g>
+    <>
+      <View
+        pointerEvents="none"
+        style={{ position: 'absolute', left: 0, right: 0, top: '24%', alignItems: 'center' }}
+      >
+        <Text
+          allowFontScaling={false}
+          style={{
+            fontFamily: SERIF_FAMILY,
+            fontSize: 16,
+            fontWeight: '700',
+            color: MAN_FILL,
+            lineHeight: 18,
+          }}
+        >
+          {rank}
+        </Text>
+      </View>
+      <View
+        pointerEvents="none"
+        style={{ position: 'absolute', left: 0, right: 0, top: '54%', alignItems: 'center' }}
+      >
+        <Text
+          allowFontScaling={false}
+          style={{
+            fontFamily: SERIF_FAMILY,
+            fontSize: 13,
+            fontWeight: '600',
+            color: MAN_FILL,
+            lineHeight: 14,
+          }}
+        >
+          萬
+        </Text>
+      </View>
+    </>
   );
 }
 
-const WINDS: Record<string, string> = {
+const WIND_GLYPHS: Record<string, string> = {
   E: '東',
   S: '南',
   W: '西',
@@ -233,42 +253,48 @@ const WINDS: Record<string, string> = {
 };
 
 const DRAGONS: Record<string, { glyph: string; color: string }> = {
-  Z: { glyph: '中', color: 'oklch(0.5 0.18 25)' }, // red
-  F: { glyph: '發', color: 'oklch(0.5 0.14 150)' }, // green
-  B: { glyph: '白', color: 'oklch(0.4 0.02 230)' }, // slate
+  Z: { glyph: '中', color: '#aa3f30' },
+  F: { glyph: '發', color: '#3a7236' },
+  B: { glyph: '白', color: '#525960' },
 };
 
-function HonorFace({ honor }: { honor: string }) {
-  if (honor in WINDS) {
-    return (
-      <text
-        x={CX}
-        y={CY}
-        textAnchor="middle"
-        fontFamily={SERIF}
-        fontSize={W * 0.55}
-        fontWeight="700"
-        fill="oklch(0.3 0.05 240)"
-        dominantBaseline="central"
-      >
-        {WINDS[honor]}
-      </text>
-    );
+function HonorText({ honor }: { honor: string }) {
+  let glyph: string | undefined;
+  let color: string | undefined;
+  if (honor in WIND_GLYPHS) {
+    glyph = WIND_GLYPHS[honor];
+    color = '#363b48';
+  } else if (honor in DRAGONS) {
+    const d = DRAGONS[honor]!;
+    glyph = d.glyph;
+    color = d.color;
   }
-  const d = DRAGONS[honor];
-  if (!d) return null;
+  if (!glyph || !color) return null;
   return (
-    <text
-      x={CX}
-      y={CY}
-      textAnchor="middle"
-      fontFamily={SERIF}
-      fontSize={W * 0.55}
-      fontWeight="700"
-      fill={d.color}
-      dominantBaseline="central"
+    <View
+      pointerEvents="none"
+      style={{
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        top: 0,
+        bottom: 0,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
     >
-      {d.glyph}
-    </text>
+      <Text
+        allowFontScaling={false}
+        style={{
+          fontFamily: SERIF_FAMILY,
+          fontSize: 22,
+          fontWeight: '700',
+          color,
+          lineHeight: 24,
+        }}
+      >
+        {glyph}
+      </Text>
+    </View>
   );
 }

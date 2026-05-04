@@ -6,7 +6,7 @@ up the rules without re-deriving them.
 
 ## Branching policy
 
-**One PR = one new branch off `main`.**
+**Default: one PR = one new branch off `main`.**
 
 Do NOT reuse a long-lived feature branch and force-push for each PR. After
 a PR merges, branch off `main` again for the next chunk:
@@ -23,6 +23,27 @@ rewrite history other tools may have linked to.
 If a session-startup instruction names a specific branch, prefer the naming
 convention from that instruction but still create a fresh branch per PR
 rather than reusing the named one across multiple PRs.
+
+### Carve-out: long-lived migration branches
+
+For explicitly-bounded multi-week refactors that touch the build system or
+swap out a major dependency wholesale (e.g., Vite → Expo + Metro,
+Capacitor → React Native), a single long-lived branch is acceptable. The
+default per-PR-stays-green discipline isn't compatible with a coordinated
+stack-replacement that breaks `main` halfway through.
+
+Rules for these branches:
+
+- Get explicit user approval before opening one. Do not unilaterally
+  decide a task is "long-lived migration" — assume the default applies
+  unless the user has waived it.
+- The first commit on the branch should reference / link to the plan or
+  user instruction that approved it.
+- Commits along the way are fine — treat the branch like a feature branch
+  with multiple commits, not like `main`.
+- At the end, **still squash-merge** to a single mainline commit.
+- The default ("one PR = one branch") still applies to all other work
+  done in parallel during the migration period.
 
 ## PR workflow
 

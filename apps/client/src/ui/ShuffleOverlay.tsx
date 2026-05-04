@@ -1,136 +1,138 @@
-import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
-import { HAIRLINE, INK_2, SANS, TILE_BACK_BG } from '../native/theme.js';
-import { useGame } from '../state/game.js';
+import { Animated, Easing, Text, View } from 'react-native';
+import { useGame } from '../state/game';
 
 const SHUFFLE_MS = 1700;
-const SPIN_INDICES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] as const;
+const SPIN_COUNT = 12;
+const RADIUS = 80;
 
 /**
- * Brief between-hands shuffle ceremony — fans a small ring of face-down
- * tiles that spin into a swirl while the wall is being rebuilt for the
- * next hand. Triggered by transitions out of `resolved` (the previous
- * hand has wrapped up, a fresh one is about to start).
- *
- * The backdrop is a radial gradient (dark at the center where the swirl
- * lives, transparent towards the edges) instead of a uniform black tint.
- * This way the actual table tiles — which are simultaneously animating
- * from their old positions in hands/discards/wall to their new wall
- * positions via framer-motion's `layoutId` — stay visible behind the
- * swirl. The "real" mechanical dispense (engine state-machine pause +
- * gather-into-center-pile-then-disperse) is still queued; this is the
- * cheap halfway visualization.
+ * Between-hand shuffle ceremony. Native port of
+ * `_legacy/src/ui/ShuffleOverlay.tsx`. Triggered by a fresh `seed`
+ * landing in `useGame.state` — sets the store's `shuffling` flag and
+ * fans 12 face-down tile tokens out from centre while the wall is
+ * being rebuilt for the next hand. RN core `Animated` (no reanimated)
+ * so it works in Expo Go.
  */
 export function ShuffleOverlay() {
-  const phase = useGame((s) => s.state?.phase);
   const seed = useGame((s) => s.state?.seed);
   const setShuffling = useGame((s) => s.setShuffling);
   const lastSeed = useRef<number | undefined>(undefined);
   const [active, setActive] = useState(false);
+  const fade = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (seed === undefined) return;
     if (lastSeed.current !== undefined && lastSeed.current !== seed) {
       setActive(true);
-      // Tell Tile to swap to a slower spring while the dispense plays out —
-      // see the comment on `shuffling` in state/game.ts.
       setShuffling(true);
+      Animated.timing(fade, { toValue: 1, duration: 200, useNativeDriver: true }).start();
       const timer = setTimeout(() => {
-        setActive(false);
-        setShuffling(false);
+        Animated.timing(fade, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
+          setActive(false);
+          setShuffling(false);
+        });
       }, SHUFFLE_MS);
       lastSeed.current = seed;
       return () => clearTimeout(timer);
     }
     lastSeed.current = seed;
-  }, [seed, setShuffling]);
+  }, [seed, setShuffling, fade]);
 
-  // Suppress while a new hand's dice ceremony is taking over visual focus.
-  void phase;
-
+  if (!active) return null;
   return (
-    <AnimatePresence>
-      {active && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.2 }}
+    <Animated.View
+      pointerEvents="none"
+      style={{
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        top: 0,
+        bottom: 0,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(241, 234, 220, 0.78)',
+        zIndex: 90,
+        opacity: fade,
+      }}
+    >
+      <View style={{ width: 220, height: 220 }}>
+        {Array.from({ length: SPIN_COUNT }, (_, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: position is fixed per index
+          <SpinningTile key={i} index={i} />
+        ))}
+        <View
+          pointerEvents="none"
           style={{
-            position: 'fixed',
-            inset: 0,
-            display: 'flex',
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            top: 0,
+            bottom: 0,
             alignItems: 'center',
             justifyContent: 'center',
-            // Soft cream backdrop with a deeper centre — keeps the swirl
-            // readable while the table tiles animating behind via
-            // layoutId stay visible at the edges.
-            background:
-              'radial-gradient(circle at center, oklch(0.93 0.02 85 / 0.85) 10%, oklch(0.93 0.02 85 / 0.1) 70%)',
-            backdropFilter: 'blur(2px)',
-            WebkitBackdropFilter: 'blur(2px)',
-            zIndex: 90,
-            pointerEvents: 'none',
           }}
         >
-          <div style={{ position: 'relative', width: 220, height: 220 }}>
-            {SPIN_INDICES.map((i) => (
-              <SpinningTile key={`spin-${i}`} index={i} />
-            ))}
-            <div
-              style={{
-                position: 'absolute',
-                inset: 0,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: INK_2,
-                fontSize: 13,
-                fontWeight: 800,
-                letterSpacing: 0.6,
-                fontFamily: SANS,
-              }}
-            >
-              Shuffling…
-            </div>
-          </div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+          <Text
+            style={{
+              color: '#403c33',
+              fontSize: 13,
+              fontWeight: '800',
+              letterSpacing: 0.6,
+            }}
+          >
+            Shuffling…
+          </Text>
+        </View>
+      </View>
+    </Animated.View>
   );
 }
 
-const RADIUS = 80;
-
 function SpinningTile({ index }: { index: number }) {
-  const angle = (index / 12) * Math.PI * 2;
-  const x = Math.cos(angle) * RADIUS;
-  const y = Math.sin(angle) * RADIUS;
+  const angle = (index / SPIN_COUNT) * Math.PI * 2;
+  const targetX = Math.cos(angle) * RADIUS;
+  const targetY = Math.sin(angle) * RADIUS;
+  const t = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const delay = index * 25;
+    Animated.sequence([
+      Animated.delay(delay),
+      Animated.timing(t, {
+        toValue: 1,
+        duration: SHUFFLE_MS,
+        easing: Easing.inOut(Easing.ease),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [index, t]);
+
+  const tx = t.interpolate({ inputRange: [0, 1], outputRange: [0, targetX] });
+  const ty = t.interpolate({ inputRange: [0, 1], outputRange: [0, targetY] });
+  const rot = t.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+
   return (
-    <motion.div
-      initial={{ x: 0, y: 0, opacity: 0, rotate: 0 }}
-      animate={{ x, y, opacity: 1, rotate: 360 }}
-      exit={{ x: 0, y: 0, opacity: 0, rotate: 0 }}
-      transition={{
-        duration: SHUFFLE_MS / 1000,
-        ease: 'easeInOut',
-        delay: index * 0.025,
-      }}
+    <Animated.View
       style={{
         position: 'absolute',
-        top: '50%',
         left: '50%',
-        marginTop: -22,
+        top: '50%',
         marginLeft: -16,
+        marginTop: -22,
         width: 32,
         height: 44,
-        // Falls back to TILE_BACK_BG when run outside a Match (no
-        // --tile-back-1/2 CSS vars set); inside a Match the Settings
-        // panel's tile-back skin overrides apply.
-        background: `linear-gradient(180deg, var(--tile-back-1, ${TILE_BACK_BG}), var(--tile-back-2, ${TILE_BACK_BG}))`,
         borderRadius: 4,
-        boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
-        border: `1px solid ${HAIRLINE}`,
+        backgroundColor: '#7fa9c1',
+        borderColor: '#cdc1ad',
+        borderWidth: 1,
+        shadowColor: '#000',
+        shadowOpacity: 0.25,
+        shadowRadius: 6,
+        shadowOffset: { width: 0, height: 2 },
+        elevation: 4,
+        opacity: t,
+        transform: [{ translateX: tx }, { translateY: ty }, { rotate: rot }],
       }}
     />
   );
