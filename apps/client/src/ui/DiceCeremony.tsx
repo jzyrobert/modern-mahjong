@@ -61,6 +61,17 @@ export function DiceCeremony() {
 
   const visible = !!rolls && !dismissed && dealer !== undefined;
 
+  // Window-level Escape so keyboard users can dismiss without focusing the
+  // backdrop (mirrors `Modal.tsx`).
+  useEffect(() => {
+    if (!visible) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setDismissed(true);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [visible]);
+
   return (
     <AnimatePresence>
       {visible && (
