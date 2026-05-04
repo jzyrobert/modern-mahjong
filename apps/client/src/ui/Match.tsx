@@ -23,6 +23,8 @@ import { RulePanel } from './RulePanel';
 import { Scoreboard } from './Scoreboard';
 import { Tile } from './Tile';
 import { GhostButton, PrimaryButton } from './buttons';
+import { ChatBar } from './match/ChatBar';
+import { ChatBubbles } from './match/ChatBubbles';
 import { GameStatusBar } from './match/GameStatusBar';
 import { MeldStrip } from './match/MeldStrip';
 import { OppHandStrip } from './match/OppHandStrip';
@@ -263,9 +265,16 @@ export function Match() {
 
       {hasClaimOption ? <ClaimBar onAction={onAction} seat={seat} /> : null}
 
+      <View style={{ alignItems: 'center', paddingVertical: 4 }}>
+        <ChatBar onSend={transport.sendChat} />
+      </View>
+
       {state.lastResult ? (
         <ResultPanel onAction={onAction} mySeat={seat} isHost={isHost} />
       ) : null}
+
+      {/* Floating emote bubbles overlay (absolute-positioned). */}
+      <ChatBubbles seatToPosition={seatToPosition} />
     </ScrollView>
   );
 }
