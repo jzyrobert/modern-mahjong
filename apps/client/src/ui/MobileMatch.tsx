@@ -130,45 +130,60 @@ export function MobileMatch({
     return out;
   }, [state, seat]);
 
-  if (!state || seat === null) {
+  // Cached layout + position->seat lookup. Without these, the JSX did four
+  // separate `placements.find(p => p.position === X)!` scans per opponent
+  // per render — twelve scans + twelve non-null assertions for the three
+  // opponent strips.
+  const placements = useMemo(
+    () => (state && seat !== null ? layoutFor(seat, state.dealer) : null),
+    [state, seat],
+  );
+  const byPosition = useMemo(() => {
+    if (!placements) return null;
+    const m = {} as Record<Position, SeatPlacement>;
+    for (const p of placements) m[p.position] = p;
+    return m;
+  }, [placements]);
+  const seatToPosition = useMemo(() => {
+    const m: Record<Seat, Position> = { 0: 'bottom', 1: 'bottom', 2: 'bottom', 3: 'bottom' };
+    if (placements) {
+      for (const p of placements) m[p.seat] = p.position;
+    }
+    return m;
+  }, [placements]);
+
+  const felt = FELT_SKINS[settings.felt];
+  const containerStyle = useMemo(
+    (): React.CSSProperties => ({
+      position: 'relative',
+      width: '100%',
+      minHeight: '100vh',
+      background: `radial-gradient(ellipse at center, ${felt.top}, ${felt.bottom})`,
+      boxShadow: 'inset 0 2px 8px rgba(0,0,0,0.25)',
+      overflow: 'hidden',
+      ['--tile-w' as string]: '20px',
+      ['--tile-h' as string]: '28px',
+      ['--felt-1' as string]: felt.top,
+      ['--felt-2' as string]: felt.bottom,
+    }),
+    [felt.top, felt.bottom],
+  );
+
+  if (!state || seat === null || !byPosition) {
     return null;
   }
-
-  const placements = layoutFor(seat, state.dealer);
-  const opponents = placements.filter((p) => p.position !== 'bottom');
-
-  // Map seat numbers to visual positions for the SharedDiscardPool's
-  // per-seat colour underlines.
-  const seatToPosition: Record<Seat, Position> = {
-    0: 'bottom',
-    1: 'bottom',
-    2: 'bottom',
-    3: 'bottom',
-  };
-  for (const p of placements) seatToPosition[p.seat] = p.position;
 
   // Highlight the live discard only while a claim is on offer; outside
   // `awaitingClaims` the discard already resolved and the halo would be
   // stale.
   const latestId =
     state.phase === 'awaitingClaims' && state.lastDiscard ? tileId(state.lastDiscard.tile) : null;
-  const felt = FELT_SKINS[settings.felt];
+  const top = byPosition.top;
+  const left = byPosition.left;
+  const right = byPosition.right;
 
   return (
-    <div
-      style={{
-        position: 'relative',
-        width: '100%',
-        minHeight: '100vh',
-        background: `radial-gradient(ellipse at center, ${felt.top}, ${felt.bottom})`,
-        boxShadow: 'inset 0 2px 8px rgba(0,0,0,0.25)',
-        overflow: 'hidden',
-        ['--tile-w' as string]: '20px',
-        ['--tile-h' as string]: '28px',
-        ['--felt-1' as string]: felt.top,
-        ['--felt-2' as string]: felt.bottom,
-      }}
-    >
+    <div style={containerStyle}>
       <div
         style={{
           position: 'absolute',
@@ -224,34 +239,34 @@ export function MobileMatch({
         }}
       >
         <OppHandStrip
-          seat={opponents.find((p) => p.position === 'top')!.seat}
+          seat={top.seat}
           position="top"
-          seatWind={opponents.find((p) => p.position === 'top')!.seatWind}
+          seatWind={top.seatWind}
           lobby={lobby}
-          handBacks={state.hands[opponents.find((p) => p.position === 'top')!.seat].length}
-          isActive={state.turn === opponents.find((p) => p.position === 'top')!.seat}
+          handBacks={state.hands[top.seat].length}
+          isActive={state.turn === top.seat}
         />
       </div>
 
       <div style={{ position: 'absolute', top: '50%', left: 6, transform: 'translateY(-50%)' }}>
         <OppHandStrip
-          seat={opponents.find((p) => p.position === 'left')!.seat}
+          seat={left.seat}
           position="left"
-          seatWind={opponents.find((p) => p.position === 'left')!.seatWind}
+          seatWind={left.seatWind}
           lobby={lobby}
-          handBacks={state.hands[opponents.find((p) => p.position === 'left')!.seat].length}
-          isActive={state.turn === opponents.find((p) => p.position === 'left')!.seat}
+          handBacks={state.hands[left.seat].length}
+          isActive={state.turn === left.seat}
         />
       </div>
 
       <div style={{ position: 'absolute', top: '50%', right: 6, transform: 'translateY(-50%)' }}>
         <OppHandStrip
-          seat={opponents.find((p) => p.position === 'right')!.seat}
+          seat={right.seat}
           position="right"
-          seatWind={opponents.find((p) => p.position === 'right')!.seatWind}
+          seatWind={right.seatWind}
           lobby={lobby}
-          handBacks={state.hands[opponents.find((p) => p.position === 'right')!.seat].length}
-          isActive={state.turn === opponents.find((p) => p.position === 'right')!.seat}
+          handBacks={state.hands[right.seat].length}
+          isActive={state.turn === right.seat}
         />
       </div>
 

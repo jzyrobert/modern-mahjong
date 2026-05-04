@@ -1,4 +1,4 @@
-import type { Action, Tile as MTile, Seat } from '@mahjong/game-logic';
+import type { Action, GameState, Tile as MTile, Seat } from '@mahjong/game-logic';
 import {
   acrossSeat,
   isWinning,
@@ -10,7 +10,13 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { vibrateLight } from '../native/init.js';
 import { INK, SANS } from '../native/theme.js';
-import { isSeatHost, nameForSeat, useGame } from '../state/game.js';
+import {
+  type LobbyState,
+  type UserSettings,
+  isSeatHost,
+  nameForSeat,
+  useGame,
+} from '../state/game.js';
 import { randomSeed } from '../util.js';
 import { useMediaQuery } from '../util/useMediaQuery.js';
 import { ClaimBar } from './ClaimBar.js';
@@ -75,6 +81,26 @@ export function Match({ onAction, onChat, matchCode, onLeave }: MatchProps) {
     [onAction],
   );
 
+  // Seat-to-visual-position map (drives `ChatBubbles` anchoring + the
+  // mobile shared-discard pool's per-seat colour underline). The user is
+  // always at the bottom; the others rotate via nextSeat / acrossSeat /
+  // prevSeat. Memoised so a stable reference can flow into memoised
+  // children without churning on every render.
+  const seatToPosition = useMemo<Record<Seat, 'bottom' | 'right' | 'top' | 'left'>>(() => {
+    const m: Record<Seat, 'bottom' | 'right' | 'top' | 'left'> = {
+      0: 'bottom',
+      1: 'bottom',
+      2: 'bottom',
+      3: 'bottom',
+    };
+    if (seat === null) return m;
+    m[seat] = 'bottom';
+    m[nextSeat(seat)] = 'right';
+    m[acrossSeat(seat)] = 'top';
+    m[prevSeat(seat)] = 'left';
+    return m;
+  }, [seat]);
+
   if (!state || seat === null) {
     return <div>Waiting for the game to start…</div>;
   }
@@ -103,20 +129,6 @@ export function Match({ onAction, onChat, matchCode, onLeave }: MatchProps) {
   if (isPortraitPhone) {
     return <PortraitFallback />;
   }
-
-  // Seat-to-visual-position map (drives ChatBubbles anchoring). The user
-  // is always at the bottom; the others rotate via nextSeat / acrossSeat /
-  // prevSeat.
-  const seatToPosition: Record<Seat, 'bottom' | 'right' | 'top' | 'left'> = {
-    0: 'bottom',
-    1: 'bottom',
-    2: 'bottom',
-    3: 'bottom',
-  };
-  seatToPosition[seat] = 'bottom';
-  seatToPosition[nextSeat(seat)] = 'right';
-  seatToPosition[acrossSeat(seat)] = 'top';
-  seatToPosition[prevSeat(seat)] = 'left';
 
   const overlays = (
     <>
@@ -158,6 +170,9 @@ export function Match({ onAction, onChat, matchCode, onLeave }: MatchProps) {
         matchCode={matchCode}
         onLeave={onLeave}
         seat={seat}
+        state={state}
+        lobby={lobby}
+        settings={settings}
         sortMode={sortMode}
         onSortModeChange={setSortMode}
         onOpenSettings={() => setSettingsOpen(true)}
@@ -174,6 +189,10 @@ interface DesktopMatchBodyProps {
   matchCode: string | null;
   onLeave: () => void;
   seat: Seat;
+  /** Current engine state — already non-null-validated by the parent. */
+  state: GameState;
+  lobby: LobbyState | null;
+  settings: UserSettings;
   sortMode: SortMode;
   onSortModeChange: (mode: SortMode) => void;
   onOpenSettings: () => void;
@@ -186,20 +205,19 @@ function DesktopMatchBody({
   matchCode,
   onLeave,
   seat,
+  state,
+  lobby,
+  settings,
   sortMode,
   onSortModeChange,
   onOpenSettings,
   onOpenLog,
 }: DesktopMatchBodyProps) {
-  const state = useGame((s) => s.state)!;
-  const you = useGame((s) => s.you);
-  const lobby = useGame((s) => s.lobby);
-  const settings = useGame((s) => s.settings);
   const drawnTileId = useGame((s) => s.drawnTileId);
   const manualOrder = useGame((s) => s.manualOrder);
   const setManualOrder = useGame((s) => s.setManualOrder);
 
-  const myTurn = state.phase === 'turn' && state.turn === you;
+  const myTurn = state.phase === 'turn' && state.turn === seat;
   const isHost = isSeatHost(lobby, seat);
   const needsDraw = myTurn && !state.hasDrawn;
 
@@ -243,26 +261,32 @@ function DesktopMatchBody({
   const felt = FELT_SKINS[settings.felt];
   const tileBack = TILE_BACK_SKINS[settings.tileBack];
 
+  // Stable reference for the CSS-var bag — avoids re-creating the style
+  // object every render so a future `React.memo`-wrapped Table consumer
+  // wouldn't have it defeated by inline-prop churn.
+  const containerStyle = useMemo(
+    (): React.CSSProperties => ({
+      position: 'relative',
+      padding: 12,
+      color: INK,
+      fontFamily: SANS,
+      ['--tile-w' as string]: 'max(22px, 3.6vmin)',
+      ['--tile-h' as string]: 'max(30px, 5vmin)',
+      ['--felt-1' as string]: felt.top,
+      ['--felt-2' as string]: felt.bottom,
+      ['--tile-back-1' as string]: tileBack.top,
+      ['--tile-back-2' as string]: tileBack.bottom,
+    }),
+    [felt.top, felt.bottom, tileBack.top, tileBack.bottom],
+  );
+
   // While someone is deciding whether to claim, pulse the live tile in the
   // discarder's pile so claimers can track which tile is on offer.
   const latestDiscardId =
     state.phase === 'awaitingClaims' && state.lastDiscard ? tileId(state.lastDiscard.tile) : null;
 
   return (
-    <div
-      style={{
-        position: 'relative',
-        padding: 12,
-        color: INK,
-        fontFamily: SANS,
-        ['--tile-w' as string]: 'max(22px, 3.6vmin)',
-        ['--tile-h' as string]: 'max(30px, 5vmin)',
-        ['--felt-1' as string]: felt.top,
-        ['--felt-2' as string]: felt.bottom,
-        ['--tile-back-1' as string]: tileBack.top,
-        ['--tile-back-2' as string]: tileBack.bottom,
-      }}
-    >
+    <div style={containerStyle}>
       <div
         style={{
           display: 'flex',
