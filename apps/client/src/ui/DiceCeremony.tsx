@@ -1,17 +1,41 @@
 import type { OpeningRolls, Seat } from '@mahjong/game-logic';
 import { SEATS } from '@mahjong/game-logic';
-import { useEffect, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
-import Animated, { FadeIn, FadeOut, useAnimatedStyle, useSharedValue, withDelay, withSpring } from 'react-native-reanimated';
+import { useEffect, useRef, useState } from 'react';
+import { Animated, Easing, Pressable, Text, View } from 'react-native';
 import { nameForSeat, useGame } from '../state/game';
 
 const PIPS: Record<number, [number, number][]> = {
   1: [[2, 2]],
-  2: [[1, 1], [3, 3]],
-  3: [[1, 1], [2, 2], [3, 3]],
-  4: [[1, 1], [1, 3], [3, 1], [3, 3]],
-  5: [[1, 1], [1, 3], [2, 2], [3, 1], [3, 3]],
-  6: [[1, 1], [1, 3], [2, 1], [2, 3], [3, 1], [3, 3]],
+  2: [
+    [1, 1],
+    [3, 3],
+  ],
+  3: [
+    [1, 1],
+    [2, 2],
+    [3, 3],
+  ],
+  4: [
+    [1, 1],
+    [1, 3],
+    [3, 1],
+    [3, 3],
+  ],
+  5: [
+    [1, 1],
+    [1, 3],
+    [2, 2],
+    [3, 1],
+    [3, 3],
+  ],
+  6: [
+    [1, 1],
+    [1, 3],
+    [2, 1],
+    [2, 3],
+    [3, 1],
+    [3, 3],
+  ],
 };
 
 const DISMISS_MS = 3500;
@@ -25,22 +49,30 @@ const COLORS = {
 };
 
 /**
- * Opening-rolls modal. Native port of `_legacy/src/ui/DiceCeremony.tsx`.
- * Triggered by a fresh `state.openingRolls`. Auto-dismisses after
- * `DISMISS_MS`; tap anywhere on the backdrop to dismiss early.
+ * Opening-rolls overlay. Native port of
+ * `_legacy/src/ui/DiceCeremony.tsx`. Triggered by a fresh
+ * `state.openingRolls`. Auto-dismisses after `DISMISS_MS`; tap anywhere
+ * on the backdrop to dismiss early. Animations are RN core `Animated`
+ * (no reanimated) so it works in Expo Go.
  */
 export function DiceCeremony() {
   const rolls = useGame((s) => s.state?.openingRolls);
   const dealer = useGame((s) => s.state?.dealer);
   const lobby = useGame((s) => s.lobby);
   const [dismissed, setDismissed] = useState(false);
+  const fade = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (!rolls) return;
     setDismissed(false);
-    const timer = setTimeout(() => setDismissed(true), DISMISS_MS);
+    Animated.timing(fade, { toValue: 1, duration: 250, useNativeDriver: true }).start();
+    const timer = setTimeout(() => {
+      Animated.timing(fade, { toValue: 0, duration: 250, useNativeDriver: true }).start(() =>
+        setDismissed(true),
+      );
+    }, DISMISS_MS);
     return () => clearTimeout(timer);
-  }, [rolls]);
+  }, [rolls, fade]);
 
   const visible = !!rolls && !dismissed && dealer !== undefined;
   if (!visible) return null;
@@ -48,7 +80,11 @@ export function DiceCeremony() {
 
   return (
     <Pressable
-      onPress={() => setDismissed(true)}
+      onPress={() => {
+        Animated.timing(fade, { toValue: 0, duration: 250, useNativeDriver: true }).start(() =>
+          setDismissed(true),
+        );
+      }}
       style={{
         position: 'absolute',
         left: 0,
@@ -62,9 +98,8 @@ export function DiceCeremony() {
       }}
     >
       <Animated.View
-        entering={FadeIn.duration(250)}
-        exiting={FadeOut.duration(250)}
         style={{
+          opacity: fade,
           backgroundColor: COLORS.paperHi,
           borderColor: COLORS.hairline,
           borderWidth: 1,
@@ -106,49 +141,44 @@ export function DiceCeremony() {
           Dealer: seat <Text style={{ color: COLORS.red, fontWeight: '700' }}>{dealer}</Text> (
           {nameForSeat(lobby, dealer as Seat)})
         </Text>
-        <Text style={{ marginTop: 6, fontSize: 11, color: COLORS.ink3 }}>Tap anywhere to dismiss</Text>
+        <Text style={{ marginTop: 6, fontSize: 11, color: COLORS.ink3 }}>
+          Tap anywhere to dismiss
+        </Text>
       </Animated.View>
     </Pressable>
   );
 }
 
 function Die({ value, delay }: { value: number; delay: number }) {
-  const scale = useSharedValue(0.6);
-  const rotate = useSharedValue(-90);
-  const opacity = useSharedValue(0);
-
+  const t = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    scale.value = withDelay(delay, withSpring(1, { damping: 18, stiffness: 280 }));
-    rotate.value = withDelay(delay, withSpring(0, { damping: 18, stiffness: 280 }));
-    opacity.value = withDelay(delay, withSpring(1, { damping: 18, stiffness: 280 }));
-  }, [delay, scale, rotate, opacity]);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    opacity: opacity.value,
-    transform: [{ scale: scale.value }, { rotate: `${rotate.value}deg` }],
-  }));
-
+    Animated.sequence([
+      Animated.delay(delay),
+      Animated.spring(t, { toValue: 1, friction: 6, tension: 100, useNativeDriver: true }),
+    ]).start();
+  }, [delay, t]);
+  const scale = t.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] });
+  const rotate = t.interpolate({ inputRange: [0, 1], outputRange: ['-90deg', '0deg'] });
   return (
     <Animated.View
-      style={[
-        {
-          width: 44,
-          height: 44,
-          backgroundColor: '#fdfaf2',
-          borderColor: COLORS.hairline,
-          borderWidth: 1,
-          borderRadius: 8,
-          padding: 6,
-          shadowColor: '#000',
-          shadowOpacity: 0.18,
-          shadowRadius: 6,
-          shadowOffset: { width: 0, height: 2 },
-          elevation: 3,
-          flexDirection: 'row',
-          flexWrap: 'wrap',
-        },
-        animatedStyle,
-      ]}
+      style={{
+        width: 44,
+        height: 44,
+        backgroundColor: '#fdfaf2',
+        borderColor: COLORS.hairline,
+        borderWidth: 1,
+        borderRadius: 8,
+        padding: 6,
+        shadowColor: '#000',
+        shadowOpacity: 0.18,
+        shadowRadius: 6,
+        shadowOffset: { width: 0, height: 2 },
+        elevation: 3,
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        opacity: t,
+        transform: [{ scale }, { rotate }],
+      }}
     >
       {Array.from({ length: 9 }, (_, i) => {
         const row = Math.floor(i / 3) + 1;

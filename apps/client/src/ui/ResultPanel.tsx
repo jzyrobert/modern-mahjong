@@ -1,9 +1,11 @@
 import type { Action, Seat } from '@mahjong/game-logic';
 import { nextDealer } from '@mahjong/game-logic';
+import { useState } from 'react';
 import { Text, View } from 'react-native';
 import { useGame } from '../state/game';
-import { GhostButton, PrimaryButton } from './buttons';
 import { RulePanel } from './RulePanel';
+import { ScoringBreakdownModal } from './ScoringBreakdownModal';
+import { GhostButton, PrimaryButton } from './buttons';
 
 interface ResultPanelProps {
   onAction: (a: Action) => void;
@@ -22,12 +24,12 @@ const COLORS = {
 
 /**
  * End-of-hand result. Native port of `_legacy/src/ui/ResultPanel.tsx`.
- * The `ScoringBreakdownModal` integration is deferred — for now the
- * faan breakdown surfaces inline as a list. Phase 6 cleanup adds the
- * modal.
+ * Wins show a one-line summary + a "View breakdown" button that opens
+ * `ScoringBreakdownModal` with the per-pattern faan list.
  */
 export function ResultPanel({ onAction, mySeat, isHost }: ResultPanelProps) {
   const state = useGame((s) => s.state);
+  const [breakdownOpen, setBreakdownOpen] = useState(false);
   if (!state || !state.lastResult) return null;
   const r = state.lastResult;
   const dealerForNext = nextDealer(state);
@@ -52,25 +54,9 @@ export function ResultPanel({ onAction, mySeat, isHost }: ResultPanelProps) {
           <Text style={{ fontSize: 13, color: COLORS.ink3 }}>
             {r.faan} faan ({r.selfDraw ? 'self-draw 自摸' : `from seat ${r.from}`})
           </Text>
-          {r.breakdown.length > 0 ? (
-            <View style={{ marginTop: 6, gap: 4 }}>
-              <Text style={{ fontSize: 12, fontWeight: '700', color: COLORS.ink3 }}>Breakdown</Text>
-              {r.breakdown.map((b, i) => (
-                <View
-                  // biome-ignore lint/suspicious/noArrayIndexKey: stable for the duration of this hand
-                  key={`${b.name}-${i}`}
-                  style={{ flexDirection: 'row', justifyContent: 'space-between' }}
-                >
-                  <Text style={{ fontSize: 12, color: COLORS.ink }}>
-                    {b.name} <Text style={{ color: COLORS.ink3 }}>· {b.english}</Text>
-                  </Text>
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: COLORS.red }}>
-                    +{b.faan}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          ) : null}
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+            <GhostButton onPress={() => setBreakdownOpen(true)}>View breakdown</GhostButton>
+          </View>
         </View>
       ) : (
         <Text style={{ fontSize: 18, fontWeight: '900', color: COLORS.ink }}>
@@ -83,9 +69,7 @@ export function ResultPanel({ onAction, mySeat, isHost }: ResultPanelProps) {
       <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <PrimaryButton
           disabled={!isHost}
-          onPress={() =>
-            onAction({ t: 'startHand', seed: randomSeed(), dealer: dealerForNext })
-          }
+          onPress={() => onAction({ t: 'startHand', seed: randomSeed(), dealer: dealerForNext })}
         >
           Start next hand
         </PrimaryButton>
@@ -93,6 +77,15 @@ export function ResultPanel({ onAction, mySeat, isHost }: ResultPanelProps) {
           (seat {mySeat}; next dealer: seat {dealerForNext})
         </Text>
       </View>
+
+      {r.kind === 'win' ? (
+        <ScoringBreakdownModal
+          open={breakdownOpen}
+          onClose={() => setBreakdownOpen(false)}
+          result={r}
+          faanMin={state.rules.faanMin}
+        />
+      ) : null}
     </View>
   );
 }

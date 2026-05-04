@@ -1,5 +1,5 @@
 import { type ReactNode, useState } from 'react';
-import { Pressable, Text, TextInput, View, type TextInputProps } from 'react-native';
+import { Pressable, Text, TextInput, type TextInputProps, View } from 'react-native';
 
 interface PrimaryButtonProps {
   children: ReactNode;
@@ -186,9 +186,7 @@ export function TextField({
           }),
         }}
       />
-      {hint ? (
-        <Text style={{ marginTop: 6, fontSize: 11, color: COLORS.ink3 }}>{hint}</Text>
-      ) : null}
+      {hint ? <Text style={{ marginTop: 6, fontSize: 11, color: COLORS.ink3 }}>{hint}</Text> : null}
     </View>
   );
 }

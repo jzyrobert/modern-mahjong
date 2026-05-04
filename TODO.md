@@ -115,6 +115,43 @@ Tracking concrete fixes from the in-repo React code review.
 - [x] **Low** — `ScoringBreakdownModal`/index-key callsites: prefer stable composite keys (`${name}-${i}`) over bare `key={i}` where a stable id is already in scope. _Shipped in #74._
 - [x] **Low** — File decomposition (component size > 300 lines): extract `Lobby.tsx` icon SVGs into `ui/menu/icons.tsx`; pull `TileReference` + swatch helpers out of `SettingsPanel.tsx`; split `TileWrapper` from `Hand.tsx` into `ui/HandTile.tsx`. _Shipped in #76._
 
+### Expo migration follow-ups
+
+Tracking the gaps between `claude/expo-migration` and the legacy `main` build. Plan: `~/.claude/plans/gleaming-coalescing-pond.md` (phases 0–11). Phases 0-3, 4 (partial), 7, 9, 10 have shipped on-branch.
+
+**Phase 4 residue (static match UI parity):**
+- [x] Desktop shell — viewport ≥ 768×600 renders a `DesktopTable` with felt + per-seat discard piles + own hand at the bottom. Phones in landscape stay on the mobile shell because vertical room is too tight. Restored on-branch (not yet squash-merged).
+- [x] **Perimeter wall tiles** — `WallEdge.tsx` + `wallLayout.ts` ported (RN). `DesktopTable` now renders 17-stack walls around each seat (next-draw stack carries the engine's actual `Tile` for future Phase 6 FLIP), live-count badge on the user's wall. Pulse animation on the next-draw stack deferred to Phase 6 — it's currently a static gold border.
+- [x] **PlayerBadge** — `PlayerBadge.tsx` ported with avatar circle + initials, seat-wind glyph, name, faan readout, and an active-turn glow (red bg + gold border + Animated scale pulse on the native thread). `DesktopTable` swapped its inline `SeatBadge` for it.
+- [x] **DiscardPile per seat** — extracted `SeatDiscardPile.tsx`. Per-seat 6-column wrap + flexDirection per rotate value (row/row-reverse/column/column-reverse), mulberry32 toss jitter on each tile, gold halo on the live claim-window tile. Replaces the inline `DiscardRow`/`DiscardColumn` in `DesktopTable`.
+- [x] **GameLog modal** — `GameLog.tsx` ported; `TopBar` now renders a 📜 button (when `onOpenLog` is provided) that opens it. Modal lists the last `LOG_CAPACITY` engine events latest-first with seat names + per-event glosses (drew/discarded/claimed/won/etc).
+- [x] **SettingsPanel** + skin picker — `skins.ts` ported with hex felt/tile-back palettes; `SettingsPanel.tsx` modal hooked to a ⚙ button on `TopBar`; felt skin flows into `DesktopTable` + the mobile shell, tile-back skin into `Tile.tsx` (subscribed via zustand selector so back gradient repaints on change). Turn-timer slider + 136-tile reference still queued.
+- [x] **ScoringBreakdownModal** — `Modal.tsx` primitive extracted (cream paper card over scrim with × close + click-outside-to-dismiss). `ScoringBreakdownModal.tsx` ports the per-pattern faan list, opened from a "View breakdown" button in `ResultPanel` on win.
+- [x] **CallButton style for ClaimBar** — restyled `ClaimBar.tsx` with per-action palette (jade/blue/plum/gold/cream), `Pressable` shadow, bilingual labels (Chow/吃, Pung/碰, Kong/槓, Hu/糊, Pass/過), uppercase letter-spacing 0.6.
+- [x] **`ScatteredTiles` decorative background on lobby** — `menu/ScatteredTiles.tsx` ported using `Tile faceDown` + absolute positioning. `pointerEvents: 'none'` so taps still go to the mode cards beneath. Suppressed below 480px width to avoid overlap on small phones.
+
+**Phase 5 (drag-to-reorder under manual sort):**
+- [x] Tap-or-long-press `HandTile` rewritten with RN core `PanResponder` + `Animated` (no `react-native-gesture-handler`/`react-native-reanimated`, so it works in Expo Go). 220ms long-press lifts the tile (+10px lift, 1.06× scale, useNativeDriver), drag tracks `translateX`, release rounds `dx / step` to a target index, clamps to `[0, total-1]`, fires `onReorder`. Quick taps with <6px movement go to `onTap` (discard).
+
+**Phase 6 (animations):**
+- [x] Pulse halo on the next-draw `WallEdge` stack — gold border + scale+opacity loop via RN core `Animated.loop`, useNativeDriver.
+- [x] Active-turn glow on `PlayerBadge` — red bg + gold border + 1.04× scale loop while `isActive`.
+- [x] `DiceCeremony` / `ShuffleOverlay` / `WinCelebration` — rewritten in RN core `Animated` (replaces reanimated `useSharedValue`/`useAnimatedStyle`/`withRepeat`). Mounted at root in `_layout.tsx` so they layer over both `/` and `/match`.
+- [ ] **Wall→hand FLIP on `draw`** — still queued. Needs measure-source-then-target ghost-tile approach from the plan; the next-draw `Tile` already carries a real engine `Tile` so the source rect is reachable.
+- [ ] Discard-toss (hand → discard pile slot) — queued.
+- [ ] Discard→meld claim (discard pile → claimer's meld strip) — queued.
+- [ ] Between-hand dispense (per-tile staggered slide) — queued.
+
+**Phase 8 (LAN native modules — deferred, off the critical path):**
+- [ ] Expo native module: Swift (Telegraph/Swifter HTTP+WS) + Kotlin (NanoHTTPD-WebSockets). Lobby's "Host LAN match" / "Join LAN match" buttons currently surface an Alert "Coming soon — Phase 8 of the Expo port."
+- [ ] Port `_legacy/src/ui/HostLanModal.tsx` + `JoinLanModal.tsx` once the native module exists.
+
+**Phase 11 (squash-merge to `main`):**
+- [ ] Final visual-parity pass against the legacy build (lobby + match + each overlay).
+- [ ] Background/foreground lifecycle smoke (background mid-hand, foreground after >30s, verify `MatchSession.snapshot()` resume).
+- [ ] Cloudflare Pages deploy of `expo export -p web` artefact under the existing URL paths.
+- [ ] Squash-merge — single mainline commit titled "Expo migration: replace Vite + Capacitor with Expo Router + Metro across the client."
+
 ## Out of scope until a maintainer decides
 
 - Account system / cross-device identity sync.

@@ -1,4 +1,4 @@
-import type { GameState, Seat, Tile as MTile } from '@mahjong/game-logic';
+import type { GameState, Tile as MTile, Seat } from '@mahjong/game-logic';
 import { tileId } from '@mahjong/game-logic';
 import { Text, View } from 'react-native';
 import { Tile } from '../Tile';

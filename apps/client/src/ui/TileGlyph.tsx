@@ -28,12 +28,7 @@ const SERIF_FAMILY = 'Noto Serif TC';
 export function TileGlyph({ t }: { t: MTile }) {
   return (
     <View style={{ width: '100%', height: '100%', position: 'relative' }}>
-      <Svg
-        width="100%"
-        height="100%"
-        viewBox={`0 0 ${W} ${H}`}
-        preserveAspectRatio="xMidYMid meet"
-      >
+      <Svg width="100%" height="100%" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet">
         {renderSvg(t)}
       </Svg>
       {renderTextOverlay(t)}
@@ -161,8 +156,20 @@ function SouSvg({ rank }: { rank: number }) {
         <Ellipse cx={0} cy={2} rx={10} ry={13} fill="#3e8749" />
         <Circle cx={0} cy={-9} r={6} fill="#aa3f30" />
         <Circle cx={2} cy={-10} r={1.2} fill="white" />
-        <Path d="M -3 -2 Q -8 4 -10 8" stroke="#306835" strokeWidth={1.5} fill="none" strokeLinecap="round" />
-        <Path d="M 3 -2 Q 8 4 10 8" stroke="#306835" strokeWidth={1.5} fill="none" strokeLinecap="round" />
+        <Path
+          d="M -3 -2 Q -8 4 -10 8"
+          stroke="#306835"
+          strokeWidth={1.5}
+          fill="none"
+          strokeLinecap="round"
+        />
+        <Path
+          d="M 3 -2 Q 8 4 10 8"
+          stroke="#306835"
+          strokeWidth={1.5}
+          fill="none"
+          strokeLinecap="round"
+        />
         <Path d="M 0 -3 L 4 -6" stroke="#a17b1c" strokeWidth={1.5} strokeLinecap="round" />
       </G>
     );

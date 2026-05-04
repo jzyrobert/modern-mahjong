@@ -67,7 +67,14 @@ export function GameStatusBar({ prevailing, dealerName, wallCount, isMyTurn }: G
           justifyContent: 'center',
         }}
       >
-        <Text style={{ fontFamily: 'Noto Serif TC', fontSize: 14, fontWeight: '700', color: COLORS.red }}>
+        <Text
+          style={{
+            fontFamily: 'Noto Serif TC',
+            fontSize: 14,
+            fontWeight: '700',
+            color: COLORS.red,
+          }}
+        >
           {WIND_GLYPH[prevailing]}
         </Text>
       </View>
@@ -126,7 +133,9 @@ export function GameStatusBar({ prevailing, dealerName, wallCount, isMyTurn }: G
                 elevation: 2,
               }}
             />
-            <Text style={{ color: COLORS.red, fontSize: 11, fontWeight: '800', letterSpacing: 0.5 }}>
+            <Text
+              style={{ color: COLORS.red, fontSize: 11, fontWeight: '800', letterSpacing: 0.5 }}
+            >
               YOUR TURN
             </Text>
           </View>

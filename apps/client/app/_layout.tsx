@@ -1,24 +1,26 @@
-import 'expo-sqlite/localStorage/install';
+import '@/src/polyfills';
 
+import { TransportProvider } from '@/src/net/transport-context';
+import { DiceCeremony } from '@/src/ui/DiceCeremony';
+import { ShuffleOverlay } from '@/src/ui/ShuffleOverlay';
+import { WinCelebration } from '@/src/ui/WinCelebration';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { TransportProvider } from '@/src/net/transport-context';
 
 /**
  * Root layout. Mounts the providers every screen needs:
- * - `expo-sqlite/localStorage/install` polyfill: side-effect import that
- *   makes `localStorage.getItem/setItem` durable on native, so existing
- *   `identity.ts` and `state/game.ts` calls survive WebView wipes / app
- *   reinstalls without a separate native-preferences mirror.
- * - `GestureHandlerRootView`: required at the root for
- *   `react-native-gesture-handler` (used in Phase 5 for hand reorder).
+ * - `@/src/polyfills` (platform-split): on native, pulls in
+ *   `expo-sqlite/localStorage/install` so the existing localStorage
+ *   calls in `identity.ts` and `state/game.ts` survive WebView wipes /
+ *   reinstalls. On web, no-ops.
  * - `SafeAreaProvider`: shared safe-area insets for all screens.
  * - `StatusBar` set to dark on the cream surface.
- *
- * Screen overlays (DiceCeremony, ShuffleOverlay, WinCelebration) will be
- * mounted here too once they're ported in Phase 6.
+ * - Phase 6 overlays (DiceCeremony, ShuffleOverlay, WinCelebration) —
+ *   absolute-positioned, gated on engine state slices, animated with
+ *   RN core `Animated` so they work in Expo Go without reanimated.
+ *   Mounted at root so they layer over both `/` (lobby) and `/match`.
  */
 export default function RootLayout() {
   return (
@@ -32,6 +34,9 @@ export default function RootLayout() {
               contentStyle: { backgroundColor: '#f1eadc' },
             }}
           />
+          <ShuffleOverlay />
+          <DiceCeremony />
+          <WinCelebration />
         </TransportProvider>
       </SafeAreaProvider>
     </View>

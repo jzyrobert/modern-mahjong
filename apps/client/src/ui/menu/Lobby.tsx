@@ -1,12 +1,13 @@
+import { useTransport } from '@/src/net/transport-context';
 import { generateMatchCode } from '@mahjong/protocol';
 import { type ReactNode, useState } from 'react';
 import { Alert, ScrollView, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getDisplayName, setDisplayName } from '../../identity';
-import { useTransport } from '@/src/net/transport-context';
 import { useGame } from '../../state/game';
 import { GhostButton, PrimaryButton, TextField } from '../buttons';
 import { LobbyPreview } from './LobbyPreview';
+import { ScatteredTiles } from './ScatteredTiles';
 import { WindEmblem } from './WindEmblem';
 import { BotIcon, BoxIcon, GlobeIcon, WifiIcon } from './icons';
 
@@ -32,102 +33,118 @@ export function Lobby() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#f1eadc' }} edges={['top']}>
-    <ScrollView
-      style={{ flex: 1, backgroundColor: '#f1eadc' }}
-      contentContainerStyle={{ paddingBottom: 40 }}
-    >
-      <TopBar
-        name={name}
-        onChangeName={(v) => {
-          setName(v);
-          setDisplayName(v);
-        }}
-      />
-      <Hero />
-      <ModeGrid>
-        <ModeCard
-          accent
-          title="Online match"
-          subtitle="Play with friends over the internet"
-          icon={<GlobeIcon color="#b14d3a" />}
-        >
-          <TextField
-            label="Match code"
-            value={code}
-            onChangeText={(v) => setCode(v.toUpperCase())}
-            placeholder="ABCDE"
-            mono
-            maxLength={5}
-            autoCapitalize="characters"
-          />
-          <ButtonRow>
-            <PrimaryButton
-              onPress={() => code && transport.joinOnline(code)}
-              disabled={code.length !== 5}
-            >
-              Join match
-            </PrimaryButton>
-            <GhostButton
-              onPress={() => {
-                const fresh = generateMatchCode();
-                setCode(fresh);
-                transport.joinOnline(fresh);
-              }}
-            >
-              Create new match
-            </GhostButton>
-          </ButtonRow>
-        </ModeCard>
+      <ScatteredTiles />
+      <ScrollView
+        style={{ flex: 1, backgroundColor: 'transparent' }}
+        contentContainerStyle={{ paddingBottom: 40 }}
+      >
+        <TopBar
+          name={name}
+          onChangeName={(v) => {
+            setName(v);
+            setDisplayName(v);
+          }}
+        />
+        <Hero />
+        <ModeGrid>
+          <ModeCard
+            accent
+            title="Online match"
+            subtitle="Play with friends over the internet"
+            icon={<GlobeIcon color="#b14d3a" />}
+          >
+            <TextField
+              label="Match code"
+              value={code}
+              onChangeText={(v) => setCode(v.toUpperCase())}
+              placeholder="ABCDE"
+              mono
+              maxLength={5}
+              autoCapitalize="characters"
+            />
+            <ButtonRow>
+              <PrimaryButton
+                onPress={() => code && transport.joinOnline(code)}
+                disabled={code.length !== 5}
+              >
+                Join match
+              </PrimaryButton>
+              <GhostButton
+                onPress={() => {
+                  const fresh = generateMatchCode();
+                  setCode(fresh);
+                  transport.joinOnline(fresh);
+                }}
+              >
+                Create new match
+              </GhostButton>
+            </ButtonRow>
+            <OnlineConnectionStatus />
+          </ModeCard>
 
-        <ModeCard
-          title="Practice vs bots"
-          subtitle="Single device · no connection"
-          icon={<BotIcon color="#65594c" />}
-        >
-          <Text style={{ fontSize: 12, color: '#918275', lineHeight: 18 }}>
-            Three opponents at varying skill —{' '}
-            <Text style={{ color: '#65594c', fontWeight: '800' }}>heuristic</Text>
-            ,{' '}
-            <Text style={{ color: '#65594c', fontWeight: '800' }}>simple</Text>
-            , and{' '}
-            <Text style={{ color: '#65594c', fontWeight: '800' }}>passive</Text>
-            . Runs entirely on this device.
-          </Text>
-          <TagRow tags={['Heuristic', 'Simple', 'Passive']} />
-          <ButtonRow>
-            <PrimaryButton onPress={transport.joinSolo}>Play vs bots</PrimaryButton>
-          </ButtonRow>
-        </ModeCard>
+          <ModeCard
+            title="Practice vs bots"
+            subtitle="Single device · no connection"
+            icon={<BotIcon color="#65594c" />}
+          >
+            <Text style={{ fontSize: 12, color: '#918275', lineHeight: 18 }}>
+              Three opponents at varying skill —{' '}
+              <Text style={{ color: '#65594c', fontWeight: '800' }}>heuristic</Text>,{' '}
+              <Text style={{ color: '#65594c', fontWeight: '800' }}>simple</Text>, and{' '}
+              <Text style={{ color: '#65594c', fontWeight: '800' }}>passive</Text>. Runs entirely on
+              this device.
+            </Text>
+            <TagRow tags={['Heuristic', 'Simple', 'Passive']} />
+            <ButtonRow>
+              <PrimaryButton onPress={transport.joinSolo}>Play vs bots</PrimaryButton>
+            </ButtonRow>
+          </ModeCard>
 
-        <ModeCard
-          title="LAN / offline"
-          subtitle="Same-Wi-Fi matches"
-          icon={<WifiIcon color="#65594c" />}
-        >
-          <Text style={{ fontSize: 12, color: '#918275', lineHeight: 18 }}>
-            Four-player matches over local Wi-Fi. Host shares the URL; guests paste it into any
-            browser on the same network.
-          </Text>
-          <InlineHint icon={<BoxIcon color="#918275" />}>
-            Works offline. No accounts. No data leaves your network.
-          </InlineHint>
-          <ButtonRow>
-            <PrimaryButton onPress={() => Alert.alert('Coming soon', 'LAN host requires the native bridge — Phase 8 of the Expo port.')}>
-              Host LAN match
-            </PrimaryButton>
-            <GhostButton onPress={() => Alert.alert('Coming soon', 'LAN join requires the native bridge — Phase 8 of the Expo port.')}>
-              Join LAN match
-            </GhostButton>
-          </ButtonRow>
-        </ModeCard>
-      </ModeGrid>
+          <ModeCard
+            title="LAN / offline"
+            subtitle="Same-Wi-Fi matches"
+            icon={<WifiIcon color="#65594c" />}
+          >
+            <Text style={{ fontSize: 12, color: '#918275', lineHeight: 18 }}>
+              Four-player matches over local Wi-Fi. Host shares the URL; guests paste it into any
+              browser on the same network.
+            </Text>
+            <InlineHint icon={<BoxIcon color="#918275" />}>
+              Works offline. No accounts. No data leaves your network.
+            </InlineHint>
+            <ButtonRow>
+              <PrimaryButton
+                onPress={() =>
+                  Alert.alert(
+                    'Coming soon',
+                    'LAN host requires the native bridge — Phase 8 of the Expo port.',
+                  )
+                }
+              >
+                Host LAN match
+              </PrimaryButton>
+              <GhostButton
+                onPress={() =>
+                  Alert.alert(
+                    'Coming soon',
+                    'LAN join requires the native bridge — Phase 8 of the Expo port.',
+                  )
+                }
+              >
+                Join LAN match
+              </GhostButton>
+            </ButtonRow>
+          </ModeCard>
+        </ModeGrid>
 
-      {lobby ? (
-        <View style={{ maxWidth: 1080, width: '100%', alignSelf: 'center', paddingHorizontal: 28 }}>
-          <LobbyPreview lobby={lobby} matchCode={null} />
-        </View>
-      ) : null}
-    </ScrollView>
+        {lobby ? (
+          <View
+            style={{ maxWidth: 1080, width: '100%', alignSelf: 'center', paddingHorizontal: 28 }}
+          >
+            <LobbyPreview lobby={lobby} matchCode={null} />
+          </View>
+        ) : null}
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -447,6 +464,46 @@ function TagRow({ tags }: { tags: readonly string[] }) {
   );
 }
 
+/**
+ * Inline status line under the Online match buttons. Shows "Connecting…"
+ * while the WebSocket is opening, and a "Couldn't reach server" hint
+ * with the resolved host once it closes without delivering a state.
+ * Without this, a failed connection looks identical to a button that
+ * did nothing.
+ */
+function OnlineConnectionStatus() {
+  const transport = useTransport();
+  const state = useGame((s) => s.state);
+  // Once a state arrives, the lobby route navigates away — but render a
+  // placeholder space-reserver so the card doesn't flicker its layout.
+  if (transport.status === 'idle' || state) return null;
+
+  if (transport.status === 'connecting') {
+    return (
+      <Text style={{ fontSize: 12, color: '#918275', fontWeight: '700' }}>
+        Connecting to {transport.resolvedHost}…
+      </Text>
+    );
+  }
+  if (transport.status === 'closed') {
+    return (
+      <View style={{ gap: 2 }}>
+        <Text style={{ fontSize: 12, color: '#b14d3a', fontWeight: '800' }}>
+          Couldn't reach the match server.
+        </Text>
+        <Text style={{ fontSize: 11, color: '#918275', fontWeight: '600', lineHeight: 16 }}>
+          Tried {transport.resolvedHost || '(no host)'}. Make sure{' '}
+          <Text style={{ fontFamily: 'Nunito', fontWeight: '800', color: '#65594c' }}>
+            pnpm --filter @mahjong/server dev
+          </Text>{' '}
+          is running, or set EXPO_PUBLIC_SERVER_URL.
+        </Text>
+      </View>
+    );
+  }
+  return null;
+}
+
 function InlineHint({ icon, children }: { icon: ReactNode; children: ReactNode }) {
   return (
     <View
@@ -463,9 +520,7 @@ function InlineHint({ icon, children }: { icon: ReactNode; children: ReactNode }
       }}
     >
       {icon}
-      <Text style={{ flex: 1, fontSize: 11, color: '#918275', fontWeight: '600' }}>
-        {children}
-      </Text>
+      <Text style={{ flex: 1, fontSize: 11, color: '#918275', fontWeight: '600' }}>{children}</Text>
     </View>
   );
 }

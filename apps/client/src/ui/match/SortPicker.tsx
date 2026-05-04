@@ -48,11 +48,7 @@ export function SortPicker({ mode, onChange }: SortPickerProps) {
               paddingVertical: 6,
               paddingHorizontal: 12,
               borderRadius: 6,
-              backgroundColor: active
-                ? '#fbe5d9'
-                : pressed
-                  ? '#ece4d3'
-                  : 'transparent',
+              backgroundColor: active ? '#fbe5d9' : pressed ? '#ece4d3' : 'transparent',
             })}
           >
             <Text

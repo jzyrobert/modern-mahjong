@@ -13,11 +13,12 @@ import {
 } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 import { getDisplayName, getPlayerId } from '../identity';
-import { useGame } from '../state/game';
 import { playDiscard } from '../sound';
+import { useGame } from '../state/game';
 import { createSoloTransport } from './solo-transport';
 import {
   type Transport,
+  type TransportStatus,
   createLanTransport,
   createOnlineTransport,
 } from './transport';
@@ -25,6 +26,10 @@ import {
 interface TransportContextValue {
   matchCode: string | null;
   hasTransport: boolean;
+  /** 'idle' before any join, otherwise the underlying transport's status. */
+  status: 'idle' | TransportStatus;
+  /** Resolved server host string for the most recent online join, for diagnostics. */
+  resolvedHost: string;
   joinOnline: (code: string) => void;
   joinLan: (hostUrl: string, code: string) => void;
   joinSolo: () => void;
@@ -41,7 +46,13 @@ const TransportContext = createContext<TransportContextValue | null>(null);
  *    EAS build profile env override.
  * 2. `EXPO_PUBLIC_SERVER_URL` — runtime env, baked at build time but
  *    overridable via `.env`.
- * 3. Localhost dev default.
+ * 3. Dev fallback: derive the host from Expo's dev-server `hostUri`
+ *    (LAN IP, e.g. `192.168.1.5:8081` → `http://192.168.1.5:8787`). This
+ *    reaches the dev wrangler server from both Android emulator and a
+ *    physical device on the same network, as long as wrangler is bound
+ *    to `0.0.0.0` (see `apps/server/package.json`'s `dev` script).
+ * 4. Last-resort `http://localhost:8787` — only useful in iOS simulator
+ *    or with `adb reverse tcp:8787 tcp:8787` configured.
  *
  * The legacy `?serverUrl=` query-string override doesn't apply on
  * native (no URL bar). The Playwright multi-player e2e against the web
@@ -52,6 +63,13 @@ function resolveServerHost(): string {
   const extra = Constants.expoConfig?.extra as { serverUrl?: string } | undefined;
   if (extra?.serverUrl) return extra.serverUrl;
   if (process.env.EXPO_PUBLIC_SERVER_URL) return process.env.EXPO_PUBLIC_SERVER_URL;
+  const hostUri = Constants.expoConfig?.hostUri;
+  if (hostUri) {
+    const host = hostUri.split(':')[0];
+    if (host && host !== 'localhost' && host !== '127.0.0.1') {
+      return `http://${host}:8787`;
+    }
+  }
   return 'http://localhost:8787';
 }
 
@@ -75,6 +93,8 @@ function resolveServerHost(): string {
 export function TransportProvider({ children }: { children: ReactNode }) {
   const [transport, setTransport] = useState<Transport | null>(null);
   const [matchCode, setMatchCode] = useState<string | null>(null);
+  const [status, setStatus] = useState<'idle' | TransportStatus>('idle');
+  const [resolvedHost, setResolvedHost] = useState<string>('');
   /** Re-create info captured the last time we joined, so AppState foreground can re-join. */
   const reconnectInfoRef = useRef<
     | { kind: 'online'; code: string }
@@ -95,14 +115,17 @@ export function TransportProvider({ children }: { children: ReactNode }) {
       return next;
     });
     setMatchCode(code);
+    setStatus(next.status());
   }, []);
 
   const joinOnline = useCallback(
     (code: string) => {
       reconnectInfoRef.current = { kind: 'online', code };
+      const host = resolveServerHost();
+      setResolvedHost(host);
       swap(
         createOnlineTransport({
-          host: resolveServerHost(),
+          host,
           matchCode: code,
           playerId: getPlayerId(),
           displayName: getDisplayName(),
@@ -131,10 +154,7 @@ export function TransportProvider({ children }: { children: ReactNode }) {
 
   const joinSolo = useCallback(() => {
     reconnectInfoRef.current = { kind: 'solo' };
-    swap(
-      createSoloTransport({ playerId: getPlayerId(), displayName: getDisplayName() }),
-      'SOLO',
-    );
+    swap(createSoloTransport({ playerId: getPlayerId(), displayName: getDisplayName() }), 'SOLO');
   }, [swap]);
 
   const leave = useCallback(() => {
@@ -142,6 +162,7 @@ export function TransportProvider({ children }: { children: ReactNode }) {
     transport?.close();
     setTransport(null);
     setMatchCode(null);
+    setStatus('idle');
     reconnectInfoRef.current = null;
     reset();
   }, [transport, reset]);
@@ -159,6 +180,14 @@ export function TransportProvider({ children }: { children: ReactNode }) {
     },
     [transport],
   );
+
+  // Track the active transport's connection status so the lobby can
+  // surface "Connecting…" / "Couldn't reach server" feedback. Without
+  // this, a failed online join just looks like an unresponsive button.
+  useEffect(() => {
+    if (!transport) return;
+    return transport.onStatus(setStatus);
+  }, [transport]);
 
   // Wire inbound messages into the zustand store + side-effects.
   useEffect(() => {
@@ -220,6 +249,8 @@ export function TransportProvider({ children }: { children: ReactNode }) {
     () => ({
       matchCode,
       hasTransport: transport !== null,
+      status,
+      resolvedHost,
       joinOnline,
       joinLan,
       joinSolo,
@@ -227,7 +258,18 @@ export function TransportProvider({ children }: { children: ReactNode }) {
       send,
       sendChat,
     }),
-    [matchCode, transport, joinOnline, joinLan, joinSolo, leave, send, sendChat],
+    [
+      matchCode,
+      transport,
+      status,
+      resolvedHost,
+      joinOnline,
+      joinLan,
+      joinSolo,
+      leave,
+      send,
+      sendChat,
+    ],
   );
 
   return <TransportContext.Provider value={value}>{children}</TransportContext.Provider>;

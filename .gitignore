@@ -31,3 +31,6 @@ apps/client/.lighthouseci
 
 # OS
 Thumbs.db
+
+# Claude Code per-user settings
+.claude/

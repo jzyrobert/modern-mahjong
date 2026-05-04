@@ -53,9 +53,7 @@ export function LobbyPreview({ lobby, matchCode }: LobbyPreviewProps) {
               backgroundColor: '#44ad60',
             }}
           />
-          <Text style={{ fontSize: 14, fontWeight: '900', color: '#3a3328' }}>
-            In lobby
-          </Text>
+          <Text style={{ fontSize: 14, fontWeight: '900', color: '#3a3328' }}>In lobby</Text>
           <Text style={{ fontSize: 11, color: '#918275', fontWeight: '700' }}>
             · waiting for players
           </Text>

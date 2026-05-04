@@ -1,15 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
-import Animated, {
-  Easing,
-  FadeIn,
-  FadeOut,
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withSequence,
-  withTiming,
-} from 'react-native-reanimated';
+import { useEffect, useRef, useState } from 'react';
+import { Animated, Easing, Pressable, Text, View } from 'react-native';
 import { nameForSeat, useGame } from '../state/game';
 
 const DISMISS_MS = 3500;
@@ -26,20 +16,26 @@ const COLORS = {
 /**
  * Celebratory overlay on `state.lastResult.kind === 'win'`. Native
  * port of `_legacy/src/ui/WinCelebration.tsx`. Auto-dismisses after
- * `DISMISS_MS` (or on tap). Confetti dots fly from top to bottom; the
- * 和 emblem pulses + rocks subtly.
+ * `DISMISS_MS` (or on tap). The 和 emblem pulses + rocks subtly via RN
+ * core `Animated` (no reanimated, so it works in Expo Go).
  */
 export function WinCelebration() {
   const result = useGame((s) => s.state?.lastResult);
   const lobby = useGame((s) => s.lobby);
   const [dismissed, setDismissed] = useState(false);
+  const fade = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (!result) return;
     setDismissed(false);
-    const timer = setTimeout(() => setDismissed(true), DISMISS_MS);
+    Animated.timing(fade, { toValue: 1, duration: 250, useNativeDriver: true }).start();
+    const timer = setTimeout(() => {
+      Animated.timing(fade, { toValue: 0, duration: 250, useNativeDriver: true }).start(() =>
+        setDismissed(true),
+      );
+    }, DISMISS_MS);
     return () => clearTimeout(timer);
-  }, [result]);
+  }, [result, fade]);
 
   const visible = !!result && result.kind === 'win' && !dismissed;
   const win = result && result.kind === 'win' ? result : null;
@@ -47,7 +43,11 @@ export function WinCelebration() {
 
   return (
     <Pressable
-      onPress={() => setDismissed(true)}
+      onPress={() => {
+        Animated.timing(fade, { toValue: 0, duration: 250, useNativeDriver: true }).start(() =>
+          setDismissed(true),
+        );
+      }}
       style={{
         position: 'absolute',
         left: 0,
@@ -61,9 +61,8 @@ export function WinCelebration() {
       }}
     >
       <Animated.View
-        entering={FadeIn.duration(250)}
-        exiting={FadeOut.duration(250)}
         style={{
+          opacity: fade,
           backgroundColor: COLORS.paperHi,
           borderColor: COLORS.hairline,
           borderWidth: 1,
@@ -116,13 +115,29 @@ export function WinCelebration() {
             marginBottom: 14,
           }}
         >
-          <Text style={{ fontFamily: 'Noto Serif TC', fontSize: 28, fontWeight: '700', color: COLORS.red }}>
+          <Text
+            style={{
+              fontFamily: 'Noto Serif TC',
+              fontSize: 28,
+              fontWeight: '700',
+              color: COLORS.red,
+            }}
+          >
             {win.faan}
           </Text>
-          <Text style={{ fontFamily: 'Noto Serif TC', fontSize: 16, color: COLORS.red, fontWeight: '600' }}>
+          <Text
+            style={{
+              fontFamily: 'Noto Serif TC',
+              fontSize: 16,
+              color: COLORS.red,
+              fontWeight: '600',
+            }}
+          >
             番
           </Text>
-          <Text style={{ fontSize: 12, fontWeight: '800', color: COLORS.ink, marginLeft: 4 }}>faan</Text>
+          <Text style={{ fontSize: 12, fontWeight: '800', color: COLORS.ink, marginLeft: 4 }}>
+            faan
+          </Text>
         </View>
         <Text style={{ fontSize: 13, color: COLORS.ink3, fontWeight: '600' }}>
           {win.selfDraw ? '自摸 · self-draw' : `Won off seat ${win.from}`}
@@ -136,31 +151,31 @@ export function WinCelebration() {
 }
 
 function PulseEmblem() {
-  const scale = useSharedValue(1);
-  const rot = useSharedValue(-3);
+  const t = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    scale.value = withRepeat(
-      withSequence(
-        withTiming(1.12, { duration: 800, easing: Easing.inOut(Easing.ease) }),
-        withTiming(1, { duration: 800, easing: Easing.inOut(Easing.ease) }),
-      ),
-      -1,
-      false,
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(t, {
+          toValue: 1,
+          duration: 800,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(t, {
+          toValue: 0,
+          duration: 800,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]),
     );
-    rot.value = withRepeat(
-      withSequence(
-        withTiming(3, { duration: 800, easing: Easing.inOut(Easing.ease) }),
-        withTiming(-3, { duration: 800, easing: Easing.inOut(Easing.ease) }),
-      ),
-      -1,
-      false,
-    );
-  }, [scale, rot]);
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }, { rotate: `${rot.value}deg` }],
-  }));
+    loop.start();
+    return () => loop.stop();
+  }, [t]);
+  const scale = t.interpolate({ inputRange: [0, 1], outputRange: [1, 1.12] });
+  const rotate = t.interpolate({ inputRange: [0, 1], outputRange: ['-3deg', '3deg'] });
   return (
-    <Animated.View style={[{ marginBottom: 8 }, animatedStyle]}>
+    <Animated.View style={{ marginBottom: 8, transform: [{ scale }, { rotate }] }}>
       <Text
         style={{
           fontFamily: 'Noto Serif TC',

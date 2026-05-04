@@ -2,7 +2,9 @@ import { type Tile as MTile, tileLabel } from '@mahjong/game-logic';
 import { memo } from 'react';
 import { Pressable, View, type ViewStyle } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
+import { useGame } from '../state/game';
 import { TileGlyph } from './TileGlyph';
+import { TILE_BACK_SKINS } from './match/skins';
 
 interface TileProps {
   tile: MTile;
@@ -52,6 +54,11 @@ function TileComponent({
   style,
   testID,
 }: TileProps) {
+  // Subscribe to the user's tile-back skin so face-down tiles repaint
+  // when the SettingsPanel changes it. The selector returns a string id
+  // so unrelated settings changes (felt, autoSort) don't re-render every
+  // tile — only flips of `tileBack` itself trigger a re-render.
+  const tileBackId = useGame((s) => s.settings.tileBack);
   const lift = selected ? -10 : raised ? -4 : 0;
   const wrapperStyle: ViewStyle = {
     width,
@@ -70,7 +77,13 @@ function TileComponent({
 
   const body = (
     <View style={wrapperStyle} accessibilityLabel={faceDown ? 'Face-down tile' : tileLabel(tile)}>
-      <TileBody width={width} height={height} faceDown={faceDown} selected={selected} />
+      <TileBody
+        width={width}
+        height={height}
+        faceDown={faceDown}
+        selected={selected}
+        tileBackId={tileBackId}
+      />
       {!faceDown ? (
         <View
           pointerEvents="none"
@@ -109,10 +122,20 @@ interface TileBodyProps {
   height: number;
   faceDown: boolean | undefined;
   selected: boolean | undefined;
+  /** TileBack skin id from `useGame.settings.tileBack`. Drives the
+   *  back gradient stops; ignored when `faceDown` is false. */
+  tileBackId: keyof typeof TILE_BACK_SKINS;
 }
 
 /** Layered SVG: shadow rect, side rect, face/back rect, hairline stroke, optional selection ring. */
-const TileBody = memo(function TileBody({ width, height, faceDown, selected }: TileBodyProps) {
+const TileBody = memo(function TileBody({
+  width,
+  height,
+  faceDown,
+  selected,
+  tileBackId,
+}: TileBodyProps) {
+  const tileBack = TILE_BACK_SKINS[tileBackId];
   // Reference geometry — the legacy Tile uses 36×50 with rx ≈ 18% of width.
   const W = 36;
   const H = 50;
@@ -137,8 +160,8 @@ const TileBody = memo(function TileBody({ width, height, faceDown, selected }: T
           <Stop offset="100%" stopColor="#bfae8c" />
         </LinearGradient>
         <LinearGradient id="mj-tile-back" x1="0" x2="0" y1="0" y2="1">
-          <Stop offset="0%" stopColor="#7fa9c1" />
-          <Stop offset="100%" stopColor="#5a8cb0" />
+          <Stop offset="0%" stopColor={tileBack.top} />
+          <Stop offset="100%" stopColor={tileBack.bottom} />
         </LinearGradient>
       </Defs>
       {/* drop shadow */}

@@ -9,20 +9,26 @@ interface ClaimBarProps {
 }
 
 type CallKind = 'chi' | 'peng' | 'gong' | 'hu' | 'pass';
+type Tone = 'jade' | 'blue' | 'plum' | 'gold' | 'cream';
 
-const LABELS: Record<CallKind, { en: string; zh: string; tone: 'red' | 'gold' | 'jade' | 'slate' }> = {
+const LABELS: Record<CallKind, { en: string; zh: string; tone: Tone }> = {
   chi: { en: 'Chow', zh: '吃', tone: 'jade' },
-  peng: { en: 'Pung', zh: '碰', tone: 'gold' },
-  gong: { en: 'Kong', zh: '槓', tone: 'red' },
-  hu: { en: 'Win', zh: '糊', tone: 'red' },
-  pass: { en: 'Pass', zh: '過', tone: 'slate' },
+  peng: { en: 'Pung', zh: '碰', tone: 'blue' },
+  gong: { en: 'Kong', zh: '槓', tone: 'plum' },
+  hu: { en: 'Win', zh: '糊', tone: 'gold' },
+  pass: { en: 'Pass', zh: '過', tone: 'cream' },
 };
 
-const TONE: Record<'red' | 'gold' | 'jade' | 'slate', { bg: string; pressed: string; fg: string }> = {
-  red: { bg: '#b14d3a', pressed: '#d05746', fg: 'white' },
-  gold: { bg: '#dc9f4f', pressed: '#d99c44', fg: '#3a3328' },
+// Per-action colours — closer to the legacy CallButton's per-kind
+// gradient-by-hue palette. RN can't render the original 135° linear
+// gradients without an extra package, so we approximate with a flat
+// hex + a darker pressed state + an inner shadow on press.
+const TONE: Record<Tone, { bg: string; pressed: string; fg: string }> = {
   jade: { bg: '#58c280', pressed: '#4ba668', fg: 'white' },
-  slate: { bg: '#95a0aa', pressed: '#5d6d84', fg: 'white' },
+  blue: { bg: '#5b9ad9', pressed: '#467fbf', fg: 'white' },
+  plum: { bg: '#9d6dc7', pressed: '#7e54a8', fg: 'white' },
+  gold: { bg: '#dc9f4f', pressed: '#c98a37', fg: '#3a3328' },
+  cream: { bg: '#ece4d3', pressed: '#d8cdb4', fg: '#3a3328' },
 };
 
 const ORDER: readonly CallKind[] = ['chi', 'peng', 'gong', 'hu', 'pass'];
@@ -83,23 +89,41 @@ export function ClaimBar({ onAction, seat }: ClaimBarProps) {
 function CallButton({ kind, onPress }: { kind: CallKind; onPress: () => void }) {
   const meta = LABELS[kind];
   const tone = TONE[meta.tone];
+  const isCream = meta.tone === 'cream';
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => ({
         backgroundColor: pressed ? tone.pressed : tone.bg,
-        paddingVertical: 8,
-        paddingHorizontal: 14,
-        borderRadius: 10,
+        paddingVertical: 10,
+        paddingHorizontal: 18,
+        borderRadius: 14,
+        borderWidth: isCream ? 1.5 : 0,
+        borderColor: isCream ? '#cdc1ad' : 'transparent',
         flexDirection: 'row',
-        alignItems: 'baseline',
-        gap: 6,
+        alignItems: 'center',
+        gap: 8,
+        shadowColor: '#000',
+        shadowOpacity: isCream ? 0 : 0.18,
+        shadowRadius: 6,
+        shadowOffset: { width: 0, height: 4 },
+        elevation: isCream ? 0 : 4,
       })}
     >
-      <Text style={{ fontFamily: 'Noto Serif TC', fontSize: 18, fontWeight: '700', color: tone.fg }}>
+      <Text
+        style={{ fontFamily: 'Noto Serif TC', fontSize: 18, fontWeight: '700', color: tone.fg }}
+      >
         {meta.zh}
       </Text>
-      <Text style={{ fontSize: 12, fontWeight: '800', color: tone.fg, letterSpacing: 0.4 }}>
+      <Text
+        style={{
+          fontSize: 12,
+          fontWeight: '900',
+          color: tone.fg,
+          letterSpacing: 0.6,
+          textTransform: 'uppercase',
+        }}
+      >
         {meta.en}
       </Text>
     </Pressable>

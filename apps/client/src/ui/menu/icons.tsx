@@ -29,11 +29,7 @@ export function BotIcon({ size = 20, color = 'currentColor' }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Rect x={3} y={7} width={18} height={13} rx={2} stroke={color} strokeWidth={2.2} />
-      <Path
-        d="M8 7V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v3"
-        stroke={color}
-        strokeWidth={2.2}
-      />
+      <Path d="M8 7V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v3" stroke={color} strokeWidth={2.2} />
       <Circle cx={9} cy={13} r={1.4} stroke={color} strokeWidth={2.2} />
       <Circle cx={15} cy={13} r={1.4} stroke={color} strokeWidth={2.2} />
       <Path d="M9 17h6" stroke={color} strokeWidth={2.2} />

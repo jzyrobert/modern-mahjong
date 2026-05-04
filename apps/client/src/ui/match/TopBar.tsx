@@ -4,6 +4,13 @@ interface TopBarProps {
   matchCode: string | null;
   viewers: number | null;
   onLeave: () => void;
+  /** Optional — if provided, renders a "⚙" button that opens the
+   *  in-match SettingsPanel. Match.tsx wires this to local state.
+   *  Pre-game lobby renders TopBar without it. */
+  onOpenSettings?: () => void;
+  /** Optional — if provided, renders a "📜" button that opens the
+   *  GameLog modal listing the recent engine events. */
+  onOpenLog?: () => void;
 }
 
 const COLORS = {
@@ -16,11 +23,11 @@ const COLORS = {
 };
 
 /**
- * Top-right corner — Live · #CODE pill, viewer count, Leave button.
- * Compact native port; the legacy SettingsPanel + GameLog + Fullscreen
- * buttons are deferred to a later sub-phase.
+ * Top-right corner — Live · #CODE pill, viewer count, Settings button,
+ * Leave button. The legacy GameLog + Fullscreen buttons are deferred
+ * (still queued in TODO.md's Expo migration follow-ups).
  */
-export function TopBar({ matchCode, viewers, onLeave }: TopBarProps) {
+export function TopBar({ matchCode, viewers, onLeave, onOpenSettings, onOpenLog }: TopBarProps) {
   return (
     <View
       style={{
@@ -39,9 +46,7 @@ export function TopBar({ matchCode, viewers, onLeave }: TopBarProps) {
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-        <View
-          style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.green }}
-        />
+        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.green }} />
         <Text style={{ fontSize: 10, fontWeight: '800', color: COLORS.ink, letterSpacing: 0.4 }}>
           LIVE
         </Text>
@@ -53,6 +58,38 @@ export function TopBar({ matchCode, viewers, onLeave }: TopBarProps) {
       </View>
       {viewers && viewers > 0 ? (
         <Text style={{ fontSize: 11, color: COLORS.ink3, fontWeight: '600' }}>👁 {viewers}</Text>
+      ) : null}
+      {onOpenLog ? (
+        <Pressable
+          onPress={onOpenLog}
+          accessibilityLabel="Open game log"
+          style={({ pressed }) => ({
+            paddingHorizontal: 8,
+            paddingVertical: 4,
+            borderRadius: 8,
+            backgroundColor: pressed ? '#ece4d3' : 'transparent',
+            borderColor: COLORS.hairline,
+            borderWidth: 1,
+          })}
+        >
+          <Text style={{ fontSize: 13, color: COLORS.ink }}>📜</Text>
+        </Pressable>
+      ) : null}
+      {onOpenSettings ? (
+        <Pressable
+          onPress={onOpenSettings}
+          accessibilityLabel="Open settings"
+          style={({ pressed }) => ({
+            paddingHorizontal: 8,
+            paddingVertical: 4,
+            borderRadius: 8,
+            backgroundColor: pressed ? '#ece4d3' : 'transparent',
+            borderColor: COLORS.hairline,
+            borderWidth: 1,
+          })}
+        >
+          <Text style={{ fontSize: 13, color: COLORS.ink }}>⚙</Text>
+        </Pressable>
       ) : null}
       <Pressable
         onPress={onLeave}

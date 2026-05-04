@@ -50,7 +50,14 @@ export function OppHandStrip({ seat, seatWind, lobby, handBacks, isActive }: Opp
       }}
     >
       <View style={{ alignItems: 'center', minWidth: 64 }}>
-        <Text style={{ fontFamily: 'Noto Serif TC', fontSize: 14, color: COLORS.red, fontWeight: '700' }}>
+        <Text
+          style={{
+            fontFamily: 'Noto Serif TC',
+            fontSize: 14,
+            color: COLORS.red,
+            fontWeight: '700',
+          }}
+        >
           {WIND_GLYPH[seatWind]}
         </Text>
         <Text style={{ fontSize: 10, fontWeight: '800', color: COLORS.ink }} numberOfLines={1}>

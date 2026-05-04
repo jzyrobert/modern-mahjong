@@ -63,11 +63,7 @@ export function RulePanel({ rules, isHost, onAction }: RulePanelProps) {
                 style={({ pressed }) => ({
                   borderWidth: 1,
                   borderColor: active ? COLORS.red : COLORS.hairline,
-                  backgroundColor: active
-                    ? '#fbe5d9'
-                    : pressed && !disabled
-                      ? '#ece4d3'
-                      : 'white',
+                  backgroundColor: active ? '#fbe5d9' : pressed && !disabled ? '#ece4d3' : 'white',
                   borderRadius: 8,
                   paddingHorizontal: 12,
                   paddingVertical: 6,

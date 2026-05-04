@@ -1,7 +1,7 @@
-import { useEffect } from 'react';
-import { useRouter } from 'expo-router';
 import { useGame } from '@/src/state/game';
 import { Lobby } from '@/src/ui/menu/Lobby';
+import { useRouter } from 'expo-router';
+import { useEffect } from 'react';
 
 /**
  * Root route. The lobby renders here while no transport is open. Once a
