@@ -104,12 +104,12 @@ Tracking concrete fixes from the in-repo React code review.
 - [x] **High** — `RulePanel.tsx`: `SecondsInput` syncs prop to state via `useEffect`; reset via `key={ms}` from the parent and drop the effect. _Shipped in #68._
 - [x] **High** — `DiceCeremony.tsx`: backdrop dismissal isn't keyboard-accessible — add a window Escape listener mirroring `Modal.tsx`. _Shipped in #69._
 - [x] **High** — `HostLanModal.tsx`: Host URL input has no accessible label (`<Label>` is a styled `<div>`); replace with `TextField` from `buttons.tsx` or wire `htmlFor`/`id`. _Shipped in #70._
-- [ ] **Medium** — `buttons.tsx` (`TextField`) and `ChatBar.tsx`: drop direct DOM style mutation in favour of CSS pseudo-classes (`:focus-visible`, `:active`); current touch pressed-state doesn't fire on `pointerdown`/`pointerup`.
+- [x] **Medium** — `buttons.tsx` (`TextField`) and `ChatBar.tsx`: drop direct DOM style mutation in favour of CSS pseudo-classes (`:focus-visible`, `:active`); current touch pressed-state doesn't fire on `pointerdown`/`pointerup`. _Shipped in #71._
 - [ ] **Medium** — `Match.tsx` / `MobileMatch.tsx`: build a typed `byPosition` map once instead of repeating `placements.find(...)` four times per render.
 - [ ] **Medium** — `Match.tsx`: `DesktopMatchBody` re-subscribes to `useGame((s) => s.state)!` and asserts non-null; pass `state` + `seat` from the parent that already validated them.
 - [ ] **Medium** — `Match.tsx`: memoize `seatToPosition` and the `--tile-w`/`--tile-h`/`--felt-1`/`--felt-2` style object so consumers can adopt `React.memo` without inline-prop churn defeating it.
 - [ ] **Medium** — `ChatBubbles.tsx`: schedule a single timer per chat seq via a ref-tracked `Set` instead of clearing-and-rebuilding all timers on every `chats` change.
-- [ ] **Low** — `buttons.tsx` (`PrimaryButton`, `GhostButton`) and `Lobby.tsx` (`ModeCard`): replace `useState(hover)` + `onMouseEnter`/`onMouseLeave` with CSS `:hover` / `:focus-visible`.
+- [x] **Low** — `buttons.tsx` (`PrimaryButton`, `GhostButton`) and `Lobby.tsx` (`ModeCard`): replace `useState(hover)` + `onMouseEnter`/`onMouseLeave` with CSS `:hover` / `:focus-visible`. _Shipped in #71._
 - [ ] **Low** — `Lobby.tsx`: switch `useState(getDisplayName())` to a lazy initialiser `useState(() => getDisplayName())`.
 - [ ] **Low** — `Tile.tsx`: every visible tile re-renders on `useGame((s) => s.shuffling)` flips; lift the spring choice to the wall/match container or split into an inner `<TileMotion>`.
 - [ ] **Low** — `ScoringBreakdownModal`/index-key callsites: prefer stable composite keys (`${name}-${i}`) over bare `key={i}` where a stable id is already in scope.

@@ -45,31 +45,15 @@ export function ChatBar({ onSend }: ChatBarProps) {
         Emote
       </span>
       {EMOTES.map((emote) => (
+        // Press scale comes from the `.mh-emote-btn:active` rule in
+        // `src/styles.css` — `:active` fires on touch where mousedown/up
+        // don't, so this also gives mobile users press feedback.
         <button
           key={emote}
           type="button"
+          className="mh-emote-btn"
           onClick={() => onSend(emote)}
           aria-label={`Send ${emote}`}
-          style={{
-            width: 30,
-            height: 30,
-            borderRadius: 8,
-            border: 'none',
-            background: 'transparent',
-            cursor: 'pointer',
-            fontSize: 18,
-            lineHeight: 1,
-            transition: 'transform 0.12s ease, background 0.12s ease',
-          }}
-          onMouseDown={(e) => {
-            e.currentTarget.style.transform = 'scale(0.92)';
-          }}
-          onMouseUp={(e) => {
-            e.currentTarget.style.transform = 'scale(1)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.transform = 'scale(1)';
-          }}
         >
           {emote}
         </button>

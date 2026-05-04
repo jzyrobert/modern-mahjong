@@ -346,26 +346,13 @@ interface ModeCardProps {
 }
 
 function ModeCard({ title, subtitle, icon, accent = false, children }: ModeCardProps) {
-  const [hover, setHover] = useState(false);
+  // Hover lift + shadow come from the `.mh-mode-card:hover` rule in
+  // `src/styles.css`; the only state-driven inline override here is the
+  // accent border colour, which depends on the `accent` prop.
   return (
     <div
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      style={{
-        background: PAPER_HI,
-        border: `1px solid ${accent ? 'oklch(0.78 0.13 30)' : HAIRLINE}`,
-        borderRadius: 16,
-        padding: 22,
-        boxShadow: hover
-          ? '0 8px 24px rgba(0,0,0,0.08), 0 2px 6px rgba(0,0,0,0.05)'
-          : '0 2px 6px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.03)',
-        transform: hover ? 'translateY(-2px)' : 'none',
-        transition: 'box-shadow .18s ease, transform .18s ease, border-color .18s ease',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 12,
-        position: 'relative',
-      }}
+      className="mh-mode-card"
+      style={{ border: `1px solid ${accent ? 'oklch(0.78 0.13 30)' : HAIRLINE}` }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <div
