@@ -74,7 +74,16 @@ export function LobbyPreview({ lobby, matchCode }: LobbyPreviewProps) {
         ) : null}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+      <div
+        style={{
+          display: 'grid',
+          // Auto-fit so the four cards reflow to 2×2 on narrow viewports
+          // (e.g. ~360px phones) instead of overflowing their fixed
+          // ~80px-wide boxes. On ≥620px the row stays as four columns.
+          gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+          gap: 8,
+        }}
+      >
         {SEATS.map((seat) => {
           const p = players[seat];
           return (
