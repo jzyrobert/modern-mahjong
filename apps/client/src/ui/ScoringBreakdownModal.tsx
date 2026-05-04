@@ -44,8 +44,11 @@ export function ScoringBreakdownModal({
           }}
         >
           {breakdown.map((b, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: breakdown order is stable engine output and entries can repeat names
-            <BreakdownRow key={i} entry={b} />
+            // Stable per-row key — `name` alone isn't unique because the
+            // engine can emit duplicate-named entries; pairing with the
+            // index gives a stable key under any future filtering or
+            // reordering of the breakdown list.
+            <BreakdownRow key={`${b.name}-${i}`} entry={b} />
           ))}
           <li
             style={{
