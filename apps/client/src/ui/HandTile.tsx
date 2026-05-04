@@ -1,13 +1,6 @@
 import type { Tile as MTile } from '@mahjong/game-logic';
 import { tileId } from '@mahjong/game-logic';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, {
-  runOnJS,
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-  withTiming,
-} from 'react-native-reanimated';
+import { Pressable, View } from 'react-native';
 import { Tile } from './Tile';
 
 interface HandTileProps {
@@ -31,85 +24,36 @@ interface HandTileProps {
 }
 
 /**
- * Single tile in the user's hand row. Phase 5 wires up drag-to-reorder
- * via `react-native-gesture-handler` + `react-native-reanimated` v4.
- *
- * Gesture composition: `LongPress(220ms)` arms a `Pan` that follows
- * the finger horizontally; on release the integer-index delta is
- * computed from `translationX / step` and committed via `onReorder`.
- * A bare tap (no drag) goes through `onTap`.
- *
- * Drag values live on the UI thread — the visual lift / opacity /
- * translation are driven by `useAnimatedStyle` worklets, only the
- * commit at gesture end touches JS via `runOnJS(onReorder)`.
+ * Phase 5 stub. The full reanimated + gesture-handler drag-to-reorder
+ * implementation triggered an Expo Go TurboModule init error on
+ * Android (`installTurboModule` arg-count mismatch). Reverted to a
+ * plain Pressable for now; drag-to-reorder will return once we move
+ * to a custom dev client build (Phase 8 territory).
  */
 export function HandTile({
   tile,
-  index,
-  total,
-  step,
-  draggable,
+  total: _total,
+  step: _step,
+  draggable: _draggable,
+  index: _index,
   onTap,
-  onReorder,
+  onReorder: _onReorder,
   drawnTileId,
   width,
   height,
 }: HandTileProps) {
-  const tx = useSharedValue(0);
-  const lift = useSharedValue(0);
-  const pressing = useSharedValue(0);
   const id = tileId(tile);
   const isDrawn = drawnTileId === id;
-
-  const longPress = Gesture.LongPress()
-    .minDuration(220)
-    .maxDistance(8)
-    .enabled(draggable)
-    .onStart(() => {
-      pressing.value = 1;
-      lift.value = withSpring(-12, { damping: 20, stiffness: 220 });
-    });
-
-  const pan = Gesture.Pan()
-    .activateAfterLongPress(220)
-    .enabled(draggable)
-    .onUpdate((e) => {
-      tx.value = e.translationX;
-    })
-    .onEnd(() => {
-      const delta = Math.round(tx.value / step);
-      const target = Math.max(0, Math.min(total - 1, index + delta));
-      tx.value = withTiming(0, { duration: 150 });
-      lift.value = withTiming(0, { duration: 150 });
-      pressing.value = 0;
-      if (delta !== 0 && onReorder) runOnJS(onReorder)(target);
-    })
-    .onFinalize(() => {
-      tx.value = withTiming(0, { duration: 150 });
-      lift.value = withTiming(0, { duration: 150 });
-      pressing.value = 0;
-    });
-
-  const tap = Gesture.Tap()
-    .maxDuration(220)
-    .onEnd(() => {
-      if (onTap) runOnJS(onTap)();
-    });
-
-  // Long-press → Pan, simultaneously with Tap (Tap is short-press only).
-  const composed = Gesture.Race(Gesture.Simultaneous(longPress, pan), tap);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: tx.value }, { translateY: lift.value }],
-    zIndex: pressing.value > 0 ? 50 : 0,
-    opacity: pressing.value > 0 ? 0.94 : 1,
-  }));
-
   return (
-    <GestureDetector gesture={composed}>
-      <Animated.View style={animatedStyle}>
-        <Tile tile={tile} raised={isDrawn} width={width} height={height} />
-      </Animated.View>
-    </GestureDetector>
+    <View>
+      <Tile
+        tile={tile}
+        raised={isDrawn}
+        width={width}
+        height={height}
+        {...(onTap !== undefined && { onPress: onTap })}
+        testID={onTap ? 'own-hand-tile' : undefined}
+      />
+    </View>
   );
 }

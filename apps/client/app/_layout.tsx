@@ -3,12 +3,8 @@ import 'expo-sqlite/localStorage/install';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { View } from 'react-native';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { TransportProvider } from '@/src/net/transport-context';
-import { DiceCeremony } from '@/src/ui/DiceCeremony';
-import { ShuffleOverlay } from '@/src/ui/ShuffleOverlay';
-import { WinCelebration } from '@/src/ui/WinCelebration';
 
 /**
  * Root layout. Mounts the providers every screen needs:
@@ -26,28 +22,18 @@ import { WinCelebration } from '@/src/ui/WinCelebration';
  */
 export default function RootLayout() {
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <View style={{ flex: 1 }}>
       <SafeAreaProvider>
         <TransportProvider>
           <StatusBar style="dark" backgroundColor="#f1eadc" />
-          <View style={{ flex: 1 }}>
-            <Stack
-              screenOptions={{
-                headerShown: false,
-                contentStyle: { backgroundColor: '#f1eadc' },
-              }}
-            />
-            {/* Phase 6 overlay layer — sits above every route. Each
-             * overlay self-gates on its own zustand-driven trigger:
-             * `state.seed` change for ShuffleOverlay, `state.openingRolls`
-             * for DiceCeremony, `state.lastResult.kind === 'win'` for
-             * WinCelebration. */}
-            <ShuffleOverlay />
-            <DiceCeremony />
-            <WinCelebration />
-          </View>
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: '#f1eadc' },
+            }}
+          />
         </TransportProvider>
       </SafeAreaProvider>
-    </GestureHandlerRootView>
+    </View>
   );
 }

@@ -3,7 +3,7 @@ import { type ReactNode, useState } from 'react';
 import { Alert, ScrollView, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getDisplayName, setDisplayName } from '../../identity';
-import { useTransport } from '../../net/transport-context';
+import { useTransport } from '@/src/net/transport-context';
 import { useGame } from '../../state/game';
 import { GhostButton, PrimaryButton, TextField } from '../buttons';
 import { LobbyPreview } from './LobbyPreview';

@@ -1,7 +1,6 @@
 import type { Seat } from '@mahjong/game-logic';
 import { useEffect, useRef } from 'react';
 import { Text, View, type ViewStyle } from 'react-native';
-import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { useGame } from '../../state/game';
 
 interface ChatBubblesProps {
@@ -18,13 +17,11 @@ const ANCHOR: Record<'bottom' | 'right' | 'top' | 'left', ViewStyle> = {
 };
 
 /**
- * Floating emote bubbles. Native port of
- * `_legacy/src/ui/match/ChatBubbles.tsx`. Schedules one auto-dismiss
- * timer per chat seq via a ref-tracked `Set` (matches PR #73's
- * non-churning pattern). Reanimated's `FadeIn` / `FadeOut` provide
- * the entry/exit animation; static positioning instead of the
- * legacy framer-motion stacking offset (offsets per-seat would need
- * a separate render-pass which we'll add in a polish pass).
+ * Floating emote bubbles. Phase 7 stub — Reanimated FadeIn/FadeOut
+ * temporarily replaced with plain View while we triage the Expo Go
+ * TurboModule registration mismatch. The auto-dismiss + per-seq timer
+ * scheduling logic is unchanged; only the entry/exit animation is
+ * stripped.
  */
 export function ChatBubbles({ seatToPosition }: ChatBubblesProps) {
   const chats = useGame((s) => s.chats);
@@ -61,10 +58,8 @@ export function ChatBubbles({ seatToPosition }: ChatBubblesProps) {
         const horiz = position === 'top' || position === 'bottom';
         const transform = horiz ? [{ translateX: -20 }] : [{ translateY: -16 }];
         return (
-          <Animated.View
+          <View
             key={c.seq}
-            entering={FadeIn.duration(200)}
-            exiting={FadeOut.duration(200)}
             style={[
               {
                 position: 'absolute',
@@ -85,7 +80,7 @@ export function ChatBubbles({ seatToPosition }: ChatBubblesProps) {
             ]}
           >
             <Text style={{ fontSize: 22, lineHeight: 24 }}>{c.text}</Text>
-          </Animated.View>
+          </View>
         );
       })}
     </View>

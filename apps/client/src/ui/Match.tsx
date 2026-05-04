@@ -15,7 +15,7 @@ import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useTransport } from '../net/transport-context';
+import { useTransport } from '@/src/net/transport-context';
 import { isSeatHost, useGame } from '../state/game';
 import { ClaimBar } from './ClaimBar';
 import { Hand } from './Hand';
