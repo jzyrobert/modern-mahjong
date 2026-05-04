@@ -40,39 +40,24 @@ const STATIC_STYLE: MotionStyle = {
   position: 'relative',
 };
 
-function TileComponent({
+/**
+ * Heavy paint-tree of a tile face/back: the layered SVG (face/side/edge
+ * rects + gradients + face-down centre dot + selection ring) plus the
+ * `<TileGlyph>` overlay. Memoised so a `shuffling` flip on the outer
+ * `Tile` (which only updates the motion-button transition prop) doesn't
+ * recompute this subtree on every visible tile.
+ */
+const TileBody = memo(function TileBody({
   tile,
   faceDown,
   selected,
-  raised,
-  dim,
-  onClick,
-  style,
-  rotate,
-  testId,
-}: TileProps) {
-  const shuffling = useGame((s) => s.shuffling);
-  const lift = selected ? -10 : raised ? -4 : 0;
+}: {
+  tile: MTile;
+  faceDown: boolean | undefined;
+  selected: boolean | undefined;
+}) {
   return (
-    <motion.button
-      type="button"
-      layoutId={`tile-${tileId(tile)}`}
-      onClick={onClick}
-      // Face-down tiles (opponent hands, the wall) shouldn't leak the actual
-      // tile face to screen readers — announce them generically.
-      aria-label={faceDown ? 'Face-down tile' : tileLabel(tile)}
-      {...(onClick ? { whileTap: TAP } : {})}
-      {...(testId ? { 'data-testid': testId } : {})}
-      transition={shuffling ? SLOW_SPRING : SPRING}
-      style={{
-        ...STATIC_STYLE,
-        cursor: onClick ? 'pointer' : 'default',
-        rotate: rotate ?? 0,
-        translateY: lift,
-        filter: dim ? 'brightness(0.85) saturate(0.85)' : undefined,
-        ...(style ?? {}),
-      }}
-    >
+    <>
       <svg
         viewBox={`0 0 ${W} ${H}`}
         width="100%"
@@ -170,6 +155,48 @@ function TileComponent({
           <TileGlyph t={tile} />
         </span>
       ) : null}
+    </>
+  );
+});
+
+function TileComponent({
+  tile,
+  faceDown,
+  selected,
+  raised,
+  dim,
+  onClick,
+  style,
+  rotate,
+  testId,
+}: TileProps) {
+  // Subscribing to `shuffling` here re-renders the outer motion.button
+  // when the dispense starts/ends so framer-motion picks up the slower
+  // transition. The heavy paint tree (`TileBody`, memoised) skips the
+  // update because its own props haven't changed — that's the win.
+  const shuffling = useGame((s) => s.shuffling);
+  const lift = selected ? -10 : raised ? -4 : 0;
+  return (
+    <motion.button
+      type="button"
+      layoutId={`tile-${tileId(tile)}`}
+      onClick={onClick}
+      // Face-down tiles (opponent hands, the wall) shouldn't leak the actual
+      // tile face to screen readers — announce them generically.
+      aria-label={faceDown ? 'Face-down tile' : tileLabel(tile)}
+      {...(onClick ? { whileTap: TAP } : {})}
+      {...(testId ? { 'data-testid': testId } : {})}
+      transition={shuffling ? SLOW_SPRING : SPRING}
+      style={{
+        ...STATIC_STYLE,
+        cursor: onClick ? 'pointer' : 'default',
+        rotate: rotate ?? 0,
+        translateY: lift,
+        filter: dim ? 'brightness(0.85) saturate(0.85)' : undefined,
+        ...(style ?? {}),
+      }}
+    >
+      <TileBody tile={tile} faceDown={faceDown} selected={selected} />
     </motion.button>
   );
 }
