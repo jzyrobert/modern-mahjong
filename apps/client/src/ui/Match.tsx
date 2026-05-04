@@ -25,6 +25,7 @@ import { ResultPanel } from './ResultPanel.js';
 import { RulePanel } from './RulePanel.js';
 import { Scoreboard } from './Scoreboard.js';
 import { Table } from './Table.js';
+import { GhostButton, PrimaryButton } from './buttons.js';
 import { ChatBar } from './match/ChatBar.js';
 import { ChatBubbles } from './match/ChatBubbles.js';
 import { GameLog } from './match/GameLog.js';
@@ -33,6 +34,7 @@ import { SettingsPanel } from './match/SettingsPanel.js';
 import type { SortMode } from './match/SortPicker.js';
 import { TopBar } from './match/TopBar.js';
 import { FELT_SKINS, TILE_BACK_SKINS } from './match/skins.js';
+import { LobbyPreview } from './menu/LobbyPreview.js';
 
 interface MatchProps {
   onAction: (action: Action) => void;
@@ -107,21 +109,32 @@ export function Match({ onAction, onChat, matchCode, onLeave }: MatchProps) {
 
   if (state.phase === 'waiting') {
     return (
-      <div style={{ padding: 24, color: INK, fontFamily: SANS, maxWidth: 560 }}>
-        <h2>Lobby</h2>
+      <div
+        style={{
+          padding: 24,
+          color: INK,
+          fontFamily: SANS,
+          maxWidth: 760,
+          margin: '0 auto',
+        }}
+      >
+        <h2 style={{ margin: '0 0 4px', fontWeight: 900 }}>Lobby</h2>
+        <p style={{ margin: '0 0 12px', fontSize: 13, opacity: 0.7 }}>
+          {isHost
+            ? 'Share the match code with friends. Start when everyone is ready.'
+            : 'Waiting for the host to start the match.'}
+        </p>
+        {lobby ? <LobbyPreview lobby={lobby} matchCode={matchCode} /> : null}
         <RulePanel rules={state.rules} isHost={isHost} onAction={onAction} />
-        <button
-          type="button"
-          disabled={!isHost}
-          onClick={() => onAction({ t: 'startHand', seed: randomSeed(), dealer: 0 })}
-        >
-          Start match
-        </button>
-        {!isHost && (
-          <p style={{ fontSize: 12, opacity: 0.6, marginTop: 8 }}>
-            Waiting for the host to start the match.
-          </p>
-        )}
+        <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+          <PrimaryButton
+            disabled={!isHost}
+            onClick={() => onAction({ t: 'startHand', seed: randomSeed(), dealer: 0 })}
+          >
+            Start match
+          </PrimaryButton>
+          <GhostButton onClick={onLeave}>Leave</GhostButton>
+        </div>
       </div>
     );
   }
