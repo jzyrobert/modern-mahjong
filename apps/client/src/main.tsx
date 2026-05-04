@@ -3,6 +3,7 @@ import type { ServerMessage } from '@mahjong/protocol';
 import { MotionConfig } from 'framer-motion';
 import { StrictMode, useCallback, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import './styles.css';
 import { getDisplayName, getPlayerId, hydrateIdentity } from './identity.js';
 import { initNativeIfAvailable } from './native/init.js';
 import { playDiscard } from './native/sound.js';

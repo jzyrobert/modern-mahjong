@@ -1,16 +1,5 @@
 import type { ReactNode } from 'react';
-import { useState } from 'react';
-import {
-  HAIRLINE,
-  INK,
-  INK_3,
-  MONO,
-  PAPER,
-  PAPER_HI,
-  RED,
-  RED_HOT,
-  SANS,
-} from '../native/theme.js';
+import { INK_3, MONO, SANS } from '../native/theme.js';
 
 interface PrimaryButtonProps {
   children: ReactNode;
@@ -23,7 +12,8 @@ interface PrimaryButtonProps {
 
 /**
  * Brand-red primary button with hover lift, shadow, and a disabled state.
- * Ported from `/tmp/design/design/menu.jsx::PrimaryButton`.
+ * Hover/focus/disabled visuals come from the `.mh-primary-btn` rules in
+ * `src/styles.css` so we don't re-render the whole component on hover.
  */
 export function PrimaryButton({
   children,
@@ -33,35 +23,18 @@ export function PrimaryButton({
   size = 'md',
   type = 'button',
 }: PrimaryButtonProps) {
-  const [hover, setHover] = useState(false);
   const padding = size === 'lg' ? '12px 20px' : size === 'sm' ? '6px 12px' : '10px 16px';
   const fontSize = size === 'lg' ? 14 : size === 'sm' ? 11 : 13;
   return (
     <button
       type={type === 'submit' ? 'submit' : 'button'}
+      className="mh-primary-btn"
       onClick={onClick}
       disabled={disabled}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
       style={{
-        background: disabled ? 'oklch(0.85 0.02 60)' : hover ? RED_HOT : RED,
-        color: 'white',
-        border: 'none',
-        borderRadius: 10,
         padding,
-        fontWeight: 800,
         fontSize,
-        fontFamily: SANS,
-        letterSpacing: 0.3,
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        boxShadow: disabled
-          ? 'none'
-          : '0 2px 6px oklch(0.55 0.18 28 / 0.32), inset 0 -2px 0 rgba(0,0,0,0.15)',
-        opacity: disabled ? 0.6 : 1,
-        transition: 'background .15s ease, transform .12s ease',
-        transform: hover && !disabled ? 'translateY(-1px)' : 'none',
         width: full ? '100%' : 'auto',
-        whiteSpace: 'nowrap',
       }}
     >
       {children}
@@ -77,8 +50,8 @@ interface GhostButtonProps {
 }
 
 /**
- * Cream ghost button with hairline border. Ported from
- * `/tmp/design/design/menu.jsx::GhostButton`.
+ * Cream ghost button with hairline border. Hover visuals come from the
+ * `.mh-ghost-btn` rules in `src/styles.css`.
  */
 export function GhostButton({
   children,
@@ -86,29 +59,13 @@ export function GhostButton({
   disabled = false,
   full = false,
 }: GhostButtonProps) {
-  const [hover, setHover] = useState(false);
   return (
     <button
       type="button"
+      className="mh-ghost-btn"
       onClick={onClick}
       disabled={disabled}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      style={{
-        background: hover ? PAPER : 'white',
-        color: INK,
-        border: `1px solid ${HAIRLINE}`,
-        borderRadius: 10,
-        padding: '10px 16px',
-        fontWeight: 700,
-        fontSize: 13,
-        fontFamily: SANS,
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        opacity: disabled ? 0.5 : 1,
-        transition: 'background .15s ease, border-color .15s ease',
-        width: full ? '100%' : 'auto',
-        whiteSpace: 'nowrap',
-      }}
+      style={{ width: full ? '100%' : 'auto' }}
     >
       {children}
     </button>
@@ -127,8 +84,9 @@ interface TextFieldProps {
 }
 
 /**
- * Cream-paper text input with focused brand-red ring. Ported from
- * `/tmp/design/design/menu.jsx::TextField`.
+ * Cream-paper text input with focused brand-red ring. The focus ring comes
+ * from the `.mh-text-field-input:focus-visible` rule in `src/styles.css`,
+ * so we don't mutate `e.target.style` on focus/blur from JS.
  */
 export function TextField({
   label,
@@ -155,32 +113,16 @@ export function TextField({
         {label}
       </div>
       <input
+        className="mh-text-field-input"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         maxLength={maxLength}
         style={{
-          width: '100%',
-          padding: '10px 12px',
-          borderRadius: 8,
-          border: `1px solid ${HAIRLINE}`,
-          background: PAPER_HI,
           fontFamily: mono ? MONO : SANS,
           fontSize: mono ? 16 : 14,
-          fontWeight: 600,
-          color: INK,
           letterSpacing: mono ? 3 : 0,
           textTransform: mono ? 'uppercase' : 'none',
-          outline: 'none',
-          transition: 'border-color .15s ease, box-shadow .15s ease',
-        }}
-        onFocus={(e) => {
-          e.target.style.borderColor = RED;
-          e.target.style.boxShadow = '0 0 0 3px oklch(0.55 0.18 25 / 0.15)';
-        }}
-        onBlur={(e) => {
-          e.target.style.borderColor = HAIRLINE;
-          e.target.style.boxShadow = 'none';
         }}
       />
       {hint ? <div style={{ fontSize: 11, color: INK_3, marginTop: 6 }}>{hint}</div> : null}
