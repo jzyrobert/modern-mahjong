@@ -39,6 +39,15 @@ jobs:
       - name: 🏗 Checkout repository
         uses: actions/checkout@v4
 
+      # Must install pnpm BEFORE setup-node@v4 because `cache: "pnpm"`
+      # invokes `pnpm store path` to find the cache dir — without pnpm
+      # on PATH the Node.js step errors out with:
+      #   Unable to locate executable file: pnpm.
+      - name: 🏗 Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+
       - name: 🏗 Setup Node.js
         uses: actions/setup-node@v4
         with:
