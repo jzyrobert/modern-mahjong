@@ -3,31 +3,31 @@ import { motion } from 'framer-motion';
 import { Tile } from '../Tile.js';
 
 /**
- * Visual wall edge for one seat. Renders the seat's physical 36-tile
- * wall (real Hong Kong mahjong has 4 walls × 18 stacks × 2 tiles = 144
- * tiles total — we show one row of 36 per seat) with regions classified
- * by the dice break and the engine's draw progress:
+ * Visual wall edge for one seat. Renders the seat's physical wall as 17
+ * stacks (real Hong Kong mahjong has 4 walls × 17 stacks × 2 tiles = 136
+ * tiles total). Each stack is drawn as a 2-tile-tall pillbox; status
+ * comes from the dice break and the engine's draw progress:
  *
- *   - `live`  — face-down, drawable
+ *   - `live`  — face-down, drawable (full 2-tile stack)
  *   - `dead`  — face-down, dimmed (kong replacements; never drawn except
- *                on a kong declaration)
- *   - `drawn` — empty (the tile already left this slot on its way to a
- *                hand)
+ *               on a kong declaration)
+ *   - `drawn` — empty (both tiles already left this stack on their way
+ *               to a hand)
  *
  * The slot whose status is `nextDraw` gets the existing pulse halo +
- * the engine's actual next-to-draw `Tile` (so the wall→hand layoutId
- * animation still works for that one slot). All other slots are
- * placeholder face-down rectangles — sufficient since the player can't
- * tell tile faces from the back anyway.
+ * the engine's actual next-to-draw `Tile` rendered as the **top** of
+ * the stack (the order tiles are physically taken). All other slots
+ * are placeholder face-down rectangles — sufficient since the player
+ * can't tell tile faces from the back anyway.
  *
  * The break direction wraps onto the next wall (counter-clockwise) when
- * the count exceeds the current wall — see `Table.tsx`'s dice helpers.
+ * the count exceeds the current wall — see `wallLayout.ts`.
  */
 
 export type SlotStatus = 'live' | 'dead' | 'drawn' | 'nextDraw';
 
 interface WallEdgeProps {
-  /** 36-element status map for this seat's wall, slot 0 = leftmost. */
+  /** 17-element status map for this seat's wall, slot 0 = leftmost. */
   slots: readonly SlotStatus[];
   /** Engine `Tile` for the next-to-draw slot, used as the FLIP source. */
   nextDrawTile?: MTile | null | undefined;
@@ -55,14 +55,12 @@ const PULSE_TRANSITION = {
   ease: 'easeInOut',
 } as const;
 
-// Wall tiles are smaller than the user's hand tiles so 36 slots per
-// side comfortably fit on a typical desktop viewport — this drives both
-// the wall row width and (after rotation) the side opponents' row
-// height, so a too-large value pushes the table past the viewport. The
-// `WALL_LENGTH` calc in `Table.tsx` must stay in sync with `--tile-w`.
+// Wall tiles match the opponent hand sizing (`max(16px, 2.6vmin)` × `max(22px, 3.6vmin)`)
+// so the four walls and the face-down opponent hands look consistent.
+// `WALL_LENGTH` / `WALL_THICKNESS` in `Table.tsx` must stay in sync.
 const WALL_TILE_VARS: React.CSSProperties = {
-  ['--tile-w' as string]: 'clamp(11px, 1.4vmin, 18px)',
-  ['--tile-h' as string]: 'clamp(15px, 1.9vmin, 22px)',
+  ['--tile-w' as string]: 'max(16px, 2.6vmin)',
+  ['--tile-h' as string]: 'max(22px, 3.6vmin)',
 };
 
 export function WallEdge({
@@ -86,10 +84,10 @@ export function WallEdge({
         gap: 4,
       }}
     >
-      <div style={{ display: 'flex', gap: 1 }}>
+      <div style={{ display: 'flex', gap: 1, alignItems: 'flex-end' }}>
         {ordered.map((status, i) => (
           <SlotCell
-            // biome-ignore lint/suspicious/noArrayIndexKey: slot positions are fixed (36 slots per seat); index IS the canonical identity here
+            // biome-ignore lint/suspicious/noArrayIndexKey: slot positions are fixed (17 stacks per seat); index IS the canonical identity here
             key={`${seatKey}-${i}`}
             status={status}
             nextDrawTile={status === 'nextDraw' ? (nextDrawTile ?? null) : null}
@@ -120,16 +118,22 @@ interface SlotCellProps {
   enableDrawTestId?: boolean | undefined;
 }
 
+const STACK_STYLE: React.CSSProperties = {
+  display: 'inline-flex',
+  flexDirection: 'column',
+  gap: 1,
+};
+
 function SlotCell({ status, nextDrawTile, onClick, enableDrawTestId }: SlotCellProps) {
   if (status === 'drawn') {
-    // Empty space — keeps the wall length consistent so subsequent
-    // live tiles don't reflow when more are drawn.
+    // Empty 2-tile-tall span keeps row geometry stable so live stacks
+    // don't reflow as more are drawn.
     return (
       <span
         aria-hidden
         style={{
           width: 'var(--tile-w, 16px)',
-          height: 'var(--tile-h, 22px)',
+          height: 'calc(2 * var(--tile-h, 22px) + 1px)',
           display: 'inline-block',
         }}
       />
@@ -137,34 +141,43 @@ function SlotCell({ status, nextDrawTile, onClick, enableDrawTestId }: SlotCellP
   }
 
   if (status === 'nextDraw' && nextDrawTile) {
+    // Top of the stack is the next tile that physically gets taken; the
+    // bottom remains a placeholder until the next draw.
     return (
-      <span style={{ position: 'relative', display: 'inline-block' }}>
-        <motion.span
-          aria-hidden="true"
-          animate={PULSE_HALO_ANIMATE}
-          transition={PULSE_TRANSITION}
-          style={{
-            position: 'absolute',
-            inset: 0,
-            borderRadius: 6,
-            background: '#f3c54a',
-            pointerEvents: 'none',
-          }}
-        />
-        <Tile
-          tile={nextDrawTile}
-          faceDown
-          onClick={onClick}
-          testId={enableDrawTestId ? 'wall-draw-next' : undefined}
-        />
+      <span style={STACK_STYLE}>
+        <span style={{ position: 'relative', display: 'inline-block' }}>
+          <motion.span
+            aria-hidden="true"
+            animate={PULSE_HALO_ANIMATE}
+            transition={PULSE_TRANSITION}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              borderRadius: 6,
+              background: '#f3c54a',
+              pointerEvents: 'none',
+            }}
+          />
+          <Tile
+            tile={nextDrawTile}
+            faceDown
+            onClick={onClick}
+            testId={enableDrawTestId ? 'wall-draw-next' : undefined}
+          />
+        </span>
+        <PlaceholderBack status="live" />
       </span>
     );
   }
 
-  // live or dead — placeholder face-down rectangle. We render a real
-  // Tile for live so the back gradient skins still apply uniformly.
-  // Dead wall uses dim opacity so the player can read the boundary.
-  return <PlaceholderBack status={status} />;
+  // live or dead — render as a 2-tile-tall placeholder stack. Dead wall
+  // uses dim opacity so the player can read the boundary.
+  return (
+    <span style={STACK_STYLE}>
+      <PlaceholderBack status={status} />
+      <PlaceholderBack status={status} />
+    </span>
+  );
 }
 
 function PlaceholderBack({ status }: { status: SlotStatus }) {
