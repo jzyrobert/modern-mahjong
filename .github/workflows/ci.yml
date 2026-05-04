@@ -141,12 +141,20 @@ jobs:
       # runner (no EAS cloud minutes consumed). Output is a debug
       # APK we upload as an artifact, mirroring the previous
       # Capacitor `build-android` flow.
+      #
+      # `EXPO_TOKEN` deliberately omitted — the local build path
+      # doesn't need EAS-side auth (the dev-client APK is unsigned /
+      # uses the debug keystore), and presence of the token triggers
+      # EAS's robot-user gate which demands a registered EAS project
+      # ID via `eas init`. The project isn't registered (not yet on
+      # EAS Build cloud), so the gate aborts with "EAS project not
+      # configured." The deploy workflow keeps the token for the
+      # production submit path that does require auth.
       - name: Build development APK
         working-directory: apps/client
         run: |
           eas build --platform android --profile development --local --non-interactive --output=./app-dev.apk
         env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           NODE_ENV: development
 
       - name: Upload APK artifact
