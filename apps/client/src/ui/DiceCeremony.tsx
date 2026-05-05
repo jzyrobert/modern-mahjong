@@ -94,6 +94,10 @@ export function DiceCeremony() {
         alignItems: 'center',
         justifyContent: 'center',
         backgroundColor: 'rgba(40, 30, 20, 0.5)',
+        // Matches the `Modal` primitive's gutter so the dialog never
+        // sits edge-to-edge on a portrait phone (a 320px iPhone SE
+        // would otherwise clip the rounded corners).
+        padding: 20,
         zIndex: 100,
       }}
     >
@@ -106,7 +110,10 @@ export function DiceCeremony() {
           padding: 24,
           borderRadius: 16,
           alignItems: 'center',
-          minWidth: 320,
+          // Width cap so the dialog stays compact on tablets / desktop
+          // without growing absurd.
+          width: '100%',
+          maxWidth: 420,
           shadowColor: '#000',
           shadowOpacity: 0.2,
           shadowRadius: 60,
