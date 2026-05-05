@@ -1,7 +1,7 @@
 import { useTransport } from '@/src/net/transport-context';
 import { generateMatchCode } from '@mahjong/protocol';
 import { type ReactNode, useState } from 'react';
-import { ScrollView, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { ScrollView, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getDisplayName, setDisplayName } from '../../identity';
 import { useGame } from '../../state/game';
@@ -271,10 +271,14 @@ function Hero() {
 }
 
 function ModeGrid({ children }: { children: ReactNode }) {
-  const { width } = useWindowDimensions();
-  // Match the legacy `repeat(auto-fit, minmax(280px, 1fr))` — at ≥920px
-  // three columns fit, otherwise stack.
-  const direction = width >= 920 ? 'row' : 'column';
+  // Equivalent of the legacy `repeat(auto-fit, minmax(280px, 1fr))`:
+  // row + wrap with each child `flex: 1 1 0; min-width: 280`. Children
+  // grow to fill available width, wrapping to a new row whenever
+  // another 280px-min card no longer fits — so on portrait phones each
+  // card occupies its own full-width row, and on desktop three fit
+  // side-by-side. The earlier column-direction branch combined wrap
+  // with `flex-basis: 0` on children and produced overlapping cards on
+  // narrow viewports.
   return (
     <View
       style={{
@@ -286,7 +290,7 @@ function ModeGrid({ children }: { children: ReactNode }) {
     >
       <View
         style={{
-          flexDirection: direction,
+          flexDirection: 'row',
           flexWrap: 'wrap',
           gap: 14,
         }}
