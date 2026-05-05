@@ -23,7 +23,10 @@ export interface UserSettings {
   autoSort: boolean;
   /** Override for the OS-level prefers-reduced-motion. true=motion on, false=reduced. */
   animations: boolean;
-  /** Sound effects toggle — no engine wiring yet (queued in TODO.md). */
+  /** Sound effects toggle. The toggle is wired through to the
+   *  Settings panel; the underlying `sound.ts` module is a no-op
+   *  until the expo-audio port lands, so flipping this currently
+   *  has no audible effect. */
   sound: boolean;
 }
 
