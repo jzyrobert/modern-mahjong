@@ -1,5 +1,5 @@
 import { type Tile as MTile, mulberry32, tileId } from '@mahjong/game-logic';
-import { Text, View } from 'react-native';
+import { View } from 'react-native';
 import { Tile } from '../Tile';
 
 interface SeatDiscardPileProps {
@@ -25,7 +25,6 @@ interface SeatDiscardPileProps {
 }
 
 const HALO = '#dc9f4f';
-const FAINT = 'rgba(255,255,255,0.6)';
 
 /** Max ± jitter in degrees added on top of the seat orientation, so each
  *  tile lands at a slightly different angle (a "toss" feel rather than
@@ -59,13 +58,11 @@ export function SeatDiscardPile({
   // height. Caller can override.
   const extent = maxExtent ?? (isVertical ? 6 * (tileH + 2) : 6 * (tileW + 2));
 
-  if (tiles.length === 0) {
-    return (
-      <View style={{ alignItems: 'center', justifyContent: 'center', minHeight: 28, minWidth: 28 }}>
-        <Text style={{ color: FAINT, fontSize: 10, fontWeight: '700' }}>—</Text>
-      </View>
-    );
-  }
+  // Empty discard piles render nothing — the felt centre stays clean
+  // until someone actually plays. The dashes were left over from an
+  // earlier debug layout and added visual noise to the start-of-hand
+  // table.
+  if (tiles.length === 0) return null;
 
   return (
     <View
