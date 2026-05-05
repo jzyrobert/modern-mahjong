@@ -53,14 +53,11 @@ test('peng available: ClaimBar shows Peng + Pass but not Win', async ({ page }) 
   const targetTile = await pickPengTarget(page);
   expect(targetTile, 'no peng-able face in dealt hand').not.toBeNull();
 
-  await page.evaluate(
-    (tile) => {
-      const scripts = (globalThis as { __MAHJONG_TEST_BOT_SCRIPTS__?: Record<number, unknown> })
-        .__MAHJONG_TEST_BOT_SCRIPTS__;
-      if (scripts) scripts[1] = { discards: [tile] };
-    },
-    targetTile,
-  );
+  await page.evaluate((tile) => {
+    const scripts = (globalThis as { __MAHJONG_TEST_BOT_SCRIPTS__?: Record<number, unknown> })
+      .__MAHJONG_TEST_BOT_SCRIPTS__;
+    if (scripts) scripts[1] = { discards: [tile] };
+  }, targetTile);
 
   // User discards anything to hand turn off to bot 1.
   await page.getByTestId('own-hand-tile').first().click();
@@ -84,14 +81,11 @@ test('no claim available: ClaimBar does not render', async ({ page }) => {
   const safeTile = await pickNonClaimableTarget(page);
   expect(safeTile, 'expected at least one un-held honor face').not.toBeNull();
 
-  await page.evaluate(
-    (tile) => {
-      const scripts = (globalThis as { __MAHJONG_TEST_BOT_SCRIPTS__?: Record<number, unknown> })
-        .__MAHJONG_TEST_BOT_SCRIPTS__;
-      if (scripts) scripts[1] = { discards: [tile] };
-    },
-    safeTile,
-  );
+  await page.evaluate((tile) => {
+    const scripts = (globalThis as { __MAHJONG_TEST_BOT_SCRIPTS__?: Record<number, unknown> })
+      .__MAHJONG_TEST_BOT_SCRIPTS__;
+    if (scripts) scripts[1] = { discards: [tile] };
+  }, safeTile);
 
   await page.getByTestId('own-hand-tile').first().click();
 
