@@ -8,7 +8,6 @@
       "**/build",
       "**/coverage",
       "**/node_modules",
-      "apps/client/_legacy",
       "apps/client/.expo",
       "apps/client/ios",
       "apps/client/android",
