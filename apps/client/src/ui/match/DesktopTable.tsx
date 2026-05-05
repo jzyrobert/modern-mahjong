@@ -82,10 +82,6 @@ const COLORS = {
  * targets.
  *
  * Notable simplifications vs the legacy build (queued, not blocking):
- *   - No perimeter wall tiles ("WallEdge"); the wall count badge in
- *     `GameStatusBar` covers the same data.
- *   - No CSS-var skin overrides; uses the sage felt directly. Settings-
- *     panel skin support (Phase 6 follow-up) can lift these to props.
  *   - Opponent face-down strips are unrotated; tile backs are visually
  *     symmetric so the seat orientation reads from position alone.
  */

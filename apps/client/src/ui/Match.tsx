@@ -219,27 +219,11 @@ export function Match() {
     // pulsing halo + the `wall-draw-next` testID + the click handler;
     // rendering `DrawCue` here too would surface a second
     // `wall-draw-next` element and break Playwright's strict locator.
-    const centerHud = (
-      <View style={{ alignItems: 'center', gap: 6 }}>
-        {canTsumo ? (
-          <PrimaryButton onPress={() => onAction({ t: 'declareWin', seat, selfDraw: true })}>
-            Declare win (tsumo)
-          </PrimaryButton>
-        ) : null}
-        {!canTsumo ? (
-          <Text
-            style={{
-              color: 'rgba(255,255,255,0.7)',
-              fontSize: 11,
-              fontWeight: '800',
-              letterSpacing: 0.5,
-            }}
-          >
-            {state.wall.length} TILES IN WALL
-          </Text>
-        ) : null}
-      </View>
-    );
+    const centerHud = canTsumo ? (
+      <PrimaryButton onPress={() => onAction({ t: 'declareWin', seat, selfDraw: true })}>
+        Declare win (tsumo)
+      </PrimaryButton>
+    ) : null;
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.cream }} edges={['top']}>
         <ScrollView
