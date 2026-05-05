@@ -16,15 +16,11 @@ const COLORS = {
 };
 
 /**
- * Lobby chrome — display-name input on the right, giant wind emblem +
- * bilingual title in the centre. Split out of `Lobby.tsx` so the screen
- * body reads as a top-down composition (`<LobbyHeader>` → `<ModeGrid>`
- * → `<LobbyPreview>`) without 100 lines of presentation noise inline.
- *
- * The smaller "麻 Modern Mahjong" brand mark used to sit on the
- * top-left of this row but was redundant with the giant Hero title
- * directly below it. Removed in 2026-05; the row is now just the
- * identity card right-aligned for breathing room.
+ * Lobby chrome — display-name input on the top left, giant wind emblem
+ * + bilingual title in the centre. Split out of `Lobby.tsx` so the
+ * screen body reads as a top-down composition (`<LobbyHeader>` →
+ * `<ModeGrid>` → `<LobbyPreview>`) without 100 lines of presentation
+ * noise inline.
  */
 export function LobbyHeader({ name, onChangeName }: LobbyHeaderProps) {
   return (
@@ -41,7 +37,7 @@ function BrandRow({ name, onChangeName }: LobbyHeaderProps) {
       style={{
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'flex-end',
+        justifyContent: 'flex-start',
         paddingVertical: 20,
         paddingHorizontal: 28,
         gap: 12,
