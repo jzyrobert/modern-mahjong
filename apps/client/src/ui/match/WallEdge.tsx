@@ -1,5 +1,5 @@
 import { type Tile as MTile, type Seat, tileId } from '@mahjong/game-logic';
-import { useEffect, useRef } from 'react';
+import { type ReactNode, useEffect, useRef } from 'react';
 import { Animated, Easing, Pressable, Text, View } from 'react-native';
 import { Tile } from '../Tile';
 import type { WallSlot } from './wallLayout';
@@ -35,6 +35,11 @@ interface WallEdgeProps {
   /** Stack orientation — horizontal row (top/bottom seats) or vertical
    *  column (left/right seats). The pillbox direction flips to match. */
   orient: 'row' | 'column';
+  /** Which edge of each stack faces the felt centre. Half-drawn stacks
+   *  collapse against this edge so the wall reads as receding from the
+   *  middle, matching a physical 2-high row where the top tile is gone
+   *  but the bottom (closer to the centre) remains. */
+  innerEdge: 'start' | 'end';
   /** Tile width. Defaults to 14 — matches OppHandStrip face-down tiles. */
   tileW?: number;
   /** Tile height. Defaults to 20. */
@@ -64,6 +69,7 @@ export function WallEdge({
   onDrawNext,
   reverse = false,
   orient,
+  innerEdge,
   tileW = 14,
   tileH = 20,
   liveCount,
@@ -81,6 +87,7 @@ export function WallEdge({
             key={`${seatKey}-${i}`}
             slot={slot}
             stackDir={stackDir}
+            innerEdge={innerEdge}
             tileW={tileW}
             tileH={tileH}
             nextDrawTile={slot.isNextDraw ? (nextDrawTile ?? null) : null}
@@ -113,6 +120,10 @@ interface SlotCellProps {
    *  (used when the wall row is vertical); 'column' = stacked vertically
    *  (used when the wall row is horizontal). */
   stackDir: 'row' | 'column';
+  /** Which edge of the cell is "inner" (faces the felt centre). Half-
+   *  drawn stacks render their single tile against this edge, so a
+   *  phys-mahjong-style "the top one is gone" reads correctly. */
+  innerEdge: 'start' | 'end';
   tileW: number;
   tileH: number;
   nextDrawTile: MTile | null;
@@ -123,39 +134,37 @@ interface SlotCellProps {
 function SlotCell({
   slot,
   stackDir,
+  innerEdge,
   tileW,
   tileH,
   nextDrawTile,
   onPress,
   enableDrawTestId,
 }: SlotCellProps) {
-  // Half-drawn stack as the next-to-draw target — single face-down
-  // engine tile with the pulse halo.
-  if (slot.isNextDraw && nextDrawTile && slot.tiles === 1) {
-    return (
-      <Pressable
-        onPress={onPress}
-        testID={enableDrawTestId ? 'wall-draw-next' : undefined}
-        style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
-      >
-        <PulseHalo width={tileW} height={tileH}>
-          <Tile
-            tile={nextDrawTile}
-            flipId={`tile-${tileId(nextDrawTile)}`}
-            faceDown
-            width={tileW}
-            height={tileH}
-          />
-        </PulseHalo>
-      </Pressable>
-    );
-  }
+  // Each cell reserves the full 2-tile slot dimensions regardless of
+  // how many tiles are still in this stack — half stacks then render
+  // a single tile pinned to the inner-facing edge so the wall reads
+  // as receding inward as tiles are drawn (the bottom tile of a phys
+  // stack sits closer to the centre).
+  const containerStyle =
+    stackDir === 'column'
+      ? { width: tileW, height: tileH * 2 + 1 }
+      : { width: tileW * 2 + 1, height: tileH };
+  const justifyContent = innerEdge === 'end' ? ('flex-end' as const) : ('flex-start' as const);
 
-  // Full next-to-draw stack — engine tile on top + a placeholder back below.
-  if (slot.isNextDraw && nextDrawTile && slot.tiles === 2) {
-    return (
-      <View style={{ flexDirection: stackDir, gap: 1 }}>
+  // Build the visible tile elements (1 or 2). The next-draw cue takes
+  // the slot's "front" position — the tile closest to the inner edge,
+  // which is what the user is about to pull from the wall.
+  const tiles: ReactNode[] = [];
+  if (slot.tiles === 2) {
+    // Outer tile (away from centre), then the inner tile. flex order
+    // means index 0 is at the start; with `justifyContent: 'flex-end'`
+    // the start is closer to the OUTER edge.
+    tiles.push(<PlaceholderBack key="outer" width={tileW} height={tileH} />);
+    if (slot.isNextDraw && nextDrawTile) {
+      tiles.push(
         <Pressable
+          key="inner"
           onPress={onPress}
           testID={enableDrawTestId ? 'wall-draw-next' : undefined}
           style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
@@ -169,20 +178,53 @@ function SlotCell({
               height={tileH}
             />
           </PulseHalo>
-        </Pressable>
-        <PlaceholderBack width={tileW} height={tileH} />
-      </View>
-    );
+        </Pressable>,
+      );
+    } else {
+      tiles.push(<PlaceholderBack key="inner" width={tileW} height={tileH} />);
+    }
+  } else {
+    // Half stack — only the inner tile remains.
+    if (slot.isNextDraw && nextDrawTile) {
+      tiles.push(
+        <Pressable
+          key="inner"
+          onPress={onPress}
+          testID={enableDrawTestId ? 'wall-draw-next' : undefined}
+          style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
+        >
+          <PulseHalo width={tileW} height={tileH}>
+            <Tile
+              tile={nextDrawTile}
+              flipId={`tile-${tileId(nextDrawTile)}`}
+              faceDown
+              width={tileW}
+              height={tileH}
+            />
+          </PulseHalo>
+        </Pressable>,
+      );
+    } else {
+      tiles.push(<PlaceholderBack key="inner" width={tileW} height={tileH} />);
+    }
   }
 
-  // Plain stack — 1 or 2 face-down placeholder backs.
-  if (slot.tiles === 1) {
-    return <PlaceholderBack width={tileW} height={tileH} />;
-  }
+  // For full stacks, `justifyContent: 'flex-end'` (innerEdge='end')
+  // also lays the tiles "outer-then-inner" along the stack axis. For
+  // 'flex-start' (innerEdge='start'), reverse so the inner tile is
+  // still adjacent to the inner edge.
+  const ordered = innerEdge === 'end' ? tiles : [...tiles].reverse();
+
   return (
-    <View style={{ flexDirection: stackDir, gap: 1 }}>
-      <PlaceholderBack width={tileW} height={tileH} />
-      <PlaceholderBack width={tileW} height={tileH} />
+    <View
+      style={{
+        ...containerStyle,
+        flexDirection: stackDir,
+        justifyContent,
+        gap: 1,
+      }}
+    >
+      {ordered}
     </View>
   );
 }
