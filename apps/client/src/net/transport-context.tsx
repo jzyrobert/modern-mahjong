@@ -1,3 +1,4 @@
+import type { BotKind } from '@mahjong/bots';
 import type { Action } from '@mahjong/game-logic';
 import type { ServerMessage } from '@mahjong/protocol';
 import Constants from 'expo-constants';
@@ -15,7 +16,7 @@ import { AppState, type AppStateStatus } from 'react-native';
 import { getDisplayName, getPlayerId } from '../identity';
 import { playDiscard } from '../sound';
 import { useGame } from '../state/game';
-import { createSoloTransport } from './solo-transport';
+import { type SoloTransportControls, createSoloTransport } from './solo-transport';
 import {
   type Transport,
   type TransportStatus,
@@ -36,6 +37,11 @@ interface TransportContextValue {
   leave: () => void;
   send: (action: Action) => void;
   sendChat: (text: string) => void;
+  /** Live-update one bot seat's strategy on a solo match. No-op
+   *  when the active transport is online or LAN — the user can't
+   *  configure another player's behaviour over the network. The
+   *  solo waiting room calls this from its bot-skill picker. */
+  setSoloBotSkill: (seat: 1 | 2 | 3, kind: BotKind) => void;
 }
 
 const TransportContext = createContext<TransportContextValue | null>(null);
@@ -157,8 +163,34 @@ export function TransportProvider({ children }: { children: ReactNode }) {
 
   const joinSolo = useCallback(() => {
     reconnectInfoRef.current = { kind: 'solo' };
-    swap(createSoloTransport({ playerId: getPlayerId(), displayName: getDisplayName() }), 'SOLO');
+    const skills = useGame.getState().settings.botSkills;
+    swap(
+      createSoloTransport({
+        playerId: getPlayerId(),
+        displayName: getDisplayName(),
+        botSkills: skills,
+      }),
+      'SOLO',
+    );
   }, [swap]);
+
+  const setSoloBotSkill = useCallback(
+    (seat: 1 | 2 | 3, kind: BotKind) => {
+      // The cast is safe — `swap` keeps the in-flight transport's
+      // identity, and only solo transports surface this method. We
+      // sniff for it instead of plumbing a separate `soloTransport`
+      // ref so online + LAN paths stay one-cast-cheap.
+      const solo = transport as (Transport & Partial<SoloTransportControls>) | null;
+      if (!solo?.setBotSkill) return;
+      solo.setBotSkill(seat, kind);
+      // Persist so the next solo match picks up the same selection.
+      const cur = useGame.getState().settings.botSkills;
+      const next: [BotKind, BotKind, BotKind] = [...cur];
+      next[seat - 1] = kind;
+      useGame.getState().setSettings({ botSkills: next });
+    },
+    [transport],
+  );
 
   const leave = useCallback(() => {
     transport?.send({ t: 'leave' });
@@ -273,6 +305,7 @@ export function TransportProvider({ children }: { children: ReactNode }) {
       leave,
       send,
       sendChat,
+      setSoloBotSkill,
     }),
     [
       matchCode,
@@ -285,6 +318,7 @@ export function TransportProvider({ children }: { children: ReactNode }) {
       leave,
       send,
       sendChat,
+      setSoloBotSkill,
     ],
   );
 
