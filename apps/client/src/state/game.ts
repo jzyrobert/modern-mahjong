@@ -240,3 +240,16 @@ export function isSeatHost(lobby: LobbyState | null, seat: Seat | null): boolean
 export function nameForSeat(lobby: LobbyState | null, seat: Seat): string {
   return playerForSeat(lobby, seat)?.displayName ?? `Seat ${seat}`;
 }
+
+// Test-only hatch: expose the zustand store getter on `globalThis` so
+// Playwright specs can read the engine state without us threading a
+// data-testid through every consumer. Harmless in production — the
+// store is already in memory, this is a getter — but only used by
+// `apps/client/e2e/*.spec.ts` test code.
+declare global {
+  // eslint-disable-next-line no-var
+  var __MAHJONG_TEST_GET_STATE__: (() => ClientGameStore) | undefined;
+}
+if (typeof globalThis !== 'undefined') {
+  globalThis.__MAHJONG_TEST_GET_STATE__ = () => useGame.getState();
+}
