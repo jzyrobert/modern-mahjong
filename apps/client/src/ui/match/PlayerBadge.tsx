@@ -96,11 +96,7 @@ export function PlayerBadge({
         paddingHorizontal: 10,
         borderRadius: 14,
         backgroundColor: isActive ? COLORS.redHot : COLORS.paperHi,
-        shadowColor: isActive ? COLORS.redHot : '#000',
-        shadowOpacity: isActive ? 0.45 : 0.1,
-        shadowRadius: isActive ? 12 : 6,
-        shadowOffset: { width: 0, height: 4 },
-        elevation: isActive ? 6 : 2,
+        boxShadow: isActive ? `0px 4px 12px ${COLORS.redHot}73` : '0px 4px 6px rgba(0,0,0,0.1)',
         borderWidth: isActive ? 2 : 0,
         borderColor: isActive ? '#f3c54a' : 'transparent',
         transform: isActive ? [{ scale }] : undefined,
@@ -114,11 +110,7 @@ export function PlayerBadge({
           backgroundColor: avatarBg,
           alignItems: 'center',
           justifyContent: 'center',
-          shadowColor: '#000',
-          shadowOpacity: 0.18,
-          shadowRadius: 2,
-          shadowOffset: { width: 0, height: 1 },
-          elevation: 2,
+          boxShadow: '0px 1px 2px rgba(0,0,0,0.18)',
         }}
       >
         <Text style={{ color: 'white', fontWeight: '800', fontSize: 12 }}>{initials}</Text>

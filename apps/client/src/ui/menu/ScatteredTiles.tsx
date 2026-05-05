@@ -42,7 +42,6 @@ export function ScatteredTiles() {
   if (width < 480) return null;
   return (
     <View
-      pointerEvents="none"
       style={{
         position: 'absolute',
         top: 0,
@@ -50,6 +49,7 @@ export function ScatteredTiles() {
         right: 0,
         bottom: 0,
         overflow: 'hidden',
+        pointerEvents: 'none',
       }}
     >
       {TILES.map((t) => (

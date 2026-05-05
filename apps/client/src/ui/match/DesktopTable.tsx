@@ -165,11 +165,7 @@ export function DesktopTable({
         borderRadius: 24,
         borderWidth: 4,
         borderColor: COLORS.feltEdge,
-        shadowColor: '#000',
-        shadowOpacity: 0.18,
-        shadowRadius: 32,
-        shadowOffset: { width: 0, height: 12 },
-        elevation: 6,
+        boxShadow: '0px 12px 32px rgba(0,0,0,0.18)',
         gap: 8,
       }}
     >

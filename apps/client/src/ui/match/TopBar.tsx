@@ -48,11 +48,7 @@ export function TopBar({
         paddingHorizontal: 10,
         borderRadius: 16,
         backgroundColor: 'rgba(255,255,255,0.88)',
-        shadowColor: '#000',
-        shadowOpacity: 0.08,
-        shadowRadius: 12,
-        shadowOffset: { width: 0, height: 3 },
-        elevation: 3,
+        boxShadow: '0px 3px 12px rgba(0,0,0,0.08)',
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>

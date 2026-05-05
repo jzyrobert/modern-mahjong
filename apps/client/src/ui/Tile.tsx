@@ -74,11 +74,7 @@ function TileComponent({
     transform: [{ rotate: `${rotate ?? 0}deg` }, { translateY: lift }],
     opacity: dim ? 0.85 : 1,
     ...(raised && {
-      shadowColor: '#dc9f4f',
-      shadowOpacity: 0.7,
-      shadowRadius: 8,
-      shadowOffset: { width: 0, height: 0 },
-      elevation: 6,
+      boxShadow: '0px 0px 8px rgba(220,159,79,0.7)',
     }),
     ...style,
   };
@@ -94,13 +90,13 @@ function TileComponent({
       />
       {!faceDown ? (
         <View
-          pointerEvents="none"
           style={{
             position: 'absolute',
             left: 0,
             right: 0,
             top: 0,
             bottom: '8%',
+            pointerEvents: 'none',
           }}
         >
           <TileGlyph t={tile} />

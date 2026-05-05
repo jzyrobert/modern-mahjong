@@ -193,11 +193,7 @@ export function TextField({
           color: COLORS.ink,
           letterSpacing: mono ? 3 : 0,
           ...(focused && {
-            shadowColor: COLORS.red,
-            shadowOpacity: 0.15,
-            shadowRadius: 4,
-            shadowOffset: { width: 0, height: 0 },
-            elevation: 2,
+            boxShadow: `0px 0px 4px ${COLORS.red}26`,
           }),
         }}
       />
