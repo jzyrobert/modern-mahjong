@@ -151,7 +151,13 @@ export function Match() {
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
             <PrimaryButton
               disabled={!isHost}
-              onPress={() => onAction({ t: 'startHand', seed: randomSeed(), dealer: 0 })}
+              // No explicit dealer — engine derives it from the
+              // opening dice roll (highest sum wins; ties go to the
+              // lowest-indexed seat). Subsequent hands rotate via
+              // `nextDealer(state)` from `ResultPanel`'s "Start next
+              // hand" button. Hardcoding `dealer: 0` here was the bug
+              // that made the user always dealer regardless of dice.
+              onPress={() => onAction({ t: 'startHand', seed: randomSeed() })}
             >
               Start match
             </PrimaryButton>
