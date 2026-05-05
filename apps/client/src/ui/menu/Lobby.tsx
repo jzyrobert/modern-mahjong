@@ -1,29 +1,30 @@
 import { useTransport } from '@/src/net/transport-context';
 import { generateMatchCode } from '@mahjong/protocol';
 import { type ReactNode, useState } from 'react';
-import { Platform, ScrollView, Text, TextInput, View } from 'react-native';
+import { Platform, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getDisplayName, setDisplayName } from '../../identity';
 import { useGame } from '../../state/game';
 import { HostLanModal } from '../HostLanModal';
 import { JoinLanModal } from '../JoinLanModal';
 import { GhostButton, PrimaryButton, TextField } from '../buttons';
+import { LobbyHeader } from './LobbyHeader';
 import { LobbyPreview } from './LobbyPreview';
+import { ModeCard, ModeGrid } from './ModeCard';
 import { ScatteredTiles } from './ScatteredTiles';
-import { WindEmblem } from './WindEmblem';
 import { BotIcon, BoxIcon, GlobeIcon, WifiIcon } from './icons';
 
 /**
- * Top-level menu screen. Native port of `_legacy/src/ui/Lobby.tsx`.
- * Hero with the wind emblem + bilingual title, three mode cards
- * (Online / Practice / LAN), `<ScatteredTiles />` decoration, and a
- * live `LobbyPreview` of the current `useGame.lobby` once the user
- * has joined a match.
+ * Top-level menu screen. Hero with the wind emblem + bilingual title
+ * (`<LobbyHeader>`), three mode cards (Online / Practice / LAN) inside
+ * `<ModeGrid>`, `<ScatteredTiles />` background, and a live
+ * `LobbyPreview` of the current `useGame.lobby` once the user has
+ * joined a match.
  *
- * `HostLanModal` / `JoinLanModal` open from the LAN card's two
- * buttons. The host modal will populate its URL automatically once
- * the LanServer Expo native module is available (a dev client build);
- * until then the user pastes their own host address.
+ * `HostLanModal` / `JoinLanModal` open from the LAN card. On Android
+ * dev/preview/production builds the host modal auto-populates its URL
+ * via the autolinked `expo-lan-server` module; web / iOS / Expo Go
+ * fall through to manual entry.
  */
 export function Lobby() {
   const transport = useTransport();
@@ -51,14 +52,13 @@ export function Lobby() {
         style={{ flex: 1, backgroundColor: 'transparent' }}
         contentContainerStyle={{ paddingBottom: 40 }}
       >
-        <TopBar
+        <LobbyHeader
           name={name}
           onChangeName={(v) => {
             setName(v);
             setDisplayName(v);
           }}
         />
-        <Hero />
         <ModeGrid>
           <ModeCard
             accent
@@ -160,300 +160,6 @@ export function Lobby() {
         }}
       />
     </SafeAreaView>
-  );
-}
-
-function TopBar({ name, onChangeName }: { name: string; onChangeName: (v: string) => void }) {
-  return (
-    <View
-      style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingVertical: 20,
-        paddingHorizontal: 28,
-        gap: 12,
-        flexWrap: 'wrap',
-      }}
-    >
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-        <View
-          style={{
-            width: 32,
-            height: 32,
-            borderRadius: 8,
-            backgroundColor: '#506a51',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Text
-            style={{
-              fontFamily: 'Noto Serif TC',
-              color: '#d8a85a',
-              fontSize: 18,
-              fontWeight: '700',
-              lineHeight: 18,
-            }}
-          >
-            麻
-          </Text>
-        </View>
-        <Text
-          style={{
-            fontWeight: '900',
-            fontSize: 14,
-            color: '#3a3328',
-            letterSpacing: 0.3,
-          }}
-        >
-          Modern Mahjong
-        </Text>
-      </View>
-
-      <IdentityCard name={name} onChange={onChangeName} />
-    </View>
-  );
-}
-
-function Hero() {
-  return (
-    <View
-      style={{
-        alignItems: 'center',
-        gap: 12,
-        paddingVertical: 12,
-        paddingHorizontal: 28,
-        paddingBottom: 28,
-      }}
-    >
-      <WindEmblem wind="東" size={84} />
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'baseline',
-          gap: 14,
-          flexWrap: 'wrap',
-          justifyContent: 'center',
-          marginTop: 6,
-        }}
-      >
-        <Text
-          accessibilityRole="header"
-          // RN-Web maps `accessibilityRole="header"` to `<h1 role="heading">`,
-          // which Playwright's `getByRole('heading', { name: ... })`
-          // expects. The smaller brand mark in `TopBar` stays a plain
-          // Text since there's only one h1 per route.
-          style={{
-            fontWeight: '900',
-            fontSize: 36,
-            color: '#3a3328',
-            letterSpacing: -0.5,
-            lineHeight: 36,
-          }}
-        >
-          Modern Mahjong
-        </Text>
-        <Text
-          style={{
-            fontFamily: 'Noto Serif TC',
-            fontWeight: '700',
-            fontSize: 28,
-            color: '#b14d3a',
-            lineHeight: 28,
-          }}
-        >
-          麻雀
-        </Text>
-      </View>
-      <Text
-        style={{
-          fontSize: 14,
-          fontWeight: '600',
-          color: '#918275',
-          maxWidth: 580,
-          textAlign: 'center',
-          lineHeight: 21,
-        }}
-      >
-        Hong Kong rules · 136 tiles · play online with friends, on the same Wi-Fi, or against bots.
-      </Text>
-    </View>
-  );
-}
-
-function ModeGrid({ children }: { children: ReactNode }) {
-  // Equivalent of the legacy `repeat(auto-fit, minmax(280px, 1fr))`:
-  // row + wrap with each child `flex: 1 1 0; min-width: 280`. Children
-  // grow to fill available width, wrapping to a new row whenever
-  // another 280px-min card no longer fits — so on portrait phones each
-  // card occupies its own full-width row, and on desktop three fit
-  // side-by-side. The earlier column-direction branch combined wrap
-  // with `flex-basis: 0` on children and produced overlapping cards on
-  // narrow viewports.
-  return (
-    <View
-      style={{
-        maxWidth: 1080,
-        width: '100%',
-        alignSelf: 'center',
-        paddingHorizontal: 28,
-      }}
-    >
-      <View
-        style={{
-          flexDirection: 'row',
-          flexWrap: 'wrap',
-          alignItems: 'stretch',
-          gap: 14,
-        }}
-      >
-        {children}
-      </View>
-    </View>
-  );
-}
-
-function IdentityCard({ name, onChange }: { name: string; onChange: (v: string) => void }) {
-  const initials = (name || '?').slice(0, 2).toUpperCase();
-  return (
-    <View
-      style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-        backgroundColor: '#fbf8f0',
-        borderColor: '#cdc1ad',
-        borderWidth: 1,
-        borderRadius: 10,
-        paddingVertical: 6,
-        paddingLeft: 6,
-        paddingRight: 10,
-      }}
-    >
-      <View
-        style={{
-          width: 30,
-          height: 30,
-          borderRadius: 7,
-          backgroundColor: '#c66b58',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <Text style={{ color: 'white', fontWeight: '800', fontSize: 12 }}>{initials}</Text>
-      </View>
-      <TextInput
-        value={name}
-        onChangeText={onChange}
-        placeholder="Display name"
-        placeholderTextColor="#918275"
-        style={{
-          fontFamily: 'Nunito',
-          fontSize: 13,
-          fontWeight: '700',
-          color: '#3a3328',
-          width: 140,
-          padding: 0,
-        }}
-      />
-    </View>
-  );
-}
-
-interface ModeCardProps {
-  title: string;
-  subtitle: string;
-  icon: ReactNode;
-  accent?: boolean;
-  children: ReactNode;
-}
-
-function ModeCard({ title, subtitle, icon, accent = false, children }: ModeCardProps) {
-  return (
-    <View
-      style={{
-        backgroundColor: '#fbf8f0',
-        borderColor: accent ? '#ec9275' : '#cdc1ad',
-        borderWidth: 1,
-        borderRadius: 16,
-        padding: 22,
-        gap: 12,
-        flexBasis: 0,
-        flexGrow: 1,
-        minWidth: 280,
-        boxShadow: '0px 2px 6px rgba(0,0,0,0.04)',
-      }}
-    >
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-        <View
-          style={{
-            width: 40,
-            height: 40,
-            borderRadius: 10,
-            backgroundColor: accent ? '#fbe5d9' : '#ede5d3',
-            borderColor: accent ? '#d8b09f' : '#cdc1ad',
-            borderWidth: 1,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          {icon}
-        </View>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 8,
-              flexWrap: 'wrap',
-            }}
-          >
-            <Text style={{ fontSize: 16, fontWeight: '900', color: '#3a3328', lineHeight: 18 }}>
-              {title}
-            </Text>
-            {accent ? <RecommendedBadge /> : null}
-          </View>
-          <Text
-            style={{
-              fontSize: 12,
-              color: '#918275',
-              marginTop: 2,
-              fontWeight: '600',
-            }}
-          >
-            {subtitle}
-          </Text>
-        </View>
-      </View>
-      {children}
-    </View>
-  );
-}
-
-function RecommendedBadge() {
-  return (
-    <View
-      style={{
-        backgroundColor: '#fbe5d9',
-        borderColor: '#d8b09f',
-        borderWidth: 1,
-        borderRadius: 6,
-        paddingHorizontal: 7,
-        paddingVertical: 3,
-      }}
-    >
-      <Text
-        style={{
-          color: '#b14d3a',
-          fontSize: 9,
-          fontWeight: '900',
-          letterSpacing: 0.7,
-        }}
-      >
-        RECOMMENDED
-      </Text>
-    </View>
   );
 }
 
