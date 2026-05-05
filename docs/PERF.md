@@ -24,7 +24,7 @@ once-per-hand shuffle motion can take longer.
 | --- | --- | --- | --- |
 | `Tile` (FLIP) | `transform` (auto via `layoutId`) | transform | framer-motion uses transform for FLIP layout transitions. |
 | `Tile` (whileTap) | `scale` | transform | |
-| `Wall` (pulse halo) | `scale`, `opacity` | transform + opacity | Implemented as a separate halo `<div>` so the underlying tile's static `box-shadow` stays. The halo grows + fades, no per-frame paint. |
+| `WallEdge` (pulse halo) | `scale`, `opacity` | transform + opacity | Implemented as a separate halo `<View>` overlay so the underlying tile's static `box-shadow` stays. The halo grows + fades, no per-frame paint. |
 | `ShuffleOverlay` (backdrop) | `opacity` | opacity | |
 | `ShuffleOverlay` (spinning tile) | `x`, `y`, `rotate`, `opacity` | transform + opacity | |
 | `DiceCeremony` (backdrop) | `opacity` | opacity | |
@@ -46,16 +46,18 @@ and don't change.
   own composited layer (look for `transform: translate3d(...)` in the
   compositing reasons).
 - The Lighthouse CI job (`lighthouse` step on every PR) enforces a
-  Performance score ≥ 0.9 against `vite preview`. A regression in
-  animation paint cost would surface here as a drop in **Speed Index**
-  or **Total Blocking Time**.
+  Performance score ≥ 0.9 (median of 3 runs) against the static
+  Expo Web export served via `npx serve dist -l 4173 -s`. A
+  regression in animation paint cost would surface here as a drop
+  in **Speed Index** or **Total Blocking Time**.
 
 ## Future regressions to watch for
 
 - Any new `motion.*` element that animates `box-shadow`, `width`,
   `height`, `top`, `left`, or `background-color`. If you need a glow
-  effect, render it as an absolutely-positioned overlay div and animate
-  its `opacity`/`scale` (as `Wall.tsx` does for the next-draw pulse).
+  effect, render it as an absolutely-positioned overlay `<View>` and
+  animate its `opacity`/`scale` (as `WallEdge.tsx` does for the
+  next-draw pulse).
 - `framer-motion` `layout` prop on a deep tree — `layoutId` is OK
   because each ID is unique. But `layout` (without ID) can trigger
   child re-mounts.
