@@ -101,19 +101,24 @@ client uses Expo Router + Metro now; the developer flow is:
   ships as a local Expo Module at
   `apps/client/modules/expo-lan-server/`. The Android (Kotlin /
   NanoHTTPD-WebSockets) side is implemented; the iOS (Swift) side
-  is a skeleton that throws. The module is **not auto-linked** into
-  the published bundle, so the lobby's "Host LAN match" flow on the
-  web build / Play Store APK stays in its "needs dev client"
-  fallback. Activation path is documented in
-  `apps/client/modules/expo-lan-server/README.md`.
+  is a skeleton that throws. The module is **autolinked** into
+  every native build via `apps/client/package.json`'s
+  `"expo-lan-server": "file:./modules/expo-lan-server"` dependency,
+  so any Android dev/preview/production APK hosts; the web bundle
+  and Expo Go fall back to manual host-URL entry since
+  `requireOptionalNativeModule` returns null there. Module-side
+  notes: `apps/client/modules/expo-lan-server/README.md`.
 
 ## Android APK
 
-Every CI run on `main` (and on PRs touching `apps/client/`)
-produces a debug-signed APK via `eas build --local` on the GitHub
-Actions runner and uploads it as the `client-apk-debug` workflow
-artifact. Download from the run summary page — it expires after
-14 days.
+Every push to `main` triggers `react-native-cicd.yml`, which runs
+`eas build --local` on the GitHub Actions runner for both the
+`development` and `production-apk` profiles in
+`apps/client/eas.json` and uploads the pair as the `app-builds`
+workflow artifact (`app-dev.apk` + `app-prod.apk`). Download from
+the run summary page — artifacts expire after 7 days. PR runs do
+not build APKs (the workflow's `build-and-deploy` job is gated to
+`push` events).
 
 The local-EAS flow runs entirely on the GitHub runner — no EAS
 cloud minutes / paid plan needed. The `EXPO_TOKEN` repo secret is
