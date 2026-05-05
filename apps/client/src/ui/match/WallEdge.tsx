@@ -2,33 +2,30 @@ import { type Tile as MTile, type Seat, tileId } from '@mahjong/game-logic';
 import { useEffect, useRef } from 'react';
 import { Animated, Easing, Pressable, Text, View } from 'react-native';
 import { Tile } from '../Tile';
+import type { WallSlot } from './wallLayout';
 
 /**
- * Visual wall edge for one seat. Renders the seat's physical wall as 17
- * stacks (real Hong Kong mahjong has 4 walls × 17 stacks × 2 tiles = 136
- * tiles total). Each stack is drawn as a 2-tile-tall pillbox; status
- * comes from the dice break and the engine's draw progress:
+ * Visual wall edge for one seat. Renders the seat's still-undrawn stacks
+ * as 2-tile-tall pillboxes (1-tile if the stack is half-drawn). Real
+ * Hong Kong mahjong builds the wall as 17 stacks × 2 per side; as the
+ * dealer + dice break feed plays, drawn stacks vanish and the visible
+ * wall shrinks to match.
  *
- *   - `live`     — face-down, drawable (full 2-tile stack)
- *   - `dead`     — face-down, dimmed (kong replacements; never drawn
- *                  except on a kong declaration)
- *   - `drawn`    — empty (both tiles already left this stack)
- *   - `nextDraw` — the next-to-draw stack; renders the engine's actual
- *                  next `Tile` on top so future Phase 6 FLIP animations
- *                  have a real tile object to track. Pulse halo deferred.
+ *   - Full stack (`tiles: 2`)  → two stacked face-down tile-backs.
+ *   - Half stack (`tiles: 1`)  → one face-down tile-back.
+ *   - Next-to-draw (`isNextDraw`) — top tile renders as the engine's
+ *     real next `Tile` (face-down) so future Phase 6 FLIPs have a real
+ *     tile object to track. Pulse halo signals "your draw."
  *
- * Native port of `_legacy/src/ui/match/WallEdge.tsx`. The framer-motion
- * pulse halo is intentionally omitted — animations belong to Phase 6
- * (Reanimated worklets / Animated API). For now the next-draw slot is
- * highlighted with a static gold border so it's still a visible cue.
+ * Native port of `_legacy/src/ui/match/WallEdge.tsx`. The dead wall is
+ * not rendered separately — it's part of the engine's state but never
+ * visible at a real table.
  */
 
-export type SlotStatus = 'live' | 'dead' | 'drawn' | 'nextDraw';
-
 interface WallEdgeProps {
-  /** 17-element status map for this seat's wall, slot 0 = leftmost. */
-  slots: readonly SlotStatus[];
-  /** Engine `Tile` for the next-to-draw slot, used as the FLIP source. */
+  /** Visible stacks for this seat — already filtered to undrawn ones. */
+  slots: readonly WallSlot[];
+  /** Engine `Tile` for the next-to-draw stack, used as the FLIP source. */
   nextDrawTile?: MTile | null | undefined;
   /** Click handler when the next-to-draw slot is on this seat's wall. */
   onDrawNext?: (() => void) | undefined;
@@ -37,11 +34,9 @@ interface WallEdgeProps {
    *  seats once the column is rotated. */
   reverse?: boolean | undefined;
   /** Stack orientation — horizontal row (top/bottom seats) or vertical
-   *  column (left/right seats). The 2-tile pillbox direction flips to
-   *  match. */
+   *  column (left/right seats). The pillbox direction flips to match. */
   orient: 'row' | 'column';
-  /** Tile width. Defaults to 14 — matches the existing OppHandStrip
-   *  face-down strip so opp-hand and wall sizes look consistent. */
+  /** Tile width. Defaults to 14 — matches OppHandStrip face-down tiles. */
   tileW?: number;
   /** Tile height. Defaults to 20. */
   tileH?: number;
@@ -81,17 +76,17 @@ export function WallEdge({
   return (
     <View style={{ alignItems: 'center', gap: 4 }}>
       <View style={{ flexDirection: orient, gap: 1 }}>
-        {ordered.map((status, i) => (
+        {ordered.map((slot, i) => (
           <SlotCell
-            // biome-ignore lint/suspicious/noArrayIndexKey: 17 fixed stack positions per seat — index IS the canonical identity
+            // biome-ignore lint/suspicious/noArrayIndexKey: order-stable per seat
             key={`${seatKey}-${i}`}
-            status={status}
+            slot={slot}
             stackDir={stackDir}
             tileW={tileW}
             tileH={tileH}
-            nextDrawTile={status === 'nextDraw' ? (nextDrawTile ?? null) : null}
-            onPress={status === 'nextDraw' ? onDrawNext : undefined}
-            enableDrawTestId={enableDrawTestId === true && status === 'nextDraw'}
+            nextDrawTile={slot.isNextDraw ? (nextDrawTile ?? null) : null}
+            onPress={slot.isNextDraw ? onDrawNext : undefined}
+            enableDrawTestId={enableDrawTestId === true && slot.isNextDraw}
           />
         ))}
       </View>
@@ -114,10 +109,10 @@ export function WallEdge({
 }
 
 interface SlotCellProps {
-  status: SlotStatus;
-  /** Layout direction for the inner 2-tile stack. 'row' = stacked
-   *  horizontally (used when the wall row is vertical); 'column' =
-   *  stacked vertically (used when the wall row is horizontal). */
+  slot: WallSlot;
+  /** Layout direction for the inner pillbox. 'row' = stacked horizontally
+   *  (used when the wall row is vertical); 'column' = stacked vertically
+   *  (used when the wall row is horizontal). */
   stackDir: 'row' | 'column';
   tileW: number;
   tileH: number;
@@ -127,7 +122,7 @@ interface SlotCellProps {
 }
 
 function SlotCell({
-  status,
+  slot,
   stackDir,
   tileW,
   tileH,
@@ -135,15 +130,30 @@ function SlotCell({
   onPress,
   enableDrawTestId,
 }: SlotCellProps) {
-  if (status === 'drawn') {
-    // Empty span keeps the row geometry stable so live stacks don't
-    // reflow as more are drawn.
-    const w = stackDir === 'column' ? tileW : tileW * 2 + 1;
-    const h = stackDir === 'column' ? tileH * 2 + 1 : tileH;
-    return <View style={{ width: w, height: h }} />;
+  // Half-drawn stack as the next-to-draw target — single face-down
+  // engine tile with the pulse halo.
+  if (slot.isNextDraw && nextDrawTile && slot.tiles === 1) {
+    return (
+      <Pressable
+        onPress={onPress}
+        testID={enableDrawTestId ? 'wall-draw-next' : undefined}
+        style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
+      >
+        <PulseHalo width={tileW} height={tileH}>
+          <Tile
+            tile={nextDrawTile}
+            flipId={`tile-${tileId(nextDrawTile)}`}
+            faceDown
+            width={tileW}
+            height={tileH}
+          />
+        </PulseHalo>
+      </Pressable>
+    );
   }
 
-  if (status === 'nextDraw' && nextDrawTile) {
+  // Full next-to-draw stack — engine tile on top + a placeholder back below.
+  if (slot.isNextDraw && nextDrawTile && slot.tiles === 2) {
     return (
       <View style={{ flexDirection: stackDir, gap: 1 }}>
         <Pressable
@@ -161,18 +171,19 @@ function SlotCell({
             />
           </PulseHalo>
         </Pressable>
-        <PlaceholderBack width={tileW} height={tileH} dim={false} />
+        <PlaceholderBack width={tileW} height={tileH} />
       </View>
     );
   }
 
-  // live or dead — render as a 2-tile-tall placeholder stack. Dead wall
-  // uses dim opacity so the player can read the boundary.
-  const dim = status === 'dead';
+  // Plain stack — 1 or 2 face-down placeholder backs.
+  if (slot.tiles === 1) {
+    return <PlaceholderBack width={tileW} height={tileH} />;
+  }
   return (
     <View style={{ flexDirection: stackDir, gap: 1 }}>
-      <PlaceholderBack width={tileW} height={tileH} dim={dim} />
-      <PlaceholderBack width={tileW} height={tileH} dim={dim} />
+      <PlaceholderBack width={tileW} height={tileH} />
+      <PlaceholderBack width={tileW} height={tileH} />
     </View>
   );
 }
@@ -239,7 +250,7 @@ function PulseHalo({
   );
 }
 
-function PlaceholderBack({ width, height, dim }: { width: number; height: number; dim: boolean }) {
+function PlaceholderBack({ width, height }: { width: number; height: number }) {
   return (
     <View
       style={{
@@ -249,7 +260,6 @@ function PlaceholderBack({ width, height, dim }: { width: number; height: number
         backgroundColor: COLORS.back1,
         borderColor: COLORS.backEdge,
         borderWidth: 0.5,
-        opacity: dim ? 0.45 : 1,
       }}
     />
   );

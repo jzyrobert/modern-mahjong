@@ -1,32 +1,29 @@
 import type { Seat } from '@mahjong/game-logic';
-import type { SlotStatus } from './WallEdge';
 
 /**
  * Hong Kong mahjong wall layout — given the dice break + drawn count,
- * compute a 17-stack status array per seat. A traditional table has
- * **17 stacks of 2 tiles per side** (17 × 2 × 4 = 136 tiles, matching
- * the engine's tile count); each visual slot here represents one stack
- * of two tiles, rendered as a 2-tile-tall pillbox by `WallEdge`.
+ * compute a per-seat list of stacks that are still visible on the table.
+ *
+ * Real Hong Kong tables build **17 stacks of 2 tiles per side** (17 ×
+ * 2 × 4 = 136). Each stack here matches one physical pillbox. As tiles
+ * are drawn the affected stack(s) shrink: a half-drawn stack shows 1
+ * tile, a fully-drawn stack disappears entirely (no placeholder gap).
+ * The dead wall (kong-replacement reserve) is excluded from the visual
+ * because the player never sees it as separate at a real table — and a
+ * faded reserve confuses casual players. Engine state (`state.wall.length`
+ * + `state.deadWall.length`) still tracks both.
  *
  * Conventions used (per the user's confirmed rules):
  *   - Two dice, sum N = 2..12.
  *   - The break wall is `(dealer + (N - 1)) % 4`, walking
  *     counter-clockwise through `nextSeat` from the dealer.
  *   - On that wall, the break is **N stacks** in from the right end
- *     (i.e. stack index `STACKS_PER_WALL - N`; sums always satisfy
- *     `N ≤ 12 < 17`).
+ *     (i.e. stack index `STACKS_PER_WALL - N`).
  *   - Dead wall = 7 stacks (= 14 tiles) to the **right** of the break,
  *     wrapping onto the next wall when the count exceeds 17.
  *   - Live wall starts at the stack immediately **left** of the break
  *     and walks left, wrapping onto the **previous** wall (CCW from
  *     the break wall).
- *
- * Each stack holds 2 tiles. Drawing alternates top-then-bottom of the
- * current stack; we treat a stack as `'drawn'` once both tiles are
- * gone (`drawn / 2` floored), so a half-drawn stack still appears as
- * the next-to-draw slot. If `breakPosition` is undefined (e.g. waiting
- * phase before `startHand` populates `state.openingRolls`) we fall back
- * to a "no break, all slots live" rendering so the wall still draws.
  */
 
 export const STACKS_PER_WALL = 17;
@@ -35,12 +32,18 @@ export const DEAD_WALL_STACKS = 7;
 export const LIVE_WALL_TILES =
   STACKS_PER_WALL * 4 * TILES_PER_STACK - DEAD_WALL_STACKS * TILES_PER_STACK;
 
+export interface WallSlot {
+  /** Tiles still physically in this stack. 1 = half-drawn, 2 = full. */
+  tiles: 1 | 2;
+  /** True for the single next-to-draw slot. */
+  isNextDraw: boolean;
+}
+
 export interface WallLayout {
-  slots: Record<Seat, SlotStatus[]>;
-  /** Which seat's wall the next-to-draw stack sits on — null if none. */
+  /** Visible stacks per seat, ordered along the wall (leftmost first). */
+  slots: Record<Seat, WallSlot[]>;
+  /** Which seat owns the next-to-draw stack — null if none (e.g. waiting). */
   nextDrawSeat: Seat | null;
-  /** Stack index 0..16 within `nextDrawSeat`'s wall. */
-  nextDrawSlot: number | null;
 }
 
 interface ComputeOpts {
@@ -52,26 +55,30 @@ interface ComputeOpts {
   allowDraw: boolean;
 }
 
-function emptyAllLive(): Record<Seat, SlotStatus[]> {
-  return {
-    0: Array.from({ length: STACKS_PER_WALL }, () => 'live' as SlotStatus),
-    1: Array.from({ length: STACKS_PER_WALL }, () => 'live' as SlotStatus),
-    2: Array.from({ length: STACKS_PER_WALL }, () => 'live' as SlotStatus),
-    3: Array.from({ length: STACKS_PER_WALL }, () => 'live' as SlotStatus),
-  };
+function emptyTruths(): Record<Seat, (0 | 1 | 2)[]> {
+  const make = () => Array.from({ length: STACKS_PER_WALL }, () => 2 as 0 | 1 | 2);
+  return { 0: make(), 1: make(), 2: make(), 3: make() };
+}
+
+function emptyAllFull(): Record<Seat, WallSlot[]> {
+  const make = () =>
+    Array.from({ length: STACKS_PER_WALL }, () => ({ tiles: 2 as const, isNextDraw: false }));
+  return { 0: make(), 1: make(), 2: make(), 3: make() };
 }
 
 export function computeWallLayout(opts: ComputeOpts): WallLayout {
   const { dealer, breakPosition, drawn, allowDraw } = opts;
-  const slots = emptyAllLive();
 
   if (breakPosition === undefined || breakPosition < 2 || breakPosition > 12) {
-    return { slots, nextDrawSeat: null, nextDrawSlot: null };
+    return { slots: emptyAllFull(), nextDrawSeat: null };
   }
 
   const breakWall = ((dealer + (breakPosition - 1)) % 4) as Seat;
   const breakStack = STACKS_PER_WALL - breakPosition;
+  const truths = emptyTruths();
 
+  // Mark dead-wall stacks as 0 (hidden). Engine still tracks the kong
+  // reserve, but the player doesn't see it on the felt.
   let seat: Seat = breakWall;
   let slotIdx = breakStack;
   for (let k = 0; k < DEAD_WALL_STACKS; k++) {
@@ -79,33 +86,63 @@ export function computeWallLayout(opts: ComputeOpts): WallLayout {
       slotIdx = 0;
       seat = ((seat + 1) % 4) as Seat;
     }
-    slots[seat]![slotIdx] = 'dead';
+    truths[seat]![slotIdx] = 0;
     slotIdx++;
   }
 
-  const drawnStacks = Math.floor(drawn / TILES_PER_STACK);
+  // Mark fully-drawn stacks as 0 and one half-drawn stack as 1, walking
+  // CCW from one stack left of the break.
+  const fullDrawn = Math.floor(drawn / TILES_PER_STACK);
+  const halfDrawn = drawn % TILES_PER_STACK === 1;
   seat = breakWall;
   slotIdx = breakStack - 1;
-  let nextDrawSeat: Seat | null = null;
-  let nextDrawSlot: number | null = null;
-  for (let k = 0; k < drawnStacks; k++) {
+  for (let k = 0; k < fullDrawn; k++) {
     if (slotIdx < 0) {
       seat = ((seat + 4 - 1) % 4) as Seat;
       slotIdx = STACKS_PER_WALL - 1;
     }
-    slots[seat]![slotIdx] = 'drawn';
+    truths[seat]![slotIdx] = 0;
     slotIdx--;
   }
 
-  if (slotIdx < 0) {
-    seat = ((seat + 4 - 1) % 4) as Seat;
-    slotIdx = STACKS_PER_WALL - 1;
-  }
-  if (slots[seat]?.[slotIdx] === 'live' && allowDraw) {
-    slots[seat]![slotIdx] = 'nextDraw';
-    nextDrawSeat = seat;
-    nextDrawSlot = slotIdx;
+  let nextDrawSeat: Seat | null = null;
+  let nextDrawIdx: number | null = null;
+
+  if (halfDrawn) {
+    if (slotIdx < 0) {
+      seat = ((seat + 4 - 1) % 4) as Seat;
+      slotIdx = STACKS_PER_WALL - 1;
+    }
+    if (truths[seat]?.[slotIdx] === 2) {
+      truths[seat]![slotIdx] = 1;
+      nextDrawSeat = seat;
+      nextDrawIdx = slotIdx;
+    }
+  } else {
+    // Next-draw is the next live (full) stack, if there is one.
+    let probeSeat = seat;
+    let probeIdx = slotIdx;
+    if (probeIdx < 0) {
+      probeSeat = ((probeSeat + 4 - 1) % 4) as Seat;
+      probeIdx = STACKS_PER_WALL - 1;
+    }
+    if (truths[probeSeat]?.[probeIdx] === 2) {
+      nextDrawSeat = probeSeat;
+      nextDrawIdx = probeIdx;
+    }
   }
 
-  return { slots, nextDrawSeat, nextDrawSlot };
+  // Compress truths into per-seat visible stack lists.
+  const slots: Record<Seat, WallSlot[]> = { 0: [], 1: [], 2: [], 3: [] };
+  for (const s of [0, 1, 2, 3] as const) {
+    const t = truths[s];
+    for (let i = 0; i < STACKS_PER_WALL; i++) {
+      const tile = t?.[i];
+      if (tile === undefined || tile === 0) continue;
+      const isNextDraw = allowDraw && nextDrawSeat === s && nextDrawIdx === i;
+      slots[s].push({ tiles: tile, isNextDraw });
+    }
+  }
+
+  return { slots, nextDrawSeat: allowDraw ? nextDrawSeat : null };
 }
