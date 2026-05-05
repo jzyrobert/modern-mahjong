@@ -24,16 +24,19 @@ import java.util.concurrent.ConcurrentHashMap
  * connections over LAN. Mirrors the JS bridge in
  * `apps/client/modules/expo-lan-server/src/LanServer.ts`.
  *
- * The module **only loads inside an Expo Dev Client build** — Expo Go
- * doesn't ship third-party native modules. To enable LAN hosting the
- * user must run:
- *
- *   eas build --profile development --platform android --local
+ * Autolinked via `apps/client/package.json`'s
+ * `"expo-lan-server": "file:./modules/expo-lan-server"` dependency,
+ * so any Android dev / preview / production build ships with this
+ * module. Expo Go and the web bundle don't load it —
+ * `requireOptionalNativeModule` returns null on the JS side and the
+ * lobby falls back to manual host-URL entry.
  *
  * Connections are tagged with a UUID `id`; events fire as
  *   - `connection` { id, query }
  *   - `message`    { id, data }
  *   - `close`      { id }
+ *   - `hostFound`  { name, host, port }   (mDNS discovery)
+ *   - `hostLost`   { name }
  *
  * The companion `MatchSession` (running in the host's app process)
  * handles each `connection` like a `partyserver` connection: parse
@@ -41,10 +44,13 @@ import java.util.concurrent.ConcurrentHashMap
  * subsequent `message` events through the same dispatch logic the
  * Cloudflare Worker uses, and emit replies via `send(id, data)`.
  *
- * **Implementation status:** start/stop/send wired; advertising via
- * mDNS deferred (the host pastes their own URL for now via
- * `HostLanModal`). Inbound origin / matchCode validation is delegated
- * to `MatchSession.applyClientMessage`, same as the Worker.
+ * mDNS advertisement + discovery are wired through `NsdManager` —
+ * service type `_modernmahjong._tcp.`, browse callbacks fan out via
+ * the `hostFound` / `hostLost` events. Static-asset HTTP responses
+ * (the bundled web export under `assets/lan-bundle/`) let guests
+ * browser-join over LAN without installing the app. Inbound
+ * matchCode + origin validation is delegated to
+ * `MatchSession.applyClientMessage`, same as the Worker.
  */
 class LanServerModule : Module() {
   private var server: WSDServer? = null
