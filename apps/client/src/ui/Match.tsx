@@ -34,6 +34,7 @@ import { OppHandStrip } from './match/OppHandStrip';
 import { SettingsPanel } from './match/SettingsPanel';
 import { SharedDiscardPool } from './match/SharedDiscardPool';
 import { type SortMode, SortPicker } from './match/SortPicker';
+import { TileReferenceSheet } from './match/TileReferenceSheet';
 import { TopBar } from './match/TopBar';
 import { FELT_SKINS } from './match/skins';
 import { LobbyPreview } from './menu/LobbyPreview';
@@ -94,6 +95,7 @@ export function Match() {
   const [sortMode, setSortMode] = useState<SortMode>(initialSort);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
+  const [referenceOpen, setReferenceOpen] = useState(false);
   const felt = FELT_SKINS[settings.felt];
   const seat = you !== null && you !== 'spectator' ? you : null;
   const isHost = isSeatHost(lobby, seat);
@@ -271,6 +273,7 @@ export function Match() {
               onLeave={onLeave}
               onOpenSettings={() => setSettingsOpen(true)}
               onOpenLog={() => setLogOpen(true)}
+              onOpenReference={() => setReferenceOpen(true)}
             />
           </View>
 
@@ -311,6 +314,7 @@ export function Match() {
           <ChatBubbles seatToPosition={seatToPosition} />
           <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
           <GameLog open={logOpen} onClose={() => setLogOpen(false)} />
+          <TileReferenceSheet open={referenceOpen} onClose={() => setReferenceOpen(false)} />
         </ScrollView>
       </SafeAreaView>
     );
@@ -349,6 +353,7 @@ export function Match() {
           onLeave={onLeave}
           onOpenSettings={() => setSettingsOpen(true)}
           onOpenLog={() => setLogOpen(true)}
+          onOpenReference={() => setReferenceOpen(true)}
         />
       </View>
       <ScrollView
@@ -457,6 +462,8 @@ export function Match() {
         {/* Floating emote bubbles overlay (absolute-positioned). */}
         <ChatBubbles seatToPosition={seatToPosition} />
         <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+        <GameLog open={logOpen} onClose={() => setLogOpen(false)} />
+        <TileReferenceSheet open={referenceOpen} onClose={() => setReferenceOpen(false)} />
       </ScrollView>
     </SafeAreaView>
   );

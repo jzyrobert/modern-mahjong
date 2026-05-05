@@ -8,6 +8,17 @@ interface ModalProps {
   children: ReactNode;
   /** Optional max-width for the dialog content (default 460). */
   maxWidth?: number;
+  /**
+   * Where the dialog sits inside the scrim:
+   *   - `'center'` (default): traditional centered card with a 20 px
+   *     gutter on every side.
+   *   - `'bottom'`: bottom-sheet pattern — card anchors to the
+   *     viewport's bottom edge (scrim padding clears top + sides
+   *     only), bottom corners flush with the viewport, top corners
+   *     rounded. Used for mobile-first surfaces where the relevant
+   *     buttons sit near the user's thumb.
+   */
+  placement?: 'center' | 'bottom';
 }
 
 const COLORS = {
@@ -28,12 +39,20 @@ const COLORS = {
  *
  * Used by `SettingsPanel`, `ScoringBreakdownModal`, and `GameLog`.
  */
-export function Modal({ open, title, onClose, children, maxWidth = 460 }: ModalProps) {
+export function Modal({
+  open,
+  title,
+  onClose,
+  children,
+  maxWidth = 460,
+  placement = 'center',
+}: ModalProps) {
+  const isBottom = placement === 'bottom';
   return (
     <RNModal
       visible={open}
       transparent
-      animationType="fade"
+      animationType={isBottom ? 'slide' : 'fade'}
       onRequestClose={onClose}
       statusBarTranslucent
     >
@@ -41,9 +60,11 @@ export function Modal({ open, title, onClose, children, maxWidth = 460 }: ModalP
         style={{
           flex: 1,
           backgroundColor: COLORS.scrim,
-          justifyContent: 'center',
+          justifyContent: isBottom ? 'flex-end' : 'center',
           alignItems: 'center',
-          padding: 20,
+          paddingTop: 20,
+          paddingHorizontal: isBottom ? 0 : 20,
+          paddingBottom: isBottom ? 0 : 20,
         }}
         onPress={onClose}
       >
@@ -53,16 +74,23 @@ export function Modal({ open, title, onClose, children, maxWidth = 460 }: ModalP
           style={{
             width: '100%',
             maxWidth,
-            maxHeight: '90%',
+            maxHeight: isBottom ? '90%' : '90%',
             backgroundColor: COLORS.paper,
-            borderRadius: 16,
+            borderTopLeftRadius: 16,
+            borderTopRightRadius: 16,
+            borderBottomLeftRadius: isBottom ? 0 : 16,
+            borderBottomRightRadius: isBottom ? 0 : 16,
             borderWidth: 1,
             borderColor: COLORS.hairline,
+            // Bottom sheet sits flush with the viewport edge — drop
+            // the bottom border so it doesn't paint a hairline above
+            // the screen edge.
+            ...(isBottom && { borderBottomWidth: 0 }),
             overflow: 'hidden',
             shadowColor: '#000',
             shadowOpacity: 0.18,
             shadowRadius: 24,
-            shadowOffset: { width: 0, height: 12 },
+            shadowOffset: { width: 0, height: isBottom ? -8 : 12 },
             elevation: 8,
           }}
         >
