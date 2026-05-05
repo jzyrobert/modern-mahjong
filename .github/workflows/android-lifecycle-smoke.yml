@@ -1,0 +1,123 @@
+name: Android lifecycle smoke
+
+# Smoke test: build a debug APK, boot an x86_64 AVD on the runner,
+# install + launch the app, drive it past the lobby into a solo
+# match, send the app to the background, sleep through a >30 s
+# timeout window, and resume — asserting the app process stays
+# alive and no fatal crash hits logcat. The DO snapshot/restore
+# round-trip is unit-tested in `apps/server/test/MatchSession.test.ts`;
+# this workflow is the missing real-WebView lifecycle leg of that
+# verification.
+#
+# Runs:
+#   - on PRs that touch the client app, the Expo manifest, or this
+#     workflow (the smoke is too heavy for every PR — ~10–12 min of
+#     runner time — but cheap relative to discovering a lifecycle
+#     regression in production).
+#   - on push to `main` for the same paths, so a regression that
+#     slips through PR-skip-paths still gets caught.
+#   - on `workflow_dispatch` so a maintainer can re-run the smoke
+#     against a green commit without changing app code.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/client/app.json"
+      - "apps/client/eas.json"
+      - "apps/client/package.json"
+      - "apps/client/app/**"
+      - "apps/client/src/**"
+      - "apps/client/modules/**"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/android-lifecycle-smoke.yml"
+  pull_request:
+    paths:
+      - "apps/client/app.json"
+      - "apps/client/eas.json"
+      - "apps/client/package.json"
+      - "apps/client/app/**"
+      - "apps/client/src/**"
+      - "apps/client/modules/**"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/android-lifecycle-smoke.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: android-lifecycle-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+  NODE_OPTIONS: --openssl-legacy-provider --max_old_space_size=4096
+  PACKAGE_ID: com.modernmahjong.app
+
+jobs:
+  lifecycle-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+
+      - name: Setup Java 17 (Android Gradle Plugin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # `eas build --local` invokes its own `expo prebuild` — no
+      # need to do it explicitly here. Output as the `preview` profile
+      # (assembleRelease, APK) so the same artefact you'd hand to a
+      # tester is what the smoke actually exercises.
+      - name: Build preview APK locally
+        working-directory: apps/client
+        run: |
+          npm i -g eas-cli@latest
+          eas build \
+            --platform android \
+            --profile preview \
+            --local \
+            --non-interactive \
+            --output=./app-preview.apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-preview-apk
+          path: apps/client/app-preview.apk
+          retention-days: 7
+          if-no-files-found: error
+
+      # GitHub-hosted Linux runners do expose KVM, but the
+      # `/dev/kvm` device defaults to root-only — emulator fails to
+      # start without this group/perm fix-up.
+      - name: Enable KVM permissions
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run lifecycle smoke on AVD
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          target: default
+          arch: x86_64
+          profile: pixel_5
+          force-avd-creation: false
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: bash apps/client/scripts/android-lifecycle-smoke.sh
+
+      - name: Upload smoke screenshots + logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lifecycle-smoke-artefacts
+          path: |
+            apps/client/lifecycle-smoke/*.png
+            apps/client/lifecycle-smoke/*.log
+          if-no-files-found: ignore
+          retention-days: 14
