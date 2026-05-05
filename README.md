@@ -44,7 +44,7 @@ pnpm --filter @mahjong/client e2e          # Playwright (against the static bund
 
 For the online server: `pnpm --filter @mahjong/server dev` (`wrangler dev` on `:8787`). The client picks up `EXPO_PUBLIC_SERVER_URL` if set and falls back to `localhost:8787`.
 
-To build a real Android APK locally see [`docs/DEPLOY.md`](./docs/DEPLOY.md#android-apk); CI also produces a debug APK on every push as the `client-apk-debug` workflow artifact.
+To build a real Android APK locally see [`docs/DEPLOY.md`](./docs/DEPLOY.md#android-apk); CI also produces development + production APKs on every push to `main` as the `app-builds` workflow artifact (`react-native-cicd.yml`).
 
 ## Architecture
 
