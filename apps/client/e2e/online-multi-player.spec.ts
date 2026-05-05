@@ -44,6 +44,18 @@ test('online match: 4 players join via match code, host starts hand', async ({ b
       ),
     ),
   );
+  // Pin the host's `randomSeed()` to a value where seat 0 (Alice — the
+  // first to connect, so the host) wins the opening dice roll outright
+  // (sums: 10/5/6/8 with seed 5). Without this, dealer is dice-random
+  // and the "Alice clicks own-hand-tile" → "Bob sees draw cue" assertion
+  // won't hold when a non-Alice seat is dealer.
+  await Promise.all(
+    contexts.map((ctx) =>
+      ctx.addInitScript((seed) => {
+        (globalThis as { __MAHJONG_TEST_SEED__?: number }).__MAHJONG_TEST_SEED__ = seed;
+      }, 5),
+    ),
+  );
   const pages = await Promise.all(contexts.map((ctx) => ctx.newPage()));
 
   try {
