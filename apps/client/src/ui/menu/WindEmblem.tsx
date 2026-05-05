@@ -36,9 +36,16 @@ export function WindEmblem({ wind = '東', size = 100 }: WindEmblemProps) {
             <Stop offset="0%" stopColor="#e3d8c0" />
             <Stop offset="100%" stopColor="#bfae8c" />
           </LinearGradient>
+          {/* Face gradient tuned to bracket the lobby's cream
+              background `#f1eadc` so the emblem reads as the 東
+              character + warm-paper edge depth, not a paler
+              tile-on-page mismatch. The previous stops
+              (#fbf8f0 → #ece4d3) skewed cooler/whiter than the
+              surrounding background, which looked like a
+              non-opaque tile of a different shade. */}
           <LinearGradient id="we-face" x1="0" x2="0" y1="0" y2="1">
-            <Stop offset="0%" stopColor="#fbf8f0" />
-            <Stop offset="100%" stopColor="#ece4d3" />
+            <Stop offset="0%" stopColor="#f4ede0" />
+            <Stop offset="100%" stopColor="#e6dec9" />
           </LinearGradient>
         </Defs>
         <Rect x={0} y={size * 0.05} width={size} height={size * 1.27} rx={r} fill="url(#we-side)" />
