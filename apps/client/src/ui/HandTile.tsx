@@ -1,7 +1,7 @@
 import type { Tile as MTile } from '@mahjong/game-logic';
 import { tileId } from '@mahjong/game-logic';
 import { useEffect, useRef, useState } from 'react';
-import { Animated, PanResponder, View } from 'react-native';
+import { Animated, Easing, PanResponder, View } from 'react-native';
 import { Tile } from './Tile';
 
 interface HandTileProps {
@@ -20,6 +20,13 @@ interface HandTileProps {
   onReorder?: ((toIndex: number) => void) | undefined;
   /** Engine `tileId` of the freshly-drawn tile (gold-glow + lift). */
   drawnTileId?: number | null;
+  /** True iff this is the heuristic ranker's recommended discard. Adds
+   *  a slow teal pulse halo so the user can pick it out at a glance.
+   *  Distinct hue from the drawn tile's gold halo so the two states
+   *  can co-exist (the just-drawn tile is *often* the right discard
+   *  but not always, and showing both signals is cleaner than
+   *  collapsing them into one). */
+  recommended?: boolean;
   width: number;
   height: number;
 }
@@ -55,6 +62,7 @@ export function HandTile({
   onTap,
   onReorder,
   drawnTileId,
+  recommended = false,
   width,
   height,
 }: HandTileProps) {
@@ -63,6 +71,32 @@ export function HandTile({
   const [dragging, setDragging] = useState(false);
   const translateX = useRef(new Animated.Value(0)).current;
   const liftAnim = useRef(new Animated.Value(0)).current; // 0 = at-rest, 1 = lifted
+  const hintPulse = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!recommended) {
+      hintPulse.stopAnimation();
+      hintPulse.setValue(0);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(hintPulse, {
+          toValue: 1,
+          duration: 800,
+          useNativeDriver: true,
+          easing: Easing.inOut(Easing.ease),
+        }),
+        Animated.timing(hintPulse, {
+          toValue: 0,
+          duration: 800,
+          useNativeDriver: true,
+          easing: Easing.inOut(Easing.ease),
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [recommended, hintPulse]);
 
   // Refs so the PanResponder closures see the latest values. Re-creating
   // the responder on every render breaks the active gesture mid-drag.
@@ -169,6 +203,12 @@ export function HandTile({
   const liftedY = liftAnim.interpolate({ inputRange: [0, 1], outputRange: [0, -10] });
   const liftedScale = liftAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.06] });
 
+  // Discard-hint halo — a single absolutely-positioned overlay sized
+  // to the tile, animated on opacity + scale (transform-only, no
+  // per-frame paint). Hidden when `recommended` is false.
+  const haloScale = hintPulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.15] });
+  const haloOpacity = hintPulse.interpolate({ inputRange: [0, 1], outputRange: [0.55, 0] });
+
   return (
     <Animated.View
       {...responder.panHandlers}
@@ -184,6 +224,38 @@ export function HandTile({
       }}
     >
       <View>
+        {recommended ? (
+          <>
+            <Animated.View
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width,
+                height,
+                borderRadius: 4,
+                backgroundColor: '#3aa999',
+                opacity: haloOpacity,
+                transform: [{ scale: haloScale }],
+                pointerEvents: 'none',
+              }}
+            />
+            <View
+              testID="hand-tile-recommended"
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width,
+                height,
+                borderRadius: 4,
+                borderWidth: 2,
+                borderColor: '#3aa999',
+                pointerEvents: 'none',
+              }}
+            />
+          </>
+        ) : null}
         <Tile
           tile={tile}
           flipId={`tile-${id}`}

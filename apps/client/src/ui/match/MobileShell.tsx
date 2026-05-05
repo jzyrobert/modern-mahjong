@@ -40,6 +40,9 @@ interface MobileShellProps {
   latestDiscardId: number | null;
   dealerName: string;
   drawnTileId: number | null;
+  /** When non-null, `Hand` highlights the matching `tileId` as the
+   *  heuristic ranker's recommended discard. */
+  hintTileId: number | null;
   sortMode: SortMode;
   onSortModeChange: (m: SortMode) => void;
   onAction: (a: Action) => void;
@@ -98,6 +101,7 @@ export function MobileShell(props: MobileShellProps) {
     latestDiscardId,
     dealerName,
     drawnTileId,
+    hintTileId,
     sortMode,
     onSortModeChange,
     onAction,
@@ -224,6 +228,7 @@ export function MobileShell(props: MobileShellProps) {
               onTileClick={myTurn && state.hasDrawn ? onTileTap : undefined}
               sortMode={sortMode}
               drawnTileId={drawnTileId}
+              hintTileId={hintTileId}
               drawCue={
                 needsDraw && state.wall.length > 0
                   ? {

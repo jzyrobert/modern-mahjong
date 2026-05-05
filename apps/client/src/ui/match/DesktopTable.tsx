@@ -45,6 +45,9 @@ interface DesktopTableProps {
   sortMode: SortMode;
   onSortModeChange: (m: SortMode) => void;
   drawnTileId: number | null;
+  /** When non-null, the bottom seat's `Hand` highlights this `tileId`
+   *  as the recommended discard. */
+  hintTileId: number | null;
   /** Tile currently in the claim window — gets a gold halo. */
   latestDiscardId: number | null;
   /** Slotted into the table's center cell (e.g. wall count, draw cue, tsumo button). */
@@ -97,6 +100,7 @@ export function DesktopTable({
   sortMode,
   onSortModeChange,
   drawnTileId,
+  hintTileId,
   latestDiscardId,
   centerHud,
   liveWallCount,
@@ -199,6 +203,7 @@ export function DesktopTable({
         sortMode={sortMode}
         onSortModeChange={onSortModeChange}
         drawnTileId={drawnTileId}
+        hintTileId={hintTileId}
         ownHandClickable={ownHandClickable}
         score={scoreboard[byPos.bottom.seat]}
         lobby={lobby}
@@ -267,6 +272,7 @@ interface MyAreaProps {
   sortMode: SortMode;
   onSortModeChange: (m: SortMode) => void;
   drawnTileId: number | null;
+  hintTileId: number | null;
   ownHandClickable?: ((t: MTile) => void) | undefined;
   score: number;
   lobby: LobbyState | null;
@@ -281,6 +287,7 @@ function MyArea({
   sortMode,
   onSortModeChange,
   drawnTileId,
+  hintTileId,
   ownHandClickable,
   score,
   lobby,
@@ -307,6 +314,7 @@ function MyArea({
         onTileClick={ownHandClickable}
         sortMode={sortMode}
         drawnTileId={drawnTileId}
+        hintTileId={hintTileId}
       />
     </View>
   );
