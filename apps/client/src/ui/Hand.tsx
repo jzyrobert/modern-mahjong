@@ -104,41 +104,16 @@ export function Hand({
     [orderedIds, setManualOrder],
   );
 
-  const draggable = !faceDown && sortMode === 'manual' && !!setManualOrder;
+  // Face-down hands aren't used by the current Match layout (we render
+  // opponents via `<OppHandStrip>` instead), so the face-down/no-handler
+  // path is a thin pass-through that just drops the tap + drag wiring.
+  // `rotate` is ignored for now — opponent sideways hands would need
+  // separate composition.
+  const interactive = !faceDown && !!onTileClick;
+  const draggable = interactive && sortMode === 'manual' && !!setManualOrder;
   const tileWidth = fittedWidth;
   const tileHeight = fittedHeight;
   const step = tileWidth + GAP;
-
-  // Face-down hands aren't used by the current Match layout (we render
-  // opponents via `<OppHandStrip>` instead), so the face-down branch
-  // is a thin pass-through. `rotate` is ignored for now — opponent
-  // sideways hands would need separate composition.
-  if (faceDown || !onTileClick) {
-    return (
-      <View
-        onLayout={onLayout}
-        style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP, width: '100%' }}
-      >
-        {ordered.map((t, i) => {
-          const id = tileId(t);
-          return (
-            <HandTile
-              key={id}
-              tile={t}
-              index={i}
-              total={ordered.length}
-              step={step}
-              draggable={false}
-              drawnTileId={drawnTileId}
-              width={tileWidth}
-              height={tileHeight}
-            />
-          );
-        })}
-        {drawCue ? <DrawGhostSlot cue={drawCue} width={tileWidth} height={tileHeight} /> : null}
-      </View>
-    );
-  }
 
   return (
     <View
@@ -155,8 +130,8 @@ export function Hand({
             total={ordered.length}
             step={step}
             draggable={draggable}
-            onTap={onTileClick ? () => onTileClick(t) : undefined}
-            onReorder={(toIndex) => onReorder(i, toIndex)}
+            onTap={interactive && onTileClick ? () => onTileClick(t) : undefined}
+            onReorder={interactive ? (toIndex) => onReorder(i, toIndex) : undefined}
             drawnTileId={drawnTileId}
             width={tileWidth}
             height={tileHeight}
