@@ -16,6 +16,43 @@ android {
     lintOptions {
         abortOnError false
     }
+
+    // Surface the host app's Expo Web export at runtime under
+    // `assets/lan-bundle/` so `WSDServer.serveHttp` can serve it to
+    // guests that hit the host's URL in a browser. The export is the
+    // output of `pnpm --filter @mahjong/client export-web` and must
+    // exist before `eas build`; we copy `apps/client/dist/` into a
+    // namespaced staging directory so the files land under
+    // `assets/lan-bundle/index.html` etc., not at the assets root
+    // (avoids collisions with the host app's own web export). When
+    // the export hasn't been run, the staged directory is empty and
+    // the APK simply ships without a bundle — `serveHttp` falls back
+    // to a friendly 404 so the failure mode is "guests can't
+    // browser-join" rather than a build failure.
+    sourceSets {
+        main {
+            assets.srcDirs += file("$buildDir/intermediates/lan-bundle-assets")
+        }
+    }
+}
+
+def stageLanBundleAssets = tasks.register('stageLanBundleAssets', Copy) {
+    from(file("$projectDir/../../../dist"))
+    into(file("$buildDir/intermediates/lan-bundle-assets/lan-bundle"))
+    // dist may not exist if `expo export -p web` hasn't been run; the
+    // task is a no-op in that case.
+    onlyIf { file("$projectDir/../../../dist").exists() }
+    // Don't fail if dist is empty.
+    includeEmptyDirs = false
+}
+
+afterEvaluate {
+    tasks.matching { it.name.startsWith('merge') && it.name.endsWith('Assets') }.configureEach {
+        dependsOn stageLanBundleAssets
+    }
+    tasks.matching { it.name.startsWith('package') && it.name.endsWith('Assets') }.configureEach {
+        dependsOn stageLanBundleAssets
+    }
 }
 
 dependencies {

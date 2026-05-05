@@ -57,6 +57,9 @@ export function WinCelebration() {
         alignItems: 'center',
         justifyContent: 'center',
         backgroundColor: 'rgba(40, 30, 20, 0.55)',
+        // Gutter so the celebration card never sits edge-to-edge on a
+        // 320 px portrait phone.
+        padding: 20,
         zIndex: 110,
       }}
     >
@@ -68,8 +71,13 @@ export function WinCelebration() {
           borderWidth: 1,
           borderRadius: 24,
           paddingVertical: 40,
-          paddingHorizontal: 56,
-          minWidth: 340,
+          // Horizontal padding shrinks below ~360 wide so the inner
+          // content (winner name + faan readout) keeps a real gutter
+          // even on iPhone SE-class viewports. The earlier hard
+          // `paddingHorizontal: 56` + `minWidth: 340` overflowed.
+          paddingHorizontal: 32,
+          width: '100%',
+          maxWidth: 420,
           alignItems: 'center',
           shadowColor: '#000',
           shadowOpacity: 0.3,
