@@ -1,13 +1,14 @@
 import { expect, test } from '@playwright/test';
 
-// Locks in the 📖 tile-reference bottom sheet wired up from the
-// match `TopBar`. The sheet is the first user-facing surface that
-// uses the `Modal` primitive's `placement="bottom"` mode, so this
-// also doubles as a regression for that placement: the dialog has
-// to anchor flush with the viewport's bottom edge (or close to it)
-// at narrow heights, not float in the middle.
+// Locks in the tile-reference bottom sheet, now reached via the
+// ☰ menu sheet on the match `TopBar` (Tile reference row). The
+// sheet uses the `Modal` primitive's `placement="bottom"` mode;
+// the dedicated placement test lives in `players-sheet.spec.ts`
+// because the players sheet content fits the placement-y
+// assertion cleanly across viewports — the longer reference
+// content collides with the assertion threshold.
 test.describe('Tile reference sheet', () => {
-  test('opens from the TopBar 📖 button on portrait phone widths', async ({ page }) => {
+  test('opens via the ☰ menu on portrait phone widths', async ({ page }) => {
     await page.setViewportSize({ width: 412, height: 906 });
     await page.goto('/');
     await page.getByRole('button', { name: 'Play vs bots' }).click();
@@ -15,25 +16,17 @@ test.describe('Tile reference sheet', () => {
     // Sleep through the dice ceremony auto-dismiss.
     await page.waitForTimeout(4500);
 
-    const open = page.getByLabel('Open tile reference');
-    await expect(open).toBeVisible();
-    await open.click();
+    await page.getByLabel('Open menu').click();
+    await expect(page.getByText('Menu', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Tile reference' }).click();
 
-    const heading = page.getByText('Tile reference', { exact: true });
+    // The menu row's "Tile reference" text stays in the DOM
+    // briefly during the slide-out animation, so wait for the
+    // menu heading to disappear before locating the new sheet's
+    // own heading.
+    await expect(page.getByText('Menu', { exact: true })).toBeHidden({ timeout: 5_000 });
+    const heading = page.getByText('Tile reference', { exact: true }).first();
     await expect(heading).toBeVisible();
-
-    // Sheet anchors to the bottom of the viewport. Heading sits at
-    // the top of the sheet card; its y-coordinate has to be in the
-    // bottom half of the 906 px viewport (roughly y > 350 once the
-    // sheet's content is laid out). A regression that flipped
-    // `placement` back to `'center'` would put the heading near the
-    // top instead.
-    const headingBox = await heading.boundingBox();
-    if (!headingBox) throw new Error('Heading has no bounding box');
-    expect(
-      headingBox.y,
-      `Heading y=${headingBox.y} should sit in the bottom half of the 906px viewport (placement="bottom").`,
-    ).toBeGreaterThan(350);
 
     // The reference content ("Characters · 萬子 (Man)") is reachable
     // through the sheet's inner ScrollView.

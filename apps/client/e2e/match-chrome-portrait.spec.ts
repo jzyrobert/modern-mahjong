@@ -33,9 +33,8 @@ test('match chrome stays in viewport on iPhone SE portrait', async ({ page }) =>
   ).toBeGreaterThanOrEqual(0);
   expect(box.y + box.height).toBeLessThanOrEqual(568);
 
-  // The Leave button (rightmost in the TopBar) and the settings ⚙
-  // icon also have to be reachable from the pinned chrome — they're
-  // the user's only way out of a hand on mobile.
-  await expect(page.getByText('Leave', { exact: true }).first()).toBeVisible();
-  await expect(page.getByLabel('Open settings')).toBeVisible();
+  // The ☰ menu button is the user's entry into Settings / Game log
+  // / Tile reference / Leave on a phone — has to be reachable from
+  // the pinned chrome.
+  await expect(page.getByLabel('Open menu')).toBeVisible();
 });

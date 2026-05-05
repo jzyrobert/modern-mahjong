@@ -3,17 +3,9 @@ import { Pressable, Text, View } from 'react-native';
 interface TopBarProps {
   matchCode: string | null;
   viewers: number | null;
-  onLeave: () => void;
-  /** Optional — if provided, renders a "⚙" button that opens the
-   *  in-match SettingsPanel. Match.tsx wires this to local state.
-   *  Pre-game lobby renders TopBar without it. */
-  onOpenSettings?: () => void;
-  /** Optional — if provided, renders a "📜" button that opens the
-   *  GameLog modal listing the recent engine events. */
-  onOpenLog?: () => void;
-  /** Optional — if provided, renders a "📖" button that opens the
-   *  136-tile reference bottom-sheet. */
-  onOpenReference?: () => void;
+  /** Opens the bottom-sheet menu containing Settings / Game log /
+   *  Tile reference / Leave. Wired by `Match.tsx`. */
+  onOpenMenu: () => void;
 }
 
 const COLORS = {
@@ -26,18 +18,13 @@ const COLORS = {
 };
 
 /**
- * Top-right corner — Live · #CODE pill, viewer count, Settings button,
- * Leave button. The legacy GameLog + Fullscreen buttons are deferred
- * (still queued in TODO.md's Expo migration follow-ups).
+ * Top-right corner — Live · #CODE pill, viewer count, ☰ menu
+ * button. The four individual icon buttons (settings ⚙ / game
+ * log 📜 / tile reference 📖 / leave) live behind a single ☰
+ * button now, surfaced via the `MenuSheet` bottom-sheet — the
+ * old row clipped on a 320 px iPhone SE even with flex-wrap.
  */
-export function TopBar({
-  matchCode,
-  viewers,
-  onLeave,
-  onOpenSettings,
-  onOpenLog,
-  onOpenReference,
-}: TopBarProps) {
+export function TopBar({ matchCode, viewers, onOpenMenu }: TopBarProps) {
   return (
     <View
       style={{
@@ -65,56 +52,9 @@ export function TopBar({
       {viewers && viewers > 0 ? (
         <Text style={{ fontSize: 11, color: COLORS.ink3, fontWeight: '600' }}>👁 {viewers}</Text>
       ) : null}
-      {onOpenReference ? (
-        <Pressable
-          onPress={onOpenReference}
-          accessibilityLabel="Open tile reference"
-          style={({ pressed }) => ({
-            paddingHorizontal: 8,
-            paddingVertical: 4,
-            borderRadius: 8,
-            backgroundColor: pressed ? '#ece4d3' : 'transparent',
-            borderColor: COLORS.hairline,
-            borderWidth: 1,
-          })}
-        >
-          <Text style={{ fontSize: 13, color: COLORS.ink }}>📖</Text>
-        </Pressable>
-      ) : null}
-      {onOpenLog ? (
-        <Pressable
-          onPress={onOpenLog}
-          accessibilityLabel="Open game log"
-          style={({ pressed }) => ({
-            paddingHorizontal: 8,
-            paddingVertical: 4,
-            borderRadius: 8,
-            backgroundColor: pressed ? '#ece4d3' : 'transparent',
-            borderColor: COLORS.hairline,
-            borderWidth: 1,
-          })}
-        >
-          <Text style={{ fontSize: 13, color: COLORS.ink }}>📜</Text>
-        </Pressable>
-      ) : null}
-      {onOpenSettings ? (
-        <Pressable
-          onPress={onOpenSettings}
-          accessibilityLabel="Open settings"
-          style={({ pressed }) => ({
-            paddingHorizontal: 8,
-            paddingVertical: 4,
-            borderRadius: 8,
-            backgroundColor: pressed ? '#ece4d3' : 'transparent',
-            borderColor: COLORS.hairline,
-            borderWidth: 1,
-          })}
-        >
-          <Text style={{ fontSize: 13, color: COLORS.ink }}>⚙</Text>
-        </Pressable>
-      ) : null}
       <Pressable
-        onPress={onLeave}
+        onPress={onOpenMenu}
+        accessibilityLabel="Open menu"
         style={({ pressed }) => ({
           paddingHorizontal: 10,
           paddingVertical: 4,
@@ -124,7 +64,7 @@ export function TopBar({
           borderWidth: 1,
         })}
       >
-        <Text style={{ fontSize: 11, fontWeight: '700', color: COLORS.ink }}>Leave</Text>
+        <Text style={{ fontSize: 14, fontWeight: '700', color: COLORS.ink }}>☰</Text>
       </Pressable>
     </View>
   );
