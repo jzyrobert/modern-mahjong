@@ -528,5 +528,14 @@ function seatWindFor(dealer: Seat, seat: Seat): Wind {
 }
 
 function randomSeed(): number {
+  // Test override hatch: Playwright sets `__MAHJONG_TEST_SEED__` via
+  // `addInitScript` before navigation so the dice roll (and thus the
+  // dealer pick) is deterministic. Production / dev never sets it,
+  // so the fallback is the regular `Math.random`-driven seed.
+  if (typeof window !== 'undefined') {
+    const override = (window as unknown as { __MAHJONG_TEST_SEED__?: number })
+      .__MAHJONG_TEST_SEED__;
+    if (typeof override === 'number') return override;
+  }
   return Math.floor(Math.random() * 0xffffffff);
 }

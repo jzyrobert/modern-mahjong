@@ -1,5 +1,17 @@
 import { type Page, expect, test } from '@playwright/test';
 
+// Pin the lobby's `randomSeed()` to a value where the engine's opening
+// dice roll lands seat 0 (the user) as dealer outright (sums: 10/5/6/8).
+// Without this, dealer selection is non-deterministic and the test's
+// "user has 14 tiles + must discard" precondition no longer holds.
+const TEST_SEED = 5;
+
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript((seed) => {
+    (globalThis as { __MAHJONG_TEST_SEED__?: number }).__MAHJONG_TEST_SEED__ = seed;
+  }, TEST_SEED);
+});
+
 test('solo match: lobby → match, user discards, bots take over', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Modern Mahjong' })).toBeVisible();
