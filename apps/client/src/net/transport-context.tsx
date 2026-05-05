@@ -222,31 +222,44 @@ export function TransportProvider({ children }: { children: ReactNode }) {
     });
   }, [transport, setState, setLobby, appendEvents, pushChat]);
 
-  // AppState background/foreground lifecycle. When backgrounded, we
-  // pre-emptively close the socket so the server's reconnect grace can
-  // hold the seat. When foregrounded, if we had a join in flight, we
-  // re-create the same transport — the server's snapshot/restore brings
-  // the engine state back.
+  // AppState background/foreground lifecycle. For socket-backed
+  // transports (online + LAN), pre-emptively close on background so
+  // the server's reconnect grace can hold the seat, and re-create on
+  // foreground — the server's snapshot/restore brings the engine
+  // state back.
+  //
+  // For solo, deliberately keep the transport alive across
+  // background/foreground. There's no socket to suspend (the bot
+  // loop is in-process), and there's no server to restore from —
+  // closing would tear down the message listeners + the claim alarm,
+  // and the foreground branch's `joinSolo()` would then spin up a
+  // FRESH `emptyState` match, dumping the user back into "Waiting
+  // for the game to start…" with their in-progress hand gone. This
+  // is the bug behind "screen off then on → can't take any actions
+  // in a no-turn-timer solo game."
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
   useEffect(() => {
     const sub = AppState.addEventListener('change', (next) => {
       const prev = appStateRef.current;
       appStateRef.current = next;
       if (prev === 'active' && next.match(/inactive|background/)) {
-        transport?.close();
+        if (reconnectInfoRef.current?.kind !== 'solo') {
+          transport?.close();
+        }
       } else if (prev.match(/inactive|background/) && next === 'active') {
         const info = reconnectInfoRef.current;
         if (info && !transport) {
           // Re-create the same transport. Identity comes from
           // localStorage so playerId is stable across the suspend.
+          // Solo never reaches here: we don't close it on
+          // background, so `transport` is still set.
           if (info.kind === 'online') joinOnline(info.code);
           else if (info.kind === 'lan') joinLan(info.hostUrl, info.code);
-          else if (info.kind === 'solo') joinSolo();
         }
       }
     });
     return () => sub.remove();
-  }, [transport, joinOnline, joinLan, joinSolo]);
+  }, [transport, joinOnline, joinLan]);
 
   const value = useMemo<TransportContextValue>(
     () => ({
