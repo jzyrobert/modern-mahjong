@@ -42,7 +42,6 @@ export function ShuffleOverlay() {
   if (!active) return null;
   return (
     <Animated.View
-      pointerEvents="none"
       style={{
         position: 'absolute',
         left: 0,
@@ -54,6 +53,7 @@ export function ShuffleOverlay() {
         backgroundColor: 'rgba(241, 234, 220, 0.78)',
         zIndex: 90,
         opacity: fade,
+        pointerEvents: 'none',
       }}
     >
       <View style={{ width: 220, height: 220 }}>
@@ -62,7 +62,6 @@ export function ShuffleOverlay() {
           <SpinningTile key={i} index={i} />
         ))}
         <View
-          pointerEvents="none"
           style={{
             position: 'absolute',
             left: 0,
@@ -71,6 +70,7 @@ export function ShuffleOverlay() {
             bottom: 0,
             alignItems: 'center',
             justifyContent: 'center',
+            pointerEvents: 'none',
           }}
         >
           <Text
@@ -126,11 +126,7 @@ function SpinningTile({ index }: { index: number }) {
         backgroundColor: '#7fa9c1',
         borderColor: '#cdc1ad',
         borderWidth: 1,
-        shadowColor: '#000',
-        shadowOpacity: 0.25,
-        shadowRadius: 6,
-        shadowOffset: { width: 0, height: 2 },
-        elevation: 4,
+        boxShadow: '0px 2px 6px rgba(0,0,0,0.25)',
         opacity: t,
         transform: [{ translateX: tx }, { translateY: ty }, { rotate: rot }],
       }}

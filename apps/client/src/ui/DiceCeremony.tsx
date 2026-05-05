@@ -114,11 +114,7 @@ export function DiceCeremony() {
           // without growing absurd.
           width: '100%',
           maxWidth: 420,
-          shadowColor: '#000',
-          shadowOpacity: 0.2,
-          shadowRadius: 60,
-          shadowOffset: { width: 0, height: 24 },
-          elevation: 12,
+          boxShadow: '0px 24px 60px rgba(0,0,0,0.2)',
         }}
       >
         <Text style={{ fontSize: 18, fontWeight: '900', color: COLORS.ink, marginBottom: 16 }}>
@@ -176,11 +172,7 @@ function Die({ value, delay }: { value: number; delay: number }) {
         borderWidth: 1,
         borderRadius: 8,
         padding: 6,
-        shadowColor: '#000',
-        shadowOpacity: 0.18,
-        shadowRadius: 6,
-        shadowOffset: { width: 0, height: 2 },
-        elevation: 3,
+        boxShadow: '0px 2px 6px rgba(0,0,0,0.18)',
         flexDirection: 'row',
         flexWrap: 'wrap',
         opacity: t,

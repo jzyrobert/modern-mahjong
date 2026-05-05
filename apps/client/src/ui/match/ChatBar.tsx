@@ -30,11 +30,7 @@ export function ChatBar({ onSend }: ChatBarProps) {
         backgroundColor: COLORS.paperHi,
         borderColor: COLORS.hairline,
         borderWidth: 1,
-        shadowColor: '#000',
-        shadowOpacity: 0.08,
-        shadowRadius: 10,
-        shadowOffset: { width: 0, height: 2 },
-        elevation: 2,
+        boxShadow: '0px 2px 10px rgba(0,0,0,0.08)',
         alignSelf: 'flex-start',
       }}
     >

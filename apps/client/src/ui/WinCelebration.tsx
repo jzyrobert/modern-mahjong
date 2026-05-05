@@ -79,11 +79,7 @@ export function WinCelebration() {
           width: '100%',
           maxWidth: 420,
           alignItems: 'center',
-          shadowColor: '#000',
-          shadowOpacity: 0.3,
-          shadowRadius: 60,
-          shadowOffset: { width: 0, height: 24 },
-          elevation: 16,
+          boxShadow: '0px 24px 60px rgba(0,0,0,0.3)',
         }}
       >
         <PulseEmblem />

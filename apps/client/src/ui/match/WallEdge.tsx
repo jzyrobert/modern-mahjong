@@ -232,7 +232,6 @@ function PulseHalo({
       }}
     >
       <Animated.View
-        pointerEvents="none"
         style={{
           position: 'absolute',
           top: 0,
@@ -243,6 +242,7 @@ function PulseHalo({
           backgroundColor: COLORS.drawHalo,
           opacity,
           transform: [{ scale }],
+          pointerEvents: 'none',
         }}
       />
       {children}

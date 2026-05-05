@@ -68,11 +68,7 @@ export function SharedDiscardPool({
             <View
               style={{
                 ...(live && {
-                  shadowColor: '#dc9f4f',
-                  shadowOpacity: 0.7,
-                  shadowRadius: 6,
-                  shadowOffset: { width: 0, height: 0 },
-                  elevation: 4,
+                  boxShadow: '0px 0px 6px rgba(220,159,79,0.7)',
                   borderWidth: 1.5,
                   borderColor: '#dc9f4f',
                   borderRadius: 4,

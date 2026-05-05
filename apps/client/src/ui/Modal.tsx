@@ -87,11 +87,9 @@ export function Modal({
             // the screen edge.
             ...(isBottom && { borderBottomWidth: 0 }),
             overflow: 'hidden',
-            shadowColor: '#000',
-            shadowOpacity: 0.18,
-            shadowRadius: 24,
-            shadowOffset: { width: 0, height: isBottom ? -8 : 12 },
-            elevation: 8,
+            boxShadow: isBottom
+              ? '0px -8px 24px rgba(0,0,0,0.18)'
+              : '0px 12px 24px rgba(0,0,0,0.18)',
           }}
         >
           <View
