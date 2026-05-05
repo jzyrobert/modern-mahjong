@@ -125,18 +125,46 @@ export function DesktopTable({
     allowDraw: onDrawNext !== undefined,
   });
 
-  const renderWall = (seat: Seat, orient: 'row' | 'column', reverse: boolean, isMe: boolean) => (
-    <WallEdge
-      seatKey={seat}
-      slots={wallLayout.slots[seat]}
-      orient={orient}
-      reverse={reverse}
-      nextDrawTile={wallLayout.nextDrawSeat === seat ? nextDrawTile : null}
-      onDrawNext={wallLayout.nextDrawSeat === seat ? onDrawNext : undefined}
-      enableDrawTestId={wallLayout.nextDrawSeat === seat}
-      liveCount={isMe ? liveWallCount : undefined}
-    />
-  );
+  // `innerEdge` tells `WallEdge` which side of each stack faces the
+  // felt centre. Half-drawn stacks collapse against this edge so the
+  // wall reads as receding inward, matching a physical 2-tile-high
+  // row where "the top one is gone" = the tile farther from the
+  // table centre is missing first.
+  const innerEdgeFor = (position: Position): 'start' | 'end' => {
+    if (position === 'top') return 'end'; // inner = bottom of column
+    if (position === 'bottom') return 'start'; // inner = top of column
+    if (position === 'left') return 'end'; // inner = right of row
+    return 'start'; // right wall: inner = left of row
+  };
+
+  const renderWall = (
+    seat: Seat,
+    position: Position,
+    orient: 'row' | 'column',
+    reverse: boolean,
+    isMe: boolean,
+  ) => {
+    // Vertical walls (left/right seats) render their tiles on their
+    // side so the wall length matches the horizontal walls — see
+    // FRAME constants below for the math.
+    const tileW = orient === 'row' ? WALL_TILE_W : WALL_TILE_H;
+    const tileH = orient === 'row' ? WALL_TILE_H : WALL_TILE_W;
+    return (
+      <WallEdge
+        seatKey={seat}
+        slots={wallLayout.slots[seat]}
+        orient={orient}
+        reverse={reverse}
+        innerEdge={innerEdgeFor(position)}
+        tileW={tileW}
+        tileH={tileH}
+        nextDrawTile={wallLayout.nextDrawSeat === seat ? nextDrawTile : null}
+        onDrawNext={wallLayout.nextDrawSeat === seat ? onDrawNext : undefined}
+        enableDrawTestId={wallLayout.nextDrawSeat === seat}
+        liveCount={isMe ? liveWallCount : undefined}
+      />
+    );
+  };
 
   const renderOpp = (p: SeatPlacement, orient: 'horizontal' | 'vertical') => (
     <OpponentArea
@@ -148,12 +176,6 @@ export function DesktopTable({
       lobby={lobby}
       score={scoreboard[p.seat]}
       orient={orient}
-      wall={renderWall(
-        p.seat,
-        orient === 'horizontal' ? 'row' : 'column',
-        p.position === 'right',
-        false,
-      )}
     />
   );
 
@@ -174,13 +196,26 @@ export function DesktopTable({
       {/* Top opponent row */}
       <View style={{ alignItems: 'center', gap: 6 }}>{renderOpp(byPos.top, 'horizontal')}</View>
 
-      {/* Middle row: left opp | center pile | right opp */}
-      <View style={{ flex: 1, flexDirection: 'row', gap: 12 }}>
+      {/* Middle row: left opp | wall-framed square | right opp */}
+      <View
+        style={{
+          flex: 1,
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 12,
+        }}
+      >
         <View style={{ width: 140, justifyContent: 'center', gap: 6 }}>
           {renderOpp(byPos.left, 'vertical')}
         </View>
 
-        <View style={{ flex: 1, justifyContent: 'center' }}>
+        <FeltFrame
+          topWall={renderWall(byPos.top.seat, 'top', 'row', false, false)}
+          bottomWall={renderWall(byPos.bottom.seat, 'bottom', 'row', false, true)}
+          leftWall={renderWall(byPos.left.seat, 'left', 'column', false, false)}
+          rightWall={renderWall(byPos.right.seat, 'right', 'column', true, false)}
+        >
           <CenterDiscards
             byPos={byPos}
             discards={discards}
@@ -188,7 +223,7 @@ export function DesktopTable({
             centerHud={centerHud}
             bgColor={felt.bottom}
           />
-        </View>
+        </FeltFrame>
 
         <View style={{ width: 140, justifyContent: 'center', gap: 6 }}>
           {renderOpp(byPos.right, 'vertical')}
@@ -208,8 +243,46 @@ export function DesktopTable({
         score={scoreboard[byPos.bottom.seat]}
         lobby={lobby}
         isActive={turn === byPos.bottom.seat && phase === 'turn'}
-        wall={renderWall(byPos.bottom.seat, 'row', false, true)}
       />
+    </View>
+  );
+}
+
+// Wall + square geometry. `WALL_TILE_W` × `WALL_TILE_H` are the
+// per-tile dimensions for a horizontal wall (top/bottom). Vertical
+// walls (left/right) swap them so the tile is on its side, and the
+// effective wall length stays the same. With 17 stacks of `WALL_TILE_W`
+// + 16 × 1px gaps, every wall is exactly `SQUARE_SIZE` long, so the
+// inner discard square fits perfectly inside the four walls.
+const WALL_TILE_W = 14;
+const WALL_TILE_H = 20;
+const SQUARE_SIZE = 17 * WALL_TILE_W + 16;
+
+interface FeltFrameProps {
+  topWall: ReactNode;
+  bottomWall: ReactNode;
+  leftWall: ReactNode;
+  rightWall: ReactNode;
+  /** The square inner content (typically `<CenterDiscards>`). Forced to
+   *  `SQUARE_SIZE × SQUARE_SIZE` so the four walls visually frame it. */
+  children: ReactNode;
+}
+
+/**
+ * Square felt frame — the four walls hug a `SQUARE_SIZE × SQUARE_SIZE`
+ * inner block of discards / centre HUD, mimicking the physical layout
+ * where the walls form a ring around the playing area.
+ */
+function FeltFrame({ topWall, bottomWall, leftWall, rightWall, children }: FeltFrameProps) {
+  return (
+    <View style={{ alignItems: 'center', gap: 4 }}>
+      <View style={{ alignItems: 'center' }}>{topWall}</View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+        {leftWall}
+        <View style={{ width: SQUARE_SIZE, height: SQUARE_SIZE }}>{children}</View>
+        {rightWall}
+      </View>
+      <View style={{ alignItems: 'center' }}>{bottomWall}</View>
     </View>
   );
 }
@@ -223,9 +296,6 @@ interface OpponentAreaProps {
   score: number;
   /** horizontal = top seat row of tiles; vertical = left/right seat column. */
   orient: 'horizontal' | 'vertical';
-  /** Pre-rendered `WallEdge` for this seat — sits between the badge and
-   *  the discards (i.e. on the inner-table side of the seat). */
-  wall: ReactNode;
 }
 
 function OpponentArea({
@@ -236,7 +306,6 @@ function OpponentArea({
   lobby,
   score,
   orient,
-  wall,
 }: OpponentAreaProps) {
   return (
     <View
@@ -260,7 +329,6 @@ function OpponentArea({
           <MeldStrip melds={melds} tileWidth={14} tileHeight={20} />
         </View>
       ) : null}
-      {wall}
     </View>
   );
 }
@@ -277,7 +345,6 @@ interface MyAreaProps {
   score: number;
   lobby: LobbyState | null;
   isActive: boolean;
-  wall: ReactNode;
 }
 
 function MyArea({
@@ -292,11 +359,9 @@ function MyArea({
   score,
   lobby,
   isActive,
-  wall,
 }: MyAreaProps) {
   return (
     <View style={{ alignItems: 'center', gap: 6 }}>
-      {wall}
       {melds.length > 0 ? <MeldStrip melds={melds} /> : null}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <PlayerBadge
@@ -380,13 +445,13 @@ function CenterDiscards({
   return (
     <View
       style={{
+        flex: 1,
         backgroundColor: bgColor,
         borderRadius: 16,
         padding: 12,
         borderColor: 'rgba(255,255,255,0.08)',
         borderWidth: 1,
         gap: 8,
-        minHeight: 220,
       }}
     >
       <View style={{ alignItems: 'center' }}>
