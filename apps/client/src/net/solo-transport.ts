@@ -1,15 +1,40 @@
 import { type Bot, heuristicBot, passiveBot, runBotTurns, simpleBot } from '@mahjong/bots';
 import {
   type Action,
+  type Claim,
   DEFAULT_RULES,
   type GameState,
   IllegalActionError,
   type Seat,
+  type Tile,
   emptyState,
   reduce,
+  sameFace,
 } from '@mahjong/game-logic';
 import type { ServerMessage } from '@mahjong/protocol';
 import type { Transport, TransportStatus } from './transport';
+
+/**
+ * Test override hatch — see `withTestScript` below. The Playwright suite
+ * uses this to make a bot discard a known face-tile so the claim window
+ * lands in a deterministic shape.
+ */
+interface TestBotScript {
+  /** Sequence of tiles to discard, in order. Each entry is consumed once
+   *  and matched against the bot's hand by face (rank+suit / honor). If
+   *  the face is gone from the bot's hand, fall back to the wrapped bot.
+   *  When the script is exhausted, every subsequent turn falls back. */
+  discards?: Tile[];
+  /** Sequence of claims to issue; defaults to all-pass. Same exhaustion
+   *  semantics as `discards`. */
+  claims?: Claim[];
+}
+type TestBotScripts = Partial<Record<Seat, TestBotScript>>;
+
+declare global {
+  // eslint-disable-next-line no-var
+  var __MAHJONG_TEST_BOT_SCRIPTS__: TestBotScripts | undefined;
+}
 
 interface SoloOptions {
   playerId: string;
@@ -32,9 +57,9 @@ export function createSoloTransport(opts: SoloOptions): Transport {
   let state: GameState = emptyState(DEFAULT_RULES);
   const bots: Record<Seat, Bot | null> = {
     0: null,
-    1: heuristicBot,
-    2: simpleBot,
-    3: passiveBot,
+    1: withTestScript(1, heuristicBot),
+    2: withTestScript(2, simpleBot),
+    3: withTestScript(3, passiveBot),
   };
   const messageListeners = new Set<(m: ServerMessage) => void>();
   const statusListeners = new Set<(s: TransportStatus) => void>();
@@ -156,6 +181,37 @@ export function createSoloTransport(opts: SoloOptions): Transport {
       }
       _status = 'closed';
       for (const cb of statusListeners) cb(_status);
+    },
+  };
+}
+
+/**
+ * Wrap a bot so that — when the e2e test override
+ * `globalThis.__MAHJONG_TEST_BOT_SCRIPTS__[seat]` is set — its next
+ * `pickDiscard` / `pickClaim` calls are pulled from the script and
+ * the wrapped bot is only consulted as a fallback. The script is
+ * read on every call so a test can mutate it via
+ * `page.evaluate(() => globalThis.__MAHJONG_TEST_BOT_SCRIPTS__[1] = …)`
+ * mid-match (e.g. after reading the dealt hand). In production the
+ * global is undefined and this is a thin pass-through.
+ */
+function withTestScript(seat: Seat, fallback: Bot): Bot {
+  return {
+    kind: fallback.kind,
+    pickDiscard(view) {
+      const script = globalThis.__MAHJONG_TEST_BOT_SCRIPTS__?.[seat];
+      const target = script?.discards?.shift();
+      if (target) {
+        const found = view.state.hands[view.seat].find((t) => sameFace(t, target));
+        if (found) return found;
+      }
+      return fallback.pickDiscard(view);
+    },
+    pickClaim(view) {
+      const script = globalThis.__MAHJONG_TEST_BOT_SCRIPTS__?.[seat];
+      const target = script?.claims?.shift();
+      if (target) return target;
+      return fallback.pickClaim(view);
     },
   };
 }
