@@ -1,10 +1,19 @@
-import type { Tile as MTile, Suit } from '@mahjong/game-logic';
-import { sortHand, tileId } from '@mahjong/game-logic';
-import { useCallback, useMemo, useState } from 'react';
-import { type LayoutChangeEvent, View } from 'react-native';
+import { type Tile as MTile, type Suit, sortHand, tileId } from '@mahjong/game-logic';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, Easing, type LayoutChangeEvent, Pressable, View } from 'react-native';
 import { useGame } from '../state/game';
 import { HandTile } from './HandTile';
+import { Tile } from './Tile';
 import type { SortMode } from './match/SortPicker';
+
+export interface DrawCue {
+  /** Engine tile shown face-down inside the ghost slot — same tile the
+   *  desktop wall pulse renders, so a future FLIP from wall→ghost would
+   *  have a stable identity. */
+  tile: MTile;
+  /** Tap handler — fires the engine `draw` action. */
+  onPress: () => void;
+}
 
 interface HandProps {
   tiles: readonly MTile[];
@@ -14,6 +23,11 @@ interface HandProps {
   sortMode?: SortMode;
   /** Engine `tileId` of the freshly-drawn tile — gets a soft glow + lift. */
   drawnTileId?: number | null;
+  /** When set, append a pulsing tile-shaped slot at the end of the hand
+   *  row that fires the engine `draw` action on tap. Used by the mobile
+   *  shell so the draw target shares the hand's auto-fit row instead of
+   *  consuming a dedicated row. */
+  drawCue?: DrawCue | undefined;
   tileWidth?: number;
   tileHeight?: number;
 }
@@ -41,6 +55,7 @@ export function Hand({
   onTileClick,
   sortMode = 'suit',
   drawnTileId = null,
+  drawCue,
   tileWidth: tileWidthProp,
   tileHeight: tileHeightProp,
 }: HandProps) {
@@ -61,16 +76,20 @@ export function Hand({
 
   const orderedIds = useMemo(() => ordered.map((t) => tileId(t)), [ordered]);
 
+  // Slot count includes the ghost draw cue, so the auto-fit math reserves
+  // its width up-front and the row doesn't reflow when needsDraw flips.
+  const slotCount = ordered.length + (drawCue ? 1 : 0);
+
   // Scale tiles to fit the parent's measured width when the caller doesn't
-  // pass an explicit size. Default 36×50; scale down to 22×30 minimum so a
+  // pass an explicit size. Default 36×50; scale down to 30×42 minimum so a
   // 14-tile dealer hand fits on a single row down to roughly 360px wide.
   const fittedWidth = useMemo(() => {
     if (tileWidthProp !== undefined) return tileWidthProp;
-    if (!containerWidth || ordered.length === 0) return TILE_W_DEFAULT;
-    const totalGap = (ordered.length - 1) * GAP;
-    const fit = Math.floor((containerWidth - totalGap) / ordered.length);
+    if (!containerWidth || slotCount === 0) return TILE_W_DEFAULT;
+    const totalGap = (slotCount - 1) * GAP;
+    const fit = Math.floor((containerWidth - totalGap) / slotCount);
     return Math.max(TILE_W_MIN, Math.min(TILE_W_DEFAULT, fit));
-  }, [tileWidthProp, containerWidth, ordered.length]);
+  }, [tileWidthProp, containerWidth, slotCount]);
   const fittedHeight = tileHeightProp ?? Math.round(fittedWidth * ASPECT);
 
   const onReorder = useCallback(
@@ -116,6 +135,7 @@ export function Hand({
             />
           );
         })}
+        {drawCue ? <DrawGhostSlot cue={drawCue} width={tileWidth} height={tileHeight} /> : null}
       </View>
     );
   }
@@ -143,7 +163,70 @@ export function Hand({
           />
         );
       })}
+      {drawCue ? <DrawGhostSlot cue={drawCue} width={tileWidth} height={tileHeight} /> : null}
     </View>
+  );
+}
+
+/**
+ * Pulsing tile-shaped slot rendered at the end of the hand row when it's
+ * the user's turn but they haven't drawn yet. Tap fires the engine
+ * `draw` action. Visually shares the gold halo language of the desktop
+ * shell's `WallEdge` next-to-draw cue, so the cross-shell vocabulary
+ * stays consistent. Uses `useNativeDriver` for the pulse so the JS
+ * thread stays free for engine ticks during animation.
+ */
+function DrawGhostSlot({ cue, width, height }: { cue: DrawCue; width: number; height: number }) {
+  const t = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(t, {
+          toValue: 1,
+          duration: 700,
+          useNativeDriver: true,
+          easing: Easing.inOut(Easing.ease),
+        }),
+        Animated.timing(t, {
+          toValue: 0,
+          duration: 700,
+          useNativeDriver: true,
+          easing: Easing.inOut(Easing.ease),
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [t]);
+  const scale = t.interpolate({ inputRange: [0, 1], outputRange: [1, 1.18] });
+  const opacity = t.interpolate({ inputRange: [0, 1], outputRange: [0.6, 0] });
+  return (
+    <Pressable
+      onPress={cue.onPress}
+      testID="wall-draw-next"
+      style={({ pressed }) => ({
+        opacity: pressed ? 0.85 : 1,
+        borderRadius: 4,
+        borderWidth: 1.5,
+        borderColor: '#dc9f4f',
+      })}
+    >
+      <Animated.View
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width,
+          height,
+          borderRadius: 4,
+          backgroundColor: '#dc9f4f',
+          opacity,
+          transform: [{ scale }],
+          pointerEvents: 'none',
+        }}
+      />
+      <Tile tile={cue.tile} faceDown width={width} height={height} />
+    </Pressable>
   );
 }
 

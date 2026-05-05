@@ -1,5 +1,5 @@
 import type { Action, GameState, Tile as MTile, Seat, Wind } from '@mahjong/game-logic';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { LobbyState } from '../../state/game';
 import type { FeltSkin } from '../../state/game';
@@ -7,7 +7,6 @@ import { ClaimBar } from '../ClaimBar';
 import { Hand } from '../Hand';
 import { ResultPanel } from '../ResultPanel';
 import { Scoreboard } from '../Scoreboard';
-import { Tile } from '../Tile';
 import { PrimaryButton } from '../buttons';
 import { ChatBar } from './ChatBar';
 import { ChatBubbles } from './ChatBubbles';
@@ -226,22 +225,24 @@ export function MobileShell(props: MobileShellProps) {
               onTileClick={myTurn && state.hasDrawn ? onTileTap : undefined}
               sortMode={sortMode}
               drawnTileId={drawnTileId}
+              drawCue={
+                needsDraw && state.wall.length > 0
+                  ? {
+                      tile: state.wall[state.wall.length - 1]!,
+                      onPress: () => onAction({ t: 'draw', seat }),
+                    }
+                  : undefined
+              }
             />
           </View>
 
-          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-            {needsDraw && state.wall.length > 0 ? (
-              <DrawCue
-                tile={state.wall[state.wall.length - 1]!}
-                onPress={() => onAction({ t: 'draw', seat })}
-              />
-            ) : null}
-            {canTsumo ? (
+          {canTsumo ? (
+            <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
               <PrimaryButton onPress={() => onAction({ t: 'declareWin', seat, selfDraw: true })}>
                 Declare win (tsumo)
               </PrimaryButton>
-            ) : null}
-          </View>
+            </View>
+          ) : null}
 
           {hasClaimOption ? <ClaimBar onAction={onAction} seat={seat} /> : null}
 
@@ -297,28 +298,5 @@ function SeatRow({ placement, state, lobby }: SeatRowProps) {
         <MeldStrip melds={state.melds[placement.seat]} tileWidth={14} tileHeight={20} />
       ) : null}
     </View>
-  );
-}
-
-function DrawCue({ tile, onPress }: { tile: MTile; onPress: () => void }) {
-  return (
-    <Pressable
-      onPress={onPress}
-      testID="wall-draw-next"
-      style={({ pressed }) => ({
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-        paddingVertical: 8,
-        paddingHorizontal: 12,
-        borderRadius: 10,
-        backgroundColor: pressed ? '#ece4d3' : 'white',
-        borderColor: '#dc9f4f',
-        borderWidth: 2,
-      })}
-    >
-      <Tile tile={tile} faceDown width={28} height={38} />
-      <Text style={{ fontSize: 13, fontWeight: '800', color: '#b14d3a' }}>Draw</Text>
-    </Pressable>
   );
 }
