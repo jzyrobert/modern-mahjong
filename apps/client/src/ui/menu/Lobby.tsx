@@ -292,6 +292,7 @@ function ModeGrid({ children }: { children: ReactNode }) {
         style={{
           flexDirection: 'row',
           flexWrap: 'wrap',
+          alignItems: 'stretch',
           gap: 14,
         }}
       >
@@ -393,9 +394,19 @@ function ModeCard({ title, subtitle, icon, accent = false, children }: ModeCardP
           {icon}
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={{ fontSize: 16, fontWeight: '900', color: '#3a3328', lineHeight: 18 }}>
-            {title}
-          </Text>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+              flexWrap: 'wrap',
+            }}
+          >
+            <Text style={{ fontSize: 16, fontWeight: '900', color: '#3a3328', lineHeight: 18 }}>
+              {title}
+            </Text>
+            {accent ? <RecommendedBadge /> : null}
+          </View>
           <Text
             style={{
               fontSize: 12,
@@ -407,7 +418,6 @@ function ModeCard({ title, subtitle, icon, accent = false, children }: ModeCardP
             {subtitle}
           </Text>
         </View>
-        {accent ? <RecommendedBadge /> : null}
       </View>
       {children}
     </View>
