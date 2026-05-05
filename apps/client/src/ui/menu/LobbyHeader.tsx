@@ -10,19 +10,21 @@ const COLORS = {
   ink: '#3a3328',
   ink3: '#918275',
   red: '#b14d3a',
-  felt: '#506a51',
-  goldOnFelt: '#d8a85a',
   paperHi: '#fbf8f0',
   hairline: '#cdc1ad',
   avatarBg: '#c66b58',
 };
 
 /**
- * Lobby chrome — small brand mark + display-name input on the left,
- * giant wind emblem + bilingual title in the centre. Split out of
- * `Lobby.tsx` so the screen body reads as a top-down composition
- * (`<LobbyHeader>` → `<ModeGrid>` → `<LobbyPreview>`) without 100 lines
- * of presentation noise inline.
+ * Lobby chrome — display-name input on the right, giant wind emblem +
+ * bilingual title in the centre. Split out of `Lobby.tsx` so the screen
+ * body reads as a top-down composition (`<LobbyHeader>` → `<ModeGrid>`
+ * → `<LobbyPreview>`) without 100 lines of presentation noise inline.
+ *
+ * The smaller "麻 Modern Mahjong" brand mark used to sit on the
+ * top-left of this row but was redundant with the giant Hero title
+ * directly below it. Removed in 2026-05; the row is now just the
+ * identity card right-aligned for breathing room.
  */
 export function LobbyHeader({ name, onChangeName }: LobbyHeaderProps) {
   return (
@@ -39,48 +41,13 @@ function BrandRow({ name, onChangeName }: LobbyHeaderProps) {
       style={{
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'space-between',
+        justifyContent: 'flex-end',
         paddingVertical: 20,
         paddingHorizontal: 28,
         gap: 12,
         flexWrap: 'wrap',
       }}
     >
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-        <View
-          style={{
-            width: 32,
-            height: 32,
-            borderRadius: 8,
-            backgroundColor: COLORS.felt,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Text
-            style={{
-              fontFamily: 'Noto Serif TC',
-              color: COLORS.goldOnFelt,
-              fontSize: 18,
-              fontWeight: '700',
-              lineHeight: 18,
-            }}
-          >
-            麻
-          </Text>
-        </View>
-        <Text
-          style={{
-            fontWeight: '900',
-            fontSize: 14,
-            color: COLORS.ink,
-            letterSpacing: 0.3,
-          }}
-        >
-          Modern Mahjong
-        </Text>
-      </View>
-
       <IdentityCard name={name} onChange={onChangeName} />
     </View>
   );
