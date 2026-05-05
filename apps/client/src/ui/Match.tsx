@@ -10,6 +10,8 @@ import {
   legalClaimsFor,
   nextSeat,
   prevSeat,
+  rankDiscards,
+  sameFace,
   tileId,
 } from '@mahjong/game-logic';
 import { useRouter } from 'expo-router';
@@ -109,6 +111,34 @@ export function Match() {
     if (placements) for (const p of placements) m[p.seat] = p.position;
     return m;
   }, [placements]);
+
+  // Discard hint — runs the same `rankDiscards` scorer the
+  // `heuristicBot` uses against the user's hand and surfaces the top
+  // pick's tileId. The shells pass it through to `Hand` → `HandTile`
+  // which renders a teal halo on the matching tile. Returns null
+  // unless the toggle is on AND it's the user's own discard turn
+  // (after the draw). Hoisted above the early returns below so
+  // `useMemo` is called unconditionally on every render — React
+  // forbids hooks behind conditional returns.
+  const hintTileId = useMemo<number | null>(() => {
+    if (!settings.discardHint) return null;
+    if (!state || seat === null) return null;
+    if (state.phase !== 'turn' || state.turn !== seat || !state.hasDrawn) return null;
+    const allowSpecial = state.rules.allowSevenPairs || state.rules.allowThirteenOrphans;
+    const ranked = rankDiscards({
+      hand: state.hands[seat],
+      exposedMelds: state.melds[seat].length,
+      allowSpecial,
+      yakuhai: { dealer: state.dealer, prevailingWind: state.prevailingWind, seat },
+      // No safety scorer here — the hint should match the bot's
+      // *strategic* pick rather than shadowing whichever opponent's
+      // discard pool happens to be largest mid-hand.
+    });
+    const best = ranked[0];
+    if (!best) return null;
+    const concrete = state.hands[seat].find((t) => sameFace(t, best.tile));
+    return concrete ? tileId(concrete) : null;
+  }, [settings.discardHint, state, seat]);
 
   if (!state || seat === null) {
     // Two reasons we can land here without a usable game:
@@ -263,6 +293,7 @@ export function Match() {
     latestDiscardId,
     dealerName,
     drawnTileId,
+    hintTileId,
     sortMode,
     onSortModeChange: setSortMode,
     onAction,

@@ -30,6 +30,9 @@ interface DesktopShellProps {
   latestDiscardId: number | null;
   dealerName: string;
   drawnTileId: number | null;
+  /** When non-null, the user's hand highlights the matching `tileId`
+   *  as the heuristic ranker's recommended discard. */
+  hintTileId: number | null;
   sortMode: SortMode;
   onSortModeChange: (m: SortMode) => void;
   onAction: (a: Action) => void;
@@ -82,6 +85,7 @@ export function DesktopShell(props: DesktopShellProps) {
     latestDiscardId,
     dealerName,
     drawnTileId,
+    hintTileId,
     sortMode,
     onSortModeChange,
     onAction,
@@ -164,6 +168,7 @@ export function DesktopShell(props: DesktopShellProps) {
           sortMode={sortMode}
           onSortModeChange={onSortModeChange}
           drawnTileId={drawnTileId}
+          hintTileId={hintTileId}
           latestDiscardId={latestDiscardId}
           centerHud={centerHud}
           liveWallCount={state.wall.length}

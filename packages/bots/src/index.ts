@@ -6,6 +6,7 @@ import {
   canChi,
   isWinning,
   legalClaimsFor,
+  rankDiscards,
   sameFace,
   shanten,
 } from '@mahjong/game-logic';
@@ -70,10 +71,18 @@ export const simpleBot: Bot = {
 };
 
 /**
- * `heuristic`: same as simple, but the discard is chosen to minimize
- * shanten of the resulting concealed hand. Ties broken by tile safety
- * (count of identical tiles already discarded across all seats — more
- * discards = safer). Claims `chi` only if it strictly reduces shanten.
+ * `heuristic`: discard chosen by the shared `rankDiscards` scorer in
+ * `@mahjong/game-logic`. Lexicographic order:
+ *
+ *   1. lowest resulting shanten (the original heuristic)
+ *   2. highest ukeire (count of distinct accepting faces) — keeps a
+ *      flexible wait when two candidates leave the same shanten
+ *   3. yakuhai-pair retention — don't break a dragon / round-wind /
+ *      seat-wind pair if you don't have to
+ *   4. tile safety (how many copies of this face are already in the
+ *      discard pool — proxy for deal-in risk)
+ *
+ * Claims `chi` only if it strictly reduces shanten.
  */
 export const heuristicBot: Bot = {
   kind: 'heuristic',
@@ -81,26 +90,18 @@ export const heuristicBot: Bot = {
     const { state, seat } = view;
     const hand = state.hands[seat];
     const exposed = state.melds[seat].length;
-
-    let best: Tile = hand[0]!;
-    let bestShanten = Number.POSITIVE_INFINITY;
-    let bestSafety = -1;
-    const seen = new Set<string>();
-
-    for (const t of hand) {
-      const k = faceKey(t);
-      if (seen.has(k)) continue;
-      seen.add(k);
-      const remaining = removeOneFace(hand, t);
-      const sh = shanten({ hand: remaining, exposedMelds: exposed });
-      const safety = countDiscardedFace(state, t);
-      if (sh < bestShanten || (sh === bestShanten && safety > bestSafety)) {
-        bestShanten = sh;
-        bestSafety = safety;
-        best = t;
-      }
-    }
-    return best;
+    const ranked = rankDiscards({
+      hand,
+      exposedMelds: exposed,
+      allowSpecial: state.rules.allowSevenPairs || state.rules.allowThirteenOrphans,
+      yakuhai: {
+        dealer: state.dealer,
+        prevailingWind: state.prevailingWind,
+        seat,
+      },
+      safety: (face) => countDiscardedFace(state, face),
+    });
+    return ranked[0]?.tile ?? hand[0]!;
   },
   pickClaim(view) {
     const { state, seat } = view;
@@ -168,10 +169,6 @@ function canDeclareWin(state: GameState, seat: Seat): boolean {
     exposedMelds: state.melds[seat].length,
     allowSpecial: state.rules.allowSevenPairs || state.rules.allowThirteenOrphans,
   });
-}
-
-function faceKey(t: Tile): string {
-  return t.kind === 'suit' ? `s:${t.suit}:${t.rank}` : `h:${t.honor}`;
 }
 
 function removeOneFace(hand: readonly Tile[], target: Tile): Tile[] {

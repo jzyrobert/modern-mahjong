@@ -28,6 +28,13 @@ export interface UserSettings {
    *  until the expo-audio port lands, so flipping this currently
    *  has no audible effect. */
   sound: boolean;
+  /** When true, on the user's discard turn (after they've drawn) the
+   *  tile the heuristic ranker recommends discarding is highlighted in
+   *  the hand. Reads from the same `rankDiscards` ranker the
+   *  `heuristicBot` uses, so the hint matches what a smart bot in the
+   *  same seat would discard. Off by default so the user's first
+   *  match isn't pre-coached. */
+  discardHint: boolean;
 }
 
 const DEFAULT_SETTINGS: UserSettings = {
@@ -36,6 +43,7 @@ const DEFAULT_SETTINGS: UserSettings = {
   autoSort: true,
   animations: true,
   sound: false,
+  discardHint: false,
 };
 
 const SETTINGS_STORAGE_KEY = 'mj.settings.v1';

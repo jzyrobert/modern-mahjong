@@ -65,6 +65,12 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
             value={settings.animations}
             onChange={(animations) => setSettings({ animations })}
           />
+          <ToggleRow
+            label="Discard hint"
+            hint="Highlight the heuristic ranker's recommended discard on your turn."
+            value={settings.discardHint}
+            onChange={(discardHint) => setSettings({ discardHint })}
+          />
         </Section>
       </ScrollView>
     </Modal>

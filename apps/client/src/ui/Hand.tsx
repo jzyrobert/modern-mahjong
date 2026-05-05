@@ -23,6 +23,11 @@ interface HandProps {
   sortMode?: SortMode;
   /** Engine `tileId` of the freshly-drawn tile — gets a soft glow + lift. */
   drawnTileId?: number | null;
+  /** Engine `tileId` of the heuristic ranker's recommended discard,
+   *  rendered with a distinctive teal halo so the user can spot it
+   *  amongst the ordered hand. Off when the discard-hint setting is
+   *  off OR it's not the user's discard turn. */
+  hintTileId?: number | null;
   /** When set, append a pulsing tile-shaped slot at the end of the hand
    *  row that fires the engine `draw` action on tap. Used by the mobile
    *  shell so the draw target shares the hand's auto-fit row instead of
@@ -54,6 +59,7 @@ export function Hand({
   onTileClick,
   sortMode = 'suit',
   drawnTileId = null,
+  hintTileId = null,
   drawCue,
   tileWidth: tileWidthProp,
   tileHeight: tileHeightProp,
@@ -132,6 +138,7 @@ export function Hand({
             onTap={interactive && onTileClick ? () => onTileClick(t) : undefined}
             onReorder={interactive ? (toIndex) => onReorder(i, toIndex) : undefined}
             drawnTileId={drawnTileId}
+            recommended={hintTileId === id}
             width={tileWidth}
             height={tileHeight}
           />
