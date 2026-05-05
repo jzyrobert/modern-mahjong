@@ -16,11 +16,12 @@ apps/
   client/       # Expo Router + Metro app — one codebase for web (react-native-web)
                 # + Android + iOS, packaged via EAS Build
   client/modules/expo-lan-server/
-                # Local Expo Module skeleton for the LAN host's
-                # embedded HTTP+WS server. Android (Kotlin /
-                # NanoHTTPD-WebSockets) implemented; iOS is a stub.
-                # Not auto-linked into the published bundle yet — a
-                # dev-client build is needed to enable LAN host mode.
+                # Local Expo Module for the LAN host's embedded
+                # HTTP+WS server (NanoHTTPD-WebSockets) + mDNS
+                # advertise/discover (NsdManager). Android Kotlin
+                # implementation is complete; iOS is a Swift
+                # skeleton that throws on `start()`. Autolinked
+                # into every native build via `package.json`.
 ```
 
 ## Quick start
@@ -53,4 +54,4 @@ There are three transport flavours, sharing a `createWsTransport` core:
 
 - **Online** — a `partyserver` Durable Object on Cloudflare Workers. Each match code maps 1:1 to a single-threaded DO actor.
 - **Solo** — an in-process engine loop that seats three bots (heuristic / simple / passive). No WebSocket, no server.
-- **LAN** — guests connect to `ws://<host-lan-ip>:<port>/`. The host runs an embedded HTTP+WS server inside the app, exposed via the `expo-lan-server` native module. Android implementation is in place; iOS is stubbed and the module isn't auto-linked into the published bundle, so LAN host mode currently requires a dev-client build (see [`apps/client/modules/expo-lan-server/README.md`](./apps/client/modules/expo-lan-server/README.md)).
+- **LAN** — guests connect to `ws://<host-lan-ip>:<port>/`. The host runs an embedded HTTP+WS server inside the app, exposed via the `expo-lan-server` native module (autolinked into every native build). On Android the host auto-populates its URL + advertises `_modernmahjong._tcp.` over mDNS; the guest's Join LAN modal subscribes to discovery and shows tap-to-pick nearby hosts. iOS native builds load the Swift skeleton — `start()` throws "not implemented" until Telegraph (or equivalent) is wired up. Web / Expo Go fall back to manual host-URL entry. Full activation notes: [`apps/client/modules/expo-lan-server/README.md`](./apps/client/modules/expo-lan-server/README.md).
