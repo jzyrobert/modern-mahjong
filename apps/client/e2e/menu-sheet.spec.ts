@@ -31,10 +31,38 @@ test.describe('Match menu sheet', () => {
       await expect(page.getByRole('button', { name: label })).toBeVisible();
     }
 
+    // Emote row is included in the mobile menu (the persistent
+    // ChatBar that lives on the desktop felt is folded in here for
+    // phone viewports, since that row of buttons doesn't fit
+    // alongside hand + opp strips).
+    for (const emote of ['👍', '😎', '🎉', '🤔', '😅', '🔥']) {
+      await expect(page.getByLabel(`Send ${emote}`)).toBeVisible();
+    }
+
     // Tapping a row closes the menu and opens the downstream
     // surface. Verify with Settings.
     await page.getByRole('button', { name: 'Settings' }).click();
     await expect(heading).toBeHidden({ timeout: 5_000 });
     await expect(page.getByText('Settings', { exact: true }).first()).toBeVisible();
+  });
+
+  test('tapping an emote in the menu closes the sheet', async ({ page }) => {
+    // Solo transport doesn't loop chat back to the client (no server
+    // to broadcast through), so we can only assert the
+    // sheet-closure half of the contract here. The wire side is
+    // covered indirectly by online-multi-player.spec.ts where the
+    // in-process MatchSession does fan chat out.
+    await page.setViewportSize({ width: 412, height: 906 });
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Play vs bots' }).click();
+    await page.getByRole('button', { name: 'Start match' }).click();
+    await page.waitForTimeout(4500);
+
+    await page.getByLabel('Open menu').click();
+    await expect(page.getByText('Menu', { exact: true })).toBeVisible();
+    await page.getByLabel('Send 👍').click();
+
+    // Sheet closes immediately on tap (mirrors the other menu rows).
+    await expect(page.getByText('Menu', { exact: true })).toBeHidden({ timeout: 5_000 });
   });
 });

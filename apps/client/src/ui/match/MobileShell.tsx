@@ -8,7 +8,6 @@ import { Hand } from '../Hand';
 import { ResultPanel } from '../ResultPanel';
 import { Scoreboard } from '../Scoreboard';
 import { PrimaryButton } from '../buttons';
-import { ChatBar } from './ChatBar';
 import { ChatBubbles } from './ChatBubbles';
 import { GameStatusBar } from './GameStatusBar';
 import { MatchModals } from './MatchModals';
@@ -246,16 +245,15 @@ export function MobileShell(props: MobileShellProps) {
 
           {hasClaimOption ? <ClaimBar onAction={onAction} seat={seat} /> : null}
 
-          <View style={{ alignItems: 'center', paddingVertical: 4 }}>
-            <ChatBar onSend={onSendChat} />
-          </View>
-
           {state.lastResult ? (
             <ResultPanel onAction={onAction} mySeat={seat} isHost={isHost} />
           ) : null}
 
           {/* Floating emote bubbles overlay (absolute-positioned). */}
           <ChatBubbles seatToPosition={seatToPosition} />
+          {/* The persistent emote bar that lives on the desktop felt is
+              folded into `MenuSheet` here — see `onSendChat` below.
+              Keeps the mobile body to play-relevant rows only. */}
           <MatchModals
             mySeat={seat}
             settingsOpen={settingsOpen}
@@ -269,6 +267,7 @@ export function MobileShell(props: MobileShellProps) {
             menuOpen={menuOpen}
             setMenuOpen={setMenuOpen}
             onLeave={onLeave}
+            onSendChat={onSendChat}
           />
         </ScrollView>
       </SafeAreaView>
