@@ -44,10 +44,3 @@ export type {
   LanServerStartOptions,
   LanServerStartResult,
 } from 'expo-lan-server';
-
-// `LanServer` was the legacy Capacitor-shaped namespace import. Keep
-// it aliased to the named exports so any remaining call sites
-// (`LanServer.start(...)`, etc.) continue to work without an
-// individual import sweep.
-import * as LanServerNs from 'expo-lan-server';
-export const LanServer = LanServerNs;
