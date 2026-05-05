@@ -11,6 +11,9 @@ interface TopBarProps {
   /** Optional — if provided, renders a "📜" button that opens the
    *  GameLog modal listing the recent engine events. */
   onOpenLog?: () => void;
+  /** Optional — if provided, renders a "📖" button that opens the
+   *  136-tile reference bottom-sheet. */
+  onOpenReference?: () => void;
 }
 
 const COLORS = {
@@ -27,7 +30,14 @@ const COLORS = {
  * Leave button. The legacy GameLog + Fullscreen buttons are deferred
  * (still queued in TODO.md's Expo migration follow-ups).
  */
-export function TopBar({ matchCode, viewers, onLeave, onOpenSettings, onOpenLog }: TopBarProps) {
+export function TopBar({
+  matchCode,
+  viewers,
+  onLeave,
+  onOpenSettings,
+  onOpenLog,
+  onOpenReference,
+}: TopBarProps) {
   return (
     <View
       style={{
@@ -58,6 +68,22 @@ export function TopBar({ matchCode, viewers, onLeave, onOpenSettings, onOpenLog 
       </View>
       {viewers && viewers > 0 ? (
         <Text style={{ fontSize: 11, color: COLORS.ink3, fontWeight: '600' }}>👁 {viewers}</Text>
+      ) : null}
+      {onOpenReference ? (
+        <Pressable
+          onPress={onOpenReference}
+          accessibilityLabel="Open tile reference"
+          style={({ pressed }) => ({
+            paddingHorizontal: 8,
+            paddingVertical: 4,
+            borderRadius: 8,
+            backgroundColor: pressed ? '#ece4d3' : 'transparent',
+            borderColor: COLORS.hairline,
+            borderWidth: 1,
+          })}
+        >
+          <Text style={{ fontSize: 13, color: COLORS.ink }}>📖</Text>
+        </Pressable>
       ) : null}
       {onOpenLog ? (
         <Pressable
