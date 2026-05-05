@@ -1,11 +1,16 @@
 import type { Wind } from '@mahjong/game-logic';
-import { Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 
 interface GameStatusBarProps {
   prevailing: Wind;
   dealerName: string;
   wallCount: number;
   isMyTurn: boolean;
+  /** Optional — when provided the whole pill becomes a Pressable
+   *  that opens the players bottom-sheet on tap. Wired from
+   *  `Match.tsx`; surfaces a roster + scores without consuming
+   *  another TopBar slot. */
+  onPress?: () => void;
 }
 
 const WIND_NAME: Record<Wind, string> = {
@@ -36,11 +41,21 @@ const COLORS = {
  * indicator when on the move. The legacy backdrop-filter blur becomes
  * a plain semi-opaque background; expo-blur can replace it later.
  */
-export function GameStatusBar({ prevailing, dealerName, wallCount, isMyTurn }: GameStatusBarProps) {
+export function GameStatusBar({
+  prevailing,
+  dealerName,
+  wallCount,
+  isMyTurn,
+  onPress,
+}: GameStatusBarProps) {
   const pct = Math.max(0, Math.min(100, (wallCount / WALL_FULL) * 100));
   const low = wallCount <= LOW_THRESHOLD;
+  const Container = onPress ? Pressable : View;
   return (
-    <View
+    <Container
+      onPress={onPress}
+      accessibilityRole={onPress ? 'button' : undefined}
+      accessibilityLabel={onPress ? 'Open players panel' : undefined}
       style={{
         flexDirection: 'row',
         alignItems: 'center',
@@ -133,6 +148,6 @@ export function GameStatusBar({ prevailing, dealerName, wallCount, isMyTurn }: G
           </View>
         </>
       ) : null}
-    </View>
+    </Container>
   );
 }

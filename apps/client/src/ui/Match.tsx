@@ -31,6 +31,7 @@ import { GameLog } from './match/GameLog';
 import { GameStatusBar } from './match/GameStatusBar';
 import { MeldStrip } from './match/MeldStrip';
 import { OppHandStrip } from './match/OppHandStrip';
+import { PlayersSheet } from './match/PlayersSheet';
 import { SettingsPanel } from './match/SettingsPanel';
 import { SharedDiscardPool } from './match/SharedDiscardPool';
 import { type SortMode, SortPicker } from './match/SortPicker';
@@ -96,6 +97,7 @@ export function Match() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
   const [referenceOpen, setReferenceOpen] = useState(false);
+  const [playersOpen, setPlayersOpen] = useState(false);
   const felt = FELT_SKINS[settings.felt];
   const seat = you !== null && you !== 'spectator' ? you : null;
   const isHost = isSeatHost(lobby, seat);
@@ -250,6 +252,7 @@ export function Match() {
               dealerName={dealerName}
               wallCount={state.wall.length}
               isMyTurn={myTurn}
+              onPress={() => setPlayersOpen(true)}
             />
             <TopBar
               matchCode={transport.matchCode}
@@ -299,6 +302,7 @@ export function Match() {
           <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
           <GameLog open={logOpen} onClose={() => setLogOpen(false)} />
           <TileReferenceSheet open={referenceOpen} onClose={() => setReferenceOpen(false)} />
+          <PlayersSheet open={playersOpen} onClose={() => setPlayersOpen(false)} mySeat={seat} />
         </ScrollView>
       </SafeAreaView>
     );
@@ -330,6 +334,7 @@ export function Match() {
           dealerName={dealerName}
           wallCount={state.wall.length}
           isMyTurn={myTurn}
+          onPress={() => setPlayersOpen(true)}
         />
         <TopBar
           matchCode={transport.matchCode}
@@ -450,6 +455,7 @@ export function Match() {
         <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
         <GameLog open={logOpen} onClose={() => setLogOpen(false)} />
         <TileReferenceSheet open={referenceOpen} onClose={() => setReferenceOpen(false)} />
+        <PlayersSheet open={playersOpen} onClose={() => setPlayersOpen(false)} mySeat={seat} />
       </ScrollView>
     </SafeAreaView>
   );
