@@ -1,5 +1,5 @@
 import type { Action, Claim, Seat } from '@mahjong/game-logic';
-import { legalClaimsFor } from '@mahjong/game-logic';
+import { isWinning, legalClaimsFor } from '@mahjong/game-logic';
 import { Pressable, Text, View } from 'react-native';
 import { useGame } from '../state/game';
 
@@ -37,18 +37,27 @@ const ORDER: readonly CallKind[] = ['chi', 'peng', 'gong', 'hu', 'pass'];
  * Claim flow buttons. Native port of `_legacy/src/ui/ClaimBar.tsx`.
  *
  * Renders one button per legal claim kind for this seat against the
- * current discard. `hu` and `pass` are always shown (server validates
- * winning hands; pass is always legal). `chi` is shown when chi is
- * legal — but submitting a chi requires picking the two completing
- * tiles in hand, which we don't have UI for yet, so we drop it from
- * the rendered set until Phase 4 polish wires up the picker. Until
- * then chi → just doesn't appear.
+ * current discard. `pass` is always offered (legalClaimsFor already
+ * includes it during awaitingClaims). `hu` is offered only when the
+ * seat actually has a winning hand against the discarded tile —
+ * `legalClaimsFor` deliberately omits `hu` because it depends on
+ * shanten + scoring, so we run `isWinning` here against the
+ * `hand + discard` projection. `chi` is suppressed until the meld
+ * picker UI lands (submitting a chi needs the user to pick the two
+ * completing tiles).
  */
 export function ClaimBar({ onAction, seat }: ClaimBarProps) {
   const state = useGame((s) => s.state);
   const legal = new Set<CallKind>(state ? legalClaimsFor(state, seat) : []);
-  legal.add('hu');
-  legal.add('pass');
+  if (state?.lastDiscard && state.lastDiscard.from !== seat) {
+    const allowSpecial = state.rules.allowSevenPairs || state.rules.allowThirteenOrphans;
+    const winnable = isWinning({
+      hand: [...state.hands[seat], state.lastDiscard.tile],
+      exposedMelds: state.melds[seat].length,
+      allowSpecial,
+    });
+    if (winnable) legal.add('hu');
+  }
   const visible = ORDER.filter((k) => legal.has(k)).filter((k) => k !== 'chi');
 
   return (
