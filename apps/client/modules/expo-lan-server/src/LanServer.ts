@@ -117,7 +117,13 @@ export function addListener(
   event: 'hostLost',
   cb: (e: LanServerHostLostEvent) => void,
 ): EventSubscription;
-export function addListener(event: EventName, cb: (e: unknown) => void): EventSubscription {
+// `any` (rather than `unknown`) on the implementation cb so the
+// overload signatures above remain assignable under strict function
+// types. The typed entry points are the overloads; the impl is the
+// escape hatch that hands the payload straight to the native
+// emitter.
+// biome-ignore lint/suspicious/noExplicitAny: see comment above
+export function addListener(event: EventName, cb: (e: any) => void): EventSubscription {
   if (!native) {
     return { remove: () => undefined } as EventSubscription;
   }
