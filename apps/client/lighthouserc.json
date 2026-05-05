@@ -4,7 +4,7 @@
       "url": ["http://127.0.0.1:4173/"],
       "startServerCommand": "npx --yes serve dist -l 4173 -s",
       "startServerReadyPattern": "Accepting connections",
-      "numberOfRuns": 1,
+      "numberOfRuns": 3,
       "settings": {
         "preset": "desktop",
         "skipAudits": ["uses-http2", "uses-long-cache-ttl"],
@@ -12,6 +12,7 @@
       }
     },
     "assert": {
+      "aggregationMethod": "median",
       "assertions": {
         "categories:performance": ["error", { "minScore": 0.9 }],
         "categories:accessibility": ["warn", { "minScore": 0.9 }],
