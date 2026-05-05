@@ -127,10 +127,59 @@ export function Match() {
   }, [placements]);
 
   if (!state || seat === null) {
+    // Two reasons we can land here without a usable game:
+    //   1. We just opened a transport and the first `state` message
+    //      hasn't arrived yet — show a short "Waiting…" placeholder.
+    //   2. The user reloaded the tab (or deep-linked) directly into
+    //      `/match` with no live transport. Solo / LAN matches don't
+    //      survive a reload (no server-side session to reconnect to),
+    //      so we'd otherwise hang on the placeholder forever. Detect
+    //      `status === 'idle'` (no join ever happened in this tab) and
+    //      surface an explicit recovery screen instead.
+    const stranded = transport.status === 'idle' && !transport.hasTransport;
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-        <Text style={{ color: COLORS.ink3 }}>Waiting for the game to start…</Text>
-      </View>
+      <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.cream }} edges={['top']}>
+        <View
+          style={{
+            flex: 1,
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 24,
+            gap: 12,
+          }}
+        >
+          {stranded ? (
+            <>
+              <Text
+                accessibilityRole="header"
+                style={{
+                  fontSize: 22,
+                  fontWeight: '900',
+                  color: COLORS.ink,
+                  textAlign: 'center',
+                }}
+              >
+                No active match
+              </Text>
+              <Text
+                style={{
+                  color: COLORS.ink3,
+                  fontSize: 14,
+                  textAlign: 'center',
+                  maxWidth: 360,
+                }}
+              >
+                This match isn't available anymore — practice and LAN matches don't survive a
+                reload, and the original session has ended. Head back to the main menu to start a
+                new one.
+              </Text>
+              <PrimaryButton onPress={() => router.replace('/')}>Back to main menu</PrimaryButton>
+            </>
+          ) : (
+            <Text style={{ color: COLORS.ink3 }}>Waiting for the game to start…</Text>
+          )}
+        </View>
+      </SafeAreaView>
     );
   }
 
