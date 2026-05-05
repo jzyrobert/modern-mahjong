@@ -370,12 +370,7 @@ function ModeCard({ title, subtitle, icon, accent = false, children }: ModeCardP
         flexBasis: 0,
         flexGrow: 1,
         minWidth: 280,
-        // Drop-shadow approximated for native via shadow* + elevation.
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.04,
-        shadowRadius: 6,
-        elevation: 2,
+        boxShadow: '0px 2px 6px rgba(0,0,0,0.04)',
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>

@@ -22,16 +22,12 @@ export function WindEmblem({ wind = '東', size = 100 }: WindEmblemProps) {
         width: size,
         height: h,
         position: 'relative',
-        // Match the SVG's rounded silhouette so the box-shadow (web) and
-        // elevation (Android) cast a rounded shadow instead of a square
-        // rectangle whose corners poked out around the tile.
+        // Match the SVG's rounded silhouette so the shadow casts as a
+        // rounded shape instead of a square rectangle. RN 0.76+ ships
+        // a CSS-like `boxShadow` that respects borderRadius on every
+        // platform, replacing the old `shadow*` + `elevation` pair.
         borderRadius: r,
-        // RN drop-shadow lives on `shadow*` props (iOS) + `elevation` (Android)
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.18,
-        shadowRadius: 18,
-        elevation: 6,
+        boxShadow: '0px 8px 18px rgba(0,0,0,0.18)',
       }}
     >
       <Svg width={size} height={h} viewBox={`0 0 ${size} ${h}`}>
@@ -71,8 +67,8 @@ export function WindEmblem({ wind = '東', size = 100 }: WindEmblemProps) {
           alignItems: 'center',
           justifyContent: 'center',
           paddingBottom: size * 0.13,
+          pointerEvents: 'none',
         }}
-        pointerEvents="none"
       >
         <Text
           style={{
