@@ -18,6 +18,11 @@ interface MatchModalsProps {
   menuOpen: boolean;
   setMenuOpen: (open: boolean) => void;
   onLeave: () => void;
+  /** Wire emote-row taps through the menu sheet to the transport.
+   *  Optional — when omitted, the menu hides the emote row (used by
+   *  shells that already host a persistent `<ChatBar>` outside the
+   *  menu, e.g. the desktop felt). */
+  onSendChat?: ((text: string) => void) | undefined;
 }
 
 /**
@@ -44,6 +49,7 @@ export function MatchModals({
   menuOpen,
   setMenuOpen,
   onLeave,
+  onSendChat,
 }: MatchModalsProps) {
   return (
     <>
@@ -58,6 +64,7 @@ export function MatchModals({
         onOpenLog={() => setLogOpen(true)}
         onOpenReference={() => setReferenceOpen(true)}
         onLeave={onLeave}
+        onSendChat={onSendChat}
       />
     </>
   );
