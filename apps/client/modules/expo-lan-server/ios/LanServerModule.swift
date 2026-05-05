@@ -25,7 +25,7 @@ public class LanServerModule: Module {
   public func definition() -> ModuleDefinition {
     Name("LanServer")
 
-    Events("connection", "message", "close")
+    Events("connection", "message", "close", "hostFound", "hostLost")
 
     AsyncFunction("start") { (opts: [String: Any]) -> [String: Any] in
       throw NSError(
@@ -50,6 +50,37 @@ public class LanServerModule: Module {
           NSLocalizedDescriptionKey: "iOS LanServer module not implemented yet.",
         ]
       )
+    }
+
+    AsyncFunction("advertise") { (opts: [String: Any]) -> Void in
+      // mDNS advertisement on iOS would use NetService /
+      // NWBrowser; pair with the HTTP+WS server's advertised port
+      // once `start` actually boots. Stub for now.
+      throw NSError(
+        domain: "expo.modules.lanserver",
+        code: 1,
+        userInfo: [
+          NSLocalizedDescriptionKey: "iOS LanServer.advertise not implemented yet.",
+        ]
+      )
+    }
+
+    AsyncFunction("unadvertise") { () -> Void in
+      // No-op: nothing advertised.
+    }
+
+    AsyncFunction("startDiscovery") { () -> Void in
+      throw NSError(
+        domain: "expo.modules.lanserver",
+        code: 1,
+        userInfo: [
+          NSLocalizedDescriptionKey: "iOS LanServer.startDiscovery not implemented yet.",
+        ]
+      )
+    }
+
+    AsyncFunction("stopDiscovery") { () -> Void in
+      // No-op: nothing started.
     }
   }
 }

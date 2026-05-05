@@ -39,8 +39,34 @@ export interface LanServerCloseEvent {
   id: string;
 }
 
+export interface LanServerAdvertiseOptions {
+  /** Human-readable instance name shown to guests. The native side
+   *  will deduplicate against existing advertisements with the same
+   *  name on the local network. */
+  serviceName: string;
+  /** Port the service is listening on (e.g. the port returned from
+   *  `start({ port })`). */
+  port: number;
+}
+
+export interface LanServerDiscoveredHost {
+  /** mDNS instance name. */
+  name: string;
+  /** Resolved IPv4 host address. */
+  host: string;
+  /** Resolved port. */
+  port: number;
+}
+
+export interface LanServerHostLostEvent {
+  /** mDNS instance name that left the network. */
+  name: string;
+}
+
 export type LanServerEvents = {
   connection: (e: LanServerConnectionEvent) => void;
   message: (e: LanServerMessageEvent) => void;
   close: (e: LanServerCloseEvent) => void;
+  hostFound: (e: LanServerDiscoveredHost) => void;
+  hostLost: (e: LanServerHostLostEvent) => void;
 };
