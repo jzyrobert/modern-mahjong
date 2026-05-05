@@ -128,11 +128,17 @@ export function HandTile({
       onPanResponderMove: (_e, g) => {
         if (Math.abs(g.dx) + Math.abs(g.dy) > TAP_MOVE_THRESHOLD) {
           movedRef.current = true;
-          // Movement past threshold before long-press fires = treat as
-          // not-a-tap and not-yet-drag. Cancel the timer so we don't
-          // accidentally drop into drag mode after the user has already
-          // committed to a swipe.
-          if (!draggingRef.current) cancelLongPress();
+          if (!draggingRef.current) {
+            cancelLongPress();
+            // In manual mode, the drag IS the action — finger jitter
+            // makes the original "hold-still-for-220ms" gate
+            // unreachable on touch screens, where the user reports
+            // dragging a tile produces no visible response. Treat
+            // any past-threshold movement on a draggable tile as the
+            // start of a drag so the gesture is reactive without
+            // needing a perfectly still long-press first.
+            if (draggableRef.current) enterDrag();
+          }
         }
         if (draggingRef.current) {
           translateX.setValue(g.dx);
