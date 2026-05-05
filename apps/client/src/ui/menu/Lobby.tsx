@@ -1,7 +1,7 @@
 import { useTransport } from '@/src/net/transport-context';
 import { generateMatchCode } from '@mahjong/protocol';
 import { type ReactNode, useState } from 'react';
-import { ScrollView, Text, TextInput, View } from 'react-native';
+import { Platform, ScrollView, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getDisplayName, setDisplayName } from '../../identity';
 import { useGame } from '../../state/game';
@@ -34,6 +34,15 @@ export function Lobby() {
   const [code, setCode] = useState('');
   const [hostLanOpen, setHostLanOpen] = useState(false);
   const [joinLanOpen, setJoinLanOpen] = useState(false);
+
+  // Hide the "Host LAN match" button on web — there's no embedded
+  // server runtime in a browser tab, so even if the user pastes a
+  // URL the host flow can't actually serve a match. The expo-lan-server
+  // native module is autolinked into Android (and the iOS skeleton),
+  // so any non-web target keeps the button. Joining a LAN match
+  // *is* viable from a browser (the guest flow is plain WS), so the
+  // "Join LAN match" button stays for everyone.
+  const canHostLan = Platform.OS !== 'web';
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#f1eadc' }} edges={['top']}>
@@ -110,14 +119,17 @@ export function Lobby() {
             icon={<WifiIcon color="#65594c" />}
           >
             <Text style={{ fontSize: 12, color: '#918275', lineHeight: 18 }}>
-              Four-player matches over local Wi-Fi. Host shares the URL; guests paste it into any
-              browser on the same network.
+              {canHostLan
+                ? 'Four-player matches over local Wi-Fi. Host shares the URL; guests paste it into any browser on the same network.'
+                : 'Join an in-progress LAN match by pasting the host’s URL. Hosting needs the native app — install the Android build to host one yourself.'}
             </Text>
             <InlineHint icon={<BoxIcon color="#918275" />}>
               Works offline. No accounts. No data leaves your network.
             </InlineHint>
             <ButtonRow>
-              <PrimaryButton onPress={() => setHostLanOpen(true)}>Host LAN match</PrimaryButton>
+              {canHostLan ? (
+                <PrimaryButton onPress={() => setHostLanOpen(true)}>Host LAN match</PrimaryButton>
+              ) : null}
               <GhostButton onPress={() => setJoinLanOpen(true)}>Join LAN match</GhostButton>
             </ButtonRow>
           </ModeCard>
