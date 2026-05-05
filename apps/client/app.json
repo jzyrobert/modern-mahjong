@@ -22,29 +22,13 @@
         "backgroundColor": "#f1eadc"
       },
       "edgeToEdgeEnabled": true,
-      "permissions": ["android.permission.RECORD_AUDIO", "android.permission.MODIFY_AUDIO_SETTINGS"]
+      "permissions": []
     },
     "web": {
       "bundler": "metro",
       "output": "static"
     },
-    "plugins": [
-      "expo-router",
-      [
-        "expo-screen-orientation",
-        {
-          "initialOrientation": "LANDSCAPE"
-        }
-      ],
-      [
-        "expo-audio",
-        {
-          "microphonePermission": false
-        }
-      ],
-      "expo-sqlite",
-      "expo-asset"
-    ],
+    "plugins": ["expo-router", "expo-sqlite", "expo-asset"],
     "experiments": {
       "typedRoutes": true,
       "tsconfigPaths": true
