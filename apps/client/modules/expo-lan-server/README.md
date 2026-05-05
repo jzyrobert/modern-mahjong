@@ -9,53 +9,45 @@ call-site changes elsewhere in the client.
 
 | Platform | Status |
 |---|---|
-| Android | Implemented via NanoHTTPD-WebSockets. WebSocket upgrade at the configured `wsPath` (default `/ws`); other HTTP requests serve the Expo Web export bundled into `assets/lan-bundle/` at APK build time, so guests can browser-join without installing the app (see "Bundling the web client" below). |
-| iOS     | Skeleton only — `start()` throws. To finish, drop in [Telegraph](https://github.com/Building42/Telegraph) (or Swifter / GCDWebServer + a WebSocket layer) and follow the TODOs in `ios/LanServerModule.swift`. |
+| Android | Implemented via NanoHTTPD-WebSockets. WebSocket upgrade at the configured `wsPath` (default `/ws`); other HTTP requests serve the Expo Web export bundled into `assets/lan-bundle/` at APK build time, so guests can browser-join without installing the app (see "Bundling the web client" below). mDNS host advertisement + discovery are wired through `NsdManager`. |
+| iOS     | Skeleton only — `start()` / `advertise()` / `startDiscovery()` throw. To finish, drop in [Telegraph](https://github.com/Building42/Telegraph) (or Swifter / GCDWebServer + a WebSocket layer) and follow the TODOs in `ios/LanServerModule.swift`. mDNS layer rides on `NetService` once the server boots. |
 
-The TS bridge in `src/LanServer.ts` uses `requireOptionalNativeModule`, so
-when the module isn't loaded (e.g. running in Expo Go) `isLanServerAvailable()`
-returns `false` and `start()` throws a descriptive error. That's the path the
-lobby's `HostLanModal` falls back to when explaining to users they need a dev
-client.
-
-## Activating in a development build
-
-Expo Go can't load third-party native modules. To host a LAN match you need a
-custom development client:
-
-```bash
-# 1. Add the local module to apps/client's deps so autolinking picks it up.
-#    (Already declared via `file:./modules/expo-lan-server` once you uncomment
-#    that line in apps/client/package.json — see "Wiring" below.)
-
-# 2. Generate native projects (apps/client/{android,ios}). These directories
-#    are gitignored — CI regenerates them on every build.
-cd apps/client && npx expo prebuild --no-install
-
-# 3. Build a dev client APK locally.
-eas build --profile development --platform android --local --output=./dev-client.apk
-
-# 4. Install on a device or emulator.
-adb install ./dev-client.apk
-```
-
-Once the dev client is running, `isLanServerAvailable()` returns true and
-the host modal stops showing the "needs dev client" hint.
+The TS bridge in `src/LanServer.ts` uses `requireOptionalNativeModule`, so on
+web (and in Expo Go, where third-party modules aren't bundled) the module
+resolves to `null`, `isLanServerAvailable()` returns `false`, and `start()`
+throws the legacy "needs dev client" error. The lobby's `HostLanModal`
+detects that and falls through to manual host-URL entry.
 
 ## Wiring
 
-This module is **not** in `apps/client/package.json`'s dependencies by default —
-that keeps Expo Go bundling clean. To activate, add:
+The module is autolinked into every native build via
+`apps/client/package.json`'s `"expo-lan-server": "file:./modules/expo-lan-server"`
+dependency. There's nothing to opt into — `pnpm install` resolves the local
+module, `expo prebuild` writes `android/`/`ios/` projects that include it,
+and `eas build` ships the resulting APK / IPA with the Kotlin / Swift
+modules linked in.
 
-```jsonc
-{
-  "dependencies": {
-    "expo-lan-server": "file:./modules/expo-lan-server"
-  }
-}
+| Environment | `isLanServerAvailable()` | Behaviour |
+|---|---|---|
+| Android dev / preview / production APK | `true` | Kotlin module hosts the WS + HTTP server. |
+| iOS native build (any profile) | `true` | Swift skeleton loads; `start()` etc. throw — see "Status" above. |
+| Web bundle (Cloudflare Pages) | `false` | `requireOptionalNativeModule` returns `null`; lobby falls back to manual host URL entry. |
+| Expo Go | `false` | Same as web — third-party modules aren't bundled. |
+
+## Local Android dev-client cycle
+
+```bash
+# 1. (Recommended) Produce the static Expo Web export so the LAN
+#    host can serve guest browsers — see "Bundling the web client"
+#    below.
+pnpm --filter @mahjong/client export-web
+
+# 2. Build a dev client APK locally on the workstation:
+cd apps/client && eas build --profile development --platform android --local --output=./dev-client.apk
+
+# 3. Install on a device or emulator.
+adb install ./dev-client.apk
 ```
-
-Then run `pnpm install` and the module gets autolinked on the next prebuild.
 
 ## Bundling the web client (browser guest join)
 
