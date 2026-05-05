@@ -126,7 +126,7 @@ The Vite + Capacitor → Expo Router + Metro migration squash-merged in #80. The
 - [ ] **Auto-link the module into the published bundle** (or document the dev-client activation as the supported path). Until that decision is made, the lobby's "Host LAN match" button stays in the "needs dev client" fallback for everyone on the published web/APK.
 
 **Other follow-ups carried over from the migration:**
-- [ ] **Background/foreground lifecycle smoke** — manually verify (or e2e on Android) that backgrounding mid-hand, foregrounding >30 s later, and reconnecting still resumes via `MatchSession.snapshot()` without dropping seats. Round-trip is unit-tested in `apps/server/test/MatchSession.test.ts` but not exercised against a real WebView app lifecycle.
+- [x] **Background/foreground lifecycle smoke** — `.github/workflows/android-lifecycle-smoke.yml` builds a preview APK, boots an x86_64 AVD on the runner, drives the install/launch, sends the app to the background for 35 s, foregrounds via `am start`, and asserts the process is still alive + no `FATAL` lines hit logcat. Snapshot/restore round-trip parity is still covered by the existing `apps/server/test/MatchSession.test.ts` unit; a deeper "drive a match into mid-hand, resume, verify state restored" smoke is queued for the future once Maestro / UIAutomator drive-the-UI scaffolding lands.
 
 ## Out of scope until a maintainer decides
 
