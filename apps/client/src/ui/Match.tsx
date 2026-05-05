@@ -318,34 +318,43 @@ export function Match() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: felt.top }} edges={['top']}>
+      {/* Pinned header — kept above the ScrollView so the LIVE pill,
+          settings ⚙, and Leave button stay reachable on a 320 px
+          phone where the match content overflows. The previous
+          layout placed this row inside the ScrollView, where the
+          browser's `overflow-anchor` adjustment scrolled it past the
+          top edge whenever the body grew (e.g. on the
+          waiting → rolling phase transition). */}
+      <View
+        style={{
+          flexDirection: 'row',
+          flexWrap: 'wrap',
+          alignItems: 'flex-start',
+          justifyContent: 'space-between',
+          gap: 8,
+          paddingHorizontal: 12,
+          paddingTop: 12,
+          backgroundColor: felt.top,
+        }}
+      >
+        <GameStatusBar
+          prevailing={state.prevailingWind}
+          dealerName={dealerName}
+          wallCount={state.wall.length}
+          isMyTurn={myTurn}
+        />
+        <TopBar
+          matchCode={transport.matchCode}
+          viewers={lobby?.viewers ?? null}
+          onLeave={onLeave}
+          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenLog={() => setLogOpen(true)}
+        />
+      </View>
       <ScrollView
         style={{ flex: 1, backgroundColor: felt.top }}
-        contentContainerStyle={{ padding: 12, gap: 12 }}
+        contentContainerStyle={{ padding: 12, paddingTop: 12, gap: 12 }}
       >
-        <View
-          style={{
-            flexDirection: 'row',
-            flexWrap: 'wrap',
-            alignItems: 'flex-start',
-            justifyContent: 'space-between',
-            gap: 8,
-          }}
-        >
-          <GameStatusBar
-            prevailing={state.prevailingWind}
-            dealerName={dealerName}
-            wallCount={state.wall.length}
-            isMyTurn={myTurn}
-          />
-          <TopBar
-            matchCode={transport.matchCode}
-            viewers={lobby?.viewers ?? null}
-            onLeave={onLeave}
-            onOpenSettings={() => setSettingsOpen(true)}
-            onOpenLog={() => setLogOpen(true)}
-          />
-        </View>
-
         <Scoreboard />
 
         {byPosition ? (
