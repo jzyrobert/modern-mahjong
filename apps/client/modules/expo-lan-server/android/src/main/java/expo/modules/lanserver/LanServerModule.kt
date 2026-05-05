@@ -1,6 +1,7 @@
 package expo.modules.lanserver
 
 import android.content.Context
+import android.content.res.AssetManager
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.net.wifi.WifiManager
@@ -11,6 +12,8 @@ import fi.iki.elonen.NanoHTTPD
 import fi.iki.elonen.NanoWSD
 import fi.iki.elonen.NanoWSD.WebSocket
 import fi.iki.elonen.NanoWSD.WebSocketFrame
+import java.io.IOException
+import java.io.InputStream
 import java.net.NetworkInterface
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -70,11 +73,12 @@ class LanServerModule : Module() {
       val port = (opts["port"] as? Number)?.toInt() ?: 0
       val wsPath = (opts["wsPath"] as? String) ?: "/ws"
       stopServer()
-      val srv = WSDServer(port, wsPath, this@LanServerModule)
+      val ctx = appContext.reactContext as Context
+      val srv = WSDServer(port, wsPath, this@LanServerModule, ctx.assets)
       srv.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false)
       server = srv
       val bound = srv.listeningPort
-      val addresses = lanAddresses(appContext.reactContext as Context, bound)
+      val addresses = lanAddresses(ctx, bound)
       mapOf("port" to bound, "addresses" to addresses)
     }
 
@@ -306,16 +310,20 @@ class LanServerModule : Module() {
 
 /**
  * NanoWSD subclass — accepts WebSocket upgrades on the configured
- * `wsPath` and routes all other HTTP requests to a "not found"
- * response. (The legacy plan also wanted the server to host the
- * web bundle for guests visiting the URL in a browser; that's
- * deferred — for now the host's URL is only useful from another
- * copy of the app on the same LAN.)
+ * `wsPath` and serves the bundled Expo Web export for any other HTTP
+ * request. The export ships as Android assets under `assets/lan-bundle/`
+ * (staged by the `stageLanBundleAssets` Gradle task during APK build).
+ * If the staging directory was empty at build time (web export wasn't
+ * run), `assets/lan-bundle/` is missing and `serveHttp` returns a
+ * friendly 404 instead — i.e. the LAN web-host capability lights up
+ * iff `pnpm --filter @mahjong/client export-web` ran before
+ * `eas build`.
  */
 private class WSDServer(
   port: Int,
   private val wsPath: String,
   private val module: LanServerModule,
+  private val assets: AssetManager,
 ) : NanoWSD(port) {
   override fun openWebSocket(handshake: IHTTPSession): WebSocket {
     val id = UUID.randomUUID().toString()
@@ -335,7 +343,7 @@ private class WSDServer(
 
       override fun onPong(pong: WebSocketFrame) { /* keepalive */ }
 
-      override fun onException(exception: java.io.IOException) {
+      override fun onException(exception: IOException) {
         module.emitClose(id)
       }
     }
@@ -347,10 +355,102 @@ private class WSDServer(
       // either upgrades or rejects with 400.
       return super.serveHttp(session)
     }
+    return serveBundleAsset(session.uri)
+  }
+
+  /**
+   * Look the request up under `assets/lan-bundle/`. Returns the file
+   * with a guessed MIME type if it exists; on miss, falls back to
+   * `index.html` (so deep-linked Expo Router routes resolve to the
+   * SPA shell), and finally to a plain-text 404 if no bundle was
+   * staged into the APK at all.
+   */
+  private fun serveBundleAsset(rawUri: String): Response {
+    val cleaned = sanitizeRequestPath(rawUri)
+    val candidate = if (cleaned.isEmpty() || cleaned.endsWith("/")) {
+      "${BUNDLE_ROOT}/${cleaned.trimEnd('/')}/index.html".replace("//", "/")
+    } else {
+      "$BUNDLE_ROOT/$cleaned"
+    }
+
+    val direct = openAsset(candidate)
+    if (direct != null) return assetResponse(candidate, direct)
+
+    // Static export ships HTML files alongside the path, not under it
+    // (Expo Router writes `/match.html` for the `/match` route, etc.).
+    if (!cleaned.contains('.')) {
+      val htmlForRoute = "$BUNDLE_ROOT/${cleaned.ifEmpty { "index" }}.html"
+      val routed = openAsset(htmlForRoute)
+      if (routed != null) return assetResponse(htmlForRoute, routed)
+
+      // SPA fallback: serve the root index.html so client-side routing
+      // can take over.
+      val fallback = openAsset("$BUNDLE_ROOT/index.html")
+      if (fallback != null) return assetResponse("$BUNDLE_ROOT/index.html", fallback)
+    }
+
     return newFixedLengthResponse(
       Response.Status.NOT_FOUND,
       "text/plain",
-      "Not found — LAN guest bundle hosting is deferred (see modules/expo-lan-server/README.md).",
+      "Not found. LAN bundle missing — run `pnpm --filter @mahjong/client export-web` " +
+        "before `eas build` so the host can serve the web client to browser guests.",
     )
+  }
+
+  private fun openAsset(path: String): InputStream? = try {
+    assets.open(path)
+  } catch (_: IOException) {
+    null
+  }
+
+  /**
+   * Defend the asset lookup against `..` traversal and stray query
+   * strings. Anything unsafe collapses to an empty path, which
+   * resolves to `index.html`.
+   */
+  private fun sanitizeRequestPath(raw: String): String {
+    val noQuery = raw.substringBefore('?').substringBefore('#')
+    val trimmed = noQuery.trimStart('/')
+    if (trimmed.contains("..")) return ""
+    return trimmed
+  }
+
+  private fun assetResponse(assetPath: String, stream: InputStream): Response {
+    val mime = mimeFor(assetPath)
+    val response = newChunkedResponse(Response.Status.OK, mime, stream)
+    // Long-cache the hashed `_expo/static/...` files Expo emits;
+    // everything else (HTML / sitemap / not-found) stays fresh.
+    if (assetPath.contains("/_expo/static/") || assetPath.contains("/assets/")) {
+      response.addHeader("Cache-Control", "public, max-age=31536000, immutable")
+    } else {
+      response.addHeader("Cache-Control", "no-cache")
+    }
+    return response
+  }
+
+  private fun mimeFor(path: String): String {
+    val lower = path.lowercase()
+    return when {
+      lower.endsWith(".html") -> "text/html; charset=utf-8"
+      lower.endsWith(".js") || lower.endsWith(".mjs") -> "application/javascript; charset=utf-8"
+      lower.endsWith(".css") -> "text/css; charset=utf-8"
+      lower.endsWith(".json") -> "application/json; charset=utf-8"
+      lower.endsWith(".svg") -> "image/svg+xml"
+      lower.endsWith(".png") -> "image/png"
+      lower.endsWith(".jpg") || lower.endsWith(".jpeg") -> "image/jpeg"
+      lower.endsWith(".gif") -> "image/gif"
+      lower.endsWith(".webp") -> "image/webp"
+      lower.endsWith(".ico") -> "image/x-icon"
+      lower.endsWith(".woff") -> "font/woff"
+      lower.endsWith(".woff2") -> "font/woff2"
+      lower.endsWith(".ttf") -> "font/ttf"
+      lower.endsWith(".otf") -> "font/otf"
+      lower.endsWith(".txt") -> "text/plain; charset=utf-8"
+      else -> "application/octet-stream"
+    }
+  }
+
+  companion object {
+    private const val BUNDLE_ROOT = "lan-bundle"
   }
 }
