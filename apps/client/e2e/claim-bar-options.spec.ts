@@ -133,7 +133,7 @@ async function pickPengTarget(page: Page): Promise<FaceTile | null> {
       you: number | null;
     };
     if (!s.state || s.you === null) return null;
-    const userHand = s.state.hands[s.you];
+    const userHand = s.state.hands[s.you] ?? [];
     const botHand = s.state.hands[1] ?? [];
     const key = (t: FaceTile) => (t.kind === 'suit' ? `s:${t.suit}:${t.rank}` : `h:${t.honor}`);
     const userCounts = new Map<string, { tile: FaceTile; n: number }>();
@@ -162,7 +162,7 @@ async function pickNonClaimableTarget(page: Page): Promise<FaceTile | null> {
       you: number | null;
     };
     if (!s.state || s.you === null) return null;
-    const hand = s.state.hands[s.you];
+    const hand = s.state.hands[s.you] ?? [];
     // Honors are easy: pick one (E/S/W/N/Z/F/B) the user doesn't hold.
     // chi only triggers if next-seat-after-discarder, which is the user
     // here, AND only on suit tiles in 2-step range — honors can never
