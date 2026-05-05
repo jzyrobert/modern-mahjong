@@ -60,6 +60,15 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      # The `expo-lan-server` Android module's gradle build copies
+      # `apps/client/dist/` into `assets/lan-bundle/` so the LAN host
+      # can serve the web client to browser guests. Without this
+      # the preview APK still launches, but the 7777 HTTP routes
+      # return a 404 — so the lifecycle smoke would also miss any
+      # static-asset bundling regression.
+      - name: Export web bundle
+        run: pnpm --filter @mahjong/client export-web
+
       # `eas build --local` invokes its own `expo prebuild` — no
       # need to do it explicitly here. Output as the `preview` profile
       # (assembleRelease, APK) so the same artefact you'd hand to a

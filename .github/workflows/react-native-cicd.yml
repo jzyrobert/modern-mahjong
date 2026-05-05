@@ -87,6 +87,17 @@ jobs:
       #     imports — overwriting it would break engine imports.
       # Both steps removed.
 
+      # The `expo-lan-server` Android module's gradle build copies
+      # `apps/client/dist/` into `assets/lan-bundle/` so the LAN host
+      # can serve the web client to browser guests. Skipping this
+      # ships an APK whose 7777 HTTP routes return the "LAN bundle
+      # missing" 404 instead of the lobby. Must run before BOTH the
+      # dev and prod-apk profiles since neither runs `expo export`
+      # implicitly during `eas build --local`.
+      - name: 🌐 Export web bundle (for LAN host's static-asset route)
+        if: github.event.inputs.buildType == 'all' || github.event.inputs.buildType == 'dev' || github.event.inputs.buildType == 'prod-apk' || github.event_name == 'push'
+        run: pnpm --filter @mahjong/client export-web
+
       - name: 📱 Build Development APK
         if: github.event.inputs.buildType == 'all' || github.event.inputs.buildType == 'dev' || github.event_name == 'push'
         working-directory: apps/client
