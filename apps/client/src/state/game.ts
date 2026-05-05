@@ -1,3 +1,4 @@
+import type { BotKind } from '@mahjong/bots';
 import type { Event as EngineEvent, GameState, Seat } from '@mahjong/game-logic';
 import { tileId } from '@mahjong/game-logic';
 import type { PublicPlayer, RuleConfig } from '@mahjong/protocol';
@@ -35,6 +36,11 @@ export interface UserSettings {
    *  same seat would discard. Off by default so the user's first
    *  match isn't pre-coached. */
   discardHint: boolean;
+  /** Per-seat bot kind for solo / practice matches. Indexed by seat
+   *  1..3 (seat 0 is the user). The default mirrors the historical
+   *  hard-coded mix in `createSoloTransport`. Persisted across
+   *  sessions so the user's last-picked skill set survives reloads. */
+  botSkills: [BotKind, BotKind, BotKind];
 }
 
 const DEFAULT_SETTINGS: UserSettings = {
@@ -44,6 +50,7 @@ const DEFAULT_SETTINGS: UserSettings = {
   animations: true,
   sound: false,
   discardHint: false,
+  botSkills: ['heuristic', 'simple', 'passive'],
 };
 
 const SETTINGS_STORAGE_KEY = 'mj.settings.v1';

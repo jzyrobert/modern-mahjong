@@ -168,9 +168,7 @@ export function rankDiscards(input: DiscardChoiceInput): DiscardScore[] {
     tile: p.tile,
     shanten: p.shanten,
     ukeire:
-      p.shanten === minShanten
-        ? ukeire({ hand: p.remaining, exposedMelds, allowSpecial })
-        : 0,
+      p.shanten === minShanten ? ukeire({ hand: p.remaining, exposedMelds, allowSpecial }) : 0,
     yakuhaiPairs: p.yakuhaiPairs,
     safety: p.safety,
   }));

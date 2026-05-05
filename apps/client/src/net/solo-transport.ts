@@ -1,4 +1,4 @@
-import { type Bot, heuristicBot, passiveBot, runBotTurns, simpleBot } from '@mahjong/bots';
+import { type Bot, type BotKind, bots as botRegistry, runBotTurns } from '@mahjong/bots';
 import {
   type Action,
   type Claim,
@@ -39,9 +39,23 @@ declare global {
 interface SoloOptions {
   playerId: string;
   displayName: string;
+  /** Per-seat bot kind for seats 1..3. Defaults to the historical
+   *  mix `[heuristic, simple, passive]` so callers that haven't
+   *  opted into custom skills get the same behaviour as before. */
+  botSkills?: [BotKind, BotKind, BotKind];
+}
+
+/** Surface the live solo transport supports — extends the base
+ *  `Transport` so the lobby waiting room can swap out a bot's skill
+ *  while the match is still in `phase: 'waiting'`. Other transports
+ *  (online, LAN) don't expose this — bot skill selection only makes
+ *  sense for the in-process solo loop. */
+export interface SoloTransportControls {
+  setBotSkill: (seat: 1 | 2 | 3, kind: BotKind) => void;
 }
 
 const BOT_PLAYER_IDS = ['bot-1', 'bot-2', 'bot-3'] as const;
+const DEFAULT_BOT_SKILLS: [BotKind, BotKind, BotKind] = ['heuristic', 'simple', 'passive'];
 
 /**
  * In-process transport: skips the WebSocket entirely and runs an
@@ -53,13 +67,19 @@ const BOT_PLAYER_IDS = ['bot-1', 'bot-2', 'bot-3'] as const;
  * `runBotTurns` from `@mahjong/bots`. Solo skips the lobby/host/
  * disconnect plumbing — there's no one else to coordinate with.
  */
-export function createSoloTransport(opts: SoloOptions): Transport {
+export function createSoloTransport(opts: SoloOptions): Transport & SoloTransportControls {
   let state: GameState = emptyState(DEFAULT_RULES);
+  const initialSkills = opts.botSkills ?? DEFAULT_BOT_SKILLS;
+  const botKinds: Record<1 | 2 | 3, BotKind> = {
+    1: initialSkills[0],
+    2: initialSkills[1],
+    3: initialSkills[2],
+  };
   const bots: Record<Seat, Bot | null> = {
     0: null,
-    1: withTestScript(1, heuristicBot),
-    2: withTestScript(2, simpleBot),
-    3: withTestScript(3, passiveBot),
+    1: withTestScript(1, botRegistry[botKinds[1]]),
+    2: withTestScript(2, botRegistry[botKinds[2]]),
+    3: withTestScript(3, botRegistry[botKinds[3]]),
   };
   const messageListeners = new Set<(m: ServerMessage) => void>();
   const statusListeners = new Set<(s: TransportStatus) => void>();
@@ -102,12 +122,7 @@ export function createSoloTransport(opts: SoloOptions): Transport {
     }, delay);
   }
 
-  // Defer the initial state/lobby emission until after the caller has had a
-  // chance to subscribe via onMessage. Without this, the synchronous emit
-  // would fire into a Set that's still empty.
-  setTimeout(() => {
-    if (closed) return;
-    emit({ t: 'state', state, you: 0 });
+  function emitLobby() {
     emit({
       t: 'lobby',
       players: [
@@ -120,21 +135,21 @@ export function createSoloTransport(opts: SoloOptions): Transport {
         },
         {
           playerId: BOT_PLAYER_IDS[0],
-          displayName: `Bot (${heuristicBot.kind})`,
+          displayName: `Bot (${botKinds[1]})`,
           seat: 1,
           connected: true,
           isBot: true,
         },
         {
           playerId: BOT_PLAYER_IDS[1],
-          displayName: `Bot (${simpleBot.kind})`,
+          displayName: `Bot (${botKinds[2]})`,
           seat: 2,
           connected: true,
           isBot: true,
         },
         {
           playerId: BOT_PLAYER_IDS[2],
-          displayName: `Bot (${passiveBot.kind})`,
+          displayName: `Bot (${botKinds[3]})`,
           seat: 3,
           connected: true,
           isBot: true,
@@ -143,6 +158,15 @@ export function createSoloTransport(opts: SoloOptions): Transport {
       host: opts.playerId,
       rules: state.rules,
     });
+  }
+
+  // Defer the initial state/lobby emission until after the caller has had a
+  // chance to subscribe via onMessage. Without this, the synchronous emit
+  // would fire into a Set that's still empty.
+  setTimeout(() => {
+    if (closed) return;
+    emit({ t: 'state', state, you: 0 });
+    emitLobby();
   }, 0);
 
   return {
@@ -181,6 +205,19 @@ export function createSoloTransport(opts: SoloOptions): Transport {
       }
       _status = 'closed';
       for (const cb of statusListeners) cb(_status);
+    },
+    /** Live-update one bot seat's strategy. The lobby waiting room
+     *  uses this to let the user dial each bot's skill before the
+     *  hand starts. Re-emits the lobby message so the LobbyPreview
+     *  picks up the new bot name. Only takes effect for new
+     *  decisions — a hand already in flight keeps using the bot
+     *  whose closure is in-flight, but we only allow this between
+     *  hands so that's a non-issue in practice. */
+    setBotSkill(seat: 1 | 2 | 3, kind: BotKind) {
+      if (closed) return;
+      botKinds[seat] = kind;
+      bots[seat] = withTestScript(seat, botRegistry[kind]);
+      emitLobby();
     },
   };
 }

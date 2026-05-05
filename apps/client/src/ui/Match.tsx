@@ -1,4 +1,5 @@
 import { useTransport } from '@/src/net/transport-context';
+import type { BotKind } from '@mahjong/bots';
 import {
   type Action,
   type Tile as MTile,
@@ -16,7 +17,7 @@ import {
 } from '@mahjong/game-logic';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { ScrollView, Text, View, useWindowDimensions } from 'react-native';
+import { Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { isSeatHost, useGame } from '../state/game';
 import { RulePanel } from './RulePanel';
@@ -51,6 +52,8 @@ const COLORS = {
   cream: '#f1eadc',
   ink: '#3a3328',
   ink3: '#918275',
+  paperHi: '#fbf8f0',
+  hairline: '#cdc1ad',
 };
 
 /**
@@ -216,6 +219,9 @@ export function Match() {
               : 'Waiting for the host to start the match.'}
           </Text>
           {lobby ? <LobbyPreview lobby={lobby} matchCode={transport.matchCode} /> : null}
+          {transport.matchCode === 'SOLO' && lobby ? (
+            <SoloBotSkillPicker skills={settings.botSkills} onChange={transport.setSoloBotSkill} />
+          ) : null}
           <RulePanel rules={state.rules} isHost={isHost} onAction={onAction} />
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
             <PrimaryButton
@@ -357,4 +363,110 @@ function randomSeed(): number {
     if (typeof override === 'number') return override;
   }
   return Math.floor(Math.random() * 0xffffffff);
+}
+
+const BOT_KINDS: ReadonlyArray<{ kind: BotKind; label: string; hint: string }> = [
+  { kind: 'passive', label: 'Easy', hint: 'Discards the last drawn tile, never claims.' },
+  { kind: 'simple', label: 'Standard', hint: 'Drops the most isolated tile.' },
+  { kind: 'heuristic', label: 'Smart', hint: 'Minimises shanten + claims to improve.' },
+];
+const SEAT_WIND_GLYPH = ['東', '南', '西', '北'] as const;
+
+interface SoloBotSkillPickerProps {
+  skills: readonly [BotKind, BotKind, BotKind];
+  onChange: (seat: 1 | 2 | 3, kind: BotKind) => void;
+}
+
+/**
+ * Per-bot skill picker — only rendered for solo matches in the
+ * waiting room. Three rows (one per bot seat 1..3); each row offers a
+ * three-way segmented control between Easy / Standard / Smart. The
+ * picker writes through `transport.setSoloBotSkill` to the live
+ * solo transport (which re-emits the lobby with the new bot name)
+ * AND through `useGame.settings.botSkills` so the next solo match
+ * remembers the choice across reloads.
+ */
+function SoloBotSkillPicker({ skills, onChange }: SoloBotSkillPickerProps) {
+  return (
+    <View
+      style={{
+        marginTop: 12,
+        backgroundColor: COLORS.paperHi,
+        borderColor: COLORS.hairline,
+        borderWidth: 1,
+        borderRadius: 14,
+        padding: 14,
+        gap: 10,
+      }}
+    >
+      <Text style={{ fontSize: 14, fontWeight: '900', color: COLORS.ink }}>Bot skill</Text>
+      <Text style={{ fontSize: 12, color: COLORS.ink3, marginTop: -4 }}>
+        Tune each opponent's strategy. Saved across sessions.
+      </Text>
+      {([1, 2, 3] as const).map((seat) => (
+        <View
+          key={seat}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 10,
+            flexWrap: 'wrap',
+          }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4, minWidth: 70 }}>
+            <Text
+              style={{
+                fontFamily: 'Noto Serif TC',
+                fontSize: 16,
+                color: '#b14d3a',
+                fontWeight: '700',
+              }}
+            >
+              {SEAT_WIND_GLYPH[seat]}
+            </Text>
+            <Text style={{ fontSize: 11, fontWeight: '800', color: COLORS.ink3 }}>SEAT {seat}</Text>
+          </View>
+          <View
+            style={{
+              flexDirection: 'row',
+              flex: 1,
+              minWidth: 220,
+              backgroundColor: '#ece4d3',
+              borderRadius: 8,
+              padding: 2,
+            }}
+          >
+            {BOT_KINDS.map((opt) => {
+              const active = skills[seat - 1] === opt.kind;
+              return (
+                <Pressable
+                  key={opt.kind}
+                  onPress={() => onChange(seat, opt.kind)}
+                  accessibilityLabel={`Set seat ${seat} to ${opt.label}`}
+                  style={({ pressed }) => ({
+                    flex: 1,
+                    paddingVertical: 6,
+                    borderRadius: 6,
+                    alignItems: 'center',
+                    backgroundColor: active ? '#fbe5d9' : pressed ? '#dfd4bc' : 'transparent',
+                  })}
+                >
+                  <Text
+                    style={{
+                      fontSize: 12,
+                      fontWeight: active ? '900' : '600',
+                      color: active ? '#b14d3a' : COLORS.ink,
+                      letterSpacing: 0.4,
+                    }}
+                  >
+                    {opt.label.toUpperCase()}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      ))}
+    </View>
+  );
 }

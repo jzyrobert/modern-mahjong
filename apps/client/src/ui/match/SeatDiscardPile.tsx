@@ -77,12 +77,20 @@ export function SeatDiscardPile({
       {tiles.map((t, i) => {
         const id = tileId(t);
         const tossOffset = (mulberry32(id)() - 0.5) * 2 * MAX_TOSS_DEGREES;
+        const tileRotate = rotate + tossOffset;
         const isLatest = latestId === id;
+        // The latest-discard halo lives on this wrapper, but the
+        // wrapper has to share the tile's rotation otherwise the
+        // axis-aligned halo box drifts off the tilted tile (visible
+        // as a misaligned "frame" when toss-jitter is non-zero).
+        // Apply the rotate transform to the wrapper and stop passing
+        // it down to `<Tile>` so the two stay locked together.
         return (
           <View
             // biome-ignore lint/suspicious/noArrayIndexKey: discard order is append-only and stable; tiles can repeat (multiple of the same face) so we composite with i
             key={`${id}-${i}`}
             style={{
+              transform: [{ rotate: `${tileRotate}deg` }],
               ...(isLatest && {
                 boxShadow: `0px 0px 6px ${HALO}b3`,
                 borderWidth: 1.5,
@@ -91,13 +99,7 @@ export function SeatDiscardPile({
               }),
             }}
           >
-            <Tile
-              tile={t}
-              flipId={`tile-${id}`}
-              width={tileW}
-              height={tileH}
-              rotate={rotate + tossOffset}
-            />
+            <Tile tile={t} flipId={`tile-${id}`} width={tileW} height={tileH} />
           </View>
         );
       })}
