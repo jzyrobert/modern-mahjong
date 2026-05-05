@@ -10,28 +10,22 @@ name: Android lifecycle smoke
 # verification.
 #
 # Runs:
-#   - on PRs that touch the client app, the Expo manifest, or this
-#     workflow (the smoke is too heavy for every PR — ~10–12 min of
-#     runner time — but cheap relative to discovering a lifecycle
-#     regression in production).
-#   - on push to `main` for the same paths, so a regression that
-#     slips through PR-skip-paths still gets caught.
+#   - on push to `main` for client / Expo-manifest changes (the
+#     smoke catches lifecycle regressions in the post-merge tree
+#     without blocking PRs on the ~15–20 min job).
 #   - on `workflow_dispatch` so a maintainer can re-run the smoke
-#     against a green commit without changing app code.
+#     against a specific commit without changing app code.
+#
+# Earlier this workflow also triggered on `pull_request`, but the
+# 15–20 min runner time made every PR feel slow even when the
+# change couldn't possibly affect the WebView lifecycle. Pulling
+# the smoke onto post-merge `main` only is the cheaper trade-off:
+# regressions still get caught (with the offending PR's changes
+# already on `main`) without slowing the PR feedback loop.
 
 on:
   push:
     branches: [main]
-    paths:
-      - "apps/client/app.json"
-      - "apps/client/eas.json"
-      - "apps/client/package.json"
-      - "apps/client/app/**"
-      - "apps/client/src/**"
-      - "apps/client/modules/**"
-      - "pnpm-lock.yaml"
-      - ".github/workflows/android-lifecycle-smoke.yml"
-  pull_request:
     paths:
       - "apps/client/app.json"
       - "apps/client/eas.json"
