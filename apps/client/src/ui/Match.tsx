@@ -354,32 +354,34 @@ export function Match() {
           </View>
         ) : null}
 
-        <View
-          style={{
-            backgroundColor: felt.bottom,
-            borderColor: 'rgba(255,255,255,0.12)',
-            borderWidth: 1,
-            borderRadius: 12,
-            padding: 8,
-            gap: 6,
-          }}
-        >
-          <Text
+        {state.discardOrder.length > 0 ? (
+          <View
             style={{
-              fontSize: 11,
-              fontWeight: '800',
-              color: 'rgba(255,255,255,0.7)',
-              letterSpacing: 0.5,
+              backgroundColor: felt.bottom,
+              borderColor: 'rgba(255,255,255,0.12)',
+              borderWidth: 1,
+              borderRadius: 12,
+              padding: 8,
+              gap: 6,
             }}
           >
-            DISCARDS
-          </Text>
-          <SharedDiscardPool
-            discardOrder={state.discardOrder}
-            seatToPosition={seatToPosition}
-            latestId={latestDiscardId}
-          />
-        </View>
+            <Text
+              style={{
+                fontSize: 11,
+                fontWeight: '800',
+                color: 'rgba(255,255,255,0.7)',
+                letterSpacing: 0.5,
+              }}
+            >
+              DISCARDS
+            </Text>
+            <SharedDiscardPool
+              discardOrder={state.discardOrder}
+              seatToPosition={seatToPosition}
+              latestId={latestDiscardId}
+            />
+          </View>
+        ) : null}
 
         {state.melds[seat].length > 0 ? (
           <View style={{ gap: 4 }}>
