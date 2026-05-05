@@ -33,8 +33,7 @@ const COLORS = {
 };
 
 /**
- * Guest-side modal for joining a LAN match. Native port of
- * `_legacy/src/ui/JoinLanModal.tsx`. Two TextFields (URL + match code)
+ * Guest-side modal for joining a LAN match. Two TextFields (URL + match code)
  * and a "Join match" primary; URL gets reset to `defaultUrl` whenever
  * the modal opens so a stale value from a previous attempt doesn't
  * stick.

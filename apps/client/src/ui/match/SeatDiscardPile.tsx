@@ -33,11 +33,11 @@ const MAX_TOSS_DEGREES = 8;
 
 /**
  * One seat's discard pile, oriented for that seat's view of the table.
- * Native port of `_legacy/src/ui/DiscardPile.tsx`. Uses RN flex-wrap
- * with a `maxWidth` (horizontal piles) or `maxHeight` (vertical piles)
- * constraint so a long run breaks into a second row/column instead of
- * spilling across the centre area. Per-tile mulberry32 jitter on top of
- * the seat rotation matches the legacy "toss" angles.
+ * Uses RN flex-wrap with a `maxWidth` (horizontal piles) or `maxHeight`
+ * (vertical piles) constraint so a long run breaks into a second
+ * row/column instead of spilling across the centre area. Per-tile
+ * mulberry32 jitter on top of the seat rotation produces the "toss"
+ * angles.
  *
  * The pulse halo on the latest claim-window tile is a static gold
  * border for now — the framer-motion `HALO_ANIMATE` pulse is Phase 6

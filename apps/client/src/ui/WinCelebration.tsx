@@ -14,8 +14,7 @@ const COLORS = {
 };
 
 /**
- * Celebratory overlay on `state.lastResult.kind === 'win'`. Native
- * port of `_legacy/src/ui/WinCelebration.tsx`. Auto-dismisses after
+ * Celebratory overlay on `state.lastResult.kind === 'win'`. Auto-dismisses after
  * `DISMISS_MS` (or on tap). The 和 emblem pulses + rocks subtly via RN
  * core `Animated` (no reanimated, so it works in Expo Go).
  */

@@ -17,9 +17,8 @@ import type { WallSlot } from './wallLayout';
  *     real next `Tile` (face-down) so future Phase 6 FLIPs have a real
  *     tile object to track. Pulse halo signals "your draw."
  *
- * Native port of `_legacy/src/ui/match/WallEdge.tsx`. The dead wall is
- * not rendered separately — it's part of the engine's state but never
- * visible at a real table.
+ * The dead wall is not rendered separately — it's part of the
+ * engine's state but never visible at a real table.
  */
 
 interface WallEdgeProps {

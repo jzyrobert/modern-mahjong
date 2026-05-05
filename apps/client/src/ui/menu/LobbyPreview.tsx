@@ -10,11 +10,10 @@ interface LobbyPreviewProps {
 const WIND_GLYPH = ['東', '南', '西', '北'] as const;
 
 /**
- * Live preview of the four-seat lobby. Native port of
- * `_legacy/src/ui/menu/LobbyPreview.tsx` — same wind glyphs, same seat
- * cards, same connection-status pills. Auto-fit grid replaced with a
- * `useWindowDimensions`-driven flex-wrap so on narrow phones the four
- * seats reflow to 2×2 instead of overflowing.
+ * Live preview of the four-seat lobby — wind glyphs, seat cards,
+ * connection-status pills. Uses a `useWindowDimensions`-driven
+ * flex-wrap so on narrow phones the four seats reflow to 2×2 instead
+ * of overflowing.
  */
 export function LobbyPreview({ lobby, matchCode }: LobbyPreviewProps) {
   const { width } = useWindowDimensions();

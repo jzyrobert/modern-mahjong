@@ -17,8 +17,7 @@ const COLORS = {
 };
 
 /**
- * In-match preferences modal. Native port of the legacy
- * `_legacy/src/ui/match/SettingsPanel.tsx`. v1 covers the controls that
+ * In-match preferences modal. v1 covers the controls that
  * actually affect the active match: felt skin picker, tile-back skin
  * picker, auto-sort toggle, sound toggle, animations toggle. Turn-timer
  * editor, GameLog button, and the 136-tile reference grid are deferred

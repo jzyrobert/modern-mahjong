@@ -42,8 +42,7 @@ const COLORS = {
 };
 
 /**
- * 136-tile reference grouped by suit + honor family. Native port of
- * `_legacy/src/ui/match/TileReference.tsx`. Each group lists the
+ * 136-tile reference grouped by suit + honor family. Each group lists the
  * unique faces (one tile per face) at a 32×44 footprint, with a
  * ×4 multiplicity hint underneath. Used inside the bottom-sheet
  * reference modal opened from the match `TopBar`.

@@ -24,7 +24,7 @@ const COLORS = {
 
 /**
  * Per-pattern faan breakdown shown when a hand resolves to `kind: 'win'`.
- * Native port of `_legacy/src/ui/ScoringBreakdownModal.tsx`. Each row
+ * Each row
  * carries the pattern name (Chinese), english gloss, the tiles that
  * triggered it (rendered as small face-up `<Tile>`s), and the faan
  * delta. A total row at the bottom sums to `result.faan`.

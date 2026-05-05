@@ -27,8 +27,7 @@ const COLORS = {
 };
 
 /**
- * Brand-red primary button with active-press visual feedback. Native
- * port of the legacy `_legacy/src/ui/buttons.tsx::PrimaryButton`.
+ * Brand-red primary button with active-press visual feedback.
  */
 export function PrimaryButton({
   children,
@@ -82,8 +81,7 @@ interface GhostButtonProps {
 }
 
 /**
- * Cream-paper ghost button with hairline border. Native port of the
- * legacy `_legacy/src/ui/buttons.tsx::GhostButton`.
+ * Cream-paper ghost button with hairline border.
  */
 export function GhostButton({
   children,
@@ -135,8 +133,7 @@ interface TextFieldProps {
 }
 
 /**
- * Cream-paper text input with a focused brand-red ring. Native port of
- * `_legacy/src/ui/buttons.tsx::TextField`. The focused ring is driven
+ * Cream-paper text input with a focused brand-red ring. The focused ring is driven
  * by local `useState(focused)` rather than CSS `:focus-visible` since
  * RN's TextInput doesn't expose pseudo-classes.
  */

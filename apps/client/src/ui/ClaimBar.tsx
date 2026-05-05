@@ -34,7 +34,7 @@ const TONE: Record<Tone, { bg: string; pressed: string; fg: string }> = {
 const ORDER: readonly CallKind[] = ['chi', 'peng', 'gong', 'hu', 'pass'];
 
 /**
- * Claim flow buttons. Native port of `_legacy/src/ui/ClaimBar.tsx`.
+ * Claim flow buttons.
  *
  * Renders one button per legal claim kind for this seat against the
  * current discard. `pass` is always offered (legalClaimsFor already

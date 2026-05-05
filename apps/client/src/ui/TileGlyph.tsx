@@ -3,10 +3,9 @@ import { Text, View } from 'react-native';
 import Svg, { Circle, Ellipse, G, Line, Path } from 'react-native-svg';
 
 /**
- * Mahjong tile face. Native port of `_legacy/src/ui/TileGlyph.tsx` —
- * same visual language (procedural geometry for pin dots and bamboo
+ * Mahjong tile face — procedural geometry for pin dots and bamboo
  * sticks, layered TC-serif character text for man / winds / dragons,
- * and the traditional bird for sou-1).
+ * and the traditional bird for sou-1.
  *
  * Rendering split: react-native-svg for geometry (circles, ellipses,
  * paths). RN `<Text>` absolutely-positioned over the SVG for character

@@ -76,10 +76,8 @@ const COLORS = {
  * Desktop-shell table layout. Used when the viewport is wider than a
  * phone (≥ 768px). Renders a felt-green table with the user at the
  * bottom and three opponents at top/left/right; per-seat discard piles
- * fill the center. Restores the visual language of the legacy
- * `_legacy/src/ui/Table.tsx` while staying in pure React Native
- * primitives so it works on both Expo Web and tablet-sized native
- * targets.
+ * fill the center. Stays in pure React Native primitives so it works
+ * on both Expo Web and tablet-sized native targets.
  *
  * Notable simplifications vs the legacy build (queued, not blocking):
  *   - Opponent face-down strips are unrotated; tile backs are visually

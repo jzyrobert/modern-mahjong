@@ -31,7 +31,7 @@ const COLORS = {
 };
 
 /**
- * Native port of `_legacy/src/ui/Modal.tsx`. Cream-paper dialog over an
+ * Cream-paper dialog over an
  * ink scrim, title row with × close button, click-outside to dismiss,
  * back-button to dismiss on Android (via `onRequestClose`). The legacy
  * `backdrop-filter: blur` doesn't translate to RN — the scrim alpha is

@@ -10,8 +10,7 @@ interface WindEmblemProps {
 
 /**
  * Hero emblem on the lobby — a single ivory wind-tile with a deep-red
- * Chinese character on its face. Native port of
- * `_legacy/src/ui/menu/WindEmblem.tsx`. Decorative, no interaction.
+ * Chinese character on its face. Decorative, no interaction.
  */
 export function WindEmblem({ wind = '東', size = 100 }: WindEmblemProps) {
   const r = size * 0.14;

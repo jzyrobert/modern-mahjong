@@ -29,8 +29,7 @@ const TILES: ScatteredTile[] = [
 /**
  * Decorative face-down tile-backs scattered in the lobby corners. Pure
  * decoration — `pointerEvents: 'none'` so the tiles never block taps on
- * the mode cards beneath. Native port of
- * `_legacy/src/ui/menu/ScatteredTiles.tsx`.
+ * the mode cards beneath.
  *
  * On viewports narrower than ~480px (small phones in portrait), the
  * scatter is suppressed — the tile-backs would otherwise overlap the

@@ -13,8 +13,7 @@ const COLORS = {
 };
 
 /**
- * Six-emote chat bar. Native port of
- * `_legacy/src/ui/match/ChatBar.tsx`. Each tap fires `onSend` with
+ * Six-emote chat bar. Each tap fires `onSend` with
  * the emoji string; the server broadcasts back as `chat` and
  * `<ChatBubbles>` renders a floating bubble near the sender.
  */

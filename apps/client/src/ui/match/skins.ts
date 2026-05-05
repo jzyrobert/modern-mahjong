@@ -1,11 +1,11 @@
 import type { FeltSkin, TileBackSkin } from '../../state/game';
 
 /**
- * Felt + tile-back skin presets — hex translations of the legacy
- * `_legacy/src/ui/match/skins.ts` (which used `oklch()` for browser-only
- * gradient stops). RN inline `backgroundColor` rejects oklch on Android,
- * so the table commits to hex everywhere now (matches the visual-polish
- * commit 697a7cb's "oklch → hex everywhere" pivot).
+ * Felt + tile-back skin presets — hex stops for the gradient ends.
+ * The original Vite-era presets used `oklch()`, but RN inline
+ * `backgroundColor` rejects oklch on Android, so the table commits
+ * to hex everywhere (matches the visual-polish commit 697a7cb's
+ * "oklch → hex everywhere" pivot).
  */
 
 export const FELT_SKINS: Record<FeltSkin, { name: string; top: string; bottom: string }> = {

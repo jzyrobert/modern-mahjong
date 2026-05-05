@@ -10,11 +10,9 @@ interface MeldStripProps {
 }
 
 /**
- * Renders a seat's exposed melds as horizontal rows of small tiles.
- * Native port of `_legacy/src/ui/match/MeldStrip.tsx`. Legacy was a
- * placeholder dashed slot — this version actually shows the meld
- * contents from `state.melds[seat]`. Empty list → nothing rendered
- * (parent decides whether to reserve space).
+ * Renders a seat's exposed melds as horizontal rows of small tiles
+ * from `state.melds[seat]`. Empty list → nothing rendered (parent
+ * decides whether to reserve space).
  */
 export function MeldStrip({ melds, tileWidth = 18, tileHeight = 24 }: MeldStripProps) {
   if (melds.length === 0) return null;

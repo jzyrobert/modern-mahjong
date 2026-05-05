@@ -36,8 +36,7 @@ const COLORS = {
 /**
  * Per-seat badge — coloured avatar circle with player initials, display
  * name, seat-wind glyph, and cumulative score. Active-turn glow applies
- * when it's the seat's turn. Native port of
- * `_legacy/src/ui/match/PlayerBadge.tsx`.
+ * when it's the seat's turn.
  *
  * The legacy gradient + backdrop-filter blur become a solid red
  * background + scaled shadow on active — RN doesn't support

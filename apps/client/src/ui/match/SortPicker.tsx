@@ -22,8 +22,7 @@ const COLORS = {
 };
 
 /**
- * Three-way segmented picker for the user's hand sort mode. Native
- * port of `_legacy/src/ui/match/SortPicker.tsx`. The 'manual' option
+ * Three-way segmented picker for the user's hand sort mode. The 'manual' option
  * is rendered but a no-op until Phase 5 wires up drag-to-reorder.
  */
 export function SortPicker({ mode, onChange }: SortPickerProps) {
