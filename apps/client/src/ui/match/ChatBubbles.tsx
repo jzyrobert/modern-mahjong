@@ -42,7 +42,6 @@ export function ChatBubbles({ seatToPosition }: ChatBubblesProps) {
 
   return (
     <View
-      pointerEvents="none"
       style={{
         position: 'absolute',
         left: 0,
@@ -50,6 +49,7 @@ export function ChatBubbles({ seatToPosition }: ChatBubblesProps) {
         top: 0,
         bottom: 0,
         zIndex: 80,
+        pointerEvents: 'none',
       }}
     >
       {chats.map((c) => {
@@ -70,11 +70,7 @@ export function ChatBubbles({ seatToPosition }: ChatBubblesProps) {
                 borderRadius: 14,
                 paddingVertical: 6,
                 paddingHorizontal: 12,
-                shadowColor: '#000',
-                shadowOpacity: 0.18,
-                shadowRadius: 6,
-                shadowOffset: { width: 0, height: 2 },
-                elevation: 4,
+                boxShadow: '0px 2px 6px rgba(0,0,0,0.18)',
               },
               anchor,
             ]}

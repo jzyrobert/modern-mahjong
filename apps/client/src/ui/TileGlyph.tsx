@@ -208,8 +208,14 @@ function ManText({ rank }: { rank: number }) {
   return (
     <>
       <View
-        pointerEvents="none"
-        style={{ position: 'absolute', left: 0, right: 0, top: '24%', alignItems: 'center' }}
+        style={{
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          top: '24%',
+          alignItems: 'center',
+          pointerEvents: 'none',
+        }}
       >
         <Text
           allowFontScaling={false}
@@ -225,8 +231,14 @@ function ManText({ rank }: { rank: number }) {
         </Text>
       </View>
       <View
-        pointerEvents="none"
-        style={{ position: 'absolute', left: 0, right: 0, top: '54%', alignItems: 'center' }}
+        style={{
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          top: '54%',
+          alignItems: 'center',
+          pointerEvents: 'none',
+        }}
       >
         <Text
           allowFontScaling={false}
@@ -272,7 +284,6 @@ function HonorText({ honor }: { honor: string }) {
   if (!glyph || !color) return null;
   return (
     <View
-      pointerEvents="none"
       style={{
         position: 'absolute',
         left: 0,
@@ -281,6 +292,7 @@ function HonorText({ honor }: { honor: string }) {
         bottom: 0,
         alignItems: 'center',
         justifyContent: 'center',
+        pointerEvents: 'none',
       }}
     >
       <Text

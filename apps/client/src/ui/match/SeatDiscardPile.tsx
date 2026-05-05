@@ -87,11 +87,7 @@ export function SeatDiscardPile({
             key={`${id}-${i}`}
             style={{
               ...(isLatest && {
-                shadowColor: HALO,
-                shadowOpacity: 0.7,
-                shadowRadius: 6,
-                shadowOffset: { width: 0, height: 0 },
-                elevation: 4,
+                boxShadow: `0px 0px 6px ${HALO}b3`,
                 borderWidth: 1.5,
                 borderColor: HALO,
                 borderRadius: 4,

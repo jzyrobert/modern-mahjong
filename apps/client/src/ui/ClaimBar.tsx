@@ -63,11 +63,7 @@ export function ClaimBar({ onAction, seat }: ClaimBarProps) {
         borderColor: '#cdc1ad',
         borderWidth: 1,
         borderRadius: 12,
-        shadowColor: '#000',
-        shadowOpacity: 0.08,
-        shadowRadius: 12,
-        shadowOffset: { width: 0, height: 4 },
-        elevation: 3,
+        boxShadow: '0px 4px 12px rgba(0,0,0,0.08)',
       }}
     >
       <Text style={{ fontSize: 11, fontWeight: '800', color: '#918275', letterSpacing: 0.5 }}>
@@ -103,11 +99,7 @@ function CallButton({ kind, onPress }: { kind: CallKind; onPress: () => void }) 
         flexDirection: 'row',
         alignItems: 'center',
         gap: 8,
-        shadowColor: '#000',
-        shadowOpacity: isCream ? 0 : 0.18,
-        shadowRadius: 6,
-        shadowOffset: { width: 0, height: 4 },
-        elevation: isCream ? 0 : 4,
+        boxShadow: isCream ? 'none' : '0px 4px 6px rgba(0,0,0,0.18)',
       })}
     >
       <Text
