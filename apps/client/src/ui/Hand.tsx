@@ -43,11 +43,10 @@ const GAP = 4;
 const ASPECT = TILE_H_DEFAULT / TILE_W_DEFAULT; // 50/36 ≈ 1.39
 
 /**
- * Native port of `_legacy/src/ui/Hand.tsx` with Phase 5 drag-to-
- * reorder wired up via `HandTile`. Manual mode uses
- * `useGame.manualOrder` from the store; tap-to-discard still works
- * via the gesture's Tap branch (long-press is required to enter
- * drag mode, so a quick tap goes straight to `onTileClick`).
+ * The user's own hand, with drag-to-reorder wired up via `HandTile`.
+ * Manual mode uses `useGame.manualOrder` from the store; tap-to-discard
+ * still works via the gesture's Tap branch (long-press is required to
+ * enter drag mode, so a quick tap goes straight to `onTileClick`).
  */
 export function Hand({
   tiles,

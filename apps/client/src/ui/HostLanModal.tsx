@@ -35,8 +35,7 @@ const COLORS = {
 const HOST_PORT = 7777;
 
 /**
- * Host-side modal for starting a LAN match. Native port of
- * `_legacy/src/ui/HostLanModal.tsx`. On open this fires
+ * Host-side modal for starting a LAN match. On open this fires
  * `LanServer.start({ port: 7777 })` if the native module is
  * available (Android dev/preview/production builds since #97); the
  * resolved LAN addresses auto-populate the host URL field, so the

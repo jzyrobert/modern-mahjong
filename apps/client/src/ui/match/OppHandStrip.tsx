@@ -26,8 +26,7 @@ const COLORS = {
 
 /**
  * Compact opponent strip — wind glyph + display name + a row of
- * miniature face-down tile rectangles. Native port of
- * `_legacy/src/ui/match/OppHandStrip.tsx`. Skips the active-turn glow
+ * miniature face-down tile rectangles. Skips the active-turn glow
  * pulse (Phase 6) for now in favour of a static border tint.
  */
 export function OppHandStrip({ seat, seatWind, lobby, handBacks, isActive }: OppHandStripProps) {

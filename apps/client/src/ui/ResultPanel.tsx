@@ -23,7 +23,7 @@ const COLORS = {
 };
 
 /**
- * End-of-hand result. Native port of `_legacy/src/ui/ResultPanel.tsx`.
+ * End-of-hand result.
  * Wins show a one-line summary + a "View breakdown" button that opens
  * `ScoringBreakdownModal` with the per-pattern faan list.
  */

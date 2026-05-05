@@ -23,8 +23,7 @@ const TILE_H = 32;
 
 /**
  * Centre-of-table discard pool. Tiles in true turn order, each with a
- * colour underline keying the discarder's visual position. Native port
- * of `_legacy/src/ui/match/SharedDiscardPool.tsx`. The pulse-halo on
+ * colour underline keying the discarder's visual position. The pulse-halo on
  * the live claim-window tile is deferred to Phase 6; for now we just
  * gold-tint its border.
  */

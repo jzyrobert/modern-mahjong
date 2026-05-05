@@ -35,7 +35,7 @@ interface TileProps {
 }
 
 /**
- * Native port of `_legacy/src/ui/Tile.tsx`. Renders a single tile face
+ * Renders a single tile face
  * or back as layered SVG with a `<TileGlyph>` overlay. Animations
  * (framer-motion's spring / `layoutId` / press scale) are deferred to
  * Phase 6 — for now Pressable handles the tap, no spring on transitions.

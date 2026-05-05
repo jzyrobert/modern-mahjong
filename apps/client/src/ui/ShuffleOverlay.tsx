@@ -7,8 +7,7 @@ const SPIN_COUNT = 12;
 const RADIUS = 80;
 
 /**
- * Between-hand shuffle ceremony. Native port of
- * `_legacy/src/ui/ShuffleOverlay.tsx`. Triggered by a fresh `seed`
+ * Between-hand shuffle ceremony. Triggered by a fresh `seed`
  * landing in `useGame.state` — sets the store's `shuffling` flag and
  * fans 12 face-down tile tokens out from centre while the wall is
  * being rebuilt for the next hand. RN core `Animated` (no reanimated)

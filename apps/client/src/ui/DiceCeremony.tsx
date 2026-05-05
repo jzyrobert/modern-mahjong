@@ -49,8 +49,7 @@ const COLORS = {
 };
 
 /**
- * Opening-rolls overlay. Native port of
- * `_legacy/src/ui/DiceCeremony.tsx`. Triggered by a fresh
+ * Opening-rolls overlay. Triggered by a fresh
  * `state.openingRolls`. Auto-dismisses after `DISMISS_MS`; tap anywhere
  * on the backdrop to dismiss early. Animations are RN core `Animated`
  * (no reanimated) so it works in Expo Go.

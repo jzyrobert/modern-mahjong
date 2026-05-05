@@ -35,11 +35,10 @@ const COLORS = {
 };
 
 /**
- * Top-of-table status pill. Native port of
- * `_legacy/src/ui/match/GameStatusBar.tsx` — prevailing wind glyph,
- * round/dealer label, live wall depletion bar, and a "YOUR TURN"
- * indicator when on the move. The legacy backdrop-filter blur becomes
- * a plain semi-opaque background; expo-blur can replace it later.
+ * Top-of-table status pill — prevailing wind glyph, round/dealer
+ * label, live wall depletion bar, and a "YOUR TURN" indicator when
+ * on the move. The legacy backdrop-filter blur becomes a plain
+ * semi-opaque background; expo-blur can replace it later.
  */
 export function GameStatusBar({
   prevailing,

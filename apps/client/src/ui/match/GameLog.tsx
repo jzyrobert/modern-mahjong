@@ -22,8 +22,7 @@ const COLORS = {
 
 /**
  * Recent-actions sheet — renders the last `LOG_CAPACITY` engine events
- * with a one-line gloss each. Native port of
- * `_legacy/src/ui/match/GameLog.tsx`. Latest event first; lobby names
+ * with a one-line gloss each. Latest event first; lobby names
  * are looked up so seat labels read as e.g. "Bold Crane 東 drew a tile."
  */
 export function GameLog({ open, onClose }: GameLogProps) {

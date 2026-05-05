@@ -1,8 +1,7 @@
 import Svg, { Circle, Line, Path, Rect } from 'react-native-svg';
 
 /**
- * Inline icons for the lobby `ModeCard` rows. Native port of
- * `_legacy/src/ui/menu/icons.tsx` — same path data, swapped to
+ * Inline icons for the lobby `ModeCard` rows. same path data, swapped to
  * `react-native-svg` primitives. Strokes paint with `color` so the
  * parent's text color flows through.
  */

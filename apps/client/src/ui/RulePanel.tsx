@@ -23,7 +23,7 @@ const COLORS = {
 };
 
 /**
- * Match-rules editor. Native port of `_legacy/src/ui/RulePanel.tsx`.
+ * Match-rules editor.
  * Faan-min becomes a row of selectable chips, the boolean rule flags
  * become RN `Switch`es, and the seconds inputs become numeric
  * `TextInput`s — there's no native `<select>` / `<input type="number">`
