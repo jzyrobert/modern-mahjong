@@ -99,7 +99,7 @@ function TileComponent({
             pointerEvents: 'none',
           }}
         >
-          <TileGlyph t={tile} />
+          <TileGlyph t={tile} width={width} />
         </View>
       ) : null}
     </View>

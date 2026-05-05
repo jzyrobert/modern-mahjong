@@ -25,13 +25,23 @@ const CY = H / 2;
 const MAN_FILL = '#7e2e21';
 const SERIF_FAMILY = 'Noto Serif TC';
 
-export function TileGlyph({ t }: { t: MTile }) {
+interface TileGlyphProps {
+  t: MTile;
+  /** Actual rendered tile width in CSS pixels. Drives the
+   *  ManText / HonorText font sizes so character glyphs scale with
+   *  the tile box instead of staying pinned to the 36×50 reference
+   *  size. SVG geometry (pin / sou) already scales via viewBox. */
+  width?: number;
+}
+
+export function TileGlyph({ t, width }: TileGlyphProps) {
+  const scale = width !== undefined ? width / W : 1;
   return (
     <View style={{ width: '100%', height: '100%', position: 'relative' }}>
       <Svg width="100%" height="100%" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet">
         {renderSvg(t)}
       </Svg>
-      {renderTextOverlay(t)}
+      {renderTextOverlay(t, scale)}
     </View>
   );
 }
@@ -45,9 +55,9 @@ function renderSvg(t: MTile) {
   return null;
 }
 
-function renderTextOverlay(t: MTile) {
-  if (t.kind === 'suit' && t.suit === 'man') return <ManText rank={t.rank} />;
-  if (t.kind === 'honor') return <HonorText honor={t.honor} />;
+function renderTextOverlay(t: MTile, scale: number) {
+  if (t.kind === 'suit' && t.suit === 'man') return <ManText rank={t.rank} scale={scale} />;
+  if (t.kind === 'honor') return <HonorText honor={t.honor} scale={scale} />;
   return null;
 }
 
@@ -202,9 +212,12 @@ function BambooStick({ x, y, scale = 1 }: { x: number; y: number; scale?: number
   );
 }
 
-function ManText({ rank }: { rank: number }) {
+function ManText({ rank, scale }: { rank: number; scale: number }) {
   // Position = percentage of parent height (matches legacy text Y values
   // CY - H*0.12 and CY + H*0.18 → ~38% and ~68% of H respectively).
+  // Font sizes scale with the tile box; the 16/13 px reference values
+  // are designed for the 36×50 reference tile, so multiplying by
+  // `scale = width / 36` keeps the glyph proportional at any size.
   return (
     <>
       <View
@@ -221,10 +234,10 @@ function ManText({ rank }: { rank: number }) {
           allowFontScaling={false}
           style={{
             fontFamily: SERIF_FAMILY,
-            fontSize: 16,
+            fontSize: 16 * scale,
             fontWeight: '700',
             color: MAN_FILL,
-            lineHeight: 18,
+            lineHeight: 18 * scale,
           }}
         >
           {rank}
@@ -244,10 +257,10 @@ function ManText({ rank }: { rank: number }) {
           allowFontScaling={false}
           style={{
             fontFamily: SERIF_FAMILY,
-            fontSize: 13,
+            fontSize: 13 * scale,
             fontWeight: '600',
             color: MAN_FILL,
-            lineHeight: 14,
+            lineHeight: 14 * scale,
           }}
         >
           萬
@@ -270,7 +283,7 @@ const DRAGONS: Record<string, { glyph: string; color: string }> = {
   B: { glyph: '白', color: '#525960' },
 };
 
-function HonorText({ honor }: { honor: string }) {
+function HonorText({ honor, scale }: { honor: string; scale: number }) {
   let glyph: string | undefined;
   let color: string | undefined;
   if (honor in WIND_GLYPHS) {
@@ -299,10 +312,10 @@ function HonorText({ honor }: { honor: string }) {
         allowFontScaling={false}
         style={{
           fontFamily: SERIF_FAMILY,
-          fontSize: 22,
+          fontSize: 22 * scale,
           fontWeight: '700',
           color,
-          lineHeight: 24,
+          lineHeight: 24 * scale,
         }}
       >
         {glyph}
