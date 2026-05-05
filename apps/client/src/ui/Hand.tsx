@@ -1,7 +1,7 @@
 import type { Tile as MTile, Suit } from '@mahjong/game-logic';
 import { sortHand, tileId } from '@mahjong/game-logic';
-import { useCallback, useMemo } from 'react';
-import { View } from 'react-native';
+import { useCallback, useMemo, useState } from 'react';
+import { type LayoutChangeEvent, View } from 'react-native';
 import { useGame } from '../state/game';
 import { HandTile } from './HandTile';
 import type { SortMode } from './match/SortPicker';
@@ -20,7 +20,9 @@ interface HandProps {
 
 const TILE_W_DEFAULT = 36;
 const TILE_H_DEFAULT = 50;
+const TILE_W_MIN = 22;
 const GAP = 4;
+const ASPECT = TILE_H_DEFAULT / TILE_W_DEFAULT; // 50/36 ≈ 1.39
 
 /**
  * Native port of `_legacy/src/ui/Hand.tsx` with Phase 5 drag-to-
@@ -35,11 +37,15 @@ export function Hand({
   onTileClick,
   sortMode = 'suit',
   drawnTileId = null,
-  tileWidth = TILE_W_DEFAULT,
-  tileHeight = TILE_H_DEFAULT,
+  tileWidth: tileWidthProp,
+  tileHeight: tileHeightProp,
 }: HandProps) {
   const manualOrder = useGame((s) => s.manualOrder);
   const setManualOrder = useGame((s) => s.setManualOrder);
+  const [containerWidth, setContainerWidth] = useState<number | null>(null);
+  const onLayout = useCallback((e: LayoutChangeEvent) => {
+    setContainerWidth(e.nativeEvent.layout.width);
+  }, []);
 
   const ordered = useMemo(() => {
     if (faceDown) return [...tiles];
@@ -50,6 +56,18 @@ export function Hand({
   }, [tiles, faceDown, sortMode, manualOrder]);
 
   const orderedIds = useMemo(() => ordered.map((t) => tileId(t)), [ordered]);
+
+  // Scale tiles to fit the parent's measured width when the caller doesn't
+  // pass an explicit size. Default 36×50; scale down to 22×30 minimum so a
+  // 14-tile dealer hand fits on a single row down to roughly 360px wide.
+  const fittedWidth = useMemo(() => {
+    if (tileWidthProp !== undefined) return tileWidthProp;
+    if (!containerWidth || ordered.length === 0) return TILE_W_DEFAULT;
+    const totalGap = (ordered.length - 1) * GAP;
+    const fit = Math.floor((containerWidth - totalGap) / ordered.length);
+    return Math.max(TILE_W_MIN, Math.min(TILE_W_DEFAULT, fit));
+  }, [tileWidthProp, containerWidth, ordered.length]);
+  const fittedHeight = tileHeightProp ?? Math.round(fittedWidth * ASPECT);
 
   const onReorder = useCallback(
     (fromIndex: number, toIndex: number) => {
@@ -64,6 +82,8 @@ export function Hand({
   );
 
   const draggable = !faceDown && sortMode === 'manual' && !!setManualOrder;
+  const tileWidth = fittedWidth;
+  const tileHeight = fittedHeight;
   const step = tileWidth + GAP;
 
   // Face-down hands aren't used by the current Match layout (we render
@@ -72,7 +92,10 @@ export function Hand({
   // sideways hands would need separate composition.
   if (faceDown || !onTileClick) {
     return (
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP }}>
+      <View
+        onLayout={onLayout}
+        style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP, width: '100%' }}
+      >
         {ordered.map((t, i) => {
           const id = tileId(t);
           return (
@@ -94,7 +117,10 @@ export function Hand({
   }
 
   return (
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP }}>
+    <View
+      onLayout={onLayout}
+      style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP, width: '100%' }}
+    >
       {ordered.map((t, i) => {
         const id = tileId(t);
         return (
