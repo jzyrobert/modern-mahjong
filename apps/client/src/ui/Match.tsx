@@ -151,7 +151,13 @@ export function Match() {
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
             <PrimaryButton
               disabled={!isHost}
-              onPress={() => onAction({ t: 'startHand', seed: randomSeed(), dealer: 0 })}
+              // No explicit dealer — engine derives it from the
+              // opening dice roll (highest sum wins; ties go to the
+              // lowest-indexed seat). Subsequent hands rotate via
+              // `nextDealer(state)` from `ResultPanel`'s "Start next
+              // hand" button. Hardcoding `dealer: 0` here was the bug
+              // that made the user always dealer regardless of dice.
+              onPress={() => onAction({ t: 'startHand', seed: randomSeed() })}
             >
               Start match
             </PrimaryButton>
@@ -522,5 +528,14 @@ function seatWindFor(dealer: Seat, seat: Seat): Wind {
 }
 
 function randomSeed(): number {
+  // Test override hatch: Playwright sets `__MAHJONG_TEST_SEED__` via
+  // `addInitScript` before navigation so the dice roll (and thus the
+  // dealer pick) is deterministic. Production / dev never sets it,
+  // so the fallback is the regular `Math.random`-driven seed.
+  if (typeof window !== 'undefined') {
+    const override = (window as unknown as { __MAHJONG_TEST_SEED__?: number })
+      .__MAHJONG_TEST_SEED__;
+    if (typeof override === 'number') return override;
+  }
   return Math.floor(Math.random() * 0xffffffff);
 }

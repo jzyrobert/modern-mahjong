@@ -91,5 +91,13 @@ export function ResultPanel({ onAction, mySeat, isHost }: ResultPanelProps) {
 }
 
 function randomSeed(): number {
+  // Mirrors the override in Match.tsx so e2e tests can pin both the
+  // first hand's seed (lobby button) and subsequent hands' seeds
+  // (this button) to the same deterministic value.
+  if (typeof window !== 'undefined') {
+    const override = (window as unknown as { __MAHJONG_TEST_SEED__?: number })
+      .__MAHJONG_TEST_SEED__;
+    if (typeof override === 'number') return override;
+  }
   return Math.floor(Math.random() * 0xffffffff);
 }

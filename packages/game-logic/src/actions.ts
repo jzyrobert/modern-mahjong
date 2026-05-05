@@ -67,7 +67,7 @@ export class IllegalActionError extends Error {
 export function reduce(state: GameState, action: Action): { state: GameState; events: Event[] } {
   switch (action.t) {
     case 'startHand':
-      return startHand(state, action.seed, action.dealer ?? state.dealer);
+      return startHand(state, action.seed, action.dealer);
     case 'setRules':
       return setRules(state, action.rules);
     case 'draw':
@@ -117,11 +117,36 @@ function rulesEqual(a: RuleConfig, b: RuleConfig): boolean {
 function startHand(
   prev: GameState,
   seed: number,
-  dealer: Seat,
+  dealerInput: Seat | undefined,
 ): { state: GameState; events: Event[] } {
   const rules: RuleConfig = prev.rules ?? DEFAULT_RULES;
   const fresh = emptyState(rules);
   const openingRolls = computeOpeningRolls(prev, seed);
+  // Dealer resolution:
+  //   - explicit `dealerInput` always wins (used by `nextDealer` between
+  //     hands so HK dealer-rotation rules apply)
+  //   - else, on a full roll (first hand of a match), pick the seat with
+  //     the highest dice sum — ties resolved by seat order (lowest index
+  //     wins). This is the actual function the opening rolls have always
+  //     been displayed for; previously the engine ignored them and
+  //     defaulted to `state.dealer` (= 0 on first hand), so the user's
+  //     seat was always dealer regardless of what the dice landed on.
+  //   - else (partial roll, e.g. winner's re-roll), inherit `state.dealer`
+  let dealer: Seat = dealerInput ?? prev.dealer;
+  if (dealerInput === undefined && openingRolls.fullRoll) {
+    let bestSum = -1;
+    let bestSeat: Seat = prev.dealer;
+    for (const s of SEATS) {
+      const pair = openingRolls.dice[s];
+      if (!pair) continue;
+      const sum = pair[0] + pair[1];
+      if (sum > bestSum) {
+        bestSum = sum;
+        bestSeat = s;
+      }
+    }
+    dealer = bestSeat;
+  }
   const wall = shuffle(buildWall(), seed);
   // Last 14 tiles are the dead wall (kong replacements).
   const deadWall = wall.splice(wall.length - 14, 14);

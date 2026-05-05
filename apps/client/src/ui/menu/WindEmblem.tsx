@@ -22,6 +22,10 @@ export function WindEmblem({ wind = '東', size = 100 }: WindEmblemProps) {
         width: size,
         height: h,
         position: 'relative',
+        // Match the SVG's rounded silhouette so the box-shadow (web) and
+        // elevation (Android) cast a rounded shadow instead of a square
+        // rectangle whose corners poked out around the tile.
+        borderRadius: r,
         // RN drop-shadow lives on `shadow*` props (iOS) + `elevation` (Android)
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 8 },
@@ -36,9 +40,12 @@ export function WindEmblem({ wind = '東', size = 100 }: WindEmblemProps) {
             <Stop offset="0%" stopColor="#e3d8c0" />
             <Stop offset="100%" stopColor="#bfae8c" />
           </LinearGradient>
+          {/* Face gradient straddles the lobby bg `#f1eadc` so the
+              face reads as warm paper with subtle depth without
+              looking like a different shade laid on the page. */}
           <LinearGradient id="we-face" x1="0" x2="0" y1="0" y2="1">
-            <Stop offset="0%" stopColor="#fbf8f0" />
-            <Stop offset="100%" stopColor="#ece4d3" />
+            <Stop offset="0%" stopColor="#f4ede0" />
+            <Stop offset="100%" stopColor="#e6dec9" />
           </LinearGradient>
         </Defs>
         <Rect x={0} y={size * 0.05} width={size} height={size * 1.27} rx={r} fill="url(#we-side)" />
