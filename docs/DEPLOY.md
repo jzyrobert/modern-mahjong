@@ -9,14 +9,11 @@ two deployed) by GitHub Actions on every push to `main`:
 | Server          | Cloudflare Workers + Durable Objects         | Workers Paid ($5/mo) — Durable Objects require this    |
 | Client (Android) | APK uploaded as a workflow artifact          | Free                                                   |
 
-> **Migration note (Phase 9 / 10).** The client was rebuilt on top of
-> Expo Router + Metro (replacing Vite + Capacitor) — see
-> `~/.claude/plans/gleaming-coalescing-pond.md`. The web bundle is
-> now produced by `expo export --platform web` instead of `vite
-> build`, but it still lands in `apps/client/dist/`, so Cloudflare
-> Pages picks it up identically. Expect the first post-migration
-> deploy to surface any URL-routing or asset-base differences;
-> rollback plan is documented at the end of this file.
+> **Toolchain note.** The client runs on Expo Router + Metro
+> (`expo export --platform web` writes `apps/client/dist/`); the
+> previous Vite + Capacitor stack was retired in #80. The Android
+> APK comes from `eas build --platform android --local` running on
+> the GitHub Actions runner.
 
 > **Heads-up.** The free Workers plan does *not* include Durable Objects. Because partyserver rooms are DOs, the server deploy needs **Workers Paid**. Pages and the Android APK both stay free.
 
@@ -100,9 +97,15 @@ client uses Expo Router + Metro now; the developer flow is:
   `localhost:8787`. The client's transport defaults to that URL
   if `EXPO_PUBLIC_SERVER_URL` is unset.
 - LAN play runs entirely peer-to-peer between devices on the same
-  Wi-Fi and never touches Cloudflare. **The native LAN host bridge
-  is currently a stub (Phase 8 of the migration); LAN play needs
-  its own Swift / Kotlin Expo Module before it works on native.**
+  Wi-Fi and never touches Cloudflare. The native LAN host bridge
+  ships as a local Expo Module at
+  `apps/client/modules/expo-lan-server/`. The Android (Kotlin /
+  NanoHTTPD-WebSockets) side is implemented; the iOS (Swift) side
+  is a skeleton that throws. The module is **not auto-linked** into
+  the published bundle, so the lobby's "Host LAN match" flow on the
+  web build / Play Store APK stays in its "needs dev client"
+  fallback. Activation path is documented in
+  `apps/client/modules/expo-lan-server/README.md`.
 
 ## Android APK
 
@@ -132,21 +135,15 @@ Android works on macOS too, but it's unwired in the current
 workflow. Until then, iOS dev is local-only via
 `pnpm --filter @mahjong/client ios` (Xcode required).
 
-## Migration rollback
+## Rolling back a bad deploy
 
-If the post-Phase-9 web deploy surfaces issues (URL routing,
-asset base, runtime errors that don't reproduce on Android), the
-fastest rollback is to redeploy the last Vite-based artifact:
+To roll back to a previous green deploy without reverting code:
 
-1. Find the last green pre-migration deploy commit (anything
-   before `claude/expo-migration` was squash-merged). Look at
-   the deploy log to confirm the build was Vite-based.
-2. **Cloudflare Pages dashboard → modern-mahjong → Deployments**
-   → find that deploy → "Rollback to this deployment".
-3. The page root URL flips back to the rollback target within
-   ~30s; no code change required.
+1. **Cloudflare Pages dashboard → modern-mahjong → Deployments** → find a known-good deploy → "Rollback to this deployment".
+2. The page root URL flips back to the rollback target within ~30 s.
+3. After diagnosing, fix forward on a new branch and re-deploy.
 
-After diagnosing, fix forward on a new branch and re-deploy.
+The Vite-era artifacts (everything before #80) are still in the deployment history if a deeper rollback is ever needed.
 
 ## Why these tools
 
