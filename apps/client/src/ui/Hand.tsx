@@ -20,7 +20,14 @@ interface HandProps {
 
 const TILE_W_DEFAULT = 36;
 const TILE_H_DEFAULT = 50;
-const TILE_W_MIN = 22;
+// Floor on auto-fit. Scaling tiles below ~28 px wide produces unreadable
+// glyphs (the `TileGlyph` `<Text>` overlays use fixed font-sizes that
+// stop fitting under ~28 px) and below ~30 px the touch targets fall
+// short of the WCAG 24-px minimum on Android Chrome where the touch is
+// already smaller than a fingertip — which manifests as discards
+// "not registering" on phone-portrait. Better to wrap to 2 rows of
+// tap-friendly tiles than to keep 14 tiles in one row of 22-px slivers.
+const TILE_W_MIN = 30;
 const GAP = 4;
 const ASPECT = TILE_H_DEFAULT / TILE_W_DEFAULT; // 50/36 ≈ 1.39
 

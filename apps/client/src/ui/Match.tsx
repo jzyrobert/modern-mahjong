@@ -305,153 +305,160 @@ export function Match() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: felt.top }} edges={['top']}>
-      {/* Pinned header — kept above the ScrollView so the LIVE pill,
+    // Outer felt-green wrapper guarantees the background extends below
+    // the safe-area + below short ScrollView content. Without it, on
+    // Android Chrome the area below the URL-bar's retract zone shows
+    // the Stack's default cream `contentStyle` through, which reads as
+    // a stripe of "white" beneath the felt.
+    <View style={{ flex: 1, backgroundColor: felt.top }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: felt.top }} edges={['top']}>
+        {/* Pinned header — kept above the ScrollView so the LIVE pill,
           settings ⚙, and Leave button stay reachable on a 320 px
           phone where the match content overflows. The previous
           layout placed this row inside the ScrollView, where the
           browser's `overflow-anchor` adjustment scrolled it past the
           top edge whenever the body grew (e.g. on the
           waiting → rolling phase transition). */}
-      <View
-        style={{
-          flexDirection: 'row',
-          flexWrap: 'wrap',
-          alignItems: 'flex-start',
-          justifyContent: 'space-between',
-          gap: 8,
-          paddingHorizontal: 12,
-          paddingTop: 12,
-          backgroundColor: felt.top,
-        }}
-      >
-        <GameStatusBar
-          prevailing={state.prevailingWind}
-          dealerName={dealerName}
-          wallCount={state.wall.length}
-          isMyTurn={myTurn}
-        />
-        <TopBar
-          matchCode={transport.matchCode}
-          viewers={lobby?.viewers ?? null}
-          onLeave={onLeave}
-          onOpenSettings={() => setSettingsOpen(true)}
-          onOpenLog={() => setLogOpen(true)}
-          onOpenReference={() => setReferenceOpen(true)}
-        />
-      </View>
-      <ScrollView
-        style={{ flex: 1, backgroundColor: felt.top }}
-        contentContainerStyle={{ padding: 12, paddingTop: 12, gap: 12 }}
-      >
-        <Scoreboard />
-
-        {byPosition ? (
-          <View style={{ gap: 6 }}>
-            <SeatRow placement={byPosition.top} state={state} lobby={lobby} />
-            <SeatRow placement={byPosition.left} state={state} lobby={lobby} />
-            <SeatRow placement={byPosition.right} state={state} lobby={lobby} />
-          </View>
-        ) : null}
-
-        {state.discardOrder.length > 0 ? (
-          <View
-            style={{
-              backgroundColor: felt.bottom,
-              borderColor: 'rgba(255,255,255,0.12)',
-              borderWidth: 1,
-              borderRadius: 12,
-              padding: 8,
-              gap: 6,
-            }}
-          >
-            <Text
-              style={{
-                fontSize: 11,
-                fontWeight: '800',
-                color: 'rgba(255,255,255,0.7)',
-                letterSpacing: 0.5,
-              }}
-            >
-              DISCARDS
-            </Text>
-            <SharedDiscardPool
-              discardOrder={state.discardOrder}
-              seatToPosition={seatToPosition}
-              latestId={latestDiscardId}
-            />
-          </View>
-        ) : null}
-
-        {state.melds[seat].length > 0 ? (
-          <View style={{ gap: 4 }}>
-            <Text
-              style={{
-                fontSize: 11,
-                fontWeight: '800',
-                color: 'rgba(255,255,255,0.7)',
-                letterSpacing: 0.5,
-              }}
-            >
-              YOUR MELDS
-            </Text>
-            <MeldStrip melds={state.melds[seat]} />
-          </View>
-        ) : null}
-
-        <View style={{ gap: 6 }}>
-          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <Text
-              style={{
-                fontSize: 11,
-                fontWeight: '800',
-                color: 'rgba(255,255,255,0.7)',
-                letterSpacing: 0.5,
-              }}
-            >
-              YOUR HAND
-            </Text>
-            <SortPicker mode={sortMode} onChange={setSortMode} />
-          </View>
-          <Hand
-            tiles={state.hands[seat]}
-            onTileClick={myTurn && state.hasDrawn ? onTileTap : undefined}
-            sortMode={sortMode}
-            drawnTileId={drawnTileId}
+        <View
+          style={{
+            flexDirection: 'row',
+            flexWrap: 'wrap',
+            alignItems: 'flex-start',
+            justifyContent: 'space-between',
+            gap: 8,
+            paddingHorizontal: 12,
+            paddingTop: 12,
+            backgroundColor: felt.top,
+          }}
+        >
+          <GameStatusBar
+            prevailing={state.prevailingWind}
+            dealerName={dealerName}
+            wallCount={state.wall.length}
+            isMyTurn={myTurn}
+          />
+          <TopBar
+            matchCode={transport.matchCode}
+            viewers={lobby?.viewers ?? null}
+            onLeave={onLeave}
+            onOpenSettings={() => setSettingsOpen(true)}
+            onOpenLog={() => setLogOpen(true)}
+            onOpenReference={() => setReferenceOpen(true)}
           />
         </View>
+        <ScrollView
+          style={{ flex: 1, backgroundColor: felt.top }}
+          contentContainerStyle={{ padding: 12, paddingTop: 12, gap: 12 }}
+        >
+          <Scoreboard />
 
-        <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-          {needsDraw && state.wall.length > 0 ? (
-            <DrawCue
-              tile={state.wall[state.wall.length - 1]!}
-              onPress={() => onAction({ t: 'draw', seat })}
+          {byPosition ? (
+            <View style={{ gap: 6 }}>
+              <SeatRow placement={byPosition.top} state={state} lobby={lobby} />
+              <SeatRow placement={byPosition.left} state={state} lobby={lobby} />
+              <SeatRow placement={byPosition.right} state={state} lobby={lobby} />
+            </View>
+          ) : null}
+
+          {state.discardOrder.length > 0 ? (
+            <View
+              style={{
+                backgroundColor: felt.bottom,
+                borderColor: 'rgba(255,255,255,0.12)',
+                borderWidth: 1,
+                borderRadius: 12,
+                padding: 8,
+                gap: 6,
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: '800',
+                  color: 'rgba(255,255,255,0.7)',
+                  letterSpacing: 0.5,
+                }}
+              >
+                DISCARDS
+              </Text>
+              <SharedDiscardPool
+                discardOrder={state.discardOrder}
+                seatToPosition={seatToPosition}
+                latestId={latestDiscardId}
+              />
+            </View>
+          ) : null}
+
+          {state.melds[seat].length > 0 ? (
+            <View style={{ gap: 4 }}>
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: '800',
+                  color: 'rgba(255,255,255,0.7)',
+                  letterSpacing: 0.5,
+                }}
+              >
+                YOUR MELDS
+              </Text>
+              <MeldStrip melds={state.melds[seat]} />
+            </View>
+          ) : null}
+
+          <View style={{ gap: 6 }}>
+            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: '800',
+                  color: 'rgba(255,255,255,0.7)',
+                  letterSpacing: 0.5,
+                }}
+              >
+                YOUR HAND
+              </Text>
+              <SortPicker mode={sortMode} onChange={setSortMode} />
+            </View>
+            <Hand
+              tiles={state.hands[seat]}
+              onTileClick={myTurn && state.hasDrawn ? onTileTap : undefined}
+              sortMode={sortMode}
+              drawnTileId={drawnTileId}
             />
+          </View>
+
+          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+            {needsDraw && state.wall.length > 0 ? (
+              <DrawCue
+                tile={state.wall[state.wall.length - 1]!}
+                onPress={() => onAction({ t: 'draw', seat })}
+              />
+            ) : null}
+            {canTsumo ? (
+              <PrimaryButton onPress={() => onAction({ t: 'declareWin', seat, selfDraw: true })}>
+                Declare win (tsumo)
+              </PrimaryButton>
+            ) : null}
+          </View>
+
+          {hasClaimOption ? <ClaimBar onAction={onAction} seat={seat} /> : null}
+
+          <View style={{ alignItems: 'center', paddingVertical: 4 }}>
+            <ChatBar onSend={transport.sendChat} />
+          </View>
+
+          {state.lastResult ? (
+            <ResultPanel onAction={onAction} mySeat={seat} isHost={isHost} />
           ) : null}
-          {canTsumo ? (
-            <PrimaryButton onPress={() => onAction({ t: 'declareWin', seat, selfDraw: true })}>
-              Declare win (tsumo)
-            </PrimaryButton>
-          ) : null}
-        </View>
 
-        {hasClaimOption ? <ClaimBar onAction={onAction} seat={seat} /> : null}
-
-        <View style={{ alignItems: 'center', paddingVertical: 4 }}>
-          <ChatBar onSend={transport.sendChat} />
-        </View>
-
-        {state.lastResult ? (
-          <ResultPanel onAction={onAction} mySeat={seat} isHost={isHost} />
-        ) : null}
-
-        {/* Floating emote bubbles overlay (absolute-positioned). */}
-        <ChatBubbles seatToPosition={seatToPosition} />
-        <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
-        <GameLog open={logOpen} onClose={() => setLogOpen(false)} />
-        <TileReferenceSheet open={referenceOpen} onClose={() => setReferenceOpen(false)} />
-      </ScrollView>
-    </SafeAreaView>
+          {/* Floating emote bubbles overlay (absolute-positioned). */}
+          <ChatBubbles seatToPosition={seatToPosition} />
+          <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+          <GameLog open={logOpen} onClose={() => setLogOpen(false)} />
+          <TileReferenceSheet open={referenceOpen} onClose={() => setReferenceOpen(false)} />
+        </ScrollView>
+      </SafeAreaView>
+    </View>
   );
 }
 
