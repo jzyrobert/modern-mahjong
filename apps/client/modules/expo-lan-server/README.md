@@ -96,10 +96,43 @@ LanServer.addListener('close',      ({ id })        => { /* … */ });
 The query string carries the legacy `playerId` + `name` + `matchCode`
 parameters — same shape `MatchRoom.onConnect` expects.
 
+## mDNS host advertisement / discovery
+
+The host advertises `_modernmahjong._tcp.` via Android's `NsdManager`
+once `start({ port })` returns; guests on the same Wi-Fi pick it up
+automatically without the user typing a URL.
+
+```ts
+import { advertise, addListener, startDiscovery } from 'expo-lan-server';
+
+// Host side, after `start()`:
+await advertise({ serviceName: 'Robert\'s phone', port: result.port });
+
+// Guest side:
+await startDiscovery();
+addListener('hostFound', ({ name, host, port }) => {
+  console.log(`${name} → ws://${host}:${port}/ws`);
+});
+addListener('hostLost', ({ name }) => {
+  console.log(`${name} left`);
+});
+```
+
+The Android side uses `NsdManager.PROTOCOL_DNS_SD` for both register
+and discover; the manifest declares
+`CHANGE_WIFI_MULTICAST_STATE` so the mDNS announcements traverse
+Wi-Fi multicast. iOS support is stubbed (`NetService` /
+`NWBrowser`-based) — `advertise()` / `startDiscovery()` throw
+`"not implemented"` until the iOS HTTP+WS server side lands.
+
+The lobby's `HostLanModal` / `JoinLanModal` haven't been wired to
+these events yet — that UI pass is queued in TODO.md. Today the
+native primitives are available, just not surfaced.
+
 ## Wishlist
 
-- iOS Telegraph implementation.
-- mDNS host advertisement (so guests can discover hosts without typing a URL).
+- iOS Telegraph implementation (HTTP+WS server itself; mDNS layer
+  comes free with `NetService` once the server boots).
 - Static-asset HTTP route serving the Expo Web export, so guests can join from
   a plain browser tab without installing the app — closes the legacy plan's
   "guest visits the host's URL in their browser" workflow.

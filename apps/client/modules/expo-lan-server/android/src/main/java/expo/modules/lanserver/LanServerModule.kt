@@ -1,7 +1,10 @@
 package expo.modules.lanserver
 
 import android.content.Context
+import android.net.nsd.NsdManager
+import android.net.nsd.NsdServiceInfo
 import android.net.wifi.WifiManager
+import android.os.Build
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import fi.iki.elonen.NanoHTTPD
@@ -10,6 +13,7 @@ import fi.iki.elonen.NanoWSD.WebSocket
 import fi.iki.elonen.NanoWSD.WebSocketFrame
 import java.net.NetworkInterface
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * `LanServer` Expo native module — embeds a NanoHTTPD WebSocket
@@ -45,10 +49,22 @@ class LanServerModule : Module() {
   // route to the right open socket.
   private val sockets = mutableMapOf<String, WebSocket>()
 
+  // mDNS state — at most one advertisement and one active discovery
+  // session per process.
+  private var nsdManager: NsdManager? = null
+  private var registrationListener: NsdManager.RegistrationListener? = null
+  private var discoveryListener: NsdManager.DiscoveryListener? = null
+  // Resolves are async-callback-based; we serialise them so the
+  // upstream `NsdManager` doesn't reject overlapping
+  // `resolveService` calls (it tolerates one in-flight at a time on
+  // older API levels).
+  private val resolveQueue = ConcurrentHashMap<String, NsdServiceInfo>()
+  private var resolveInFlight = false
+
   override fun definition() = ModuleDefinition {
     Name("LanServer")
 
-    Events("connection", "message", "close")
+    Events("connection", "message", "close", "hostFound", "hostLost")
 
     AsyncFunction("start") { opts: Map<String, Any?> ->
       val port = (opts["port"] as? Number)?.toInt() ?: 0
@@ -76,8 +92,30 @@ class LanServerModule : Module() {
       sock.send(data)
     }
 
+    AsyncFunction("advertise") { opts: Map<String, Any?> ->
+      val serviceName = opts["serviceName"] as? String
+        ?: throw IllegalArgumentException("advertise: missing serviceName")
+      val port = (opts["port"] as? Number)?.toInt()
+        ?: throw IllegalArgumentException("advertise: missing port")
+      registerService(serviceName, port)
+    }
+
+    AsyncFunction("unadvertise") {
+      unregisterService()
+    }
+
+    AsyncFunction("startDiscovery") {
+      startNsdDiscovery()
+    }
+
+    AsyncFunction("stopDiscovery") {
+      stopNsdDiscovery()
+    }
+
     OnDestroy {
       stopServer()
+      unregisterService()
+      stopNsdDiscovery()
     }
   }
 
@@ -99,6 +137,133 @@ class LanServerModule : Module() {
     server?.stop()
     server = null
     sockets.clear()
+  }
+
+  private fun ensureNsd(): NsdManager {
+    val cached = nsdManager
+    if (cached != null) return cached
+    val ctx = appContext.reactContext as Context
+    val mgr = ctx.applicationContext.getSystemService(Context.NSD_SERVICE) as NsdManager
+    nsdManager = mgr
+    return mgr
+  }
+
+  /**
+   * Register `_modernmahjong._tcp.` for `serviceName` on `port`.
+   * Replaces any existing registration on this module instance.
+   */
+  private fun registerService(serviceName: String, port: Int) {
+    val mgr = ensureNsd()
+    unregisterService()
+
+    val info = NsdServiceInfo().apply {
+      this.serviceName = serviceName
+      this.serviceType = SERVICE_TYPE
+      this.port = port
+    }
+    val listener = object : NsdManager.RegistrationListener {
+      override fun onServiceRegistered(serviceInfo: NsdServiceInfo) {}
+      override fun onRegistrationFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {}
+      override fun onServiceUnregistered(serviceInfo: NsdServiceInfo) {}
+      override fun onUnregistrationFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {}
+    }
+    registrationListener = listener
+    mgr.registerService(info, NsdManager.PROTOCOL_DNS_SD, listener)
+  }
+
+  private fun unregisterService() {
+    val mgr = nsdManager ?: return
+    val listener = registrationListener ?: return
+    try {
+      mgr.unregisterService(listener)
+    } catch (_: IllegalArgumentException) {
+      // Already unregistered.
+    }
+    registrationListener = null
+  }
+
+  private fun startNsdDiscovery() {
+    val mgr = ensureNsd()
+    stopNsdDiscovery()
+
+    val listener = object : NsdManager.DiscoveryListener {
+      override fun onDiscoveryStarted(serviceType: String) {}
+      override fun onDiscoveryStopped(serviceType: String) {}
+      override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {}
+      override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) {}
+      override fun onServiceFound(serviceInfo: NsdServiceInfo) {
+        // Resolve to get the actual host + port. NsdManager only
+        // tolerates one in-flight resolve at a time on older API
+        // levels, so we queue up.
+        resolveQueue[serviceInfo.serviceName] = serviceInfo
+        drainResolveQueue()
+      }
+
+      override fun onServiceLost(serviceInfo: NsdServiceInfo) {
+        sendEvent("hostLost", mapOf("name" to serviceInfo.serviceName))
+        resolveQueue.remove(serviceInfo.serviceName)
+      }
+    }
+    discoveryListener = listener
+    mgr.discoverServices(SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, listener)
+  }
+
+  private fun stopNsdDiscovery() {
+    val mgr = nsdManager ?: return
+    val listener = discoveryListener ?: return
+    try {
+      mgr.stopServiceDiscovery(listener)
+    } catch (_: IllegalArgumentException) {
+      // Already stopped.
+    }
+    discoveryListener = null
+    resolveQueue.clear()
+    resolveInFlight = false
+  }
+
+  @Synchronized
+  private fun drainResolveQueue() {
+    if (resolveInFlight) return
+    val (key, info) = resolveQueue.entries.firstOrNull() ?: return
+    resolveQueue.remove(key)
+    resolveInFlight = true
+    val mgr = nsdManager ?: return
+
+    val resolveListener = object : NsdManager.ResolveListener {
+      override fun onResolveFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
+        resolveInFlight = false
+        drainResolveQueue()
+      }
+
+      override fun onServiceResolved(serviceInfo: NsdServiceInfo) {
+        val host = serviceInfo.host?.hostAddress
+        if (host != null) {
+          sendEvent(
+            "hostFound",
+            mapOf(
+              "name" to serviceInfo.serviceName,
+              "host" to host,
+              "port" to serviceInfo.port,
+            ),
+          )
+        }
+        resolveInFlight = false
+        drainResolveQueue()
+      }
+    }
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+      // The newer overload accepts an Executor; we just hand it to
+      // the main thread via a no-op `Runnable::run` since the
+      // resolve callback is already async.
+      mgr.resolveService(info, Runnable::run, resolveListener)
+    } else {
+      @Suppress("DEPRECATION")
+      mgr.resolveService(info, resolveListener)
+    }
+  }
+
+  companion object {
+    private const val SERVICE_TYPE = "_modernmahjong._tcp."
   }
 
   /**

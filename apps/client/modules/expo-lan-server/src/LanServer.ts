@@ -1,7 +1,10 @@
 import { type EventSubscription, requireOptionalNativeModule } from 'expo-modules-core';
 import type {
+  LanServerAdvertiseOptions,
   LanServerCloseEvent,
   LanServerConnectionEvent,
+  LanServerDiscoveredHost,
+  LanServerHostLostEvent,
   LanServerMessageEvent,
   LanServerStartOptions,
   LanServerStartResult,
@@ -18,6 +21,10 @@ const native = requireOptionalNativeModule<{
   start(opts: LanServerStartOptions): Promise<LanServerStartResult>;
   stop(): Promise<void>;
   send(opts: { id: string; data: string }): Promise<void>;
+  advertise(opts: LanServerAdvertiseOptions): Promise<void>;
+  unadvertise(): Promise<void>;
+  startDiscovery(): Promise<void>;
+  stopDiscovery(): Promise<void>;
   addListener(eventName: string): void;
   removeListeners(count: number): void;
 }>('LanServer');
@@ -45,6 +52,41 @@ export async function send(opts: { id: string; data: string }): Promise<void> {
 }
 
 /**
+ * Register an mDNS service on the local network so guests can
+ * auto-discover this host without typing a URL. Service type is
+ * `_modernmahjong._tcp.`. Pair with `unadvertise()` when the host
+ * stops accepting connections.
+ *
+ * Throws when the native module isn't loaded (Expo Go path).
+ */
+export async function advertise(opts: LanServerAdvertiseOptions): Promise<void> {
+  if (!native) throw new Error(NOT_LOADED_MSG);
+  return native.advertise(opts);
+}
+
+export async function unadvertise(): Promise<void> {
+  if (!native) return;
+  return native.unadvertise();
+}
+
+/**
+ * Begin scanning for `_modernmahjong._tcp.` services on the local
+ * network. Each resolved host fires a `hostFound` event with name +
+ * host + port; departures fire `hostLost` with the name.
+ *
+ * No-op when the native module isn't loaded (Expo Go path).
+ */
+export async function startDiscovery(): Promise<void> {
+  if (!native) return;
+  return native.startDiscovery();
+}
+
+export async function stopDiscovery(): Promise<void> {
+  if (!native) return;
+  return native.stopDiscovery();
+}
+
+/**
  * Wire a callback to a named event. Matches the legacy Capacitor
  * shape — `addListener('connection' | 'message' | 'close', cb)` →
  * a `{ remove: () => void }` subscription handle.
@@ -53,7 +95,7 @@ export async function send(opts: { id: string; data: string }): Promise<void> {
  * `addListener` shim. The native side fires events via
  * `sendEvent('connection' | 'message' | 'close', payload)`.
  */
-type EventName = 'connection' | 'message' | 'close';
+type EventName = 'connection' | 'message' | 'close' | 'hostFound' | 'hostLost';
 
 export function addListener(
   event: 'connection',
@@ -66,6 +108,14 @@ export function addListener(
 export function addListener(
   event: 'close',
   cb: (e: LanServerCloseEvent) => void,
+): EventSubscription;
+export function addListener(
+  event: 'hostFound',
+  cb: (e: LanServerDiscoveredHost) => void,
+): EventSubscription;
+export function addListener(
+  event: 'hostLost',
+  cb: (e: LanServerHostLostEvent) => void,
 ): EventSubscription;
 export function addListener(event: EventName, cb: (e: unknown) => void): EventSubscription {
   if (!native) {
@@ -82,8 +132,11 @@ export function addListener(event: EventName, cb: (e: unknown) => void): EventSu
 }
 
 export type {
+  LanServerAdvertiseOptions,
   LanServerCloseEvent,
   LanServerConnectionEvent,
+  LanServerDiscoveredHost,
+  LanServerHostLostEvent,
   LanServerMessageEvent,
   LanServerStartOptions,
   LanServerStartResult,
