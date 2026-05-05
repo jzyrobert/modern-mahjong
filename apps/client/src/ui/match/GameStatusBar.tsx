@@ -44,6 +44,8 @@ export function GameStatusBar({ prevailing, dealerName, wallCount, isMyTurn }: G
       style={{
         flexDirection: 'row',
         alignItems: 'center',
+        flexWrap: 'wrap',
+        flexShrink: 1,
         gap: 10,
         paddingVertical: 7,
         paddingLeft: 10,
