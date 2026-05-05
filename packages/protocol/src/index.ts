@@ -3,7 +3,8 @@ import { z } from 'zod';
 
 /**
  * Wire format between clients and the authoritative server (whether
- * partyserver online or a host's Capacitor app on the LAN).
+ * a `partyserver` Durable Object online or a host's Expo app on the
+ * LAN, via the embedded `expo-lan-server` HTTP+WS server).
  *
  * `Action` and `GameState` are intentionally re-used from the game-logic
  * package; we attach zod schemas only at the message-envelope level so the
