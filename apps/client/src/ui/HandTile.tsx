@@ -253,9 +253,13 @@ export function HandTile({
 
   // Discard-hint halo — a single absolutely-positioned overlay sized
   // to the tile, animated on opacity + scale (transform-only, no
-  // per-frame paint). Hidden when `recommended` is false.
-  const haloScale = hintPulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.15] });
-  const haloOpacity = hintPulse.interpolate({ inputRange: [0, 1], outputRange: [0.55, 0] });
+  // per-frame paint). Hidden when `recommended` is false. Scale runs
+  // from 1.05 (already a visible ring at rest) up to 1.35 at the
+  // pulse peak, with opacity peaking at 0.85 — the older 1.0→1.15
+  // range made the hint easy to miss because the visible ring was
+  // just 15% of tile width and faded almost to zero.
+  const haloScale = hintPulse.interpolate({ inputRange: [0, 1], outputRange: [1.05, 1.35] });
+  const haloOpacity = hintPulse.interpolate({ inputRange: [0, 1], outputRange: [0.85, 0.35] });
 
   return (
     <Animated.View
@@ -281,7 +285,9 @@ export function HandTile({
                 left: 0,
                 width,
                 height,
-                borderRadius: 4,
+                // Match the tile's rendered SVG rx so the halo reads
+                // as "around the tile" rather than a square frame.
+                borderRadius: width * 0.18,
                 backgroundColor: '#3aa999',
                 opacity: haloOpacity,
                 transform: [{ scale: haloScale }],
@@ -296,10 +302,15 @@ export function HandTile({
                 left: 0,
                 width,
                 height,
-                borderRadius: 4,
-                borderWidth: 2,
-                borderColor: '#3aa999',
+                borderRadius: width * 0.18,
+                borderWidth: 3,
+                borderColor: '#2dd4bf',
                 pointerEvents: 'none',
+                // Outer glow on the static ring so the cue is obvious
+                // even at the trough of the pulse — the inner halo is
+                // mostly hidden behind the tile, the ring is what
+                // actually reads from a glance.
+                boxShadow: '0px 0px 6px rgba(45,212,191,0.8)',
               }}
             />
           </>
