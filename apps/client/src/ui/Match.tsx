@@ -7,8 +7,8 @@ import {
   WINDS,
   type Wind,
   acrossSeat,
+  hasMeaningfulClaim,
   isWinning,
-  legalClaimsFor,
   nextSeat,
   prevSeat,
   rankDiscards,
@@ -26,6 +26,7 @@ import { DesktopShell } from './match/DesktopShell';
 import { MobileShell } from './match/MobileShell';
 import type { SortMode } from './match/SortPicker';
 import { FELT_SKINS } from './match/skins';
+import { useDeadlineCrossed, useSecondsUntil } from './match/useClaimCue';
 import { LobbyPreview } from './menu/LobbyPreview';
 
 /**
@@ -143,6 +144,20 @@ export function Match() {
     return concrete ? tileId(concrete) : null;
   }, [settings.discardHint, state, seat]);
 
+  // "Next player about to draw" cue. Hooks run unconditionally on
+  // every render (Rules of Hooks); we just gate the values they
+  // observe on whether we're in `awaitingClaims`. Solo leaves the
+  // deadline fields unset, so the hooks stay inert in that case.
+  const claimDeadline =
+    state?.phase === 'awaitingClaims' ? (state.pendingClaims?.deadlineMs ?? null) : null;
+  const claimSoftExpiry =
+    state?.phase === 'awaitingClaims' ? (state.pendingClaims?.softExpiryMs ?? null) : null;
+  const claimHardDeadline =
+    state?.phase === 'awaitingClaims' ? (state.pendingClaims?.hardDeadlineMs ?? null) : null;
+  const aboutToDraw = useDeadlineCrossed(claimDeadline);
+  const inWindup = useDeadlineCrossed(claimSoftExpiry);
+  const drawCountdown = useSecondsUntil(inWindup ? claimHardDeadline : null);
+
   if (!state || seat === null) {
     // Two reasons we can land here without a usable game:
     //   1. We just opened a transport and the first `state` message
@@ -253,17 +268,17 @@ export function Match() {
     state.phase === 'awaitingClaims' &&
     state.lastDiscard !== undefined &&
     state.lastDiscard.from !== seat;
-  // We rely on `ClaimBar` itself to compute the legal kinds + always show
-  // `hu` / `pass`; here we only decide whether the bar appears at all.
+  // Use the engine's `hasMeaningfulClaim` predicate as the single source
+  // of truth — it's the same one the `discard` reducer uses to pre-fill
+  // `submitted`, so the client never sees a "phantom" bar for a seat
+  // the engine has already auto-passed.
   const hasClaimOption =
     showClaim &&
-    (legalClaimsFor(state, seat).some((k) => k !== 'pass') ||
-      (state.lastDiscard !== undefined &&
-        isWinning({
-          hand: [...state.hands[seat], state.lastDiscard.tile],
-          exposedMelds: state.melds[seat].length,
-          allowSpecial,
-        })));
+    state.lastDiscard !== undefined &&
+    hasMeaningfulClaim(state, seat, state.lastDiscard.tile);
+
+  const nextDrawerSeat: Seat | null =
+    state.phase === 'awaitingClaims' && state.lastDiscard ? nextSeat(state.lastDiscard.from) : null;
 
   const canTsumo =
     myTurn &&
@@ -296,6 +311,9 @@ export function Match() {
     needsDraw,
     canTsumo,
     hasClaimOption,
+    nextDrawerSeat,
+    aboutToDraw,
+    drawCountdown,
     latestDiscardId,
     dealerName,
     drawnTileId,

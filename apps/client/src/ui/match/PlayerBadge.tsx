@@ -15,6 +15,15 @@ interface PlayerBadgeProps {
   /** Score from `state.scoreboard[seat]`. */
   score: number;
   isActive: boolean;
+  /** Set when this seat would draw next once claims resolve AND the
+   *  soft floor (`pendingClaims.deadlineMs`) has elapsed. Surfaces a
+   *  gold halo so the table reads as "claims about to close, draw
+   *  imminent". Default false. */
+  aboutToDraw?: boolean;
+  /** Whole seconds until the hard fallback once `softExpiryMs` is
+   *  crossed. When non-null, renders next to the badge name as
+   *  "drawing in Ns". Null before windup or in solo. */
+  drawCountdown?: number | null;
 }
 
 const WIND_GLYPH: Record<Wind, string> = { E: '東', S: '南', W: '西', N: '北' };
@@ -49,6 +58,8 @@ export function PlayerBadge({
   lobby,
   score,
   isActive,
+  aboutToDraw = false,
+  drawCountdown = null,
 }: PlayerBadgeProps) {
   const name = nameForSeat(lobby, seat);
   const initials = computeInitials(name);
@@ -85,6 +96,11 @@ export function PlayerBadge({
   }, [isActive, pulse]);
   const scale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.04] });
 
+  // The `aboutToDraw` halo shares its tone with the active-turn glow
+  // (gold-on-yellow) but doesn't pulse — the user's already deciding
+  // whether to claim, and a second moving border would compete for
+  // attention with the `ClaimBar`.
+  const cueBorder = !isActive && aboutToDraw;
   return (
     <Animated.View
       style={{
@@ -95,9 +111,13 @@ export function PlayerBadge({
         paddingHorizontal: 10,
         borderRadius: 14,
         backgroundColor: isActive ? COLORS.redHot : COLORS.paperHi,
-        boxShadow: isActive ? `0px 4px 12px ${COLORS.redHot}73` : '0px 4px 6px rgba(0,0,0,0.1)',
-        borderWidth: isActive ? 2 : 0,
-        borderColor: isActive ? '#f3c54a' : 'transparent',
+        boxShadow: isActive
+          ? `0px 4px 12px ${COLORS.redHot}73`
+          : cueBorder
+            ? '0px 0px 8px rgba(243,197,74,0.5)'
+            : '0px 4px 6px rgba(0,0,0,0.1)',
+        borderWidth: isActive || cueBorder ? 2 : 0,
+        borderColor: isActive || cueBorder ? '#f3c54a' : 'transparent',
         transform: isActive ? [{ scale }] : undefined,
       }}
     >
@@ -145,7 +165,7 @@ export function PlayerBadge({
             color: isActive ? 'rgba(255,255,255,0.85)' : 'rgba(58,51,40,0.7)',
           }}
         >
-          {score} pt
+          {drawCountdown !== null && cueBorder ? `drawing in ${drawCountdown}s` : `${score} pt`}
         </Text>
       </View>
     </Animated.View>

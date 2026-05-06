@@ -27,6 +27,16 @@ interface DesktopShellProps {
   needsDraw: boolean;
   canTsumo: boolean;
   hasClaimOption: boolean;
+  /** Seat that would draw next once claims resolve. Populated only
+   *  during `awaitingClaims`. Drives the "next about to draw" gold
+   *  halo on `PlayerBadge` once `aboutToDraw` is true. */
+  nextDrawerSeat: Seat | null;
+  /** True once the soft floor (`pendingClaims.deadlineMs`) has
+   *  elapsed — the cue moment. Solo never sets it (infinite window). */
+  aboutToDraw: boolean;
+  /** Whole seconds remaining until `hardDeadlineMs` once `softExpiryMs`
+   *  is crossed. Null before windup or in solo. */
+  drawCountdown: number | null;
   latestDiscardId: number | null;
   dealerName: string;
   drawnTileId: number | null;
@@ -82,6 +92,9 @@ export function DesktopShell(props: DesktopShellProps) {
     needsDraw,
     canTsumo,
     hasClaimOption,
+    nextDrawerSeat,
+    aboutToDraw,
+    drawCountdown,
     latestDiscardId,
     dealerName,
     drawnTileId,
@@ -175,6 +188,9 @@ export function DesktopShell(props: DesktopShellProps) {
           nextDrawTile={state.wall.length > 0 ? state.wall[state.wall.length - 1]! : null}
           breakPosition={state.openingRolls?.breakPosition}
           onDrawNext={needsDraw ? () => onAction({ t: 'draw', seat }) : undefined}
+          nextDrawerSeat={nextDrawerSeat}
+          aboutToDraw={aboutToDraw}
+          drawCountdown={drawCountdown}
         />
 
         {hasClaimOption ? <ClaimBar onAction={onAction} seat={seat} /> : null}

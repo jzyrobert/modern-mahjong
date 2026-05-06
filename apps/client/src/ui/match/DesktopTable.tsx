@@ -67,6 +67,13 @@ interface DesktopTableProps {
    *  attached when it's the user's turn before draw — otherwise the
    *  next-draw cell is decorative. */
   onDrawNext?: (() => void) | undefined;
+  /** Seat that would draw next once claims resolve. Drives the gold
+   *  "about to draw" halo on the matching badge. */
+  nextDrawerSeat?: Seat | null;
+  /** True once the soft floor has elapsed; gates the halo. */
+  aboutToDraw?: boolean;
+  /** Whole seconds until the hard fallback. Renders next to the cue. */
+  drawCountdown?: number | null;
 }
 
 const COLORS = {
@@ -107,6 +114,9 @@ export function DesktopTable({
   nextDrawTile,
   breakPosition,
   onDrawNext,
+  nextDrawerSeat,
+  aboutToDraw,
+  drawCountdown,
 }: DesktopTableProps) {
   const feltSkin = useGame((s) => s.settings.felt);
   const felt = FELT_SKINS[feltSkin];
@@ -166,18 +176,23 @@ export function DesktopTable({
     );
   };
 
-  const renderOpp = (p: SeatPlacement, orient: 'horizontal' | 'vertical') => (
-    <OpponentArea
-      key={p.seat}
-      placement={p}
-      handCount={hands[p.seat].length}
-      melds={melds[p.seat]}
-      isActive={turn === p.seat && phase === 'turn'}
-      lobby={lobby}
-      score={scoreboard[p.seat]}
-      orient={orient}
-    />
-  );
+  const renderOpp = (p: SeatPlacement, orient: 'horizontal' | 'vertical') => {
+    const isNextDrawer = aboutToDraw === true && nextDrawerSeat === p.seat;
+    return (
+      <OpponentArea
+        key={p.seat}
+        placement={p}
+        handCount={hands[p.seat].length}
+        melds={melds[p.seat]}
+        isActive={turn === p.seat && phase === 'turn'}
+        lobby={lobby}
+        score={scoreboard[p.seat]}
+        orient={orient}
+        aboutToDraw={isNextDrawer}
+        drawCountdown={isNextDrawer ? (drawCountdown ?? null) : null}
+      />
+    );
+  };
 
   return (
     <View
@@ -243,6 +258,12 @@ export function DesktopTable({
         score={scoreboard[byPos.bottom.seat]}
         lobby={lobby}
         isActive={turn === byPos.bottom.seat && phase === 'turn'}
+        aboutToDraw={aboutToDraw === true && nextDrawerSeat === byPos.bottom.seat}
+        drawCountdown={
+          aboutToDraw === true && nextDrawerSeat === byPos.bottom.seat
+            ? (drawCountdown ?? null)
+            : null
+        }
       />
     </View>
   );
@@ -296,6 +317,8 @@ interface OpponentAreaProps {
   score: number;
   /** horizontal = top seat row of tiles; vertical = left/right seat column. */
   orient: 'horizontal' | 'vertical';
+  aboutToDraw: boolean;
+  drawCountdown: number | null;
 }
 
 function OpponentArea({
@@ -306,6 +329,8 @@ function OpponentArea({
   lobby,
   score,
   orient,
+  aboutToDraw,
+  drawCountdown,
 }: OpponentAreaProps) {
   return (
     <View
@@ -322,6 +347,8 @@ function OpponentArea({
         lobby={lobby}
         score={score}
         isActive={isActive}
+        aboutToDraw={aboutToDraw}
+        drawCountdown={drawCountdown}
       />
       <FaceDownStrip count={handCount} orient={orient} />
       {melds.length > 0 ? (
@@ -345,6 +372,8 @@ interface MyAreaProps {
   score: number;
   lobby: LobbyState | null;
   isActive: boolean;
+  aboutToDraw: boolean;
+  drawCountdown: number | null;
 }
 
 function MyArea({
@@ -359,6 +388,8 @@ function MyArea({
   score,
   lobby,
   isActive,
+  aboutToDraw,
+  drawCountdown,
 }: MyAreaProps) {
   return (
     <View style={{ alignItems: 'center', gap: 6 }}>
@@ -371,6 +402,8 @@ function MyArea({
           lobby={lobby}
           score={score}
           isActive={isActive}
+          aboutToDraw={aboutToDraw}
+          drawCountdown={drawCountdown}
         />
         <SortPicker mode={sortMode} onChange={onSortModeChange} />
       </View>
