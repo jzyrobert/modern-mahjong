@@ -6,13 +6,15 @@ import { expect, test } from './_helpers';
 // overflowed and the browser's `overflow-anchor` adjustment scrolled
 // the chrome past the top edge whenever the body grew (e.g. on the
 // `waiting` → `rolling` phase transition triggered by "Start match").
-// The visible symptom was the LIVE pill / settings ⚙ / Leave button
+// The visible symptom was the chrome / settings ⚙ / Leave button
 // missing entirely from the visible viewport — i.e. a user couldn't
 // reach Settings or leave the match.
 //
 // The chrome row now lives outside the ScrollView as a pinned
 // header. This test locks that in: at 320×568 with the match in
-// progress, the LIVE pill must still be in the visible viewport.
+// progress, the ☰ menu pill must still be in the visible viewport
+// — it's the user's entry into Settings / Game log / Tile reference
+// / Leave on a phone, so reachability is the regression to lock.
 test('match chrome stays in viewport on iPhone SE portrait', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 568 });
   await page.goto('/');
@@ -23,18 +25,13 @@ test('match chrome stays in viewport on iPhone SE portrait', async ({ page }) =>
   // match chrome is what we measure.
   await page.waitForTimeout(4500);
 
-  const liveLabel = page.locator('text=LIVE').first();
-  await expect(liveLabel).toBeVisible();
-  const box = await liveLabel.boundingBox();
-  if (!box) throw new Error('LIVE pill has no bounding box');
+  const menuButton = page.getByLabel('Open menu');
+  await expect(menuButton).toBeVisible();
+  const box = await menuButton.boundingBox();
+  if (!box) throw new Error('Menu pill has no bounding box');
   expect(
     box.y,
-    `LIVE pill y=${box.y} should be within the 320×568 viewport (was off-screen above before the chrome was pinned).`,
+    `Menu pill y=${box.y} should be within the 320×568 viewport (was off-screen above before the chrome was pinned).`,
   ).toBeGreaterThanOrEqual(0);
   expect(box.y + box.height).toBeLessThanOrEqual(568);
-
-  // The ☰ menu button is the user's entry into Settings / Game log
-  // / Tile reference / Leave on a phone — has to be reachable from
-  // the pinned chrome.
-  await expect(page.getByLabel('Open menu')).toBeVisible();
 });
