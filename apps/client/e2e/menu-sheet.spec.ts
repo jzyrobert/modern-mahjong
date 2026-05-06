@@ -46,12 +46,7 @@ test.describe('Match menu sheet', () => {
     await expect(page.getByText('Settings', { exact: true }).first()).toBeVisible();
   });
 
-  test('tapping an emote in the menu closes the sheet', async ({ page }) => {
-    // Solo transport doesn't loop chat back to the client (no server
-    // to broadcast through), so we can only assert the
-    // sheet-closure half of the contract here. The wire side is
-    // covered indirectly by online-multi-player.spec.ts where the
-    // in-process MatchSession does fan chat out.
+  test('tapping an emote in the menu closes the sheet and surfaces a bubble', async ({ page }) => {
     await page.setViewportSize({ width: 412, height: 906 });
     await page.goto('/');
     await page.getByRole('button', { name: 'Play vs bots' }).click();
@@ -64,5 +59,11 @@ test.describe('Match menu sheet', () => {
 
     // Sheet closes immediately on tap (mirrors the other menu rows).
     await expect(page.getByText('Menu', { exact: true })).toBeHidden({ timeout: 5_000 });
+
+    // The solo transport echoes the chat back to listeners so
+    // `<ChatBubbles>` renders a floating bubble at the user's seat.
+    // After the menu closes the only remaining 👍 on the page is the
+    // bubble.
+    await expect(page.getByText('👍')).toBeVisible();
   });
 });

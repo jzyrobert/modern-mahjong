@@ -193,6 +193,16 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
   return {
     send(msg) {
       if (closed) return;
+      if (msg.t === 'chat') {
+        // Mirror `MatchSession.onChat`: trim, drop empties, echo back to
+        // listeners as a broadcast so `ChatBubbles` renders a bubble at
+        // the user's seat. There's no server in solo, so the user just
+        // talks to themselves — but the UI should still respond.
+        const trimmed = msg.text.slice(0, 280);
+        if (trimmed.length === 0) return;
+        emit({ t: 'chat', from: 0, text: trimmed, ts: Date.now() });
+        return;
+      }
       if (msg.t !== 'action') return;
       try {
         applyAction(msg.action);
