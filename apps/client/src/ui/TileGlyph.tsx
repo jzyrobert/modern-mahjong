@@ -212,60 +212,56 @@ function BambooStick({ x, y, scale = 1 }: { x: number; y: number; scale?: number
 }
 
 function ManText({ rank, scale }: { rank: number; scale: number }) {
-  // Position = percentage of parent height (matches legacy text Y values
-  // CY - H*0.12 and CY + H*0.18 → ~38% and ~68% of H respectively).
-  // Font sizes scale with the tile box; the 16/13 px reference values
-  // are designed for the 36×50 reference tile, so multiplying by
-  // `scale = width / 36` keeps the glyph proportional at any size.
+  // The number sits in the upper third, the 萬 glyph in the lower
+  // third, with a flex-grown gap between them so neither line ever
+  // crowds the other on small tiles. Font sizes scale with the tile
+  // width (the 16/13 px reference values are tuned for the 36×50
+  // reference tile); the percentage-based row layout below keeps
+  // them from colliding even when the tile aspect drifts from the
+  // reference (e.g. the 22×30 size used in `SeatDiscardPile`).
   return (
-    <>
-      <View
+    <View
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingTop: '12%',
+        paddingBottom: '12%',
+        pointerEvents: 'none',
+      }}
+    >
+      <Text
+        allowFontScaling={false}
         style={{
-          position: 'absolute',
-          left: 0,
-          right: 0,
-          top: '24%',
-          alignItems: 'center',
-          pointerEvents: 'none',
+          fontFamily: SERIF_FAMILY,
+          fontSize: 16 * scale,
+          fontWeight: '700',
+          color: MAN_FILL,
+          lineHeight: 16 * scale,
+          textAlign: 'center',
         }}
       >
-        <Text
-          allowFontScaling={false}
-          style={{
-            fontFamily: SERIF_FAMILY,
-            fontSize: 16 * scale,
-            fontWeight: '700',
-            color: MAN_FILL,
-            lineHeight: 18 * scale,
-          }}
-        >
-          {rank}
-        </Text>
-      </View>
-      <View
+        {rank}
+      </Text>
+      <Text
+        allowFontScaling={false}
         style={{
-          position: 'absolute',
-          left: 0,
-          right: 0,
-          top: '54%',
-          alignItems: 'center',
-          pointerEvents: 'none',
+          fontFamily: SERIF_FAMILY,
+          fontSize: 13 * scale,
+          fontWeight: '600',
+          color: MAN_FILL,
+          lineHeight: 13 * scale,
+          textAlign: 'center',
         }}
       >
-        <Text
-          allowFontScaling={false}
-          style={{
-            fontFamily: SERIF_FAMILY,
-            fontSize: 13 * scale,
-            fontWeight: '600',
-            color: MAN_FILL,
-            lineHeight: 14 * scale,
-          }}
-        >
-          萬
-        </Text>
-      </View>
-    </>
+        萬
+      </Text>
+    </View>
   );
 }
 
