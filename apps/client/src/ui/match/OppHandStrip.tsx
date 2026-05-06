@@ -1,14 +1,23 @@
-import type { Seat, Wind } from '@mahjong/game-logic';
+import type { Meld, Seat, Wind } from '@mahjong/game-logic';
 import { useEffect, useRef } from 'react';
 import { Animated, Easing, Text, View } from 'react-native';
 import type { LobbyState } from '../../state/game';
+import { MeldStrip } from './MeldStrip';
 
 interface OppHandStripProps {
   seat: Seat;
   seatWind: Wind;
   lobby: LobbyState | null;
-  /** Number of face-down tiles to render. */
-  handBacks: number;
+  /** This seat's exposed melds, rendered inline on the right of the
+   *  strip. Empty list → the meld area is left blank. The previous
+   *  rendering of `handBacks` face-down tile rectangles was dropped:
+   *  the count was inferable from "did they discard yet" via the
+   *  active-turn cue, and the strip ate ~30 px per seat × 3 seats of
+   *  vertical space on a phone for visual filler. Inlining the melds
+   *  here also collapses the separate MeldStrip row that used to sit
+   *  below the OppHandStrip — saves another row when an opponent has
+   *  exposed any melds. */
+  melds: readonly Meld[];
   /** Highlight when this seat is on the move. */
   isActive: boolean;
   /** Set when this seat would draw next once claims resolve AND the
@@ -31,22 +40,23 @@ const COLORS = {
   red: '#b14d3a',
   redHot: '#db5d4a',
   gold: '#f3c54a',
-  tileBack1: '#7fa9c1',
-  tileBack2: '#5a8cb0',
 };
 
 /**
- * Compact opponent strip — wind glyph + display name + a row of
- * miniature face-down tile rectangles. Active-turn picks up a red
+ * Compact opponent strip — wind glyph + display name on the left, the
+ * seat's exposed melds inline on the right. Active-turn picks up a red
  * fill + scale pulse (mirrors the desktop `PlayerBadge`); the
  * "next about to draw" cue is a static gold halo so the two
  * highlights don't fight for attention.
+ *
+ * The legacy strip of face-down tile rectangles was dropped to reclaim
+ * mobile vertical space — see the `melds` prop comment above.
  */
 export function OppHandStrip({
   seat,
   seatWind,
   lobby,
-  handBacks,
+  melds,
   isActive,
   aboutToDraw = false,
   drawCountdown = null,
@@ -146,21 +156,8 @@ export function OppHandStrip({
           </Text>
         ) : null}
       </View>
-      <View style={{ flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: 2 }}>
-        {Array.from({ length: handBacks }, (_, i) => (
-          <View
-            // biome-ignore lint/suspicious/noArrayIndexKey: position is fixed per index
-            key={i}
-            style={{
-              width: 12,
-              height: 16,
-              borderRadius: 2,
-              backgroundColor: COLORS.tileBack1,
-              borderColor: COLORS.tileBack2,
-              borderWidth: 1,
-            }}
-          />
-        ))}
+      <View style={{ flex: 1 }}>
+        {melds.length > 0 ? <MeldStrip melds={melds} tileWidth={14} tileHeight={20} /> : null}
       </View>
     </Animated.View>
   );
