@@ -44,6 +44,30 @@ pnpm --filter @mahjong/client e2e          # Playwright (against the static bund
 
 For the online server: `pnpm --filter @mahjong/server dev` (`wrangler dev` on `:8787`). The client picks up `EXPO_PUBLIC_SERVER_URL` if set and falls back to `localhost:8787`.
 
+## Running tests
+
+The full pre-push check pipeline (the same one CI runs):
+
+```sh
+pnpm -r typecheck                  # tsc --noEmit across all packages
+pnpm lint                          # biome check
+pnpm test                          # vitest in every package (engine, bots, protocol, server)
+pnpm --filter @mahjong/client export-web   # rebuild dist/ — required before e2e
+pnpm --filter @mahjong/client e2e          # Playwright against the static bundle
+```
+
+Notes for anyone running this for the first time:
+
+- **`pnpm test` is fast** (~1s total) — covers engine reducers, shanten, scoring, claim flows, the heuristic ranker, the bots, the protocol schemas, and `MatchSession` snapshot/restore. Run it as the cheap inner loop while iterating on `packages/`.
+- **E2e serves `apps/client/dist/`, not the dev server.** Playwright's `webServer` runs `npx serve dist`. If you skip `export-web` (or forget to rebuild after a code change) you'll be testing a stale bundle and may see confusing failures. CI always runs `export-web` immediately before Playwright; do the same locally.
+- **First-run Playwright setup**: `pnpm --filter @mahjong/client exec playwright install chromium` if you don't have the browser cached. After that, `pnpm --filter @mahjong/client e2e` runs the whole suite (~50s on a laptop). To run a single spec, drop down to Playwright directly:
+  ```sh
+  pnpm --filter @mahjong/client exec playwright test e2e/discard-hint.spec.ts
+  ```
+- **Deterministic seeds for e2e**: specs that need a specific dice outcome (e.g. forcing the user to be dealer) inject a seed via `globalThis.__MAHJONG_TEST_SEED__` in a `page.addInitScript`. See `e2e/solo-match.spec.ts` and `e2e/discard-hint.spec.ts` for the pattern.
+- **Engine state hatch**: `globalThis.__MAHJONG_TEST_GET_STATE__()` returns the live zustand store. Useful in specs when threading a `data-testid` through the component tree would be heavier than just reading the engine state.
+- **Load-bearing test IDs**: `data-testid="own-hand-tile"`, `wall-draw-next`, and `hand-tile-recommended` are exercised by the e2e suite. Refactors to `Hand`, `Wall`, or `HandTile` need to keep these on the live click target — see `CLAUDE.md` for the full list.
+
 To build a real Android APK locally see [`docs/DEPLOY.md`](./docs/DEPLOY.md#android-apk); CI also produces development + production APKs on every push to `main` as the `app-builds` workflow artifact (`react-native-cicd.yml`).
 
 ## Architecture
