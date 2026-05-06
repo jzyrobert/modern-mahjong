@@ -147,26 +147,38 @@ export function MobileShell(props: MobileShellProps) {
       <SafeAreaView style={{ flex: 1, backgroundColor: felt.top }} edges={['top']}>
         <View
           style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 8,
             paddingHorizontal: 12,
             paddingTop: 12,
+            // Minimum gap below the chrome row so the first scrollable
+            // row (`SeatRow` / `OppHandStrip`) doesn't visually butt up
+            // against it. The ScrollView's own `padding: 12` adds more
+            // on top of this when content scrolls; this floor keeps the
+            // chrome → first-row separation honest at the no-scroll
+            // start state too.
+            paddingBottom: 8,
             backgroundColor: felt.top,
           }}
         >
-          <GameStatusBar
-            prevailing={state.prevailingWind}
-            dealerName={dealerName}
-            wallCount={state.wall.length}
-            isMyTurn={myTurn}
-            onPress={() => setPlayersOpen(true)}
-            trailing={
-              <ChromeTrailing
-                showCode={showCode}
-                matchCode={matchCode}
-                viewers={lobby?.viewers ?? null}
-                onOpenMenu={() => setMenuOpen(true)}
-              />
-            }
-          />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <GameStatusBar
+              prevailing={state.prevailingWind}
+              dealerName={dealerName}
+              wallCount={state.wall.length}
+              isMyTurn={myTurn}
+              onPress={() => setPlayersOpen(true)}
+              trailing={
+                <ChromeTrailing
+                  showCode={showCode}
+                  matchCode={matchCode}
+                  viewers={lobby?.viewers ?? null}
+                />
+              }
+            />
+          </View>
+          <MenuPill onPress={() => setMenuOpen(true)} />
         </View>
         <ScrollView
           style={{ flex: 1, backgroundColor: felt.top }}
@@ -350,7 +362,6 @@ interface ChromeTrailingProps {
   showCode: boolean;
   matchCode: string | null;
   viewers: number | null;
-  onOpenMenu: () => void;
 }
 
 const TRAILING_COLORS = {
@@ -358,26 +369,19 @@ const TRAILING_COLORS = {
   ink3: '#918275',
   hairline: '#cdc1ad',
   red: '#b14d3a',
-  green: '#58c280',
 };
 
 /**
- * Compact LIVE indicator + optional #CODE + ☰ menu button rendered
- * inside `GameStatusBar`'s trailing slot on mobile. Same content as
- * the standalone `TopBar` on desktop, but without its own pill
- * background — the parent pill already provides one.
+ * Optional #CODE + viewer count rendered inside `GameStatusBar`'s
+ * trailing slot on mobile for online / LAN matches. Solo and
+ * code-less matches collapse this away. The ☰ menu button moved out
+ * of the bar in 2026-05 — it now sits in a sibling pill on the top
+ * right so the GameStatusBar stays one row tall on phone widths.
  */
-function ChromeTrailing({ showCode, matchCode, viewers, onOpenMenu }: ChromeTrailingProps) {
+function ChromeTrailing({ showCode, matchCode, viewers }: ChromeTrailingProps) {
+  if (!showCode && !(viewers && viewers > 0)) return null;
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-      <View
-        style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: TRAILING_COLORS.green }}
-      />
-      <Text
-        style={{ fontSize: 10, fontWeight: '800', color: TRAILING_COLORS.ink, letterSpacing: 0.4 }}
-      >
-        LIVE
-      </Text>
       {showCode && matchCode ? (
         <Text
           style={{
@@ -395,20 +399,37 @@ function ChromeTrailing({ showCode, matchCode, viewers, onOpenMenu }: ChromeTrai
           👁 {viewers}
         </Text>
       ) : null}
-      <Pressable
-        onPress={onOpenMenu}
-        accessibilityLabel="Open menu"
-        style={({ pressed }) => ({
-          paddingHorizontal: 10,
-          paddingVertical: 4,
-          borderRadius: 8,
-          backgroundColor: pressed ? '#ece4d3' : 'transparent',
-          borderColor: TRAILING_COLORS.hairline,
-          borderWidth: 1,
-        })}
-      >
-        <Text style={{ fontSize: 14, fontWeight: '700', color: TRAILING_COLORS.ink }}>☰</Text>
-      </Pressable>
     </View>
+  );
+}
+
+const MENU_PILL_COLORS = {
+  ink: '#3a3328',
+  hairline: '#cdc1ad',
+};
+
+/**
+ * Standalone ☰ pill rendered next to `GameStatusBar` on mobile.
+ * Hosts its own background so it can sit outside the status pill
+ * — keeping the GameStatusBar a single row even with `YOUR TURN`
+ * surfaced.
+ */
+function MenuPill({ onPress }: { onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityLabel="Open menu"
+      style={({ pressed }) => ({
+        paddingHorizontal: 12,
+        paddingVertical: 7,
+        borderRadius: 14,
+        backgroundColor: pressed ? '#ece4d3' : 'rgba(255,255,255,0.88)',
+        borderColor: MENU_PILL_COLORS.hairline,
+        borderWidth: 1,
+        boxShadow: '0px 4px 16px rgba(0,0,0,0.1)',
+      })}
+    >
+      <Text style={{ fontSize: 16, fontWeight: '700', color: MENU_PILL_COLORS.ink }}>☰</Text>
+    </Pressable>
   );
 }
