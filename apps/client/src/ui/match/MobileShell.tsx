@@ -9,6 +9,7 @@ import { ResultPanel } from '../ResultPanel';
 import { Scoreboard } from '../Scoreboard';
 import { PrimaryButton } from '../buttons';
 import { ChatBubbles } from './ChatBubbles';
+import { ClaimMissedToast } from './ClaimMissedToast';
 import { GameStatusBar } from './GameStatusBar';
 import { MatchModals } from './MatchModals';
 import { MeldStrip } from './MeldStrip';
@@ -297,6 +298,7 @@ export function MobileShell(props: MobileShellProps) {
 
           {/* Floating emote bubbles overlay (absolute-positioned). */}
           <ChatBubbles seatToPosition={seatToPosition} />
+          <ClaimMissedToast />
           {/* The persistent emote bar that lives on the desktop felt is
               folded into `MenuSheet` here — see `onSendChat` below.
               Keeps the mobile body to play-relevant rows only. */}

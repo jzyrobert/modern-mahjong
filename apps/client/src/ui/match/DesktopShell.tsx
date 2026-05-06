@@ -10,6 +10,7 @@ import { Scoreboard } from '../Scoreboard';
 import { PrimaryButton } from '../buttons';
 import { ChatBar } from './ChatBar';
 import { ChatBubbles } from './ChatBubbles';
+import { ClaimMissedToast } from './ClaimMissedToast';
 import { DesktopTable } from './DesktopTable';
 import { GameStatusBar } from './GameStatusBar';
 import { MatchModals } from './MatchModals';
@@ -204,6 +205,7 @@ export function DesktopShell(props: DesktopShellProps) {
         ) : null}
 
         <ChatBubbles seatToPosition={seatToPosition} />
+        <ClaimMissedToast />
         <MatchModals
           mySeat={seat}
           settingsOpen={settingsOpen}

@@ -139,6 +139,13 @@ interface ClientGameStore {
    * after a short window.
    */
   chats: ChatEntry[];
+  /**
+   * Monotonic counter incremented when a claim attempt loses the race
+   * — either a server `PHASE` error after the hard fallback fired, or
+   * a `claimsResolved` event that didn't crown the user. Drives the
+   * `ClaimMissedToast` overlay; cleared on `reset`.
+   */
+  claimMissedSeq: number;
   setState: (state: GameState, you?: Seat | 'spectator') => void;
   setLobby: (l: LobbyState) => void;
   setShuffling: (shuffling: boolean) => void;
@@ -147,6 +154,7 @@ interface ClientGameStore {
   appendEvents: (events: EngineEvent[]) => void;
   pushChat: (entry: { from: Seat | 'spectator'; text: string; ts: number }) => void;
   dismissChat: (seq: number) => void;
+  flashClaimMissed: () => void;
   reset: () => void;
 }
 
@@ -172,6 +180,7 @@ export const useGame = create<ClientGameStore>((set) => ({
   drawnTileId: null,
   manualOrder: [],
   chats: [],
+  claimMissedSeq: 0,
   setState: (state, you) => set((prev) => ({ state, you: you ?? prev.you })),
   setLobby: (lobby) => set({ lobby }),
   setShuffling: (shuffling) => set({ shuffling }),
@@ -189,6 +198,7 @@ export const useGame = create<ClientGameStore>((set) => ({
       return { chats: next.length > CHAT_CAPACITY ? next.slice(-CHAT_CAPACITY) : next };
     }),
   dismissChat: (seq) => set((prev) => ({ chats: prev.chats.filter((c) => c.seq !== seq) })),
+  flashClaimMissed: () => set((prev) => ({ claimMissedSeq: prev.claimMissedSeq + 1 })),
   appendEvents: (events) =>
     set((prev) => {
       if (events.length === 0) return prev;
@@ -238,6 +248,7 @@ export const useGame = create<ClientGameStore>((set) => ({
       drawnTileId: null,
       manualOrder: [],
       chats: [],
+      claimMissedSeq: 0,
     }),
 }));
 

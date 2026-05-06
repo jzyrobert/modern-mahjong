@@ -116,7 +116,18 @@ export function TransportProvider({ children }: { children: ReactNode }) {
   const setLobby = useGame((s) => s.setLobby);
   const appendEvents = useGame((s) => s.appendEvents);
   const pushChat = useGame((s) => s.pushChat);
+  const flashClaimMissed = useGame((s) => s.flashClaimMissed);
   const reset = useGame((s) => s.reset);
+
+  // Tracks the wall-clock timestamp of the user's most recent
+  // non-pass `declareClaim` action. Used by the error handler to
+  // recognise a server `PHASE` bounce that's racing with a hard-
+  // fallback resolution — when it fires within `CLAIM_RACE_WINDOW_MS`
+  // of a meaningful claim attempt, we surface a "claim missed" toast
+  // so the user knows their click landed too late (rather than just
+  // appearing as a silent failure).
+  const lastMeaningfulClaimRef = useRef<number>(0);
+  const CLAIM_RACE_WINDOW_MS = 5_000;
 
   const swap = useCallback((next: Transport, code: string | null) => {
     setTransport((prev) => {
@@ -204,6 +215,9 @@ export function TransportProvider({ children }: { children: ReactNode }) {
 
   const send = useCallback(
     (action: Action) => {
+      if (action.t === 'declareClaim' && action.claim.kind !== 'pass') {
+        lastMeaningfulClaimRef.current = Date.now();
+      }
       transport?.send({ t: 'action', action });
     },
     [transport],
@@ -242,9 +256,22 @@ export function TransportProvider({ children }: { children: ReactNode }) {
         case 'lobby':
           setLobby(m);
           return;
-        case 'error':
+        case 'error': {
           console.warn('server error:', m.code, m.detail);
+          // Flash a "claim missed" toast when a `PHASE` error follows
+          // a recent meaningful claim — that's the hard-fallback race
+          // case (server resolved the round before our action arrived).
+          // Other PHASE errors are out-of-turn discards / malformed
+          // input; the cooldown ref keeps those silent.
+          if (m.code === 'PHASE') {
+            const elapsed = Date.now() - lastMeaningfulClaimRef.current;
+            if (lastMeaningfulClaimRef.current > 0 && elapsed < CLAIM_RACE_WINDOW_MS) {
+              flashClaimMissed();
+              lastMeaningfulClaimRef.current = 0;
+            }
+          }
           return;
+        }
         case 'pong':
           return;
         case 'chat':
@@ -252,7 +279,7 @@ export function TransportProvider({ children }: { children: ReactNode }) {
           return;
       }
     });
-  }, [transport, setState, setLobby, appendEvents, pushChat]);
+  }, [transport, setState, setLobby, appendEvents, pushChat, flashClaimMissed]);
 
   // AppState background/foreground lifecycle. For socket-backed
   // transports (online + LAN), pre-emptively close on background so
