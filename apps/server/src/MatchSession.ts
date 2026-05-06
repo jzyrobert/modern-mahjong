@@ -210,14 +210,29 @@ export class MatchSession {
   fireAlarm(nowMs: number): Outbound[] {
     const out: Outbound[] = [];
     out.push(...this.expireGraceTimers(nowMs));
-    // resolveClaims is idempotent — the engine no-ops if we're not in
-    // awaitingClaims, otherwise pads missing seats with 'pass' and resolves.
-    if (this.state.phase === 'awaitingClaims') {
-      try {
-        out.push(this.apply({ t: 'resolveClaims', nowMs }));
-        out.push(...this.runBots());
-      } catch (e) {
-        console.error('alarm reduce error', e);
+    // Claim resolution timing follows the new ladder (PR A):
+    //   - Soft floor (`deadlineMs`): only resolve when every non-discarder
+    //     seat is in `submitted`. If any seat is still pending (a real
+    //     human deliberating), wait — the alarm will re-fire at hard
+    //     fallback.
+    //   - Hard fallback (`hardDeadlineMs`): silent seats are auto-passed
+    //     and the round resolves regardless of how many were pending.
+    //   - When `hardDeadlineMs` is undefined (defensive — production
+    //     rules always set it), behave like the old single-deadline alarm
+    //     and resolve at any awaitingClaims tick.
+    if (this.state.phase === 'awaitingClaims' && this.state.pendingClaims) {
+      const pending = this.state.pendingClaims;
+      const allSubmitted = SEATS.every((s) => s === pending.discard.from || pending.submitted[s]);
+      const hard = pending.hardDeadlineMs;
+      const pastHard = hard === undefined ? false : nowMs >= hard;
+      const noLadder = hard === undefined;
+      if (allSubmitted || pastHard || noLadder) {
+        try {
+          out.push(this.apply({ t: 'resolveClaims', nowMs }));
+          out.push(...this.runBots());
+        } catch (e) {
+          console.error('alarm reduce error', e);
+        }
       }
     }
     out.push(...this.maybeScheduleAlarm());
@@ -374,17 +389,34 @@ export class MatchSession {
   }
 
   /**
-   * Compute the soonest deadline across active timers (claim window +
-   * each disconnected seat's grace expiry) and emit a `scheduleAlarm`
-   * for it. Cloudflare DOs only support one scheduled alarm at a time,
-   * so we always re-arm to the earliest pending deadline. Skips emission
-   * when the deadline matches what's already armed — keeps the
-   * MatchRoom's per-action dispatch quiet during steady-state play.
+   * Compute the soonest deadline across active timers and emit a
+   * `scheduleAlarm` for it. Cloudflare DOs only support one scheduled
+   * alarm at a time, so we always re-arm to the earliest pending
+   * deadline. Skips emission when the deadline matches what's already
+   * armed — keeps the MatchRoom's per-action dispatch quiet during
+   * steady-state play.
+   *
+   * Claim-window timing follows the ladder added in PR A:
+   *   - All non-discarder seats already in `submitted` (e.g. a discard
+   *     nobody can act on, every seat pre-passed in the reducer): arm
+   *     for the soft floor (`deadlineMs`) so the round resolves at the
+   *     fairness minimum without dragging to the hard fallback.
+   *   - At least one seat still pending: arm for the hard fallback
+   *     (`hardDeadlineMs`). Connected players get the full ladder to
+   *     deliberate; the alarm steps in only if they go silent.
+   *   - When `hardDeadlineMs` is undefined (solo / a configurator that
+   *     opts out of the ladder), fall back to the soft floor.
    */
   private maybeScheduleAlarm(): Outbound[] {
     let soonest: number | null = null;
     if (this.state.phase === 'awaitingClaims' && this.state.pendingClaims) {
-      soonest = this.state.pendingClaims.deadlineMs;
+      const pending = this.state.pendingClaims;
+      const allSubmitted = SEATS.every((s) => s === pending.discard.from || pending.submitted[s]);
+      if (allSubmitted) {
+        soonest = pending.deadlineMs;
+      } else {
+        soonest = pending.hardDeadlineMs ?? pending.deadlineMs;
+      }
     }
     for (const seat of SEATS) {
       const slot = this.seats[seat];
