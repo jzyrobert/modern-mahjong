@@ -7,26 +7,31 @@
     "orientation": "landscape",
     "newArchEnabled": true,
     "userInterfaceStyle": "light",
+    "icon": "./assets/icon.png",
     "splash": {
+      "image": "./assets/splash.png",
       "resizeMode": "cover",
-      "backgroundColor": "#f1eadc"
+      "backgroundColor": "#4a6a47"
     },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.modernmahjong.app",
-      "requireFullScreen": true
+      "requireFullScreen": true,
+      "icon": "./assets/icon.png"
     },
     "android": {
       "package": "com.modernmahjong.app",
       "adaptiveIcon": {
-        "backgroundColor": "#f1eadc"
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#4a6a47"
       },
       "edgeToEdgeEnabled": true,
       "permissions": []
     },
     "web": {
       "bundler": "metro",
-      "output": "static"
+      "output": "static",
+      "favicon": "./assets/favicon.png"
     },
     "plugins": ["expo-router", "expo-sqlite", "expo-asset"],
     "experiments": {
