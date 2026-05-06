@@ -95,23 +95,28 @@ const LAYOUTS: Record<number, ReadonlyArray<readonly [number, number]>> = {
     [10, 12],
   ],
   7: [
-    [-10, -14],
-    [0, -14],
-    [10, -14],
-    [-10, 0],
-    [10, 0],
-    [-10, 14],
-    [10, 14],
+    // 1 + 3 + 3 — single rod top-centre over two rows of three.
+    // Closer to the modern reference set (image 2) than the previous
+    // 3 + 2 + 2 grid which left an awkward hole in the middle.
+    [0, -16],
+    [-11, -2],
+    [0, -2],
+    [11, -2],
+    [-11, 12],
+    [0, 12],
+    [11, 12],
   ],
   8: [
-    [-10, -14],
-    [10, -14],
-    [-10, -3],
-    [10, -3],
-    [-10, 8],
-    [10, 8],
-    [-10, 18],
-    [10, 18],
+    // 1 + 3 + 3 + 1 diamond — mirrors image 2's 8-sou silhouette
+    // closer than the previous 4 × 2 column grid.
+    [0, -18],
+    [-11, -6],
+    [0, -6],
+    [11, -6],
+    [-11, 8],
+    [0, 8],
+    [11, 8],
+    [0, 20],
   ],
   9: [
     [-12, -14],
@@ -157,48 +162,45 @@ function PinDot({ x, y, r }: { x: number; y: number; r: number }) {
 
 function SouSvg({ rank }: { rank: number }) {
   if (rank === 1) {
-    // 1-sou: traditional sparrow, in profile. The previous redesign
-    // came out too abstract — a green oval with a red dot floated
-    // above. This version commits to the silhouette: head facing
-    // LEFT (so the beak + eye anchor that side), a short neck that
-    // visibly joins the head to the body, a wing fold curve on the
-    // body for separation, three fanned tail feathers trailing to
-    // the right, and a small leg below. Reads as a bird at both the
-    // 36×50 reference size and the 22×30 SeatDiscardPile size.
+    // 1-sou: clean modern sparrow icon (image-2 reference). Round
+    // body + slightly-forward head with a small triangular beak,
+    // two visible legs/feet so it reads as perched. No tail
+    // feathers fanning out — keeps the silhouette compact and
+    // legible at the 22×30 SeatDiscardPile size where ornate
+    // details muddle.
     const sc = W / 50;
     return (
       <G transform={`translate(${CX},${CY}) scale(${sc})`}>
-        {/* Tail — three fanned feathers behind body. */}
-        <Path d="M 4 0 L 13 4" stroke="#3e8749" strokeWidth={1.9} strokeLinecap="round" />
-        <Path d="M 5 4 L 14 11" stroke="#284628" strokeWidth={2.2} strokeLinecap="round" />
-        <Path d="M 5 8 L 12 15" stroke="#306835" strokeWidth={2} strokeLinecap="round" />
-        {/* Body — slim oval, slightly tilted forward. */}
-        <Ellipse cx={0} cy={2} rx={6} ry={9} fill="#3e8749" />
-        {/* Wing fold curve on body. */}
+        {/* Body — round, sits low on the tile. */}
+        <Ellipse cx={0} cy={2} rx={7} ry={8} fill="#3e8749" />
+        {/* Wing fold — single curve on body for plumage hint. */}
         <Path
-          d="M -4 0 Q 0 5 5 5"
+          d="M -4 -1 Q 0 6 5 1"
           stroke="#284628"
-          strokeWidth={1.4}
+          strokeWidth={1.3}
           fill="none"
           strokeLinecap="round"
         />
-        {/* Neck — visible link from head to body. */}
+        {/* Head — leans slightly forward (right). */}
+        <Circle cx={2} cy={-8} r={5} fill="#3e8749" />
+        {/* Crest — small red tuft. */}
         <Path
-          d="M -2 -4 Q -3 -6 -3 -8"
-          stroke="#3e8749"
-          strokeWidth={3.5}
-          strokeLinecap="round"
+          d="M 0 -13 Q 2 -15 4 -13"
+          stroke="#aa3f30"
+          strokeWidth={1.6}
           fill="none"
+          strokeLinecap="round"
         />
-        {/* Head. */}
-        <Circle cx={-3} cy={-9} r={4} fill="#aa3f30" />
         {/* Eye — pupil + glint. */}
-        <Circle cx={-4} cy={-10} r={1} fill="white" />
-        <Circle cx={-4} cy={-10} r={0.4} fill="#3a3328" />
-        {/* Beak — triangle pointing left. */}
-        <Path d="M -7 -9 L -3 -10 L -3 -7 Z" fill="#d6a23a" />
-        {/* Leg + perch dot. */}
-        <Path d="M -1 11 L -1 14" stroke="#a17b1c" strokeWidth={1.3} strokeLinecap="round" />
+        <Circle cx={3.5} cy={-9} r={1.1} fill="white" />
+        <Circle cx={3.5} cy={-9} r={0.5} fill="#1a1a1a" />
+        {/* Beak — pointing right. */}
+        <Path d="M 7 -8 L 11 -7 L 7 -6 Z" fill="#d6a23a" />
+        {/* Two legs + feet — perched stance. */}
+        <Path d="M -3 9 L -3 14" stroke="#7a5a18" strokeWidth={1.3} strokeLinecap="round" />
+        <Path d="M 3 9 L 3 14" stroke="#7a5a18" strokeWidth={1.3} strokeLinecap="round" />
+        <Path d="M -5 14 L -1 14" stroke="#7a5a18" strokeWidth={1.2} strokeLinecap="round" />
+        <Path d="M 1 14 L 5 14" stroke="#7a5a18" strokeWidth={1.2} strokeLinecap="round" />
       </G>
     );
   }
