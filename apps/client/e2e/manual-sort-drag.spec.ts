@@ -150,3 +150,99 @@ test.describe('desktop, outside discard window', () => {
     expect(after[0]).not.toBe(before[0]);
   });
 });
+
+// Cross-row drag regression. On narrow phones (320 × 568 iPhone SE),
+// the 14-tile dealer hand wraps onto two rows — the parent's flex-wrap
+// fits ~7 tiles per row at the auto-fit minimum width. Pre-fix the
+// drag math computed the target index from `g.dx` only and ignored
+// `g.dy`, so dragging tile 0 down to row 1 actually placed it
+// somewhere along row 0 (the user perceived it as "you can only drag
+// along the same row"). The visual translateY also stayed pinned to
+// the lift offset, so the tile didn't follow the finger vertically
+// either. The fix combines `dragY` with the lift via Animated.add and
+// uses (deltaCol, deltaRow) + tilesPerRow to compute the target
+// index. This test drops tile 0 in row 1 and asserts the tile that
+// used to be at index 0 actually ends up in the second row.
+test.describe('narrow viewport, multi-row hand', () => {
+  test.use({ viewport: { width: 320, height: 568 } });
+
+  test('cross-row manual sort drag lands on the right slot', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Play vs bots' }).click();
+    await page.getByRole('button', { name: 'Start match' }).click();
+    await dismissOpeningRolls(page);
+    await expect(page.getByText(/\d+ tiles in wall/)).toBeVisible({ timeout: 10_000 });
+
+    await page.getByText('MANUAL', { exact: true }).click();
+
+    const before = await readHandSignatures(page);
+    expect(before.length).toBeGreaterThan(7); // at least one full row + one
+
+    const tiles = page.getByTestId('own-hand-tile');
+
+    // Confirm the layout actually wraps. Pull every tile's y and group
+    // — if the hand fits on one row this test isn't testing what we
+    // think it is, fail loudly.
+    const ys: number[] = [];
+    for (let i = 0; i < before.length; i++) {
+      const box = await tiles.nth(i).boundingBox();
+      if (box) ys.push(Math.round(box.y));
+    }
+    const distinctRows = new Set(ys);
+    expect(distinctRows.size).toBeGreaterThan(1);
+
+    const firstRowY = Math.min(...ys);
+    const secondRowY = [...distinctRows].sort((a, b) => a - b)[1] as number;
+
+    // Source: tile 0 (row 0, col 0). Target: a position firmly in
+    // row 1 — pick the index that's at row 1, col 2 visually (so
+    // we're crossing both axes, not just dropping straight down).
+    const firstRowIndices = ys
+      .map((y, i) => (y === firstRowY ? i : -1))
+      .filter((i) => i >= 0);
+    const secondRowIndices = ys
+      .map((y, i) => (y === secondRowY ? i : -1))
+      .filter((i) => i >= 0);
+    expect(firstRowIndices.length).toBeGreaterThan(2);
+    expect(secondRowIndices.length).toBeGreaterThan(2);
+
+    // The reorder we're forcing: index 0 → index `targetIdx` (in row 1).
+    // Pick the target as the 3rd tile in row 1 so we shift by 2 cols
+    // AND 1 row.
+    const targetIdx = secondRowIndices[2] as number;
+    const sourceLabel = before[0];
+
+    const sourceBox = await tiles.first().boundingBox();
+    const targetBox = await tiles.nth(targetIdx).boundingBox();
+    if (!sourceBox || !targetBox) throw new Error('tile bounding boxes missing');
+
+    const startX = sourceBox.x + sourceBox.width / 2;
+    const startY = sourceBox.y + sourceBox.height / 2;
+    const endX = targetBox.x + targetBox.width / 2;
+    const endY = targetBox.y + targetBox.height / 2;
+
+    await page.mouse.move(startX, startY);
+    await page.mouse.down();
+    await page.mouse.move(startX + 12, startY, { steps: 4 });
+    await page.mouse.move(endX, endY, { steps: 16 });
+    await page.mouse.up();
+
+    const after = await readHandSignatures(page);
+    expect(after.length).toBe(before.length);
+
+    // After the drag the source label should sit in row 1 of the
+    // post-drag hand — i.e., at an index past the first row's tile
+    // count (row 0 capacity stays the same, the source just lands
+    // somewhere in row 1). Pre-fix it stayed in row 0 because g.dy
+    // was ignored, so the new index would have been < perRow. We
+    // assert against `firstRowIndices.length` rather than measuring
+    // bounding-box y because the post-release spring takes a few
+    // hundred ms to settle and Playwright's `boundingBox()` reads the
+    // partially-transformed position; the engine's reorder ID is the
+    // load-bearing signal regardless.
+    const perRow = firstRowIndices.length;
+    const newIdx = after.indexOf(sourceLabel ?? '');
+    expect(newIdx).toBeGreaterThanOrEqual(perRow);
+    void secondRowY;
+  });
+});
