@@ -1,4 +1,4 @@
-import { SEATS, type Seat, WINDS, type Wind } from '@mahjong/game-logic';
+import { SEATS, type Seat, type Wind, seatWindFor } from '@mahjong/game-logic';
 import { ScrollView, Text, View } from 'react-native';
 import { type LobbyState, nameForSeat, useGame } from '../../state/game';
 import { Modal } from '../Modal';
@@ -196,11 +196,6 @@ function PlayerRow({
       ) : null}
     </View>
   );
-}
-
-function seatWindFor(dealer: Seat, seat: Seat): Wind {
-  const offset = (seat - dealer + 4) % 4;
-  return WINDS[offset]!;
 }
 
 function relativeKey(mySeat: Seat | null, seat: Seat): 'you' | 'next' | 'across' | 'prev' {

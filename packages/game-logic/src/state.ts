@@ -1,5 +1,6 @@
 import type { Meld } from './hand.js';
 import type { Tile, Wind } from './tiles.js';
+import { WINDS } from './tiles.js';
 
 export type Seat = 0 | 1 | 2 | 3;
 
@@ -179,6 +180,23 @@ export function prevSeat(s: Seat): Seat {
 
 export function acrossSeat(s: Seat): Seat {
   return ((s + 2) % 4) as Seat;
+}
+
+/**
+ * Wind label for a given seat at the table, anchored to the dealer
+ * (dealer is always East). The four seats rotate counter-clockwise
+ * E → S → W → N, so seat-relative-to-dealer = (seat - dealer) mod 4.
+ *
+ * Used by every UI surface that renders a seat-wind glyph
+ * (Scoreboard, PlayersSheet, OppHandStrip via DesktopTable / Match
+ * placements). Lives in the engine package because the formula is
+ * mahjong rules — clients shouldn't need to re-derive the rotation
+ * convention themselves.
+ */
+export function seatWindFor(dealer: Seat, seat: Seat): Wind {
+  // Cast is safe — `WINDS` has length 4 and the modulo keeps the
+  // index in range.
+  return WINDS[(seat - dealer + 4) % 4] as Wind;
 }
 
 /**
