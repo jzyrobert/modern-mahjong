@@ -70,6 +70,11 @@ function TileComponent({
   const wrapperStyle: ViewStyle = {
     width,
     height,
+    // Match the SVG face's rx (W * 0.18) so when `raised` adds a
+    // boxShadow the glow follows the tile silhouette rather than
+    // protruding past the rounded corners as square chunks. No-op
+    // visually when no shadow is rendered (the View has no fill).
+    borderRadius: width * 0.18,
     transform: [{ rotate: `${rotate ?? 0}deg` }, { translateY: lift }],
     opacity: dim ? 0.85 : 1,
     ...(raised && {
