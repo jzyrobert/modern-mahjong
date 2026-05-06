@@ -37,6 +37,14 @@ interface MobileShellProps {
   needsDraw: boolean;
   canTsumo: boolean;
   hasClaimOption: boolean;
+  /** Seat that would draw next once claims resolve. Drives the
+   *  "next about to draw" gold halo on the next-seat's `OppHandStrip`
+   *  badge. `null` outside `awaitingClaims`. */
+  nextDrawerSeat: Seat | null;
+  /** True once `pendingClaims.deadlineMs` has elapsed. */
+  aboutToDraw: boolean;
+  /** Whole seconds until `hardDeadlineMs` once `softExpiryMs` is crossed. */
+  drawCountdown: number | null;
   latestDiscardId: number | null;
   dealerName: string;
   drawnTileId: number | null;
@@ -98,6 +106,9 @@ export function MobileShell(props: MobileShellProps) {
     needsDraw,
     canTsumo,
     hasClaimOption,
+    nextDrawerSeat,
+    aboutToDraw,
+    drawCountdown,
     latestDiscardId,
     dealerName,
     drawnTileId,
