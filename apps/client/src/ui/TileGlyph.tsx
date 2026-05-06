@@ -1,6 +1,6 @@
 import type { Tile as MTile } from '@mahjong/game-logic';
 import { Text, View } from 'react-native';
-import Svg, { Circle, Ellipse, G, Line, Path } from 'react-native-svg';
+import Svg, { Circle, Ellipse, G, Path, Rect } from 'react-native-svg';
 
 /**
  * Mahjong tile face — procedural geometry for pin dots and bamboo
@@ -205,6 +205,11 @@ function SouSvg({ rank }: { rank: number }) {
   const layout = LAYOUTS[rank] ?? [];
   const baseScale = rank <= 4 ? 0.75 : rank <= 6 ? 0.6 : 0.5;
   const sc = (baseScale * (W / 44)) / 0.75;
+  // Traditional accent: 5-sou's centre rod is red — it's the
+  // "lucky" tile that's been picked out in red on every Hong Kong /
+  // Japanese mahjong set since the early 20th century. Match the
+  // convention so users coming from physical sets recognise it.
+  const accentIdx = rank === 5 ? 2 : -1;
   return (
     <G transform={`translate(${CX},${CY}) scale(${sc})`}>
       {layout.map(([x, y], i) => (
@@ -214,18 +219,56 @@ function SouSvg({ rank }: { rank: number }) {
           x={x}
           y={y}
           scale={0.75}
+          accent={i === accentIdx}
         />
       ))}
     </G>
   );
 }
 
-function BambooStick({ x, y, scale = 1 }: { x: number; y: number; scale?: number }) {
+interface BambooStickProps {
+  x: number;
+  y: number;
+  scale?: number;
+  /** Render in the red lucky-rod palette instead of green. The
+   *  5-sou centre rod sets this; everything else stays green. */
+  accent?: boolean;
+}
+
+function BambooStick({ x, y, scale = 1, accent = false }: BambooStickProps) {
+  // Single tall capsule with two horizontal joint lines and three
+  // subtle highlights — reads as bamboo at desktop tile sizes and
+  // stays legible at the 22×30 SeatDiscardPile size. Drawing
+  // three separate rectangles muddied the silhouette at small
+  // sizes; one outlined rod with internal joints holds together.
+  const fill = accent ? '#c14a3a' : '#3e8749';
+  const outline = accent ? '#7a2a20' : '#284628';
+  const highlight = accent ? '#e88478' : '#7ed091';
   return (
     <G transform={`translate(${x},${y}) scale(${scale})`}>
-      <Ellipse cx={0} cy={0} rx={3.2} ry={9} fill="#3e8749" />
-      <Ellipse cx={0} cy={-3} rx={3.2} ry={2} fill="#5dba6c" opacity={0.6} />
-      <Line x1={-3.2} y1={0} x2={3.2} y2={0} stroke="#284628" strokeWidth={0.6} />
+      <Rect
+        x={-2.8}
+        y={-9}
+        width={5.6}
+        height={18}
+        rx={2.4}
+        ry={2.4}
+        fill={fill}
+        stroke={outline}
+        strokeWidth={0.8}
+      />
+      {/* Joint lines — split the rod into three apparent segments. */}
+      <Path
+        d="M -2.4 -3 L 2.4 -3"
+        stroke={outline}
+        strokeWidth={0.7}
+        strokeLinecap="round"
+      />
+      <Path d="M -2.4 3 L 2.4 3" stroke={outline} strokeWidth={0.7} strokeLinecap="round" />
+      {/* Per-segment top highlights for a cylindrical sheen. */}
+      <Ellipse cx={-0.8} cy={-7} rx={1} ry={1.4} fill={highlight} opacity={0.7} />
+      <Ellipse cx={-0.8} cy={-1} rx={1} ry={1.4} fill={highlight} opacity={0.55} />
+      <Ellipse cx={-0.8} cy={5} rx={1} ry={1.4} fill={highlight} opacity={0.45} />
     </G>
   );
 }
