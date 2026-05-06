@@ -329,6 +329,22 @@ function resolveAndApply(state: GameState, nowMs: number): { state: GameState; e
     if (seat === state.pendingClaims.discard.from) continue;
     if (!filled[seat]) filled[seat] = { kind: 'pass' };
   }
+  // Demote any hu submission that wouldn't actually finalize as a
+  // win — typically a structurally-winning hand that scores below the
+  // configured `faanMin` floor. Without this guard a low-faan hu would
+  // win priority over a valid peng/gong/chi on the same discard, and
+  // then the chained declareWin below would throw FAAN and leave the
+  // caller with a half-applied state. The bot's `pickClaim` and the
+  // ClaimBar's Win button both use `isWinning` (shape only) for
+  // legality, so demotion is also a defence-in-depth for any client
+  // that doesn't pre-score the hand.
+  for (const seat of SEATS) {
+    const c = filled[seat];
+    if (c?.kind !== 'hu') continue;
+    if (!canFinalizeHu(state, seat)) {
+      filled[seat] = { kind: 'pass' };
+    }
+  }
   const resolution = resolveClaims({ ...state.pendingClaims, submitted: filled });
   const events: Event[] = [{ t: 'claimsResolved', result: resolution }];
   void nowMs;
@@ -347,9 +363,37 @@ function resolveAndApply(state: GameState, nowMs: number): { state: GameState; e
       events,
     };
   }
-  // Claim wins. For hu, the caller will issue declareWin next.
-  const newState = applyClaim(state, resolution);
-  return { state: newState, events };
+  // Claim wins. For hu, finalize the win in this same step — the
+  // engine used to leave the state at phase: 'turn' with the winner as
+  // the new turn-holder and rely on "the caller" issuing declareWin
+  // next, but no caller (UI, server, solo transport, or bot driver)
+  // ever did so. Result: clicking the ClaimBar's Win button on an
+  // opponent's discard appeared to do nothing — the engine accepted
+  // the hu claim, transitioned phase, and then sat there waiting for a
+  // declareWin that never came. Chaining declareWin here closes the
+  // gap and matches the existing chi/peng/gong path which already
+  // returns a fully-applied state. The pre-filter above ensures
+  // declareWin won't throw FAAN/SHAPE on the chained call.
+  const stateAfterClaim = applyClaim(state, resolution);
+  if (resolution.claim.kind === 'hu') {
+    const finalized = declareWin(stateAfterClaim, resolution.seat, false);
+    return { state: finalized.state, events: [...events, ...finalized.events] };
+  }
+  return { state: stateAfterClaim, events };
+}
+
+/** Whether a hu submission for `seat` would actually finalize as a
+ *  scored win. Mirrors the checks in `declareWin(state, seat, false)`
+ *  by trying it and catching the typed error — keeps the validation
+ *  rules in exactly one place. */
+function canFinalizeHu(state: GameState, seat: Seat): boolean {
+  try {
+    declareWin(state, seat, false);
+    return true;
+  } catch (e) {
+    if (e instanceof IllegalActionError) return false;
+    throw e;
+  }
 }
 
 function declareKongConcealed(

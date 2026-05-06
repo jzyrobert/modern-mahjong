@@ -176,7 +176,11 @@ export function applyClaim(
   const from = state.lastDiscard.from;
 
   if (claim.kind === 'hu') {
-    // Caller will follow up with declareWin; here we just mark phase.
+    // Hand the seat the turn back and clear the claim window —
+    // `resolveAndApply` chains `declareWin(state, seat, false)`
+    // immediately on top of this state to finalize the win in the
+    // same engine step. The intermediate phase: 'turn' is a
+    // transient that callers shouldn't observe.
     return {
       ...state,
       phase: 'turn',
