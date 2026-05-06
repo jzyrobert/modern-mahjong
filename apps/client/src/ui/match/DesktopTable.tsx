@@ -56,8 +56,8 @@ interface DesktopTableProps {
    *  count badge + status (drawn vs live stacks). */
   liveWallCount: number;
   /** Engine `Tile` at the next-to-draw position. Renders on top of the
-   *  next-draw stack so future Phase 6 wall→hand FLIPs have a real tile
-   *  to track. */
+   *  next-draw stack so the wall→hand FLIP has a real tile to track
+   *  through `FlipBag`. */
   nextDrawTile: MTile | null;
   /** Sum of the opening dice from `state.openingRolls.breakPosition`.
    *  Drives which seat's wall is broken; when undefined (e.g. before

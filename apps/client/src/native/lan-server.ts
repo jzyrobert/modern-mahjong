@@ -8,13 +8,13 @@
  *   - On native (Android dev / preview / production builds), the
  *     Kotlin module loads, `isLanServerAvailable()` returns `true`,
  *     and `LanServer.start()` boots the embedded NanoHTTPD server.
- *   - On iOS native builds, the Swift skeleton is loaded but every
- *     async function except `stop()` / `unadvertise()` /
- *     `stopDiscovery()` throws "not implemented yet". The lobby's
- *     copy still flips because the module is loaded — but actual
- *     `start()` calls fail with a descriptive error. The HTTP+WS
- *     server side of iOS lands once Telegraph (or equivalent) is
- *     wired up in `modules/expo-lan-server/ios/LanServerModule.swift`.
+ *   - On iOS native builds (none currently planned), the Swift
+ *     skeleton is loaded but every async function except `stop()` /
+ *     `unadvertise()` / `stopDiscovery()` throws. The lobby's copy
+ *     still flips because the module is loaded — but `start()` calls
+ *     fail with a descriptive error. The skeleton is here so `expo
+ *     prebuild` produces a syntactically-valid `ios/` project tree,
+ *     not because an iOS build is in flight.
  *   - On web (and Expo Go, where third-party modules don't ship),
  *     `requireOptionalNativeModule('LanServer')` returns `null`,
  *     `isLanServerAvailable()` returns `false`, and method calls

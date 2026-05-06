@@ -18,7 +18,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
  *   reinstalls. On web, no-ops.
  * - `SafeAreaProvider`: shared safe-area insets for all screens.
  * - `StatusBar` set to dark on the cream surface.
- * - Phase 6 overlays (DiceCeremony, ShuffleOverlay, WinCelebration) —
+ * - Match-flow overlays (DiceCeremony, ShuffleOverlay, WinCelebration) —
  *   absolute-positioned, gated on engine state slices, animated with
  *   RN core `Animated` so they work in Expo Go without reanimated.
  *   Mounted at root so they layer over both `/` (lobby) and `/match`.

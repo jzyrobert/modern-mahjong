@@ -14,8 +14,9 @@ import type { WallSlot } from './wallLayout';
  *   - Full stack (`tiles: 2`)  → two stacked face-down tile-backs.
  *   - Half stack (`tiles: 1`)  → one face-down tile-back.
  *   - Next-to-draw (`isNextDraw`) — top tile renders as the engine's
- *     real next `Tile` (face-down) so future Phase 6 FLIPs have a real
- *     tile object to track. Pulse halo signals "your draw."
+ *     real next `Tile` (face-down) so the wall→hand FLIP via
+ *     `FlipBag` has a real tile object to track. Pulse halo signals
+ *     "your draw."
  *
  * The dead wall is not rendered separately — it's part of the
  * engine's state but never visible at a real table.

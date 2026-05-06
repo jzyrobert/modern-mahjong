@@ -10,7 +10,7 @@ call-site changes elsewhere in the client.
 | Platform | Status |
 |---|---|
 | Android | Implemented via NanoHTTPD-WebSockets. WebSocket upgrade at the configured `wsPath` (default `/ws`); other HTTP requests serve the Expo Web export bundled into `assets/lan-bundle/` at APK build time, so guests can browser-join without installing the app (see "Bundling the web client" below). mDNS host advertisement + discovery are wired through `NsdManager`. |
-| iOS     | Skeleton only — `start()` / `advertise()` / `startDiscovery()` throw. To finish, drop in [Telegraph](https://github.com/Building42/Telegraph) (or Swifter / GCDWebServer + a WebSocket layer) and follow the TODOs in `ios/LanServerModule.swift`. mDNS layer rides on `NetService` once the server boots. |
+| iOS     | Skeleton only — `start()` / `advertise()` / `startDiscovery()` throw. **No iOS build is currently planned**, so the file is intentionally a stub; if someone forks the project to ship iOS, the comment block in `ios/LanServerModule.swift` lists the reference Android maps to (Telegraph for HTTP+WS, `NetService` / `NWBrowser` for mDNS). |
 
 The TS bridge in `src/LanServer.ts` uses `requireOptionalNativeModule`, so on
 web (and in Expo Go, where third-party modules aren't bundled) the module
@@ -30,7 +30,7 @@ modules linked in.
 | Environment | `isLanServerAvailable()` | Behaviour |
 |---|---|---|
 | Android dev / preview / production APK | `true` | Kotlin module hosts the WS + HTTP server. |
-| iOS native build (any profile) | `true` | Swift skeleton loads; `start()` etc. throw — see "Status" above. |
+| iOS native build (any profile) | `true` | Swift skeleton loads; `start()` etc. throw. No iOS build profile is configured — the stub is here for forks that want to add one. |
 | Web bundle (Cloudflare Pages) | `false` | `requireOptionalNativeModule` returns `null`; lobby falls back to manual host URL entry. |
 | Expo Go | `false` | Same as web — third-party modules aren't bundled. |
 
@@ -145,15 +145,18 @@ addListener('hostLost', ({ name }) => {
 The Android side uses `NsdManager.PROTOCOL_DNS_SD` for both register
 and discover; the manifest declares
 `CHANGE_WIFI_MULTICAST_STATE` so the mDNS announcements traverse
-Wi-Fi multicast. iOS support is stubbed (`NetService` /
-`NWBrowser`-based) — `advertise()` / `startDiscovery()` throw
-`"not implemented"` until the iOS HTTP+WS server side lands.
+Wi-Fi multicast. iOS is intentionally a stub — no iOS build is
+currently planned — so `advertise()` / `startDiscovery()` throw
+`"not implemented"` there.
 
 The lobby's `HostLanModal` / `JoinLanModal` haven't been wired to
 these events yet — that UI pass is queued in TODO.md. Today the
 native primitives are available, just not surfaced.
 
-## Wishlist
+## Notes for forks
 
-- iOS Telegraph implementation (HTTP+WS server itself; mDNS layer
-  comes free with `NetService` once the server boots).
+If you fork this project to ship iOS as well, the Swift skeleton in
+`ios/LanServerModule.swift` is the place to start: drop in
+Telegraph for the HTTP+WS server, mDNS comes free with `NetService` /
+`NWBrowser` once the server boots. Upstream isn't planning an iOS
+build, so this isn't being actively worked on.

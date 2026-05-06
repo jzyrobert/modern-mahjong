@@ -42,7 +42,7 @@ In **GitHub → Settings → Secrets and variables → Actions → New repositor
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `CLOUDFLARE_API_TOKEN`     | The token from step 2.                                                                                                                                 |
 | `CLOUDFLARE_ACCOUNT_ID`    | Your account ID from step 1.                                                                                                                           |
-| `EXPO_PUBLIC_SERVER_URL`   | The deployed Worker's URL — fill in **after the first server deploy** (see below). Example: `https://modern-mahjong-server.your-subdomain.workers.dev`. (Replaces the legacy `VITE_SERVER_URL` after the Phase 1 toolchain swap. Expo's runtime reads any env var prefixed with `EXPO_PUBLIC_*`.) |
+| `EXPO_PUBLIC_SERVER_URL`   | The deployed Worker's URL — fill in **after the first server deploy** (see below). Example: `https://modern-mahjong-server.your-subdomain.workers.dev`. Expo's runtime reads any env var prefixed with `EXPO_PUBLIC_*`. |
 | `EXPO_TOKEN`               | Generated at `expo.dev → Account Settings → Access Tokens`. Authenticates `eas build --local` on the GitHub Actions runner. No EAS cloud usage; just identity for the CLI. Required for the `build-mobile-android` job. |
 
 ### 4. First deploy

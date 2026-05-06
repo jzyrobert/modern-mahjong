@@ -39,9 +39,9 @@ const MAX_TOSS_DEGREES = 8;
  * mulberry32 jitter on top of the seat rotation produces the "toss"
  * angles.
  *
- * The pulse halo on the latest claim-window tile is a static gold
- * border for now — the framer-motion `HALO_ANIMATE` pulse is Phase 6
- * (Animated API loop).
+ * The latest claim-window tile gets a static gold border — kept
+ * still here so it doesn't fight the per-seat colour underline that
+ * lives one row down on the same tile.
  */
 export function SeatDiscardPile({
   tiles,

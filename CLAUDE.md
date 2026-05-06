@@ -110,13 +110,19 @@ sync with `main`:
 
 ## Animation primitives
 
-- `framer-motion`'s `layoutId` does most of the heavy lifting for tile
-  movement (wall → hand on draw, discard → meld on claim, between-hand
-  re-deal). Don't reach for absolute positioning + manual interpolation
-  unless layoutId can't express the motion.
+- The `FlipBag` context (`apps/client/src/ui/FlipBag.tsx`) does most of
+  the heavy lifting for tile movement (wall → hand on draw, discard →
+  meld on claim, between-hand re-deal). Wrap a tile in `<FlipView
+  flipId="...">` and the context records its rect on layout, then
+  springs from the previous rect on the next layout pass — layoutId-
+  style FLIP without a `framer-motion` / `react-native-reanimated`
+  dependency (both stripped in the Expo migration). Don't reach for
+  absolute positioning + manual interpolation unless `FlipView` can't
+  express the motion.
 - Pulses / halos use scale + opacity overlays (transform/opacity only, no
   box-shadow keyframes) so the compositor can run them without per-frame
-  paint. See `Wall.tsx`'s `PULSE_HALO_ANIMATE` for the canonical pattern.
+  paint. See `WallEdge.tsx`'s next-draw halo (`Animated.loop` with
+  scale + opacity) for the canonical pattern.
 - The `useGame.shuffling` flag flips `Tile.tsx` to a slower spring during
   the between-hand dispense — don't shorten the spring, that's a deliberate
   readability choice.
