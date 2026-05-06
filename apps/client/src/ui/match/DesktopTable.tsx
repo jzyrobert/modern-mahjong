@@ -3,11 +3,11 @@ import {
   type Meld,
   type Phase,
   type Seat,
-  WINDS,
   type Wind,
   acrossSeat,
   nextSeat,
   prevSeat,
+  seatWindFor,
 } from '@mahjong/game-logic';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
@@ -529,9 +529,4 @@ function layoutFor(mySeat: Seat, dealer: Seat): SeatPlacement[] {
     },
     { seat: prevSeat(mySeat), position: 'left', seatWind: seatWindFor(dealer, prevSeat(mySeat)) },
   ];
-}
-
-function seatWindFor(dealer: Seat, seat: Seat): Wind {
-  const offset = (seat - dealer + 4) % 4;
-  return WINDS[offset]!;
 }

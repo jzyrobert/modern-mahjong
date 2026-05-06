@@ -1,4 +1,4 @@
-import { SEATS, type Seat, WINDS, type Wind } from '@mahjong/game-logic';
+import { SEATS, type Wind, seatWindFor } from '@mahjong/game-logic';
 import { Text, View } from 'react-native';
 import { useGame } from '../state/game';
 
@@ -78,8 +78,4 @@ export function Scoreboard() {
       })}
     </View>
   );
-}
-
-function seatWindFor(dealer: Seat, seat: Seat): Wind {
-  return WINDS[(seat - dealer + 4) % 4]!;
 }

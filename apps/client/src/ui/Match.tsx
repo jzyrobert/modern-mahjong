@@ -4,7 +4,6 @@ import {
   type Action,
   type Tile as MTile,
   type Seat,
-  WINDS,
   type Wind,
   acrossSeat,
   hasMeaningfulClaim,
@@ -13,6 +12,7 @@ import {
   prevSeat,
   rankDiscards,
   sameFace,
+  seatWindFor,
   tileId,
 } from '@mahjong/game-logic';
 import { useRouter } from 'expo-router';
@@ -363,11 +363,6 @@ function layoutFor(mySeat: Seat, dealer: Seat): SeatPlacement[] {
       seatWind: seatWindFor(dealer, prevSeat(mySeat)),
     },
   ];
-}
-
-function seatWindFor(dealer: Seat, seat: Seat): Wind {
-  const offset = (seat - dealer + 4) % 4;
-  return WINDS[offset]!;
 }
 
 function randomSeed(): number {
