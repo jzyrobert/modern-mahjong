@@ -1,5 +1,5 @@
 import type { Action, GameState, Tile as MTile, Seat, Wind } from '@mahjong/game-logic';
-import { ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { LobbyState } from '../../state/game';
 import type { FeltSkin } from '../../state/game';
@@ -15,7 +15,6 @@ import { MeldStrip } from './MeldStrip';
 import { OppHandStrip } from './OppHandStrip';
 import { SharedDiscardPool } from './SharedDiscardPool';
 import { type SortMode, SortPicker } from './SortPicker';
-import { TopBar } from './TopBar';
 import type { FELT_SKINS } from './skins';
 
 type Position = 'bottom' | 'right' | 'top' | 'left';
@@ -133,16 +132,20 @@ export function MobileShell(props: MobileShellProps) {
     setMenuOpen,
   } = props;
 
+  // Mobile chrome: a single GameStatusBar pill that absorbs the LIVE
+  // indicator, optional match code, and ☰ menu button via the
+  // `trailing` slot. Two pills (GameStatusBar + standalone TopBar)
+  // wrapped onto separate rows on phone-class viewports — see
+  // `match-chrome-portrait.spec.ts`. Solo's matchCode is the
+  // placeholder string `'SOLO'`; we hide it here since #SOLO carries
+  // no info the user can act on (no one to share it with). For online
+  // / LAN matches the actual code stays visible.
+  const showCode = matchCode !== null && matchCode !== 'SOLO';
   return (
     <View style={{ flex: 1, backgroundColor: felt.top }}>
       <SafeAreaView style={{ flex: 1, backgroundColor: felt.top }} edges={['top']}>
         <View
           style={{
-            flexDirection: 'row',
-            flexWrap: 'wrap',
-            alignItems: 'flex-start',
-            justifyContent: 'space-between',
-            gap: 8,
             paddingHorizontal: 12,
             paddingTop: 12,
             backgroundColor: felt.top,
@@ -154,11 +157,14 @@ export function MobileShell(props: MobileShellProps) {
             wallCount={state.wall.length}
             isMyTurn={myTurn}
             onPress={() => setPlayersOpen(true)}
-          />
-          <TopBar
-            matchCode={matchCode}
-            viewers={lobby?.viewers ?? null}
-            onOpenMenu={() => setMenuOpen(true)}
+            trailing={
+              <ChromeTrailing
+                showCode={showCode}
+                matchCode={matchCode}
+                viewers={lobby?.viewers ?? null}
+                onOpenMenu={() => setMenuOpen(true)}
+              />
+            }
           />
         </View>
         <ScrollView
@@ -340,6 +346,73 @@ function SeatRow({ placement, state, lobby, aboutToDraw, drawCountdown }: SeatRo
       {state.melds[placement.seat].length > 0 ? (
         <MeldStrip melds={state.melds[placement.seat]} tileWidth={14} tileHeight={20} />
       ) : null}
+    </View>
+  );
+}
+
+interface ChromeTrailingProps {
+  showCode: boolean;
+  matchCode: string | null;
+  viewers: number | null;
+  onOpenMenu: () => void;
+}
+
+const TRAILING_COLORS = {
+  ink: '#3a3328',
+  ink3: '#918275',
+  hairline: '#cdc1ad',
+  red: '#b14d3a',
+  green: '#58c280',
+};
+
+/**
+ * Compact LIVE indicator + optional #CODE + ☰ menu button rendered
+ * inside `GameStatusBar`'s trailing slot on mobile. Same content as
+ * the standalone `TopBar` on desktop, but without its own pill
+ * background — the parent pill already provides one.
+ */
+function ChromeTrailing({ showCode, matchCode, viewers, onOpenMenu }: ChromeTrailingProps) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+      <View
+        style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: TRAILING_COLORS.green }}
+      />
+      <Text
+        style={{ fontSize: 10, fontWeight: '800', color: TRAILING_COLORS.ink, letterSpacing: 0.4 }}
+      >
+        LIVE
+      </Text>
+      {showCode && matchCode ? (
+        <Text
+          style={{
+            fontSize: 11,
+            fontWeight: '800',
+            color: TRAILING_COLORS.red,
+            letterSpacing: 1.2,
+          }}
+        >
+          #{matchCode}
+        </Text>
+      ) : null}
+      {viewers && viewers > 0 ? (
+        <Text style={{ fontSize: 11, color: TRAILING_COLORS.ink3, fontWeight: '600' }}>
+          👁 {viewers}
+        </Text>
+      ) : null}
+      <Pressable
+        onPress={onOpenMenu}
+        accessibilityLabel="Open menu"
+        style={({ pressed }) => ({
+          paddingHorizontal: 10,
+          paddingVertical: 4,
+          borderRadius: 8,
+          backgroundColor: pressed ? '#ece4d3' : 'transparent',
+          borderColor: TRAILING_COLORS.hairline,
+          borderWidth: 1,
+        })}
+      >
+        <Text style={{ fontSize: 14, fontWeight: '700', color: TRAILING_COLORS.ink }}>☰</Text>
+      </Pressable>
     </View>
   );
 }
