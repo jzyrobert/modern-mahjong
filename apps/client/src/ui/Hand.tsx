@@ -114,8 +114,18 @@ export function Hand({
   // path is a thin pass-through that just drops the tap + drag wiring.
   // `rotate` is ignored for now — opponent sideways hands would need
   // separate composition.
-  const interactive = !faceDown && !!onTileClick;
-  const draggable = interactive && sortMode === 'manual' && !!setManualOrder;
+  //
+  // `tappable` (= can discard) and `draggable` (= can manual-reorder)
+  // are independent: tap requires `onTileClick`, which Match.tsx only
+  // sets during the user's discard window (`myTurn && hasDrawn`); drag
+  // is purely a client-side reorder that should work whenever the user
+  // is in manual sort mode, regardless of whose turn it is. The
+  // earlier gate folded both into a single `interactive` flag and
+  // refused to drag outside the discard window, which broke organising
+  // your hand while bots were playing — the user couldn't sort their
+  // tiles unless they happened to be on their own move.
+  const tappable = !faceDown && !!onTileClick;
+  const draggable = !faceDown && sortMode === 'manual' && !!setManualOrder;
   const tileWidth = fittedWidth;
   const tileHeight = fittedHeight;
   const step = tileWidth + GAP;
@@ -135,8 +145,8 @@ export function Hand({
             total={ordered.length}
             step={step}
             draggable={draggable}
-            onTap={interactive && onTileClick ? () => onTileClick(t) : undefined}
-            onReorder={interactive ? (toIndex) => onReorder(i, toIndex) : undefined}
+            onTap={tappable && onTileClick ? () => onTileClick(t) : undefined}
+            onReorder={draggable ? (toIndex) => onReorder(i, toIndex) : undefined}
             drawnTileId={drawnTileId}
             recommended={hintTileId === id}
             width={tileWidth}
