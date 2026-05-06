@@ -258,12 +258,7 @@ function BambooStick({ x, y, scale = 1, accent = false }: BambooStickProps) {
         strokeWidth={0.8}
       />
       {/* Joint lines — split the rod into three apparent segments. */}
-      <Path
-        d="M -2.4 -3 L 2.4 -3"
-        stroke={outline}
-        strokeWidth={0.7}
-        strokeLinecap="round"
-      />
+      <Path d="M -2.4 -3 L 2.4 -3" stroke={outline} strokeWidth={0.7} strokeLinecap="round" />
       <Path d="M -2.4 3 L 2.4 3" stroke={outline} strokeWidth={0.7} strokeLinecap="round" />
       {/* Per-segment top highlights for a cylindrical sheen. */}
       <Ellipse cx={-0.8} cy={-7} rx={1} ry={1.4} fill={highlight} opacity={0.7} />
