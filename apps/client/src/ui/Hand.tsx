@@ -129,6 +129,18 @@ export function Hand({
   const tileWidth = fittedWidth;
   const tileHeight = fittedHeight;
   const step = tileWidth + GAP;
+  const rowStep = tileHeight + GAP;
+  // `tilesPerRow` matches the parent flex-wrap layout exactly: each
+  // row fits `floor((containerWidth + GAP) / step)` tiles before the
+  // next one wraps (the trailing GAP is "spent" only between tiles, so
+  // we add one back to the budget when computing capacity). Falls back
+  // to `slotCount` when the layout hasn't measured yet so the source
+  // tile is treated as part of a single row — drag math then collapses
+  // to the legacy horizontal-only behaviour for that first paint.
+  const tilesPerRow =
+    containerWidth && step > 0
+      ? Math.max(1, Math.floor((containerWidth + GAP) / step))
+      : Math.max(1, slotCount);
 
   return (
     <View
@@ -144,6 +156,8 @@ export function Hand({
             index={i}
             total={ordered.length}
             step={step}
+            rowStep={rowStep}
+            tilesPerRow={tilesPerRow}
             draggable={draggable}
             onTap={tappable && onTileClick ? () => onTileClick(t) : undefined}
             onReorder={draggable ? (toIndex) => onReorder(i, toIndex) : undefined}

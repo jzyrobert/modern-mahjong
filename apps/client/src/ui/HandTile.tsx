@@ -13,6 +13,14 @@ interface HandTileProps {
   total: number;
   /** Effective horizontal step between tiles (tile width + gap). */
   step: number;
+  /** Effective vertical step between rows (tile height + gap). Used by
+   *  the drag math to compute row deltas when the hand wraps onto
+   *  multiple rows on narrow viewports. */
+  rowStep: number;
+  /** Number of tiles laid out per row by the parent's flex-wrap. Drives
+   *  the source-row + target-row math. Defaults to `total` (single row)
+   *  before the parent has measured its container. */
+  tilesPerRow: number;
   /** Manual reorder is only enabled in manual sort mode. */
   draggable: boolean;
   /** Called on tap (e.g. discard) when not dragging. */
@@ -48,9 +56,15 @@ const TAP_MOVE_THRESHOLD = 6;
  *      more than 6px, that's a tap → fire `onTap`.
  *   3. If the timer fires (finger still down), enter drag mode: bump
  *      `scale` + `translateY` so the tile visibly lifts.
- *   4. While in drag mode, `translateX` follows the finger.
- *   5. On release in drag mode, round `dx / step` to a target index,
- *      clamp to [0, total-1], snap back, fire `onReorder(toIndex)`.
+ *   4. While in drag mode, `translateX` follows the finger horizontally
+ *      and `dragY` follows it vertically — both on the native thread,
+ *      composed with the lift offset via Animated.add for translateY.
+ *   5. On release in drag mode, round `dx / step` to a target column
+ *      and `dy / rowStep` to a target row; combine into a target index
+ *      using `tilesPerRow`, clamp to [0, total-1], spring back into
+ *      the new slot, and fire `onReorder(toIndex)`. Multi-row drags
+ *      (hand wraps onto two rows on narrow viewports) land on the
+ *      right slot in the right row.
  *   6. If `draggable` is false, gestures fall through to the tap path
  *      only (no long-press lift).
  */
@@ -58,6 +72,8 @@ export function HandTile({
   tile,
   total,
   step,
+  rowStep,
+  tilesPerRow,
   draggable,
   index,
   onTap,
@@ -71,6 +87,12 @@ export function HandTile({
   const isDrawn = drawnTileId === id;
   const [dragging, setDragging] = useState(false);
   const translateX = useRef(new Animated.Value(0)).current;
+  // `dragY` follows the finger's vertical delta during drag; the lift
+  // animation `liftedY` (-10px when fully lifted) is composed on top
+  // via Animated.add. Without this the tile didn't visually move when
+  // the user dragged across rows on a narrow viewport — the gesture
+  // only updated translateX and ignored g.dy entirely.
+  const dragY = useRef(new Animated.Value(0)).current;
   const liftAnim = useRef(new Animated.Value(0)).current; // 0 = at-rest, 1 = lifted
   const hintPulse = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -107,6 +129,8 @@ export function HandTile({
   const indexRef = useRef(index);
   const totalRef = useRef(total);
   const stepRef = useRef(step);
+  const rowStepRef = useRef(rowStep);
+  const tilesPerRowRef = useRef(tilesPerRow);
   useEffect(() => {
     draggableRef.current = draggable;
     onTapRef.current = onTap;
@@ -114,6 +138,8 @@ export function HandTile({
     indexRef.current = index;
     totalRef.current = total;
     stepRef.current = step;
+    rowStepRef.current = rowStep;
+    tilesPerRowRef.current = tilesPerRow;
   });
 
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -140,7 +166,7 @@ export function HandTile({
     Animated.spring(liftAnim, { toValue: 1, useNativeDriver: true, friction: 7 }).start();
   };
 
-  const exitDrag = (gdx: number, toIndex: number | null) => {
+  const exitDrag = (gdx: number, gdy: number, toIndex: number | null) => {
     Animated.spring(liftAnim, { toValue: 0, useNativeDriver: true, friction: 7 }).start();
     draggingRef.current = false;
     setDragging(false);
@@ -149,8 +175,9 @@ export function HandTile({
     const willReorder = toIndex !== null && toIndex !== fromIndex;
     if (!willReorder) {
       // Snap back: no reorder fires, the tile simply springs from
-      // `gdx` back to its original slot.
+      // (`gdx`, `gdy`) back to its original slot.
       Animated.spring(translateX, { toValue: 0, useNativeDriver: true, friction: 7 }).start();
+      Animated.spring(dragY, { toValue: 0, useNativeDriver: true, friction: 7 }).start();
       return;
     }
 
@@ -161,35 +188,35 @@ export function HandTile({
     //      where the user's finger ended up rather than the pre-drag
     //      slot. We don't need to measure — `<FlipView>` already cached
     //      the tile's pre-drag screen rect on its last onLayout, and
-    //      the gesture only moved the visual horizontally by `gdx`.
-    //      So `cached.x + gdx` is the finger-release screen X.
-    //   2. Pre-bias `translateX` to `gdx - slotShift` BEFORE firing
-    //      `onReorder`. On the next native commit (when the parent
-    //      re-renders the tile into its new flex slot), the tile's
-    //      screen position becomes `newSlotX + (gdx - slotShift)` =
-    //      `oldSlotX + gdx` = finger. So the visual position stays put
-    //      across the swap, while the FlipBag entry now matches.
-    //   3. Spring `translateX → 0` so the tile slides from the finger
-    //      into the new slot. With the cache aligned, `<FlipView>`'s
-    //      post-swap onLayout sees its measured rect at the same
-    //      position the cache says, the FLIP-delta is 0, so the
-    //      outer spring is the only animation that runs.
-    //
-    // `slotShift` is in horizontal-step units; for the common same-row
-    // reorder the parent's flex slot really does move by that many
-    // pixels, which keeps the math exact. Cross-row drags (rare —
-    // gesture is horizontal-only) end up with a small FlipView FLIP
-    // on top, but the cache realignment still suppresses the "tile
-    // pops back to the original slot" snap that the stale pre-drag
-    // entry caused.
-    const slotShift = (toIndex - fromIndex) * stepRef.current;
+    //      the gesture moved the tile by (gdx, gdy). So
+    //      (cached.x + gdx, cached.y + gdy) is the finger-release
+    //      screen position.
+    //   2. Pre-bias both `translateX` and `dragY` so the next native
+    //      commit (when the parent re-renders the tile into its new
+    //      flex slot) lands the tile at the finger position. Each axis
+    //      uses its own slotShift: horizontal in `step` units along the
+    //      target row, vertical in `rowStep` units between rows.
+    //   3. Spring both translates → 0 so the tile slides from the
+    //      finger into the new slot. With the cache aligned,
+    //      `<FlipView>`'s post-swap onLayout sees its measured rect at
+    //      the same position the cache says, the FLIP-delta is 0, so
+    //      the outer springs are the only animations that run.
+    const perRow = Math.max(1, tilesPerRowRef.current);
+    const fromRow = Math.floor(fromIndex / perRow);
+    const fromCol = fromIndex % perRow;
+    const toRow = Math.floor(toIndex / perRow);
+    const toCol = toIndex % perRow;
+    const slotShiftX = (toCol - fromCol) * stepRef.current;
+    const slotShiftY = (toRow - fromRow) * rowStepRef.current;
     const cached = flipBag.read(`tile-${id}`);
     if (cached) {
-      flipBag.write(`tile-${id}`, { ...cached, x: cached.x + gdx });
+      flipBag.write(`tile-${id}`, { ...cached, x: cached.x + gdx, y: cached.y + gdy });
     }
-    translateX.setValue(gdx - slotShift);
+    translateX.setValue(gdx - slotShiftX);
+    dragY.setValue(gdy - slotShiftY);
     onReorderRef.current?.(toIndex);
     Animated.spring(translateX, { toValue: 0, useNativeDriver: true, friction: 7 }).start();
+    Animated.spring(dragY, { toValue: 0, useNativeDriver: true, friction: 7 }).start();
   };
 
   const responder = useRef(
@@ -224,15 +251,29 @@ export function HandTile({
         }
         if (draggingRef.current) {
           translateX.setValue(g.dx);
+          dragY.setValue(g.dy);
         }
       },
 
       onPanResponderRelease: (_e, g) => {
         cancelLongPress();
         if (draggingRef.current) {
-          const delta = Math.round(g.dx / Math.max(1, stepRef.current));
-          const toIndex = Math.max(0, Math.min(totalRef.current - 1, indexRef.current + delta));
-          exitDrag(g.dx, toIndex);
+          // Compute target index from both axes so cross-row drags
+          // (hand wraps onto multiple rows on narrow viewports) land
+          // on the right slot. Source (row, col) walks `perRow`-major;
+          // target gets the rounded gesture deltas applied to each
+          // axis, then the final index is clamped to [0, total-1] —
+          // the last row may be partial, and clamping mops up drags
+          // past the end.
+          const perRow = Math.max(1, tilesPerRowRef.current);
+          const fromRow = Math.floor(indexRef.current / perRow);
+          const fromCol = indexRef.current % perRow;
+          const deltaCol = Math.round(g.dx / Math.max(1, stepRef.current));
+          const deltaRow = Math.round(g.dy / Math.max(1, rowStepRef.current));
+          const toCol = Math.max(0, Math.min(perRow - 1, fromCol + deltaCol));
+          const toRow = Math.max(0, fromRow + deltaRow);
+          const toIndex = Math.max(0, Math.min(totalRef.current - 1, toRow * perRow + toCol));
+          exitDrag(g.dx, g.dy, toIndex);
         } else if (!movedRef.current && onTapRef.current) {
           onTapRef.current();
         }
@@ -240,15 +281,19 @@ export function HandTile({
 
       onPanResponderTerminate: () => {
         cancelLongPress();
-        if (draggingRef.current) exitDrag(0, null);
+        if (draggingRef.current) exitDrag(0, 0, null);
       },
     }),
   ).current;
 
-  // Lift transform — translateY -8px + scale 1.06 when fully lifted.
+  // Lift transform — translateY -10px + scale 1.06 when fully lifted.
   // Driven entirely on the native thread (useNativeDriver: true) so the
   // JS thread stays free for engine-side state updates while you drag.
+  // Combined with `dragY` so the tile's vertical position = (lift offset
+  // + finger gesture). `Animated.add` keeps the addition on the native
+  // thread; without it the gesture would clobber the lift offset.
   const liftedY = liftAnim.interpolate({ inputRange: [0, 1], outputRange: [0, -10] });
+  const translateY = Animated.add(liftedY, dragY);
   const liftedScale = liftAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.06] });
 
   // Discard-hint halo — a single absolutely-positioned overlay sized
@@ -276,7 +321,7 @@ export function HandTile({
       // (e.g. during bots' turns, when only manual reorder is live).
       testID={onTap || onReorder ? 'own-hand-tile' : undefined}
       style={{
-        transform: [{ translateX }, { translateY: liftedY }, { scale: liftedScale }],
+        transform: [{ translateX }, { translateY }, { scale: liftedScale }],
         zIndex: dragging ? 10 : 0,
       }}
     >
