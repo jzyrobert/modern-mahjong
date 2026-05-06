@@ -44,6 +44,31 @@ pnpm --filter @mahjong/client e2e          # Playwright (against the static bund
 
 For the online server: `pnpm --filter @mahjong/server dev` (`wrangler dev` on `:8787`). The client picks up `EXPO_PUBLIC_SERVER_URL` if set and falls back to `localhost:8787`.
 
+## Running on an Android emulator (AVD)
+
+One-time setup:
+
+1. Install Android Studio and create an AVD in **Tools → Device Manager** (Pixel 6 / API 34 is a good default).
+2. Add `platform-tools` to your `PATH` so `adb` is on the shell — usually `~/Android/Sdk/platform-tools` (macOS/Linux) or `%LOCALAPPDATA%\Android\Sdk\platform-tools` (Windows).
+3. Boot the AVD from Android Studio's Device Manager (or `emulator -avd <name>` from the command line) and wait for the home screen.
+
+Run the app — pick **one** path:
+
+- **Expo Go** (fastest, JS-only changes):
+  ```sh
+  pnpm --filter @mahjong/client start   # Metro on :8081
+  # then press `a` in the Metro terminal to launch on the running AVD
+  ```
+  First time on a fresh emulator, run `adb reverse tcp:8081 tcp:8081` once so Expo Go can reach Metro at the host's localhost. Expo Go cannot host a LAN match (the `expo-lan-server` native module is unavailable there) — use a development build for that.
+
+- **Development build** (required for native modules — LAN host, etc.):
+  ```sh
+  pnpm --filter @mahjong/client android   # = `expo run:android` — builds + installs the dev client on the running AVD
+  ```
+  Subsequent JS-only changes only need `pnpm --filter @mahjong/client start` again; rebuild only when native deps change.
+
+Verify the emulator is visible to `adb`: `adb devices` should list `emulator-5554` (or similar) before pressing `a` or running `expo run:android`. If the bundle stays stuck on "Bundling…", confirm `adb reverse tcp:8081 tcp:8081` ran — Metro listens on the host's loopback only.
+
 ## Running tests
 
 The full pre-push check pipeline (the same one CI runs):
