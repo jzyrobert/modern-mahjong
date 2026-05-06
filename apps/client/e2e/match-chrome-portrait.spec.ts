@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './_helpers';
 
 // Regression for the match shell on portrait-mobile phones. The
 // earlier layout placed `GameStatusBar` + `TopBar` inside the

@@ -1,5 +1,5 @@
-import { type Page, expect, test } from '@playwright/test';
-import { waitForUserDrawCue } from './_helpers';
+import type { Page } from '@playwright/test';
+import { expect, test, waitForUserDrawCue } from './_helpers';
 
 /**
  * Mobile-portrait coverage. The default `solo-match.spec.ts` runs on the

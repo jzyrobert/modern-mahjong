@@ -169,9 +169,33 @@ export function MobileShell(props: MobileShellProps) {
 
           {byPosition ? (
             <View style={{ gap: 6 }}>
-              <SeatRow placement={byPosition.top} state={state} lobby={lobby} />
-              <SeatRow placement={byPosition.left} state={state} lobby={lobby} />
-              <SeatRow placement={byPosition.right} state={state} lobby={lobby} />
+              <SeatRow
+                placement={byPosition.top}
+                state={state}
+                lobby={lobby}
+                aboutToDraw={aboutToDraw && nextDrawerSeat === byPosition.top.seat}
+                drawCountdown={
+                  aboutToDraw && nextDrawerSeat === byPosition.top.seat ? drawCountdown : null
+                }
+              />
+              <SeatRow
+                placement={byPosition.left}
+                state={state}
+                lobby={lobby}
+                aboutToDraw={aboutToDraw && nextDrawerSeat === byPosition.left.seat}
+                drawCountdown={
+                  aboutToDraw && nextDrawerSeat === byPosition.left.seat ? drawCountdown : null
+                }
+              />
+              <SeatRow
+                placement={byPosition.right}
+                state={state}
+                lobby={lobby}
+                aboutToDraw={aboutToDraw && nextDrawerSeat === byPosition.right.seat}
+                drawCountdown={
+                  aboutToDraw && nextDrawerSeat === byPosition.right.seat ? drawCountdown : null
+                }
+              />
             </View>
           ) : null}
 
@@ -295,9 +319,11 @@ interface SeatRowProps {
   placement: SeatPlacement;
   state: GameState;
   lobby: LobbyState | null;
+  aboutToDraw: boolean;
+  drawCountdown: number | null;
 }
 
-function SeatRow({ placement, state, lobby }: SeatRowProps) {
+function SeatRow({ placement, state, lobby, aboutToDraw, drawCountdown }: SeatRowProps) {
   const isActive = state.turn === placement.seat && state.phase === 'turn';
   const handBacks = state.hands[placement.seat].length;
   return (
@@ -308,6 +334,8 @@ function SeatRow({ placement, state, lobby }: SeatRowProps) {
         lobby={lobby}
         handBacks={handBacks}
         isActive={isActive}
+        aboutToDraw={aboutToDraw}
+        drawCountdown={drawCountdown}
       />
       {state.melds[placement.seat].length > 0 ? (
         <MeldStrip melds={state.melds[placement.seat]} tileWidth={14} tileHeight={20} />

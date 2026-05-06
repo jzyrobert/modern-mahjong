@@ -1,10 +1,11 @@
-import { type Bot, type BotKind, bots as botRegistry, runBotTurns } from '@mahjong/bots';
+import { type Bot, type BotKind, bots as botRegistry } from '@mahjong/bots';
 import {
   type Action,
   type Claim,
   DEFAULT_RULES,
   type GameState,
   IllegalActionError,
+  SEATS,
   type Seat,
   type Tile,
   emptyState,
@@ -34,6 +35,12 @@ type TestBotScripts = Partial<Record<Seat, TestBotScript>>;
 declare global {
   // eslint-disable-next-line no-var
   var __MAHJONG_TEST_BOT_SCRIPTS__: TestBotScripts | undefined;
+  /** Override the per-bot-turn pacing delay. Default in production is
+   *  3000ms (gives the user time to read the bot's discard before the
+   *  next turn fires). Tests set this to `0` so the suite runs in
+   *  seconds instead of minutes. */
+  // eslint-disable-next-line no-var
+  var __MAHJONG_TEST_BOT_PACE_MS__: number | undefined;
 }
 
 interface SoloOptions {
@@ -96,6 +103,9 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
   const statusListeners = new Set<(s: TransportStatus) => void>();
   let _status: TransportStatus = 'open';
   let closed = false;
+  let pacingHandle: ReturnType<typeof setTimeout> | null = null;
+
+  const DEFAULT_BOT_PACE_MS = 3_000;
 
   function emit(m: ServerMessage) {
     for (const cb of messageListeners) cb(m);
@@ -111,15 +121,97 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
   // infinite time to choose an action; the hand advances the instant
   // the user clicks pass / a claim, and never before.
   //
-  // The engine handles the rest reactively: the `discard` reducer
-  // pre-fills `submitted` with passes for any seat that has no
-  // meaningful claim against the discard, and `declareClaim` folds in
-  // a `resolveClaims` call once every non-discarder seat is in
-  // `submitted` (which, in solo, happens the moment bots react +
-  // the user explicitly submits).
+  // The engine handles claim resolution reactively: the `discard`
+  // reducer pre-fills `submitted` with passes for any seat that has
+  // no meaningful claim, and `declareClaim` folds in a `resolveClaims`
+  // call once every non-discarder seat is accounted for.
+  //
+  // Bot turns are *paced* — `BOT_TURN_PAUSE_MS` between draw and
+  // discard so the user can actually read what each opponent threw.
+  // Claim submissions stay instant; they don't have visible weight on
+  // their own (the felt only updates when the round resolves).
+
+  function clearPacing() {
+    if (pacingHandle !== null) {
+      clearTimeout(pacingHandle);
+      pacingHandle = null;
+    }
+  }
+
+  function botPaceMs(): number {
+    const override = globalThis.__MAHJONG_TEST_BOT_PACE_MS__;
+    return typeof override === 'number' ? override : DEFAULT_BOT_PACE_MS;
+  }
 
   function runBots() {
-    runBotTurns(() => state, bots, applyAction);
+    clearPacing();
+    driveBots();
+  }
+
+  function driveBots() {
+    if (closed) return;
+
+    // 1. Drain claim submissions instantly. The engine auto-resolves
+    //    on all-submitted (solo has no fairness gate), so a few of
+    //    these in a row land us back in 'turn'.
+    while (state.phase === 'awaitingClaims' && state.pendingClaims) {
+      let progressed = false;
+      const pending = state.pendingClaims;
+      for (const seat of SEATS) {
+        if (seat === pending.discard.from) continue;
+        const bot = bots[seat];
+        if (!bot) continue;
+        if (pending.submitted[seat]) continue;
+        const claim = bot.pickClaim({ state, seat });
+        applyAction({ t: 'declareClaim', seat, claim });
+        progressed = true;
+      }
+      if (!progressed) break;
+    }
+    if (closed) return;
+
+    // 2. We're either in 'turn' for a bot, in 'turn' for the user, or
+    //    the hand has resolved. Stop unless it's a bot's turn.
+    if (state.phase !== 'turn') return;
+    const seat = state.turn;
+    const bot = bots[seat];
+    if (!bot) return; // user's turn — wait for explicit action
+
+    // 3. Apply the draw immediately so the new tile slides in. Then
+    //    pause `botPaceMs` (the "thinking" gap) before the discard.
+    if (!state.hasDrawn) {
+      applyAction({ t: 'draw', seat });
+      // A draw on the last live tile may resolve the hand straight to
+      // 'resolved'; bail out without scheduling a discard.
+      if (state.phase !== 'turn') {
+        driveBots();
+        return;
+      }
+    }
+    pacingHandle = setTimeout(
+      () => {
+        pacingHandle = null;
+        if (closed) return;
+        if (state.phase !== 'turn') return;
+        const turnSeat = state.turn;
+        const turnBot = bots[turnSeat];
+        if (!turnBot) return;
+        // Try a self-draw win first; the engine throws SHAPE/FAAN if
+        // the hand isn't actually winning, which we treat as "fall
+        // through to a normal discard". Same idea as `bots/run.ts`.
+        try {
+          applyAction({ t: 'declareWin', seat: turnSeat, selfDraw: true });
+          driveBots();
+          return;
+        } catch (e) {
+          if (!(e instanceof IllegalActionError)) throw e;
+        }
+        const tile = turnBot.pickDiscard({ state, seat: turnSeat });
+        applyAction({ t: 'discard', seat: turnSeat, tile });
+        driveBots();
+      },
+      Math.max(0, botPaceMs()),
+    );
   }
 
   function emitLobby() {
@@ -208,6 +300,7 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
     },
     close() {
       closed = true;
+      clearPacing();
       _status = 'closed';
       for (const cb of statusListeners) cb(_status);
     },

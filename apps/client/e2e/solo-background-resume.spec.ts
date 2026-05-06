@@ -1,4 +1,5 @@
-import { type Page, expect, test } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expect, test } from './_helpers';
 
 /**
  * Solo matches run entirely in-process — no server-side session to
