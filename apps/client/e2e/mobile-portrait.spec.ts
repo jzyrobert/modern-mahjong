@@ -1,4 +1,5 @@
 import { type Page, expect, test } from '@playwright/test';
+import { waitForUserDrawCue } from './_helpers';
 
 /**
  * Mobile-portrait coverage. The default `solo-match.spec.ts` runs on the
@@ -79,9 +80,11 @@ test('mobile: draw-cue → tap-to-discard cycle hands turn back to bots', async 
   // Bots play — wall depletes — turn comes back. The mobile shell shows
   // a `<DrawCue>` component below the hand; legacy testID was
   // `wall-draw-next`. After tapping it, `hasDrawn=true` and the cue
-  // disappears, freeing the user to discard again.
+  // disappears, freeing the user to discard again. Solo's claim
+  // window is now infinite, so we auto-pass any incidental claim
+  // opportunities on the way back to the user's turn.
   const drawCue = page.getByTestId('wall-draw-next');
-  await expect(drawCue).toBeVisible({ timeout: 30_000 });
+  await waitForUserDrawCue(page, 30_000);
   await drawCue.click();
   await expect(drawCue).toBeHidden();
 

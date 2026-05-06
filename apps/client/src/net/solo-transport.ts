@@ -9,6 +9,8 @@ import {
   type Seat,
   type Tile,
   emptyState,
+  isWinning,
+  legalClaimsFor,
   reduce,
   sameFace,
 } from '@mahjong/game-logic';
@@ -95,24 +97,46 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
     const { state: next, events } = reduce(state, action);
     state = next;
     emit({ t: 'delta', events, state });
-    maybeResolveClaims();
+    tickClaims();
   }
 
   // Solo intentionally has **no claim-window alarm**. The user gets
-  // infinite time to choose an action. Bots submit their claims
-  // synchronously after the user's discard, and this hook fires
-  // `resolveClaims` the moment every non-discarder seat is in — so
-  // the hand advances the instant the user clicks pass / a claim,
-  // and never before.
-  function maybeResolveClaims() {
+  // infinite time to choose an action; the hand advances the instant
+  // the user clicks pass / a claim, and never before.
+  //
+  // Two reactive hooks fire after every reduce:
+  //   1. If the user is sitting in `awaitingClaims` with no meaningful
+  //      action (only `pass` is legal and they can't `hu`), auto-pass
+  //      on their behalf — `Match` deliberately hides the bar in that
+  //      case to keep the UI calm, so we'd otherwise deadlock.
+  //   2. Once every non-discarder seat is in the `submitted` map
+  //      (bots arrive there reactively from `runBots`, the user from
+  //      either explicit clicks or the auto-pass above), fire
+  //      `resolveClaims` to advance the hand.
+  function tickClaims() {
     if (state.phase !== 'awaitingClaims' || !state.pendingClaims) return;
     const discardFrom = state.pendingClaims.discard.from;
     const submitted = state.pendingClaims.submitted;
+    const userSeat: Seat = 0;
+    if (discardFrom !== userSeat && !submitted[userSeat] && !userHasMeaningfulClaim()) {
+      applyAction({ t: 'declareClaim', seat: userSeat, claim: { kind: 'pass' } });
+      return; // applyAction recurses back into tickClaims with the user submitted.
+    }
     const allIn = SEATS.every((s) => s === discardFrom || submitted[s]);
-    if (!allIn) return;
-    const { state: next, events } = reduce(state, { t: 'resolveClaims', nowMs: Date.now() });
-    state = next;
-    emit({ t: 'delta', events, state });
+    if (allIn) applyAction({ t: 'resolveClaims', nowMs: Date.now() });
+  }
+
+  function userHasMeaningfulClaim(): boolean {
+    if (!state.pendingClaims) return false;
+    const userSeat: Seat = 0;
+    const legal = legalClaimsFor(state, userSeat);
+    if (legal.some((k) => k !== 'pass')) return true;
+    const allowSpecial = state.rules.allowSevenPairs || state.rules.allowThirteenOrphans;
+    return isWinning({
+      hand: [...state.hands[userSeat], state.pendingClaims.discard.tile],
+      exposedMelds: state.melds[userSeat].length,
+      allowSpecial,
+    });
   }
 
   function runBots() {

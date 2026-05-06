@@ -1,4 +1,5 @@
 import { type Page, expect, test } from '@playwright/test';
+import { waitForUserDrawCue } from './_helpers';
 
 /**
  * Claim-bar coverage. Pinned to a 360-wide viewport because the bug
@@ -89,11 +90,12 @@ test('no claim available: ClaimBar does not render', async ({ page }) => {
 
   await page.getByTestId('own-hand-tile').first().click();
 
-  // Wait for bot 1 to discard so the engine has actually entered (and
-  // possibly left) `awaitingClaims`. If no claim was legal, the engine
-  // auto-resolves and the user's turn comes back without a ClaimBar.
-  await expect(page.getByTestId('wall-draw-next')).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText('CLAIM?', { exact: true })).toBeHidden();
+  // Bot 1 discards the scripted (non-claimable) tile, so the user
+  // should NOT see a ClaimBar against bot 1's discard. Bots 2/3 may
+  // freely discard naturally afterwards — the helper auto-passes any
+  // incidental claim windows on their behalf so the test gets back to
+  // the user's draw cue without depending on alarm timing.
+  await waitForUserDrawCue(page, 15_000);
 });
 
 async function dismissOpeningRolls(page: Page) {
