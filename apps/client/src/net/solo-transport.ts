@@ -5,6 +5,7 @@ import {
   DEFAULT_RULES,
   type GameState,
   IllegalActionError,
+  SEATS,
   type Seat,
   type Tile,
   emptyState,
@@ -84,7 +85,6 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
   const messageListeners = new Set<(m: ServerMessage) => void>();
   const statusListeners = new Set<(s: TransportStatus) => void>();
   let _status: TransportStatus = 'open';
-  let alarmHandle: ReturnType<typeof setTimeout> | null = null;
   let closed = false;
 
   function emit(m: ServerMessage) {
@@ -95,31 +95,28 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
     const { state: next, events } = reduce(state, action);
     state = next;
     emit({ t: 'delta', events, state });
+    maybeResolveClaims();
+  }
+
+  // Solo intentionally has **no claim-window alarm**. The user gets
+  // infinite time to choose an action. Bots submit their claims
+  // synchronously after the user's discard, and this hook fires
+  // `resolveClaims` the moment every non-discarder seat is in — so
+  // the hand advances the instant the user clicks pass / a claim,
+  // and never before.
+  function maybeResolveClaims() {
+    if (state.phase !== 'awaitingClaims' || !state.pendingClaims) return;
+    const discardFrom = state.pendingClaims.discard.from;
+    const submitted = state.pendingClaims.submitted;
+    const allIn = SEATS.every((s) => s === discardFrom || submitted[s]);
+    if (!allIn) return;
+    const { state: next, events } = reduce(state, { t: 'resolveClaims', nowMs: Date.now() });
+    state = next;
+    emit({ t: 'delta', events, state });
   }
 
   function runBots() {
     runBotTurns(() => state, bots, applyAction);
-  }
-
-  function scheduleAlarm() {
-    if (alarmHandle !== null) {
-      clearTimeout(alarmHandle);
-      alarmHandle = null;
-    }
-    if (closed) return;
-    if (state.phase !== 'awaitingClaims' || !state.pendingClaims) return;
-    const delay = Math.max(0, state.pendingClaims.deadlineMs - Date.now());
-    alarmHandle = setTimeout(() => {
-      alarmHandle = null;
-      if (closed) return;
-      try {
-        applyAction({ t: 'resolveClaims', nowMs: Date.now() });
-        runBots();
-      } catch (e) {
-        console.error('solo alarm error', e);
-      }
-      scheduleAlarm();
-    }, delay);
   }
 
   function emitLobby() {
@@ -176,7 +173,6 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
       try {
         applyAction(msg.action);
         runBots();
-        scheduleAlarm();
       } catch (e) {
         if (e instanceof IllegalActionError) {
           emit({ t: 'error', code: e.code, detail: e.message });
@@ -199,10 +195,6 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
     },
     close() {
       closed = true;
-      if (alarmHandle !== null) {
-        clearTimeout(alarmHandle);
-        alarmHandle = null;
-      }
       _status = 'closed';
       for (const cb of statusListeners) cb(_status);
     },
