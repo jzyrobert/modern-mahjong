@@ -31,7 +31,7 @@ test('solo: backgrounding the tab mid-hand preserves the engine state', async ({
   await page.getByRole('button', { name: 'Play vs bots' }).click();
   await page.getByRole('button', { name: 'Start match' }).click();
   await dismissOpeningRolls(page);
-  await expect(page.getByText(/\d+ tiles in wall/)).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText(/\d+ tiles/)).toBeVisible({ timeout: 10_000 });
   await expect(page.getByTestId('own-hand-tile').first()).toBeVisible({ timeout: 10_000 });
 
   const wallBefore = await readWallCount(page);
@@ -48,7 +48,7 @@ test('solo: backgrounding the tab mid-hand preserves the engine state', async ({
   // The wall count + hand count must match exactly — same engine state
   // we left. A regression to the close-and-rejoin path would deal a
   // fresh hand (different wall count, dealer + 13 hand-tile reset).
-  await expect(page.getByText(/\d+ tiles in wall/)).toBeVisible();
+  await expect(page.getByText(/\d+ tiles/)).toBeVisible();
   expect(await readWallCount(page)).toBe(wallBefore);
   expect(await page.getByTestId('own-hand-tile').count()).toBe(handBefore);
 
@@ -81,7 +81,7 @@ async function setVisibility(page: Page, state: 'hidden' | 'visible') {
 }
 
 async function readWallCount(page: Page): Promise<number> {
-  const text = await page.getByText(/\d+ tiles in wall/).innerText();
-  const m = text.match(/(\d+)\s*tiles in wall/);
+  const text = await page.getByText(/\d+ tiles/).innerText();
+  const m = text.match(/(\d+)\s*tiles/);
   return m ? Number.parseInt(m[1]!, 10) : Number.NaN;
 }

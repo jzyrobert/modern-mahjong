@@ -29,7 +29,7 @@ test('mobile manual sort: drag the first tile across one slot reorders the hand'
   await page.getByRole('button', { name: 'Play vs bots' }).click();
   await page.getByRole('button', { name: 'Start match' }).click();
   await dismissOpeningRolls(page);
-  await expect(page.getByText(/\d+ tiles in wall/)).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText(/\d+ tiles/)).toBeVisible({ timeout: 10_000 });
 
   // Switch to MANUAL sort so the engine's auto-sort doesn't immediately
   // re-sort the hand back after we drop a tile.
@@ -113,7 +113,7 @@ test.describe('desktop, outside discard window', () => {
     await page.getByRole('button', { name: 'Play vs bots' }).click();
     await page.getByRole('button', { name: 'Start match' }).click();
     await dismissOpeningRolls(page);
-    await expect(page.getByText(/\d+ tiles in wall/)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/\d+ tiles/)).toBeVisible({ timeout: 10_000 });
 
     // Discard once so we're past our turn — the bots take over and
     // the user's `onTileClick` becomes undefined for the rest of the
@@ -171,7 +171,7 @@ test.describe('narrow viewport, multi-row hand', () => {
     await page.getByRole('button', { name: 'Play vs bots' }).click();
     await page.getByRole('button', { name: 'Start match' }).click();
     await dismissOpeningRolls(page);
-    await expect(page.getByText(/\d+ tiles in wall/)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/\d+ tiles/)).toBeVisible({ timeout: 10_000 });
 
     await page.getByText('MANUAL', { exact: true }).click();
 

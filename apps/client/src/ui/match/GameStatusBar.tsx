@@ -108,6 +108,7 @@ export function GameStatusBar({
       </Text>
       <Text style={{ opacity: 0.3, color: COLORS.ink, fontSize: 10 }}>│</Text>
       <Text
+        accessibilityLabel={`${wallCount} tiles remaining in wall`}
         style={{
           fontSize: 10,
           letterSpacing: 0.4,
@@ -115,7 +116,7 @@ export function GameStatusBar({
           fontWeight: '700',
         }}
       >
-        {wallCount} tiles in wall
+        {wallCount} tiles
       </Text>
       {isMyTurn ? (
         <View
