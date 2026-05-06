@@ -1,6 +1,6 @@
 import type { Tile as MTile } from '@mahjong/game-logic';
 import { Text, View } from 'react-native';
-import Svg, { Circle, Ellipse, G, Line, Path } from 'react-native-svg';
+import Svg, { Circle, Ellipse, G, Path, Rect } from 'react-native-svg';
 
 /**
  * Mahjong tile face — procedural geometry for pin dots and bamboo
@@ -157,35 +157,59 @@ function PinDot({ x, y, r }: { x: number; y: number; r: number }) {
 
 function SouSvg({ rank }: { rank: number }) {
   if (rank === 1) {
-    // 1-sou: traditional bird. Procedural geometry — body, head, eye,
-    // wings, beak.
-    const sc = W / 44;
+    // 1-sou: traditional sparrow, in profile. The previous redesign
+    // came out too abstract — a green oval with a red dot floated
+    // above. This version commits to the silhouette: head facing
+    // LEFT (so the beak + eye anchor that side), a short neck that
+    // visibly joins the head to the body, a wing fold curve on the
+    // body for separation, three fanned tail feathers trailing to
+    // the right, and a small leg below. Reads as a bird at both the
+    // 36×50 reference size and the 22×30 SeatDiscardPile size.
+    const sc = W / 50;
     return (
       <G transform={`translate(${CX},${CY}) scale(${sc})`}>
-        <Ellipse cx={0} cy={2} rx={10} ry={13} fill="#3e8749" />
-        <Circle cx={0} cy={-9} r={6} fill="#aa3f30" />
-        <Circle cx={2} cy={-10} r={1.2} fill="white" />
+        {/* Tail — three fanned feathers behind body. */}
+        <Path d="M 4 0 L 13 4" stroke="#3e8749" strokeWidth={1.9} strokeLinecap="round" />
+        <Path d="M 5 4 L 14 11" stroke="#284628" strokeWidth={2.2} strokeLinecap="round" />
+        <Path d="M 5 8 L 12 15" stroke="#306835" strokeWidth={2} strokeLinecap="round" />
+        {/* Body — slim oval, slightly tilted forward. */}
+        <Ellipse cx={0} cy={2} rx={6} ry={9} fill="#3e8749" />
+        {/* Wing fold curve on body. */}
         <Path
-          d="M -3 -2 Q -8 4 -10 8"
-          stroke="#306835"
-          strokeWidth={1.5}
+          d="M -4 0 Q 0 5 5 5"
+          stroke="#284628"
+          strokeWidth={1.4}
           fill="none"
           strokeLinecap="round"
         />
+        {/* Neck — visible link from head to body. */}
         <Path
-          d="M 3 -2 Q 8 4 10 8"
-          stroke="#306835"
-          strokeWidth={1.5}
-          fill="none"
+          d="M -2 -4 Q -3 -6 -3 -8"
+          stroke="#3e8749"
+          strokeWidth={3.5}
           strokeLinecap="round"
+          fill="none"
         />
-        <Path d="M 0 -3 L 4 -6" stroke="#a17b1c" strokeWidth={1.5} strokeLinecap="round" />
+        {/* Head. */}
+        <Circle cx={-3} cy={-9} r={4} fill="#aa3f30" />
+        {/* Eye — pupil + glint. */}
+        <Circle cx={-4} cy={-10} r={1} fill="white" />
+        <Circle cx={-4} cy={-10} r={0.4} fill="#3a3328" />
+        {/* Beak — triangle pointing left. */}
+        <Path d="M -7 -9 L -3 -10 L -3 -7 Z" fill="#d6a23a" />
+        {/* Leg + perch dot. */}
+        <Path d="M -1 11 L -1 14" stroke="#a17b1c" strokeWidth={1.3} strokeLinecap="round" />
       </G>
     );
   }
   const layout = LAYOUTS[rank] ?? [];
   const baseScale = rank <= 4 ? 0.75 : rank <= 6 ? 0.6 : 0.5;
   const sc = (baseScale * (W / 44)) / 0.75;
+  // Traditional accent: 5-sou's centre rod is red — it's the
+  // "lucky" tile that's been picked out in red on every Hong Kong /
+  // Japanese mahjong set since the early 20th century. Match the
+  // convention so users coming from physical sets recognise it.
+  const accentIdx = rank === 5 ? 2 : -1;
   return (
     <G transform={`translate(${CX},${CY}) scale(${sc})`}>
       {layout.map(([x, y], i) => (
@@ -195,18 +219,51 @@ function SouSvg({ rank }: { rank: number }) {
           x={x}
           y={y}
           scale={0.75}
+          accent={i === accentIdx}
         />
       ))}
     </G>
   );
 }
 
-function BambooStick({ x, y, scale = 1 }: { x: number; y: number; scale?: number }) {
+interface BambooStickProps {
+  x: number;
+  y: number;
+  scale?: number;
+  /** Render in the red lucky-rod palette instead of green. The
+   *  5-sou centre rod sets this; everything else stays green. */
+  accent?: boolean;
+}
+
+function BambooStick({ x, y, scale = 1, accent = false }: BambooStickProps) {
+  // Single tall capsule with two horizontal joint lines and three
+  // subtle highlights — reads as bamboo at desktop tile sizes and
+  // stays legible at the 22×30 SeatDiscardPile size. Drawing
+  // three separate rectangles muddied the silhouette at small
+  // sizes; one outlined rod with internal joints holds together.
+  const fill = accent ? '#c14a3a' : '#3e8749';
+  const outline = accent ? '#7a2a20' : '#284628';
+  const highlight = accent ? '#e88478' : '#7ed091';
   return (
     <G transform={`translate(${x},${y}) scale(${scale})`}>
-      <Ellipse cx={0} cy={0} rx={3.2} ry={9} fill="#3e8749" />
-      <Ellipse cx={0} cy={-3} rx={3.2} ry={2} fill="#5dba6c" opacity={0.6} />
-      <Line x1={-3.2} y1={0} x2={3.2} y2={0} stroke="#284628" strokeWidth={0.6} />
+      <Rect
+        x={-2.8}
+        y={-9}
+        width={5.6}
+        height={18}
+        rx={2.4}
+        ry={2.4}
+        fill={fill}
+        stroke={outline}
+        strokeWidth={0.8}
+      />
+      {/* Joint lines — split the rod into three apparent segments. */}
+      <Path d="M -2.4 -3 L 2.4 -3" stroke={outline} strokeWidth={0.7} strokeLinecap="round" />
+      <Path d="M -2.4 3 L 2.4 3" stroke={outline} strokeWidth={0.7} strokeLinecap="round" />
+      {/* Per-segment top highlights for a cylindrical sheen. */}
+      <Ellipse cx={-0.8} cy={-7} rx={1} ry={1.4} fill={highlight} opacity={0.7} />
+      <Ellipse cx={-0.8} cy={-1} rx={1} ry={1.4} fill={highlight} opacity={0.55} />
+      <Ellipse cx={-0.8} cy={5} rx={1} ry={1.4} fill={highlight} opacity={0.45} />
     </G>
   );
 }
