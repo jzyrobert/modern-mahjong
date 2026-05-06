@@ -1,4 +1,4 @@
-import { applyClaim, hasMeaningfulClaim, resolveClaims } from './claims.js';
+import { applyClaim, hasMeaningfulClaim, legalClaimsFor, resolveClaims } from './claims.js';
 import type { Meld } from './hand.js';
 import { meldSize } from './hand.js';
 import { rollDice, shuffle } from './rng.js';
@@ -298,6 +298,24 @@ function declareClaim(
   }
   if (state.lastDiscard?.from === seat) {
     throw new IllegalActionError('SEAT', 'discarder cannot claim own discard');
+  }
+  // Validate the claim shape against the seat's legal options. `pass`
+  // is always legal; `hu` skips the kind check because
+  // `legalClaimsFor` deliberately omits it (depends on shanten +
+  // scoring), and the downstream `resolveAndApply` path runs
+  // `canFinalizeHu` to enforce shape + faan together. For
+  // `chi` / `peng` / `gong` we reject claims that the seat couldn't
+  // actually make — chi from anyone other than the next seat after
+  // the discarder, peng/gong without enough copies in hand, etc.
+  // Pre-fix `resolveClaims` silently filtered invalid chi (the
+  // resolution returned `kind: 'pass'` instead of throwing), which
+  // hid client-side bugs and gave a malicious or buggy client no
+  // feedback that its action wasn't honoured.
+  if (claim.kind !== 'pass' && claim.kind !== 'hu') {
+    const legal = legalClaimsFor(state, seat);
+    if (!legal.includes(claim.kind)) {
+      throw new IllegalActionError('CLAIM', `${claim.kind} is not legal for seat ${seat}`);
+    }
   }
   const submitted = { ...state.pendingClaims.submitted, [seat]: claim };
   const newState: GameState = {
