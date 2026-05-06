@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type ClaimRound, type Seat, resolveClaims } from '../src/index.js';
+import { type ClaimRound, type Seat, type Tile, chiOptions, resolveClaims } from '../src/index.js';
 
 const tile = (rank: 1 | 5 | 9): { kind: 'suit'; suit: 'man'; rank: typeof rank; copy: 0 } => ({
   kind: 'suit',
@@ -60,6 +60,33 @@ describe('claim resolution', () => {
     if (r.kind === 'win') {
       expect(r.seat).toBe(1);
     }
+  });
+
+  it('chiOptions enumerates the legal completions for the discard', () => {
+    const m = (rank: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9): Tile => ({
+      kind: 'suit',
+      suit: 'man',
+      rank,
+      copy: 0,
+    });
+
+    // Discard 5m, hand has 3m,4m,6m,7m: three runs available
+    //   3-4-5, 4-5-6, 5-6-7
+    expect(chiOptions([m(3), m(4), m(6), m(7)], m(5))).toHaveLength(3);
+
+    // Discard 1m, hand has 2m,3m: only one run (1-2-3)
+    expect(chiOptions([m(2), m(3)], m(1))).toHaveLength(1);
+
+    // Discard 9m, hand has 7m,8m: only one run (7-8-9)
+    expect(chiOptions([m(7), m(8)], m(9))).toHaveLength(1);
+
+    // Mixed suit: discard 5m vs hand of 3p,4p — no chi (different suit)
+    const p = (rank: 3 | 4): Tile => ({ kind: 'suit', suit: 'pin', rank, copy: 0 });
+    expect(chiOptions([p(3), p(4)], m(5))).toHaveLength(0);
+
+    // Honor discard never yields chi options.
+    const honor: Tile = { kind: 'honor', honor: 'E', copy: 0 };
+    expect(chiOptions([m(2), m(3)], honor)).toHaveLength(0);
   });
 
   it('property: highest-priority kind always wins', () => {

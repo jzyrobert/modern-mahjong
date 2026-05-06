@@ -1,7 +1,9 @@
-import type { Action, Claim, Seat } from '@mahjong/game-logic';
-import { isWinning, legalClaimsFor } from '@mahjong/game-logic';
+import type { Action, Claim, Tile as MTile, Seat } from '@mahjong/game-logic';
+import { chiOptions, isWinning, legalClaimsFor } from '@mahjong/game-logic';
+import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useGame } from '../state/game';
+import { Tile } from './Tile';
 
 interface ClaimBarProps {
   onAction: (a: Action) => void;
@@ -42,12 +44,16 @@ const ORDER: readonly CallKind[] = ['chi', 'peng', 'gong', 'hu', 'pass'];
  * seat actually has a winning hand against the discarded tile —
  * `legalClaimsFor` deliberately omits `hu` because it depends on
  * shanten + scoring, so we run `isWinning` here against the
- * `hand + discard` projection. `chi` is suppressed until the meld
- * picker UI lands (submitting a chi needs the user to pick the two
- * completing tiles).
+ * `hand + discard` projection.
+ *
+ * `chi` shows when there's at least one legal completion. With a
+ * single option, clicking commits the chi directly; with multiple,
+ * it reveals an inline tile-thumbnail picker so the user picks the
+ * specific run.
  */
 export function ClaimBar({ onAction, seat }: ClaimBarProps) {
   const state = useGame((s) => s.state);
+  const [chiPickerOpen, setChiPickerOpen] = useState(false);
   const legal = new Set<CallKind>(state ? legalClaimsFor(state, seat) : []);
   if (state?.lastDiscard && state.lastDiscard.from !== seat) {
     const allowSpecial = state.rules.allowSevenPairs || state.rules.allowThirteenOrphans;
@@ -58,15 +64,26 @@ export function ClaimBar({ onAction, seat }: ClaimBarProps) {
     });
     if (winnable) legal.add('hu');
   }
-  const visible = ORDER.filter((k) => legal.has(k)).filter((k) => k !== 'chi');
+  const visible = ORDER.filter((k) => legal.has(k));
+  const discard = state?.lastDiscard?.tile ?? null;
+  const chiOpts = state && discard ? chiOptions(state.hands[seat], discard) : [];
+
+  const handleClick = (kind: CallKind) => {
+    if (kind === 'chi') {
+      if (chiOpts.length === 1) {
+        onAction({ t: 'declareClaim', seat, claim: { kind: 'chi', with: chiOpts[0]! } });
+      } else if (chiOpts.length > 1) {
+        setChiPickerOpen((open) => !open);
+      }
+      return;
+    }
+    onAction({ t: 'declareClaim', seat, claim: claimFor(kind) });
+  };
 
   return (
     <View
       style={{
-        flexDirection: 'row',
-        alignItems: 'center',
         gap: 10,
-        flexWrap: 'wrap',
         padding: 12,
         backgroundColor: '#fbf8f0',
         borderColor: '#cdc1ad',
@@ -75,20 +92,88 @@ export function ClaimBar({ onAction, seat }: ClaimBarProps) {
         boxShadow: '0px 4px 12px rgba(0,0,0,0.08)',
       }}
     >
-      <Text style={{ fontSize: 11, fontWeight: '800', color: '#918275', letterSpacing: 0.5 }}>
-        CLAIM?
-      </Text>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-        {visible.map((kind) => (
-          <CallButton
-            key={kind}
-            kind={kind}
-            onPress={() => onAction({ t: 'declareClaim', seat, claim: claimFor(kind) })}
-          />
-        ))}
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 10,
+          flexWrap: 'wrap',
+        }}
+      >
+        <Text style={{ fontSize: 11, fontWeight: '800', color: '#918275', letterSpacing: 0.5 }}>
+          CLAIM?
+        </Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          {visible.map((kind) => (
+            <CallButton key={kind} kind={kind} onPress={() => handleClick(kind)} />
+          ))}
+        </View>
       </View>
+      {chiPickerOpen && discard ? (
+        <ChiOptionPicker
+          discard={discard}
+          options={chiOpts}
+          onPick={(opt) => {
+            setChiPickerOpen(false);
+            onAction({ t: 'declareClaim', seat, claim: { kind: 'chi', with: opt } });
+          }}
+        />
+      ) : null}
     </View>
   );
+}
+
+interface ChiOptionPickerProps {
+  discard: MTile;
+  options: readonly (readonly [MTile, MTile])[];
+  onPick: (option: [MTile, MTile]) => void;
+}
+
+function ChiOptionPicker({ discard, options, onPick }: ChiOptionPickerProps) {
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+      {options.map((opt, i) => {
+        // Sort the three tiles by rank so the preview reads as a run.
+        const run = sortRun(discard, opt[0], opt[1]);
+        return (
+          <Pressable
+            // biome-ignore lint/suspicious/noArrayIndexKey: position-stable per discard
+            key={i}
+            onPress={() => onPick([opt[0], opt[1]])}
+            testID="chi-option"
+            style={({ pressed }) => ({
+              flexDirection: 'row',
+              gap: 2,
+              padding: 6,
+              borderRadius: 10,
+              backgroundColor: pressed ? '#e3dac3' : '#f4ecdb',
+              borderWidth: 1,
+              borderColor: '#cdc1ad',
+            })}
+          >
+            {run.map((t, j) => (
+              <Tile
+                // biome-ignore lint/suspicious/noArrayIndexKey: ordered run is positional
+                key={j}
+                tile={t}
+                width={24}
+                height={34}
+              />
+            ))}
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+function sortRun(a: MTile, b: MTile, c: MTile): MTile[] {
+  // chi is always within a single suit; rank ordering is enough.
+  return [a, b, c].sort((x, y) => {
+    const xr = x.kind === 'suit' ? x.rank : 0;
+    const yr = y.kind === 'suit' ? y.rank : 0;
+    return xr - yr;
+  });
 }
 
 function CallButton({ kind, onPress }: { kind: CallKind; onPress: () => void }) {
@@ -132,7 +217,7 @@ function CallButton({ kind, onPress }: { kind: CallKind; onPress: () => void }) 
 }
 
 function claimFor(kind: Exclude<CallKind, 'chi'>): Claim {
-  // chi requires the two completing tiles — UI-side picker not built
-  // yet. Other kinds are bare tags.
+  // chi has its own path via `ChiOptionPicker` — it needs the two
+  // completing tiles bundled into the action. Other kinds are bare tags.
   return { kind } as Claim;
 }
