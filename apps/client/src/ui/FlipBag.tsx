@@ -37,7 +37,7 @@ const noopApi: FlipBagApi = {
   enabled: false,
 };
 
-const FlipBagContext = createContext<FlipBagApi>(noopApi);
+export const FlipBagContext = createContext<FlipBagApi>(noopApi);
 
 interface FlipBagProviderProps {
   children: ReactNode;
