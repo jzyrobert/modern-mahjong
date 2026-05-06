@@ -1,4 +1,5 @@
-import { type Page, expect, test } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expect, test } from './_helpers';
 
 /**
  * Solo waiting room exposes a per-bot skill picker (Easy / Standard /

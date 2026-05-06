@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './_helpers';
 
 // Pin the dice roll so seat 0 (the user) is dealer outright. Same
 // trick as `solo-match.spec.ts` — seed 5 produces sums 10/5/6/8.

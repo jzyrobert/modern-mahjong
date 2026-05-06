@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './_helpers';
 
 // Regression for full-screen overlays (DiceCeremony, WinCelebration)
 // at portrait-mobile widths. Both used a `minWidth: 320` / `minWidth:

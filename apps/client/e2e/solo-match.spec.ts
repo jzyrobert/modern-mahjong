@@ -1,5 +1,5 @@
-import { type Page, expect, test } from '@playwright/test';
-import { waitForUserDrawCue } from './_helpers';
+import type { Page } from '@playwright/test';
+import { expect, test, waitForUserDrawCue } from './_helpers';
 
 // Pin the lobby's `randomSeed()` to a value where the engine's opening
 // dice roll lands seat 0 (the user) as dealer outright (sums: 10/5/6/8).

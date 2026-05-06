@@ -1,4 +1,26 @@
-import { type Page, expect } from '@playwright/test';
+import { type Page, test as base, expect } from '@playwright/test';
+
+/**
+ * Spec-local `test` that pins solo bot pacing to 0ms via an
+ * automatic `addInitScript`. Production solo runs at 3s per bot
+ * turn so the user can read each opponent's discard, but that
+ * would balloon the e2e suite from ~15s to several minutes. Specs
+ * import this `test` (instead of `@playwright/test`'s) and get
+ * instant-bot solo for free.
+ *
+ * Specs that need to assert pacing (none today) can override the
+ * global later inside the test body itself.
+ */
+export const test = base.extend({
+  page: async ({ page }, use) => {
+    await page.addInitScript(() => {
+      (globalThis as { __MAHJONG_TEST_BOT_PACE_MS__?: number }).__MAHJONG_TEST_BOT_PACE_MS__ = 0;
+    });
+    await use(page);
+  },
+});
+
+export { expect };
 
 /**
  * Wait for the user's draw-cue (`wall-draw-next`) to appear, dismissing

@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './_helpers';
 
 // The players bottom-sheet is reachable via tapping the
 // `GameStatusBar` pill (the "{wind} ROUND · {dealer} dealing · N

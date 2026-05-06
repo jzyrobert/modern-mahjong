@@ -1,4 +1,5 @@
-import { type Page, expect, test } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expect, test } from './_helpers';
 
 /**
  * Manual sort mode lets the user drag a tile to a new index in their

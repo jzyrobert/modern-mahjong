@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './_helpers';
 
 // Locks in the tile-reference bottom sheet, now reached via the
 // ☰ menu sheet on the match `TopBar` (Tile reference row). The

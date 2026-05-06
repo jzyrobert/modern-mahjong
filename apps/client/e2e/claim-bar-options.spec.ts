@@ -1,5 +1,5 @@
-import { type Page, expect, test } from '@playwright/test';
-import { waitForUserDrawCue } from './_helpers';
+import type { Page } from '@playwright/test';
+import { expect, test, waitForUserDrawCue } from './_helpers';
 
 /**
  * Claim-bar coverage. Pinned to a 360-wide viewport because the bug
