@@ -104,6 +104,40 @@ export function canChi(hand: readonly Tile[], discard: Tile): boolean {
 }
 
 /**
+ * Enumerate every legal chi completion for `discard` against `hand`.
+ * Returns each option as the two tiles that would be pulled from the
+ * hand to complete the run (the third tile is the discard itself).
+ *
+ * The discard fits into a chi as the lowest, middle, or highest of a
+ * 3-tile run, giving up to three options:
+ *   - low   → run is `[discard, r+1, r+2]`
+ *   - mid   → run is `[r-1, discard, r+1]`
+ *   - high  → run is `[r-2, r-1, discard]`
+ *
+ * When the hand holds multiple copies of a needed rank, this picks the
+ * first match — chi semantics are face-based (a `1m` is a `1m`), so the
+ * specific copy doesn't matter for resolution.
+ */
+export function chiOptions(hand: readonly Tile[], discard: Tile): [Tile, Tile][] {
+  if (discard.kind !== 'suit') return [];
+  const suit = discard.suit;
+  const r = discard.rank;
+  const find = (rank: number): Tile | undefined =>
+    rank >= 1 && rank <= 9
+      ? hand.find((t) => t.kind === 'suit' && t.suit === suit && t.rank === rank)
+      : undefined;
+  const out: [Tile, Tile][] = [];
+  const lowMinus2 = find(r - 2);
+  const lowMinus1 = find(r - 1);
+  const plus1 = find(r + 1);
+  const plus2 = find(r + 2);
+  if (lowMinus2 && lowMinus1) out.push([lowMinus2, lowMinus1]); // discard is high
+  if (lowMinus1 && plus1) out.push([lowMinus1, plus1]); // discard is mid
+  if (plus1 && plus2) out.push([plus1, plus2]); // discard is low
+  return out;
+}
+
+/**
  * Apply a winning non-pass claim to state: builds the meld, transitions
  * phase, and clears `pendingClaims`.
  */
