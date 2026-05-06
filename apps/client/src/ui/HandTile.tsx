@@ -264,12 +264,17 @@ export function HandTile({
   return (
     <Animated.View
       {...responder.panHandlers}
-      // The clickable surface lives on this outer Animated.View (the
-      // PanResponder catches the tap and routes through `onTapRef`).
-      // The inner Tile has no `onPress`, so its `testID` would be
-      // silently dropped — pin the testID here instead so Playwright
-      // can target it via `getByTestId('own-hand-tile').click()`.
-      testID={onTap ? 'own-hand-tile' : undefined}
+      // The interactive surface lives on this outer Animated.View (the
+      // PanResponder catches both tap and drag and routes through
+      // `onTapRef` / `onReorderRef`). The inner Tile has no `onPress`,
+      // so its `testID` would be silently dropped — pin the testID
+      // here instead so Playwright can target it via
+      // `getByTestId('own-hand-tile').click()`. We surface the testID
+      // whenever this tile has any user-facing interaction wired up
+      // (tap to discard OR drag to reorder), so the e2e suite can
+      // find own-hand tiles even when the discard window is closed
+      // (e.g. during bots' turns, when only manual reorder is live).
+      testID={onTap || onReorder ? 'own-hand-tile' : undefined}
       style={{
         transform: [{ translateX }, { translateY: liftedY }, { scale: liftedScale }],
         zIndex: dragging ? 10 : 0,
