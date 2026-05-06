@@ -354,10 +354,11 @@ describe('discard reducer — pre-pass + auto-resolve', () => {
     // populated for the UI cue + server alarm even when nobody can
     // possibly claim.
     const east = honor('E');
-    const state = buildState(
-      [east, ...fillerForSeat(0, 13)],
-      { 1: fillerForSeat(1, 13), 2: fillerForSeat(2, 13), 3: fillerForSeat(3, 13) },
-    );
+    const state = buildState([east, ...fillerForSeat(0, 13)], {
+      1: fillerForSeat(1, 13),
+      2: fillerForSeat(2, 13),
+      3: fillerForSeat(3, 13),
+    });
     const east0 = state.hands[0].find((t) => sameFace(t, east))!;
     const { state: after } = reduce(state, { t: 'discard', seat: 0, tile: east0 });
     expect(after.phase).toBe('awaitingClaims');
