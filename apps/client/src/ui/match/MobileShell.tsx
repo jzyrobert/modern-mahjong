@@ -264,17 +264,13 @@ export function MobileShell(props: MobileShellProps) {
           ) : null}
 
           <View style={{ gap: 6 }}>
-            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-              <Text
-                style={{
-                  fontSize: 11,
-                  fontWeight: '800',
-                  color: 'rgba(255,255,255,0.7)',
-                  letterSpacing: 0.5,
-                }}
-              >
-                YOUR HAND
-              </Text>
+            {/* "YOUR HAND" label dropped — the three SortPicker buttons
+                (SUIT / NUMBER / MANUAL) are self-describing, the hand
+                strip is the bottom-most row of the layout, and the
+                label was eating ~16 px before the SortPicker itself
+                even rendered. Wrapping flex row dropped along with
+                it: only one child remained. */}
+            <View style={{ alignSelf: 'flex-end' }}>
               <SortPicker mode={sortMode} onChange={onSortModeChange} />
             </View>
             <Hand
