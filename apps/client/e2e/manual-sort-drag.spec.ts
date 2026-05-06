@@ -197,12 +197,8 @@ test.describe('narrow viewport, multi-row hand', () => {
     // Source: tile 0 (row 0, col 0). Target: a position firmly in
     // row 1 — pick the index that's at row 1, col 2 visually (so
     // we're crossing both axes, not just dropping straight down).
-    const firstRowIndices = ys
-      .map((y, i) => (y === firstRowY ? i : -1))
-      .filter((i) => i >= 0);
-    const secondRowIndices = ys
-      .map((y, i) => (y === secondRowY ? i : -1))
-      .filter((i) => i >= 0);
+    const firstRowIndices = ys.map((y, i) => (y === firstRowY ? i : -1)).filter((i) => i >= 0);
+    const secondRowIndices = ys.map((y, i) => (y === secondRowY ? i : -1)).filter((i) => i >= 0);
     expect(firstRowIndices.length).toBeGreaterThan(2);
     expect(secondRowIndices.length).toBeGreaterThan(2);
 
