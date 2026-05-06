@@ -1,5 +1,5 @@
 import type { Action, Claim, Tile as MTile, Seat } from '@mahjong/game-logic';
-import { chiOptions, isWinning, legalClaimsFor } from '@mahjong/game-logic';
+import { chiOptions, isWinning, legalClaimsFor, scoreHand } from '@mahjong/game-logic';
 import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useGame } from '../state/game';
@@ -41,10 +41,16 @@ const ORDER: readonly CallKind[] = ['chi', 'peng', 'gong', 'hu', 'pass'];
  * Renders one button per legal claim kind for this seat against the
  * current discard. `pass` is always offered (legalClaimsFor already
  * includes it during awaitingClaims). `hu` is offered only when the
- * seat actually has a winning hand against the discarded tile —
+ * seat actually has a winning hand against the discarded tile AND
+ * the resulting score meets the configured `faanMin` floor —
  * `legalClaimsFor` deliberately omits `hu` because it depends on
  * shanten + scoring, so we run `isWinning` here against the
- * `hand + discard` projection.
+ * `hand + discard` projection and then `scoreHand` against the same
+ * projection. Without the faan-min check, a low-scoring shape would
+ * surface a Win button that the engine then silently demotes to a
+ * pass (`resolveAndApply` pre-filters faan-below-min hu submissions
+ * — see `canFinalizeHu` in `actions.ts`), which from the user's
+ * perspective looked like "the Win button doesn't do anything."
  *
  * `chi` shows when there's at least one legal completion. With a
  * single option, clicking commits the chi directly; with multiple,
@@ -62,7 +68,15 @@ export function ClaimBar({ onAction, seat }: ClaimBarProps) {
       exposedMelds: state.melds[seat].length,
       allowSpecial,
     });
-    if (winnable) legal.add('hu');
+    if (winnable) {
+      const score = scoreHand({
+        state,
+        winner: seat,
+        winningTile: state.lastDiscard.tile,
+        selfDraw: false,
+      });
+      if (score.faan >= state.rules.faanMin) legal.add('hu');
+    }
   }
   const visible = ORDER.filter((k) => legal.has(k));
   const discard = state?.lastDiscard?.tile ?? null;
