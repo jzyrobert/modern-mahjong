@@ -1,4 +1,5 @@
 import type { Wind } from '@mahjong/game-logic';
+import type { ReactNode } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 interface GameStatusBarProps {
@@ -11,6 +12,15 @@ interface GameStatusBarProps {
    *  `Match.tsx`; surfaces a roster + scores without consuming
    *  another TopBar slot. */
   onPress?: () => void;
+  /** Optional content rendered at the right edge of the pill, separated
+   *  from the status content by a hairline. `MobileShell` uses this to
+   *  absorb the standalone `TopBar`'s LIVE indicator + ☰ menu button so
+   *  the chrome stays a single row on phone-class viewports — at 320 px
+   *  the two pills couldn't fit side-by-side and the outer flex wrapped
+   *  the menu button onto its own line, eating ~50 px of vertical space.
+   *  Desktop leaves this unset and continues to render `TopBar`
+   *  separately (the perimeter felt has horizontal room to spare). */
+  trailing?: ReactNode;
 }
 
 const WIND_NAME: Record<Wind, string> = {
@@ -46,11 +56,19 @@ export function GameStatusBar({
   wallCount,
   isMyTurn,
   onPress,
+  trailing,
 }: GameStatusBarProps) {
   const pct = Math.max(0, Math.min(100, (wallCount / WALL_FULL) * 100));
   const low = wallCount <= LOW_THRESHOLD;
   const Container = onPress ? Pressable : View;
-  return (
+  // Press surface is the status content itself, NOT the outer pill —
+  // when `trailing` contains nested Pressables (the mobile chrome's ☰
+  // button), nesting them inside an outer Pressable would fire both
+  // handlers on tap (react-native-web doesn't stop click propagation
+  // automatically), so the players sheet would open behind the menu
+  // sheet. Splitting the press surface from the trailing slot keeps
+  // each tap target isolated.
+  const status = (
     <Container
       onPress={onPress}
       accessibilityRole={onPress ? 'button' : undefined}
@@ -61,12 +79,6 @@ export function GameStatusBar({
         flexWrap: 'wrap',
         flexShrink: 1,
         gap: 10,
-        paddingVertical: 7,
-        paddingLeft: 10,
-        paddingRight: 14,
-        borderRadius: 16,
-        backgroundColor: 'rgba(255,255,255,0.88)',
-        boxShadow: '0px 4px 16px rgba(0,0,0,0.1)',
       }}
     >
       <View
@@ -150,5 +162,30 @@ export function GameStatusBar({
         </>
       ) : null}
     </Container>
+  );
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        flexShrink: 1,
+        gap: 10,
+        paddingVertical: 7,
+        paddingLeft: 10,
+        paddingRight: 14,
+        borderRadius: 16,
+        backgroundColor: 'rgba(255,255,255,0.88)',
+        boxShadow: '0px 4px 16px rgba(0,0,0,0.1)',
+      }}
+    >
+      {status}
+      {trailing ? (
+        <>
+          <Text style={{ opacity: 0.3, color: COLORS.ink }}>│</Text>
+          {trailing}
+        </>
+      ) : null}
+    </View>
   );
 }
