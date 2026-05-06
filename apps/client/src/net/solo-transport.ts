@@ -5,9 +5,12 @@ import {
   DEFAULT_RULES,
   type GameState,
   IllegalActionError,
+  SEATS,
   type Seat,
   type Tile,
   emptyState,
+  isWinning,
+  legalClaimsFor,
   reduce,
   sameFace,
 } from '@mahjong/game-logic';
@@ -84,7 +87,6 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
   const messageListeners = new Set<(m: ServerMessage) => void>();
   const statusListeners = new Set<(s: TransportStatus) => void>();
   let _status: TransportStatus = 'open';
-  let alarmHandle: ReturnType<typeof setTimeout> | null = null;
   let closed = false;
 
   function emit(m: ServerMessage) {
@@ -95,31 +97,50 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
     const { state: next, events } = reduce(state, action);
     state = next;
     emit({ t: 'delta', events, state });
+    tickClaims();
+  }
+
+  // Solo intentionally has **no claim-window alarm**. The user gets
+  // infinite time to choose an action; the hand advances the instant
+  // the user clicks pass / a claim, and never before.
+  //
+  // Two reactive hooks fire after every reduce:
+  //   1. If the user is sitting in `awaitingClaims` with no meaningful
+  //      action (only `pass` is legal and they can't `hu`), auto-pass
+  //      on their behalf — `Match` deliberately hides the bar in that
+  //      case to keep the UI calm, so we'd otherwise deadlock.
+  //   2. Once every non-discarder seat is in the `submitted` map
+  //      (bots arrive there reactively from `runBots`, the user from
+  //      either explicit clicks or the auto-pass above), fire
+  //      `resolveClaims` to advance the hand.
+  function tickClaims() {
+    if (state.phase !== 'awaitingClaims' || !state.pendingClaims) return;
+    const discardFrom = state.pendingClaims.discard.from;
+    const submitted = state.pendingClaims.submitted;
+    const userSeat: Seat = 0;
+    if (discardFrom !== userSeat && !submitted[userSeat] && !userHasMeaningfulClaim()) {
+      applyAction({ t: 'declareClaim', seat: userSeat, claim: { kind: 'pass' } });
+      return; // applyAction recurses back into tickClaims with the user submitted.
+    }
+    const allIn = SEATS.every((s) => s === discardFrom || submitted[s]);
+    if (allIn) applyAction({ t: 'resolveClaims', nowMs: Date.now() });
+  }
+
+  function userHasMeaningfulClaim(): boolean {
+    if (!state.pendingClaims) return false;
+    const userSeat: Seat = 0;
+    const legal = legalClaimsFor(state, userSeat);
+    if (legal.some((k) => k !== 'pass')) return true;
+    const allowSpecial = state.rules.allowSevenPairs || state.rules.allowThirteenOrphans;
+    return isWinning({
+      hand: [...state.hands[userSeat], state.pendingClaims.discard.tile],
+      exposedMelds: state.melds[userSeat].length,
+      allowSpecial,
+    });
   }
 
   function runBots() {
     runBotTurns(() => state, bots, applyAction);
-  }
-
-  function scheduleAlarm() {
-    if (alarmHandle !== null) {
-      clearTimeout(alarmHandle);
-      alarmHandle = null;
-    }
-    if (closed) return;
-    if (state.phase !== 'awaitingClaims' || !state.pendingClaims) return;
-    const delay = Math.max(0, state.pendingClaims.deadlineMs - Date.now());
-    alarmHandle = setTimeout(() => {
-      alarmHandle = null;
-      if (closed) return;
-      try {
-        applyAction({ t: 'resolveClaims', nowMs: Date.now() });
-        runBots();
-      } catch (e) {
-        console.error('solo alarm error', e);
-      }
-      scheduleAlarm();
-    }, delay);
   }
 
   function emitLobby() {
@@ -176,7 +197,6 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
       try {
         applyAction(msg.action);
         runBots();
-        scheduleAlarm();
       } catch (e) {
         if (e instanceof IllegalActionError) {
           emit({ t: 'error', code: e.code, detail: e.message });
@@ -199,10 +219,6 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
     },
     close() {
       closed = true;
-      if (alarmHandle !== null) {
-        clearTimeout(alarmHandle);
-        alarmHandle = null;
-      }
       _status = 'closed';
       for (const cb of statusListeners) cb(_status);
     },

@@ -1,4 +1,5 @@
 import { type Page, expect, test } from '@playwright/test';
+import { waitForUserDrawCue } from './_helpers';
 
 // Pin the lobby's `randomSeed()` to a value where the engine's opening
 // dice roll lands seat 0 (the user) as dealer outright (sums: 10/5/6/8).
@@ -50,9 +51,10 @@ test('after the first round-trip, the highlighted draw-tile pulls a new tile', a
   // Once the turn comes back, the engine flips `hasDrawn` to false and the
   // wall's next tile surfaces as the highlighted draw target inside the
   // center HUD. (The old "Draw" button is gone — this is the only way to
-  // advance the user's turn.)
+  // advance the user's turn.) Solo's claim window is now infinite, so
+  // we auto-pass any incidental claim opportunities on the way back.
   const drawTile = page.getByTestId('wall-draw-next');
-  await expect(drawTile).toBeVisible({ timeout: 30_000 });
+  await waitForUserDrawCue(page, 30_000);
   await drawTile.click();
   await expect(drawTile).toBeHidden();
 });
