@@ -6,6 +6,7 @@ import {
   assertTileConservation,
   emptyState,
   reduce,
+  sameFace,
 } from '../src/index.js';
 
 function startedHand(seed = 1): GameState {
@@ -85,5 +86,59 @@ describe('reducer — discard / claim', () => {
     expect(s.hasDrawn).toBe(true);
     expect(s.hands[1].length).toBe(14);
     assertTileConservation(s);
+  });
+
+  it('rejects chi from a seat that is not the next seat after the discarder', () => {
+    // chi is only legal for the seat immediately counter-clockwise
+    // from the discarder. Seat 0 discards → only seat 1 can chi.
+    // Pre-fix the engine accepted the action and `resolveClaims`
+    // silently filtered it out (returning kind:'pass'), which gave
+    // a buggy / malicious client no feedback. Validating in
+    // declareClaim turns the silent no-op into a typed error.
+    let s = startedHand();
+    const t = s.hands[0][0]!;
+    s = reduce(s, { t: 'discard', seat: 0, tile: t }).state;
+    expect(s.phase).toBe('awaitingClaims');
+
+    // Pull two arbitrary suit tiles from seat 2's hand for the chi
+    // `with` slot — the engine should reject the action on seat
+    // eligibility before it even looks at the chi tiles, so any
+    // pair works.
+    const placeholder = s.hands[2].filter((x) => x.kind === 'suit').slice(0, 2);
+    if (placeholder.length < 2) throw new Error('test setup: seat 2 has no suit tiles');
+    expect(() =>
+      reduce(s, {
+        t: 'declareClaim',
+        seat: 2,
+        claim: { kind: 'chi', with: [placeholder[0]!, placeholder[1]!] },
+      }),
+    ).toThrow(IllegalActionError);
+  });
+
+  it('rejects peng from a seat that does not have two matching tiles', () => {
+    // peng requires two same-face copies in the seat's hand. Without
+    // that, the legalClaimsFor gate excludes peng, so submitting it
+    // throws CLAIM. Pre-fix this would have been silently swallowed
+    // (resolveClaims ignored peng claims that didn't match anywhere).
+    let s = startedHand();
+    const t = s.hands[0][0]!;
+    s = reduce(s, { t: 'discard', seat: 0, tile: t }).state;
+    expect(s.phase).toBe('awaitingClaims');
+
+    // Find a seat whose hand DOESN'T contain two copies of the
+    // discarded face. With seed 1 + dealer 0, at least one of seats
+    // 1/2/3 has fewer than 2 matching copies in their initial 13.
+    let mark = -1;
+    for (const seat of [1, 2, 3] as const) {
+      const matches = s.hands[seat].filter((x) => sameFace(x, t)).length;
+      if (matches < 2) {
+        mark = seat;
+        break;
+      }
+    }
+    if (mark < 0) throw new Error('test setup: every seat already has a peng on tile 0');
+    expect(() =>
+      reduce(s, { t: 'declareClaim', seat: mark as 1 | 2 | 3, claim: { kind: 'peng' } }),
+    ).toThrow(IllegalActionError);
   });
 });
