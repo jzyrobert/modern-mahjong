@@ -1,4 +1,4 @@
-import { applyClaim, resolveClaims } from './claims.js';
+import { applyClaim, hasMeaningfulClaim, resolveClaims } from './claims.js';
 import type { Meld } from './hand.js';
 import { meldSize } from './hand.js';
 import { rollDice, shuffle } from './rng.js';
@@ -6,6 +6,7 @@ import { scoreHand } from './scoring.js';
 import { isWinning } from './shanten.js';
 import type {
   Claim,
+  ClaimRound,
   DiePair,
   FaanBreakdown,
   GameState,
@@ -110,7 +111,9 @@ function rulesEqual(a: RuleConfig, b: RuleConfig): boolean {
     a.allowSevenPairs === b.allowSevenPairs &&
     a.allowThirteenOrphans === b.allowThirteenOrphans &&
     a.turnTimeoutMs === b.turnTimeoutMs &&
-    a.claimWindowMs === b.claimWindowMs
+    a.claimWindowMs === b.claimWindowMs &&
+    a.claimSoftWindowMs === b.claimSoftWindowMs &&
+    a.claimHardWindowMs === b.claimHardWindowMs
   );
 }
 
@@ -228,23 +231,61 @@ function discard(state: GameState, seat: Seat, tile: Tile): { state: GameState; 
   const discards = { ...state.discards, [seat]: [...state.discards[seat], tile] };
   const discardOrder = [...state.discardOrder, { tile, from: seat }];
 
-  const deadlineMs = Date.now() + state.rules.claimWindowMs;
-  return {
-    state: {
-      ...state,
-      phase: 'awaitingClaims',
-      hands,
-      discards,
-      discardOrder,
-      hasDrawn: false,
-      lastDiscard: { tile, from: seat },
-      pendingClaims: { discard: { tile, from: seat }, deadlineMs, submitted: {} },
-    },
-    events: [
-      { t: 'discarded', seat, tile },
-      { t: 'claimsOpened', deadlineMs },
-    ],
+  const now = Date.now();
+  const deadlineMs = now + state.rules.claimWindowMs;
+  const softExpiryMs =
+    state.rules.claimSoftWindowMs !== undefined ? now + state.rules.claimSoftWindowMs : undefined;
+  const hardDeadlineMs =
+    state.rules.claimHardWindowMs !== undefined ? now + state.rules.claimHardWindowMs : undefined;
+
+  // Pre-pass non-discarder seats that have no meaningful claim against
+  // this tile. The hand resolves the moment every "interesting" seat
+  // weighs in (often 0–1 humans in practice — bots react synchronously
+  // and most discards aren't claimable by anyone).
+  const stateAfterDiscard: GameState = {
+    ...state,
+    phase: 'awaitingClaims',
+    hands,
+    discards,
+    discardOrder,
+    hasDrawn: false,
+    lastDiscard: { tile, from: seat },
   };
+  const submitted: Partial<Record<Seat, Claim>> = {};
+  for (const s of SEATS) {
+    if (s === seat) continue;
+    if (!hasMeaningfulClaim(stateAfterDiscard, s, tile)) {
+      submitted[s] = { kind: 'pass' };
+    }
+  }
+
+  const pendingClaims: ClaimRound = {
+    discard: { tile, from: seat },
+    deadlineMs,
+    submitted,
+    ...(softExpiryMs !== undefined ? { softExpiryMs } : {}),
+    ...(hardDeadlineMs !== undefined ? { hardDeadlineMs } : {}),
+  };
+  const baseState: GameState = {
+    ...stateAfterDiscard,
+    pendingClaims,
+  };
+  const events: Event[] = [
+    { t: 'discarded', seat, tile },
+    { t: 'claimsOpened', deadlineMs },
+  ];
+  // Solo case: when no fairness gate is set AND every non-discarder
+  // seat was pre-passed, fold the resolution into this same reduce.
+  // (Multiplayer keeps the soft floor — even an all-pre-passed window
+  // pauses for `claimWindowMs` so the table doesn't visually flicker
+  // through claims.)
+  const allIn = SEATS.every((s) => s === seat || submitted[s]);
+  const noFairnessGate = hardDeadlineMs === undefined;
+  if (allIn && noFairnessGate) {
+    const resolved = resolveAndApply(baseState, now);
+    return { state: resolved.state, events: [...events, ...resolved.events] };
+  }
+  return { state: baseState, events };
 }
 
 function declareClaim(
@@ -258,16 +299,24 @@ function declareClaim(
   if (state.lastDiscard?.from === seat) {
     throw new IllegalActionError('SEAT', 'discarder cannot claim own discard');
   }
-  return {
-    state: {
-      ...state,
-      pendingClaims: {
-        ...state.pendingClaims,
-        submitted: { ...state.pendingClaims.submitted, [seat]: claim },
-      },
-    },
-    events: [],
+  const submitted = { ...state.pendingClaims.submitted, [seat]: claim };
+  const newState: GameState = {
+    ...state,
+    pendingClaims: { ...state.pendingClaims, submitted },
   };
+  // Auto-resolve when every non-discarder seat is in `submitted` and
+  // either the soft floor has passed or the rules opt out of one
+  // (solo: `hardDeadlineMs === undefined` ⇒ no minimum wait, since
+  // there are no other humans to be fair to).
+  const discardFrom = state.pendingClaims.discard.from;
+  const allIn = SEATS.every((s) => s === discardFrom || submitted[s]);
+  const now = Date.now();
+  const pastSoftFloor = now >= state.pendingClaims.deadlineMs;
+  const noFairnessGate = state.pendingClaims.hardDeadlineMs === undefined;
+  if (allIn && (pastSoftFloor || noFairnessGate)) {
+    return resolveAndApply(newState, now);
+  }
+  return { state: newState, events: [] };
 }
 
 function resolveAndApply(state: GameState, nowMs: number): { state: GameState; events: Event[] } {
