@@ -49,7 +49,10 @@ Rules for these branches:
 
 1. Run the full check pipeline locally before pushing: `pnpm -r typecheck`,
    `pnpm lint`, `pnpm test`, and where relevant `pnpm --filter @mahjong/client
-   e2e` + a build. Pushing red-on-CI burns a CI cycle for nothing.
+   export-web && pnpm --filter @mahjong/client e2e` + a build. Playwright
+   serves `apps/client/dist/`, so skip `export-web` (or forget to rerun it
+   after a merge) and you're testing a stale bundle. Pushing red-on-CI
+   burns a CI cycle for nothing.
 2. After opening the PR, **poll the CI status every ~2 minutes** until every
    check is green, then squash-merge. Webhook activity events for the
    subscribed PR are unreliable — treat them as a hint, not a source of
