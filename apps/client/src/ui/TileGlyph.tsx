@@ -157,29 +157,40 @@ function PinDot({ x, y, r }: { x: number; y: number; r: number }) {
 
 function SouSvg({ rank }: { rank: number }) {
   if (rank === 1) {
-    // 1-sou: traditional bird. Procedural geometry — body, head, eye,
-    // wings, beak.
-    const sc = W / 44;
+    // 1-sou: traditional bird. Slimmer profile than the legacy
+    // tear-drop body — narrow oval body, a tucked wing on one side
+    // (rather than splayed wings) so the silhouette reads as a
+    // perched sparrow, plus a curved tail trailing down-right for
+    // movement. Geometry is centred around the tile's CY so it
+    // feels balanced without leaning on the corners.
+    const sc = W / 50;
     return (
       <G transform={`translate(${CX},${CY}) scale(${sc})`}>
-        <Ellipse cx={0} cy={2} rx={10} ry={13} fill="#3e8749" />
-        <Circle cx={0} cy={-9} r={6} fill="#aa3f30" />
-        <Circle cx={2} cy={-10} r={1.2} fill="white" />
+        {/* Tail — curves out and down behind the body. */}
         <Path
-          d="M -3 -2 Q -8 4 -10 8"
+          d="M 4 6 Q 11 9 13 16"
           stroke="#306835"
-          strokeWidth={1.5}
+          strokeWidth={2.2}
           fill="none"
           strokeLinecap="round"
         />
+        {/* Body — slim ellipse, longer than wide for a perched
+         *  sparrow silhouette. */}
+        <Ellipse cx={0} cy={3} rx={6.5} ry={11} fill="#3e8749" />
+        {/* Tucked wing — single curve, suggests folded plumage. */}
         <Path
-          d="M 3 -2 Q 8 4 10 8"
+          d="M -4 -2 Q -2 4 2 8"
           stroke="#306835"
-          strokeWidth={1.5}
+          strokeWidth={1.6}
           fill="none"
           strokeLinecap="round"
         />
-        <Path d="M 0 -3 L 4 -6" stroke="#a17b1c" strokeWidth={1.5} strokeLinecap="round" />
+        {/* Head + neck — small red circle joined to the body. */}
+        <Circle cx={-1} cy={-9} r={5} fill="#aa3f30" />
+        {/* Eye — small white pupil offset toward the beak. */}
+        <Circle cx={1} cy={-10} r={1.1} fill="white" />
+        {/* Beak — short angled line. */}
+        <Path d="M 2 -8 L 6 -6" stroke="#a17b1c" strokeWidth={1.6} strokeLinecap="round" />
       </G>
     );
   }
