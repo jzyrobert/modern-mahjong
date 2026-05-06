@@ -5,12 +5,9 @@ import {
   DEFAULT_RULES,
   type GameState,
   IllegalActionError,
-  SEATS,
   type Seat,
   type Tile,
   emptyState,
-  isWinning,
-  legalClaimsFor,
   reduce,
   sameFace,
 } from '@mahjong/game-logic';
@@ -71,7 +68,18 @@ const DEFAULT_BOT_SKILLS: [BotKind, BotKind, BotKind] = ['heuristic', 'simple', 
  * disconnect plumbing — there's no one else to coordinate with.
  */
 export function createSoloTransport(opts: SoloOptions): Transport & SoloTransportControls {
-  let state: GameState = emptyState(DEFAULT_RULES);
+  // Solo strips the soft-expiry / hard-fallback windows so the user
+  // gets infinite time to claim. The engine's `declareClaim` checks
+  // `hardDeadlineMs === undefined` to skip the fairness gate, and
+  // resolves on all-submitted regardless of `deadlineMs`.
+  const {
+    claimSoftWindowMs: _omitSoft,
+    claimHardWindowMs: _omitHard,
+    ...soloRules
+  } = DEFAULT_RULES;
+  void _omitSoft;
+  void _omitHard;
+  let state: GameState = emptyState(soloRules);
   const initialSkills = opts.botSkills ?? DEFAULT_BOT_SKILLS;
   const botKinds: Record<1 | 2 | 3, BotKind> = {
     1: initialSkills[0],
@@ -97,47 +105,18 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
     const { state: next, events } = reduce(state, action);
     state = next;
     emit({ t: 'delta', events, state });
-    tickClaims();
   }
 
   // Solo intentionally has **no claim-window alarm**. The user gets
   // infinite time to choose an action; the hand advances the instant
   // the user clicks pass / a claim, and never before.
   //
-  // Two reactive hooks fire after every reduce:
-  //   1. If the user is sitting in `awaitingClaims` with no meaningful
-  //      action (only `pass` is legal and they can't `hu`), auto-pass
-  //      on their behalf — `Match` deliberately hides the bar in that
-  //      case to keep the UI calm, so we'd otherwise deadlock.
-  //   2. Once every non-discarder seat is in the `submitted` map
-  //      (bots arrive there reactively from `runBots`, the user from
-  //      either explicit clicks or the auto-pass above), fire
-  //      `resolveClaims` to advance the hand.
-  function tickClaims() {
-    if (state.phase !== 'awaitingClaims' || !state.pendingClaims) return;
-    const discardFrom = state.pendingClaims.discard.from;
-    const submitted = state.pendingClaims.submitted;
-    const userSeat: Seat = 0;
-    if (discardFrom !== userSeat && !submitted[userSeat] && !userHasMeaningfulClaim()) {
-      applyAction({ t: 'declareClaim', seat: userSeat, claim: { kind: 'pass' } });
-      return; // applyAction recurses back into tickClaims with the user submitted.
-    }
-    const allIn = SEATS.every((s) => s === discardFrom || submitted[s]);
-    if (allIn) applyAction({ t: 'resolveClaims', nowMs: Date.now() });
-  }
-
-  function userHasMeaningfulClaim(): boolean {
-    if (!state.pendingClaims) return false;
-    const userSeat: Seat = 0;
-    const legal = legalClaimsFor(state, userSeat);
-    if (legal.some((k) => k !== 'pass')) return true;
-    const allowSpecial = state.rules.allowSevenPairs || state.rules.allowThirteenOrphans;
-    return isWinning({
-      hand: [...state.hands[userSeat], state.pendingClaims.discard.tile],
-      exposedMelds: state.melds[userSeat].length,
-      allowSpecial,
-    });
-  }
+  // The engine handles the rest reactively: the `discard` reducer
+  // pre-fills `submitted` with passes for any seat that has no
+  // meaningful claim against the discard, and `declareClaim` folds in
+  // a `resolveClaims` call once every non-discarder seat is in
+  // `submitted` (which, in solo, happens the moment bots react +
+  // the user explicitly submits).
 
   function runBots() {
     runBotTurns(() => state, bots, applyAction);

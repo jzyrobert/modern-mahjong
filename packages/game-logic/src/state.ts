@@ -18,8 +18,25 @@ export interface RuleConfig {
   allowThirteenOrphans: boolean;
   /** Soft per-turn timeout in ms; the server will auto-discard the just-drawn tile if exceeded. */
   turnTimeoutMs: number;
-  /** Window after each discard during which other seats may claim. */
+  /** Soft floor — earliest moment a claim window can resolve. Even
+   *  when every non-discarder seat has submitted before this point,
+   *  the engine waits until now ≥ deadlineMs to keep the table fair
+   *  to slow-blinking humans. */
   claimWindowMs: number;
+  /**
+   * Soft expiry — when set, clients should start a visible countdown
+   * toward `claimHardWindowMs` and surface the "next player about to
+   * draw" cue. Pure UI hint; the engine ignores this. Solo leaves it
+   * unset (= no countdown, claim is effectively infinite).
+   */
+  claimSoftWindowMs?: number;
+  /**
+   * Hard fallback — past this point the server auto-passes any
+   * non-discarder seat that hasn't submitted. Solo leaves it unset
+   * (= infinite claim window; only bots + the user's explicit click
+   * advance the hand).
+   */
+  claimHardWindowMs?: number;
 }
 
 export const DEFAULT_RULES: RuleConfig = {
@@ -28,6 +45,8 @@ export const DEFAULT_RULES: RuleConfig = {
   allowThirteenOrphans: true,
   turnTimeoutMs: 20_000,
   claimWindowMs: 3_000,
+  claimSoftWindowMs: 8_000,
+  claimHardWindowMs: 12_000,
 };
 
 export const FAAN_OPTIONS: readonly RuleConfig['faanMin'][] = [0, 1, 3, 5] as const;
@@ -55,8 +74,18 @@ export interface OpeningRolls {
 
 export interface ClaimRound {
   discard: { tile: Tile; from: Seat };
-  /** Server-clock deadline. */
+  /** Soft floor — server-clock timestamp before which resolution is
+   *  blocked even if every non-discarder seat has submitted. Computed
+   *  as `discardTime + rules.claimWindowMs`. */
   deadlineMs: number;
+  /** Soft expiry — server-clock timestamp at which the UI should
+   *  start a visible "drawing in N…" countdown. Absent in solo
+   *  (where `claimSoftWindowMs` is unset). */
+  softExpiryMs?: number;
+  /** Hard fallback — server-clock timestamp past which the server
+   *  auto-passes any silent non-discarder seat. Absent in solo
+   *  (where `claimHardWindowMs` is unset → infinite timeout). */
+  hardDeadlineMs?: number;
   submitted: Partial<Record<Seat, Claim>>;
 }
 

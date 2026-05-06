@@ -1,4 +1,5 @@
 import type { Meld } from './hand.js';
+import { isWinning } from './shanten.js';
 import type { Claim, ClaimRound, GameState, Seat } from './state.js';
 import { nextSeat } from './state.js';
 import { sameFace } from './tiles.js';
@@ -89,6 +90,30 @@ export function legalClaimsFor(state: GameState, seat: Seat): Claim['kind'][] {
   }
   // hu is left to caller (must consult shanten + scoring).
   return out;
+}
+
+/**
+ * Whether `seat` has any non-trivial action against the given discard:
+ * a legal chi/peng/gong, OR a winning hand on `hu`. Mirrors what
+ * `Match.hasClaimOption` uses to decide whether to render the
+ * `ClaimBar` — exposing it from the engine keeps client + server +
+ * engine pre-pass logic in lockstep.
+ *
+ * Used by the `discard` reducer to pre-fill `submitted` with passes
+ * for seats that can't act, so the hand resolves the moment all
+ * "interesting" seats have weighed in (often 0–1 in practice).
+ */
+export function hasMeaningfulClaim(state: GameState, seat: Seat, discard: Tile): boolean {
+  if (state.phase !== 'awaitingClaims' || !state.lastDiscard) return false;
+  if (state.lastDiscard.from === seat) return false;
+  const legal = legalClaimsFor(state, seat);
+  if (legal.some((k) => k !== 'pass')) return true;
+  const allowSpecial = state.rules.allowSevenPairs || state.rules.allowThirteenOrphans;
+  return isWinning({
+    hand: [...state.hands[seat], discard],
+    exposedMelds: state.melds[seat].length,
+    allowSpecial,
+  });
 }
 
 export function canChi(hand: readonly Tile[], discard: Tile): boolean {
