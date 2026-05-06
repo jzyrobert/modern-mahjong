@@ -45,7 +45,7 @@ test('peng available: ClaimBar shows Peng + Pass but not Win', async ({ page }) 
   await page.getByRole('button', { name: 'Play vs bots' }).click();
   await page.getByRole('button', { name: 'Start match' }).click();
   await dismissOpeningRolls(page);
-  await expect(page.getByText(/\d+ tiles in wall/)).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText(/\d+ tiles/)).toBeVisible({ timeout: 10_000 });
 
   // Read the user's dealt hand and find a face they hold ≥ 2 copies of.
   // Script bot 1 (seat 1, the first opp to discard after the user) to

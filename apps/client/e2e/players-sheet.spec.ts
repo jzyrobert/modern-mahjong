@@ -2,7 +2,7 @@ import { expect, test } from './_helpers';
 
 // The players bottom-sheet is reachable via tapping the
 // `GameStatusBar` pill (the "{wind} ROUND · {dealer} dealing · N
-// tiles in wall" pill at the top of the match shell). The pill is
+// tiles" pill at the top of the match shell). The pill is
 // a Pressable with `accessibilityLabel="Open players panel"` so
 // Playwright (and screen readers) can find it. Choosing the
 // status bar as the entry point — rather than another TopBar

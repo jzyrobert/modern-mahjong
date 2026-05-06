@@ -15,7 +15,7 @@ test('claim-missed toast renders and self-dismisses', async ({ page }) => {
   await page.getByRole('button', { name: 'Start match' }).click();
 
   // Sanity: lobby → match transitioned (status bar present).
-  await expect(page.getByText(/\d+ tiles in wall/)).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText(/\d+ tiles/)).toBeVisible({ timeout: 10_000 });
   await expect(page.getByText('Claim missed — round already resolved')).toBeHidden();
 
   // Trigger the toast through the same store action `transport-context`

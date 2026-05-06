@@ -28,7 +28,7 @@ test('mobile: sort picker toggles between SUIT / NUMBER / MANUAL', async ({ page
   await dismissOpeningRolls(page);
 
   // Hand is dealt — sort picker is on screen.
-  await expect(page.getByText(/\d+ tiles in wall/)).toBeVisible();
+  await expect(page.getByText(/\d+ tiles/)).toBeVisible();
 
   // SortPicker buttons are Pressables, not native <button>s, so locate
   // them by visible text.
@@ -57,7 +57,7 @@ test('mobile: tap-to-discard sends the tile to the shared discard pool', async (
   await page.getByRole('button', { name: 'Play vs bots' }).click();
   await page.getByRole('button', { name: 'Start match' }).click();
   await dismissOpeningRolls(page);
-  await expect(page.getByText(/\d+ tiles in wall/)).toBeVisible();
+  await expect(page.getByText(/\d+ tiles/)).toBeVisible();
 
   // The dealer (seat 0, by TEST_SEED) starts with 14 tiles + hasDrawn,
   // so any hand-tile tap discards. The DISCARDS panel only renders once
@@ -112,9 +112,9 @@ async function dismissOpeningRolls(page: Page) {
 
 async function readMobileWallCount(page: Page): Promise<number> {
   // Mobile shell shows the wall count in `GameStatusBar` as
-  // "X tiles in wall"; desktop shell shows the per-seat "X left" badge.
-  const text = await page.getByText(/\d+ tiles in wall/).innerText();
-  const m = text.match(/(\d+)\s*tiles in wall/);
+  // "X tiles"; desktop shell shows the per-seat "X left" badge.
+  const text = await page.getByText(/\d+ tiles/).innerText();
+  const m = text.match(/(\d+)\s*tiles/);
   return m ? Number.parseInt(m[1]!, 10) : Number.NaN;
 }
 
