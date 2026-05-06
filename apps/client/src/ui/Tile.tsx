@@ -35,18 +35,17 @@ interface TileProps {
 }
 
 /**
- * Renders a single tile face
- * or back as layered SVG with a `<TileGlyph>` overlay. Animations
- * (framer-motion's spring / `layoutId` / press scale) are deferred to
- * Phase 6 — for now Pressable handles the tap, no spring on transitions.
+ * Renders a single tile face or back as layered SVG with a
+ * `<TileGlyph>` overlay. When `flipId` is set, the tile is wrapped in
+ * a `<FlipView>` so the surrounding `FlipBagProvider` can animate it
+ * from its previous screen rect on layout — the layoutId-style FLIP
+ * that drives wall→hand on draw, hand→discard, discard→meld, and the
+ * between-hand dispense.
  *
  * The viewBox is 36×50 (matches the legacy reference); the outer
- * container scales via `width` / `height` props. Same proportions
- * as the legacy `--tile-w` / `--tile-h` CSS vars.
+ * container scales via `width` / `height` props.
  *
- * Memoised so a tile only re-renders when its props change. The
- * legacy `shuffling`-driven slow-spring transition behaviour is
- * Phase 6 territory; for Phase 4 we keep it static.
+ * Memoised so a tile only re-renders when its props change.
  */
 function TileComponent({
   tile,

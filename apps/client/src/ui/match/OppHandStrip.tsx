@@ -26,8 +26,9 @@ const COLORS = {
 
 /**
  * Compact opponent strip — wind glyph + display name + a row of
- * miniature face-down tile rectangles. Skips the active-turn glow
- * pulse (Phase 6) for now in favour of a static border tint.
+ * miniature face-down tile rectangles. The active-turn cue is a
+ * static red border tint rather than a pulse, deliberately understated
+ * so the felt-centre wall pulse stays the user's primary turn signal.
  */
 export function OppHandStrip({ seat, seatWind, lobby, handBacks, isActive }: OppHandStripProps) {
   const player = lobby?.players.find((p) => p.seat === seat);

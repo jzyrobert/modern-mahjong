@@ -1,26 +1,23 @@
 import ExpoModulesCore
 
 /**
- * iOS skeleton for the LanServer Expo module. The Android Kotlin
- * counterpart uses NanoHTTPD-WebSockets for the embedded HTTP+WS
- * server; iOS has a few options (Telegraph, Swifter, GCDWebServer +
- * a WebSocket layer) but none are wired up here yet — `start()`,
- * `send()`, `advertise()`, and `startDiscovery()` throw so the JS
- * bridge falls through to the `NotImplemented` branch on iOS.
+ * iOS skeleton for the LanServer Expo module. **No iOS build is
+ * currently planned** — the project ships web + Android only, and
+ * adding macOS / signing infrastructure to CI is out of scope. This
+ * file exists so `expo prebuild` produces a syntactically-valid
+ * `ios/` project tree (and so anyone forking the repo for an iOS
+ * shell has a place to start), not because a Swift implementation is
+ * actively being worked on.
  *
- * To complete iOS:
- *   1. Add a Swift Package or CocoaPods dependency for an
- *      HTTP+WebSocket server (Telegraph is the cleanest API).
- *   2. Replace the `start` body with the Telegraph server boot,
- *      tag connections with UUIDs, and forward connection /
- *      message / close events via `sendEvent(...)`.
- *   3. Implement `lanAddresses()` using `getifaddrs` to enumerate
- *      AF_INET interfaces, skipping `lo0`.
- *   4. mDNS via `NetService` / `NWBrowser` (advertise + discover).
+ * Every async function except `stop` / `unadvertise` /
+ * `stopDiscovery` throws — the JS bridge calls
+ * `requireOptionalNativeModule` and the lobby's `HostLanModal` falls
+ * through to manual URL entry, the same path web + Expo Go take.
  *
- * The JS side already calls `requireOptionalNativeModule` so an
- * unimplemented iOS leaves the lobby in the "needs dev client"
- * state — acceptable while iOS support is deferred.
+ * If someone does pick this up later, the Android Kotlin module is
+ * the reference: drop in Telegraph (or Swifter / GCDWebServer + a
+ * WebSocket layer) for the HTTP+WS server, `NetService` /
+ * `NWBrowser` for mDNS, and `getifaddrs` for `lanAddresses()`.
  */
 public class LanServerModule: Module {
   public func definition() -> ModuleDefinition {
@@ -67,7 +64,7 @@ private func notImplemented(_ method: String) -> NSError {
     code: 1,
     userInfo: [
       NSLocalizedDescriptionKey:
-        "iOS LanServer.\(method) not implemented yet — see modules/expo-lan-server/ios/LanServerModule.swift for the TODO.",
+        "iOS LanServer.\(method) is not implemented — no iOS build is currently planned. See modules/expo-lan-server/ios/LanServerModule.swift for the reference.",
     ]
   )
 }

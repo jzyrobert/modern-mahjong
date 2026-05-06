@@ -17,11 +17,12 @@ const ANCHOR: Record<'bottom' | 'right' | 'top' | 'left', ViewStyle> = {
 };
 
 /**
- * Floating emote bubbles. Phase 7 stub — Reanimated FadeIn/FadeOut
- * temporarily replaced with plain View while we triage the Expo Go
- * TurboModule registration mismatch. The auto-dismiss + per-seq timer
- * scheduling logic is unchanged; only the entry/exit animation is
- * stripped.
+ * Floating emote bubbles. Renders as a plain `<View>` — `react-native-
+ * reanimated` was stripped in the Expo Router migration so the bubble
+ * appears instantly and disappears after `DISMISS_MS`. The
+ * scheduling logic owns the timeline; if entry/exit animation is
+ * wanted later, swap the inner `<View>` for an `Animated.View` driven
+ * by core RN `Animated` (no reanimated dependency).
  */
 export function ChatBubbles({ seatToPosition }: ChatBubblesProps) {
   const chats = useGame((s) => s.chats);

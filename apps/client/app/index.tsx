@@ -6,8 +6,7 @@ import { useEffect } from 'react';
 /**
  * Root route. The lobby renders here while no transport is open. Once a
  * transport delivers its first `state` message the zustand store sets
- * `state` non-null; we forward to `/match` so the match screen takes
- * over (Phase 4 fills in the match UI; for now `/match` is a stub).
+ * `state` non-null; we forward to `/match` so the match screen takes over.
  */
 export default function Index() {
   const router = useRouter();

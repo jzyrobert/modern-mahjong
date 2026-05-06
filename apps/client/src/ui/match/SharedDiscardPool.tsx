@@ -7,7 +7,7 @@ interface SharedDiscardPoolProps {
   discardOrder: GameState['discardOrder'];
   /** Map from seat → visual position so each tile gets a colour underline. */
   seatToPosition: Record<Seat, 'bottom' | 'right' | 'top' | 'left'>;
-  /** TileId of the live discard while in awaitingClaims; pulses (static halo for Phase 4). */
+  /** TileId of the live discard while in awaitingClaims; gets a static gold halo. */
   latestId: number | null;
 }
 
@@ -23,9 +23,8 @@ const TILE_H = 32;
 
 /**
  * Centre-of-table discard pool. Tiles in true turn order, each with a
- * colour underline keying the discarder's visual position. The pulse-halo on
- * the live claim-window tile is deferred to Phase 6; for now we just
- * gold-tint its border.
+ * colour underline keying the discarder's visual position. The live
+ * claim-window tile gets a static gold-tinted border.
  */
 export function SharedDiscardPool({
   discardOrder,

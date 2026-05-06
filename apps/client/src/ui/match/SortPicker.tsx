@@ -22,8 +22,10 @@ const COLORS = {
 };
 
 /**
- * Three-way segmented picker for the user's hand sort mode. The 'manual' option
- * is rendered but a no-op until Phase 5 wires up drag-to-reorder.
+ * Three-way segmented picker for the user's hand sort mode. In
+ * 'manual' mode `HandTile`'s long-press / movement gesture writes
+ * through `useGame.setManualOrder`; in 'suit' / 'number' mode the
+ * engine order is sorted client-side before render.
  */
 export function SortPicker({ mode, onChange }: SortPickerProps) {
   return (

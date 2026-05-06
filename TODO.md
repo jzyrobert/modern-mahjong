@@ -19,21 +19,13 @@ Live tracker for queued and out-of-scope work. The full design lives in [`docs/P
 
 ## Open
 
-### iOS Swift `LanServer` (Phase 8 carry-over)
-
-- [ ] Port the Kotlin LanServer logic to Swift in `apps/client/modules/expo-lan-server/ios/LanServerModule.swift`. The skeleton currently throws `"not implemented yet"` on every async function except `stop` / `unadvertise` / `stopDiscovery`. Pieces:
-  - HTTP + WebSocket server: [Telegraph](https://github.com/Building42/Telegraph) is the cleanest fit; Swifter / GCDWebServer + a WS layer also work.
-  - mDNS via `NetService` / `NWBrowser` (advertise + discover).
-  - `lanAddresses()` via `getifaddrs`, skipping `lo0` and IPv6.
-  - Mirror the Kotlin side's static-asset HTTP route for browser-guest joins.
-  - Blocked on iOS shell shipping in CI (no `macos-latest` runner / signing certs configured).
-
 ### Future (post-MVP)
 
 - Maestro / UIAutomator UI driving so the Android lifecycle smoke can drive a match into mid-hand, background it, and assert the snapshot really did restore (the current smoke only catches crash-on-resume, not state loss).
 
 ## Out of scope until a maintainer decides
 
+- **iOS build.** No iOS shell or build profile is currently planned; the project ships web + Android only. The Swift `LanServer` skeleton at `apps/client/modules/expo-lan-server/ios/LanServerModule.swift` exists so `expo prebuild` produces a valid `ios/` tree, not because a Swift implementation is being worked on. If a maintainer ever does want iOS, the Android Kotlin module is the reference: drop in Telegraph (or Swifter / GCDWebServer + a WS layer) for the HTTP+WS server, `NetService` / `NWBrowser` for mDNS, `getifaddrs` for `lanAddresses()`. Macos runner + signing certs would also need to be added to CI.
 - Account system / cross-device identity sync.
 - Match history / replays beyond the in-memory seed-based determinism.
 - Spectator mode for live matches (server tracks the count; UI doesn't surface a watcher view).
