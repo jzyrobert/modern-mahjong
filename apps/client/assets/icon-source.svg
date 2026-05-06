@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="40%" r="75%">
+      <stop offset="0%" stop-color="oklch(0.45 0.06 145)"></stop>
+      <stop offset="100%" stop-color="oklch(0.28 0.05 150)"></stop>
+    </radialGradient>
+    <linearGradient id="face" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="oklch(0.99 0.005 85)"></stop>
+      <stop offset="100%" stop-color="oklch(0.93 0.018 85)"></stop>
+    </linearGradient>
+    <linearGradient id="side" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="oklch(0.88 0.025 85)"></stop>
+      <stop offset="100%" stop-color="oklch(0.74 0.035 85)"></stop>
+    </linearGradient>
+    <linearGradient id="glyph" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="oklch(0.55 0.18 25)"></stop>
+      <stop offset="100%" stop-color="oklch(0.45 0.18 25)"></stop>
+    </linearGradient>
+    <filter id="blur"><feGaussianBlur stdDeviation="9.28"></feGaussianBlur></filter>
+  </defs>
+
+  
+  <rect width="1024" height="1024" fill="url(#bg)"></rect>
+
+  
+  <circle cx="512" cy="512" r="380" fill="none" stroke="oklch(0.78 0.14 80)" stroke-width="3" opacity="0.25"></circle>
+
+  
+  <g transform="translate(280 200)">
+    <rect x="9.28" y="61.2" width="445.44" height="575.28" rx="83.52" fill="rgba(60,40,20,0.22)" filter="url(#blur)"></rect>
+    <rect x="0" y="24.48" width="464" height="587.52" rx="83.52" fill="url(#side)"></rect>
+    <rect x="0" y="0" width="464" height="563.04" rx="83.52" fill="url(#face)"></rect>
+    <rect x="13.92" y="13.92" width="436.16" height="535.2" rx="77.95" fill="none" stroke="oklch(0.85 0.02 85)" stroke-width="3.71"></rect>
+    <text x="232" y="281.5" text-anchor="middle" dominant-baseline="central" font-family="&#39;Noto Serif TC&#39;, serif" font-weight="700" font-size="361.92" fill="url(#glyph)">東</text>
+  </g>
+</svg>
