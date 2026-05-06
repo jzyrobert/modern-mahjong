@@ -60,9 +60,104 @@ function renderTextOverlay(t: MTile, scale: number) {
   return null;
 }
 
-// 9-position grid layouts for pin/sou. Coordinates relative to viewBox
-// centre, in the design's 60-unit reference space; rescaled to 36×50 below.
-const LAYOUTS: Record<number, ReadonlyArray<readonly [number, number]>> = {
+// Pin (dot) palette. Traditional Hong Kong / Japanese sets ink dots
+// in dark green or red — `#2c5e3a` reads as "dark dot" without going
+// flat black, `#b14d3a` matches the redHot used elsewhere on the felt.
+const DOT_DARK = '#2c5e3a';
+const DOT_RED = '#b14d3a';
+const DOT_INNER = '#f4ecda';
+
+// Pin-specific dot layouts. 60-unit reference space, rescaled below.
+// Differs from sou for 7 (2-2-3 traditional pattern) and 8 (2×2
+// over 2×2 cluster) — the canonical pin patterns aren't the same as
+// the modern bamboo set's silhouettes.
+const PIN_LAYOUTS: Record<number, ReadonlyArray<readonly [number, number]>> = {
+  1: [[0, 0]],
+  2: [
+    [0, -11],
+    [0, 11],
+  ],
+  3: [
+    [-11, -12],
+    [0, 0],
+    [11, 12],
+  ],
+  4: [
+    [-10, -11],
+    [10, -11],
+    [-10, 11],
+    [10, 11],
+  ],
+  5: [
+    [-11, -12],
+    [11, -12],
+    [0, 0],
+    [-11, 12],
+    [11, 12],
+  ],
+  6: [
+    [-10, -14],
+    [10, -14],
+    [-10, 0],
+    [10, 0],
+    [-10, 14],
+    [10, 14],
+  ],
+  7: [
+    // 2 (dark, slight diagonal) + 2 (red, mid row) + 3 (red, bottom row)
+    [-7, -17],
+    [7, -11],
+    [-10, 1],
+    [10, 1],
+    [-12, 14],
+    [0, 14],
+    [12, 14],
+  ],
+  8: [
+    // 2×2 dark cluster over 2×2 red cluster — matches the canonical
+    // 4-over-4 pin pattern in the reference set.
+    [-9, -16],
+    [9, -16],
+    [-9, -6],
+    [9, -6],
+    [-9, 6],
+    [9, 6],
+    [-9, 16],
+    [9, 16],
+  ],
+  9: [
+    [-12, -14],
+    [0, -14],
+    [12, -14],
+    [-12, 0],
+    [0, 0],
+    [12, 0],
+    [-12, 14],
+    [0, 14],
+    [12, 14],
+  ],
+};
+
+// Per-rank dot color pattern — index aligns with PIN_LAYOUTS entries.
+// 'D' = dark green, 'R' = red. The `R`s match traditional pin sets:
+// centre-only on 5, lower 4 on 6/7, lower half on 8, top + bottom
+// rows on 9. The 1-pin renders as a single ornate flower instead.
+const PIN_COLORS: Record<number, ReadonlyArray<'D' | 'R'>> = {
+  1: ['D'],
+  2: ['D', 'D'],
+  3: ['D', 'R', 'D'],
+  4: ['D', 'D', 'D', 'D'],
+  5: ['D', 'D', 'R', 'D', 'D'],
+  6: ['D', 'D', 'R', 'R', 'R', 'R'],
+  7: ['D', 'D', 'R', 'R', 'R', 'R', 'R'],
+  8: ['D', 'D', 'D', 'D', 'R', 'R', 'R', 'R'],
+  9: ['R', 'R', 'R', 'D', 'D', 'D', 'R', 'R', 'R'],
+};
+
+// Sou (bamboo stick) layouts — distinct from pin for 7/8/9 because
+// the modern bamboo sets we modelled (image 2 reference) use 1+3+3
+// and 1+3+3+1 diamond silhouettes that don't read on dot tiles.
+const SOU_LAYOUTS: Record<number, ReadonlyArray<readonly [number, number]>> = {
   1: [[0, 0]],
   2: [
     [0, -10],
@@ -95,9 +190,6 @@ const LAYOUTS: Record<number, ReadonlyArray<readonly [number, number]>> = {
     [10, 12],
   ],
   7: [
-    // 1 + 3 + 3 — single rod top-centre over two rows of three.
-    // Closer to the modern reference set (image 2) than the previous
-    // 3 + 2 + 2 grid which left an awkward hole in the middle.
     [0, -16],
     [-11, -2],
     [0, -2],
@@ -107,8 +199,6 @@ const LAYOUTS: Record<number, ReadonlyArray<readonly [number, number]>> = {
     [11, 12],
   ],
   8: [
-    // 1 + 3 + 3 + 1 diamond — mirrors image 2's 8-sou silhouette
-    // closer than the previous 4 × 2 column grid.
     [0, -18],
     [-11, -6],
     [0, -6],
@@ -132,8 +222,10 @@ const LAYOUTS: Record<number, ReadonlyArray<readonly [number, number]>> = {
 };
 
 function PinSvg({ rank }: { rank: number }) {
-  const layout = LAYOUTS[rank] ?? [];
-  const r = rank <= 4 ? 4.5 : rank <= 6 ? 3.8 : 3.2;
+  if (rank === 1) return <PinOne />;
+  const layout = PIN_LAYOUTS[rank] ?? [];
+  const colors = PIN_COLORS[rank] ?? [];
+  const r = rank <= 4 ? 5.4 : rank <= 6 ? 4.6 : 3.8;
   const sc = W / 60;
   return (
     <G transform={`translate(${CX},${CY}) scale(${sc})`}>
@@ -144,18 +236,52 @@ function PinSvg({ rank }: { rank: number }) {
           x={x}
           y={y}
           r={r}
+          color={colors[i] === 'R' ? DOT_RED : DOT_DARK}
         />
       ))}
     </G>
   );
 }
 
-function PinDot({ x, y, r }: { x: number; y: number; r: number }) {
+function PinDot({ x, y, r, color }: { x: number; y: number; r: number; color: string }) {
+  // Concentric-ring pattern matching physical pin tile inlay: solid
+  // outer disk, cream gap, solid inner core. Reads as a stack of
+  // nested circles at any tile size — the previous single-disk +
+  // outline + accent looked muddy at the 22×30 discard size where
+  // the inner accent collapsed into the outer fill.
   return (
     <G transform={`translate(${x},${y})`}>
-      <Circle r={r} fill="#1a5b9e" />
-      <Circle r={r - 1.4} fill="none" stroke="#ece4d3" strokeWidth={0.8} />
-      <Circle r={r - 2.6} fill="#a83b2a" opacity={0.8} />
+      <Circle r={r} fill={color} />
+      <Circle r={r * 0.62} fill={DOT_INNER} />
+      <Circle r={r * 0.32} fill={color} />
+    </G>
+  );
+}
+
+function PinOne() {
+  // Ornate 1-pin: outer dark ring, cream gap, 8-petal flower halo
+  // alternating red and dark, then a red core. Evokes the chrysanthemum
+  // motif on traditional 1-pin tiles without trying to engrave the
+  // kanji + maker mark from the physical reference (which would
+  // muddle below ~30 px tile width).
+  const sc = W / 60;
+  return (
+    <G transform={`translate(${CX},${CY}) scale(${sc})`}>
+      <Circle r={15} fill={DOT_DARK} />
+      <Circle r={12.6} fill={DOT_INNER} />
+      {Array.from({ length: 8 }, (_, i) => {
+        const angle = (i / 8) * 2 * Math.PI - Math.PI / 2;
+        const px = Math.cos(angle) * 8;
+        const py = Math.sin(angle) * 8;
+        const fill = i % 2 === 0 ? DOT_RED : DOT_DARK;
+        return (
+          // biome-ignore lint/suspicious/noArrayIndexKey: petal index is fixed
+          <Circle key={i} cx={px} cy={py} r={2.6} fill={fill} />
+        );
+      })}
+      <Circle r={4} fill={DOT_DARK} />
+      <Circle r={2.8} fill={DOT_RED} />
+      <Circle r={1} fill={DOT_INNER} />
     </G>
   );
 }
@@ -204,7 +330,7 @@ function SouSvg({ rank }: { rank: number }) {
       </G>
     );
   }
-  const layout = LAYOUTS[rank] ?? [];
+  const layout = SOU_LAYOUTS[rank] ?? [];
   const baseScale = rank <= 4 ? 0.75 : rank <= 6 ? 0.6 : 0.5;
   const sc = (baseScale * (W / 44)) / 0.75;
   // Traditional accent: 5-sou's centre rod is red — it's the
