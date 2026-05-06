@@ -333,22 +333,16 @@ interface SeatRowProps {
 
 function SeatRow({ placement, state, lobby, aboutToDraw, drawCountdown }: SeatRowProps) {
   const isActive = state.turn === placement.seat && state.phase === 'turn';
-  const handBacks = state.hands[placement.seat].length;
   return (
-    <View style={{ gap: 4 }}>
-      <OppHandStrip
-        seat={placement.seat}
-        seatWind={placement.seatWind}
-        lobby={lobby}
-        handBacks={handBacks}
-        isActive={isActive}
-        aboutToDraw={aboutToDraw}
-        drawCountdown={drawCountdown}
-      />
-      {state.melds[placement.seat].length > 0 ? (
-        <MeldStrip melds={state.melds[placement.seat]} tileWidth={14} tileHeight={20} />
-      ) : null}
-    </View>
+    <OppHandStrip
+      seat={placement.seat}
+      seatWind={placement.seatWind}
+      lobby={lobby}
+      melds={state.melds[placement.seat]}
+      isActive={isActive}
+      aboutToDraw={aboutToDraw}
+      drawCountdown={drawCountdown}
+    />
   );
 }
 
