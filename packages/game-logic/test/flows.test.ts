@@ -167,4 +167,76 @@ describe('engine — win-on-discard flow', () => {
       throw new Error('expected a win');
     }
   });
+
+  it("declareClaim {kind:'hu'} resolves into a winning state in the same step (regression)", () => {
+    // Same setup as the test above, but exercises the path the UI
+    // actually uses — `declareClaim {kind:'hu'}` rather than going
+    // straight to `declareWin`. The previous engine left the state at
+    // phase: 'turn' with the winner as turn-holder and waited for a
+    // follow-up `declareWin` that no caller (UI / server / solo /
+    // bot driver) ever issued, so the ClaimBar's "Win" button looked
+    // like it did nothing. `resolveAndApply` now finalizes the win in
+    // the same step.
+    const pool = new TilePool();
+    const seat1Hand = pool.takeMany([
+      suit('man', 1),
+      suit('man', 2),
+      suit('man', 3),
+      suit('man', 4),
+      suit('man', 5),
+      suit('man', 6),
+      suit('pin', 7),
+      suit('pin', 8),
+      suit('pin', 9),
+      suit('sou', 1),
+      suit('sou', 1),
+      suit('sou', 1),
+      honor('E'),
+    ]);
+    const seat0Hand = [pool.takeFace(honor('E')), ...pool.takeAny(13)];
+    const seat2 = pool.takeAny(13);
+    const seat3 = pool.takeAny(13);
+    const remainder = pool.remaining();
+    const deadWall = remainder.splice(remainder.length - 14, 14);
+    const wall = remainder;
+
+    // Drop the hard fairness gate so the auto-resolve fires the moment
+    // every non-discarder seat is in `submitted`. Mirrors solo's rule
+    // patch in `apps/client/src/net/solo-transport.ts`. Without this,
+    // `declareClaim` waits for either the soft floor or an explicit
+    // `resolveClaims` action, neither of which is part of what we're
+    // testing here.
+    const { claimSoftWindowMs: _omitSoft, claimHardWindowMs: _omitHard, ...rules } = DEFAULT_RULES;
+    void _omitSoft;
+    void _omitHard;
+
+    const state: GameState = {
+      ...emptyState({ ...rules, faanMin: 0 }),
+      phase: 'turn',
+      turn: 0,
+      hasDrawn: true,
+      hands: { 0: seat0Hand, 1: seat1Hand, 2: seat2, 3: seat3 },
+      wall,
+      deadWall,
+    };
+    assertTileConservation(state);
+
+    const eastInHand0 = seat0Hand[0]!;
+    const after = reduce(state, { t: 'discard', seat: 0, tile: eastInHand0 });
+    expect(after.state.phase).toBe('awaitingClaims');
+
+    const won = reduce(after.state, {
+      t: 'declareClaim',
+      seat: 1,
+      claim: { kind: 'hu' },
+    }).state;
+    expect(won.phase).toBe('resolved');
+    if (won.lastResult?.kind === 'win') {
+      expect(won.lastResult.winner).toBe(1);
+      expect(won.lastResult.from).toBe(0);
+      expect(won.lastResult.selfDraw).toBe(false);
+    } else {
+      throw new Error(`expected a win, got phase=${won.phase}`);
+    }
+  });
 });
