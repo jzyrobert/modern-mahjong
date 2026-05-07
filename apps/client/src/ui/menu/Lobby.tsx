@@ -10,6 +10,7 @@ import { JoinLanModal } from '../JoinLanModal';
 import { GhostButton, PrimaryButton, TextField } from '../buttons';
 import { LobbyHeader } from './LobbyHeader';
 import { LobbyPreview } from './LobbyPreview';
+import { LobbyWatermark } from './LobbyWatermark';
 import { ModeCard, ModeGrid } from './ModeCard';
 import { ScatteredTiles } from './ScatteredTiles';
 import { BotIcon, BoxIcon, GlobeIcon, WifiIcon } from './icons';
@@ -47,6 +48,7 @@ export function Lobby() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#f1eadc' }} edges={['top']}>
+      <LobbyWatermark />
       <ScatteredTiles />
       <ScrollView
         style={{ flex: 1, backgroundColor: 'transparent' }}
