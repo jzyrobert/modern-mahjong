@@ -61,6 +61,8 @@ interface MobileShellProps {
   setLogOpen: (open: boolean) => void;
   referenceOpen: boolean;
   setReferenceOpen: (open: boolean) => void;
+  scoringOpen: boolean;
+  setScoringOpen: (open: boolean) => void;
   playersOpen: boolean;
   setPlayersOpen: (open: boolean) => void;
   menuOpen: boolean;
@@ -121,6 +123,8 @@ export function MobileShell(props: MobileShellProps) {
     setLogOpen,
     referenceOpen,
     setReferenceOpen,
+    scoringOpen,
+    setScoringOpen,
     playersOpen,
     setPlayersOpen,
     menuOpen,
@@ -312,6 +316,8 @@ export function MobileShell(props: MobileShellProps) {
             setLogOpen={setLogOpen}
             referenceOpen={referenceOpen}
             setReferenceOpen={setReferenceOpen}
+            scoringOpen={scoringOpen}
+            setScoringOpen={setScoringOpen}
             playersOpen={playersOpen}
             setPlayersOpen={setPlayersOpen}
             menuOpen={menuOpen}

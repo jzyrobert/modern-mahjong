@@ -9,6 +9,7 @@ interface MenuSheetProps {
   onOpenSettings: () => void;
   onOpenLog: () => void;
   onOpenReference: () => void;
+  onOpenScoring: () => void;
   onLeave: () => void;
   /** Send an emote (single emoji string) — drives the floating
    *  `<ChatBubbles>` overlay. Optional so callers that don't wire
@@ -45,6 +46,7 @@ export function MenuSheet({
   onOpenSettings,
   onOpenLog,
   onOpenReference,
+  onOpenScoring,
   onLeave,
   onSendChat,
 }: MenuSheetProps) {
@@ -77,6 +79,12 @@ export function MenuSheet({
           title="Tile reference"
           hint="All 136 tiles grouped by suit + honors."
           onPress={handle(onOpenReference)}
+        />
+        <MenuRow
+          icon="🏆"
+          title="Scoring rules"
+          hint="Every fan pattern with worked example hands."
+          onPress={handle(onOpenScoring)}
         />
         <MenuRow
           icon="←"
