@@ -539,3 +539,130 @@ describe('engine — promoted gang (搶槓) flow', () => {
     assertTileConservation(next);
   });
 });
+
+describe('engine — chi meld order', () => {
+  it('sorts chi tiles by rank regardless of which slot the discard fits', () => {
+    // Seat 0 discards 5p. Seat 1 holds 4p + 6p, so claiming chi
+    // produces a 4-5-6 run with 5p slotting in as the middle tile.
+    // Pre-fix the meld stored `[discard, a, b]` which rendered as
+    // [5p, 4p, 6p]; the engine now sorts it to [4p, 5p, 6p].
+    const pool = new TilePool();
+    const seat0Hand = [
+      pool.takeFace(suit('pin', 5)),
+      ...pool.takeMany([
+        suit('man', 1),
+        suit('man', 2),
+        suit('man', 3),
+        suit('man', 4),
+        suit('man', 5),
+        suit('man', 6),
+        suit('man', 7),
+        suit('man', 8),
+        suit('man', 9),
+        honor('E'),
+        honor('S'),
+        honor('W'),
+        honor('N'),
+      ]),
+    ];
+    const seat1Hand = pool.takeMany([
+      suit('pin', 4),
+      suit('pin', 6),
+      suit('sou', 1),
+      suit('sou', 2),
+      suit('sou', 3),
+      suit('sou', 4),
+      suit('sou', 5),
+      suit('sou', 6),
+      suit('sou', 7),
+      suit('sou', 8),
+      suit('sou', 9),
+      honor('Z'),
+      honor('F'),
+    ]);
+    const seat2 = pool.takeAny(13);
+    const seat3 = pool.takeAny(13);
+    const remainder = pool.remaining();
+    const deadWall = remainder.splice(remainder.length - 14, 14);
+    const wall = remainder;
+
+    const { claimSoftWindowMs: _omitSoft, claimHardWindowMs: _omitHard, ...rules } = DEFAULT_RULES;
+    void _omitSoft;
+    void _omitHard;
+    const state: GameState = {
+      ...emptyState(rules),
+      phase: 'turn',
+      turn: 0,
+      hasDrawn: true,
+      hands: { 0: seat0Hand, 1: seat1Hand, 2: seat2, 3: seat3 },
+      wall,
+      deadWall,
+    };
+
+    const fivePin = seat0Hand[0]!;
+    const after = reduce(state, { t: 'discard', seat: 0, tile: fivePin });
+    const { state: claimed } = reduce(after.state, {
+      t: 'declareClaim',
+      seat: 1,
+      claim: { kind: 'chi', with: [seat1Hand[0]!, seat1Hand[1]!] },
+    });
+    const meld = claimed.melds[1][0];
+    expect(meld?.kind).toBe('chi');
+    const ranks = (meld?.tiles ?? []).map((t) => (t.kind === 'suit' ? t.rank : 0));
+    expect(ranks).toEqual([4, 5, 6]);
+  });
+});
+
+describe('engine — winning tile lands in winner hand on ron', () => {
+  it("moves the winning tile from the discarder's pile into the winner's concealed hand", () => {
+    // Mirrors the existing win-on-discard test but asserts the
+    // post-state shape rather than just the lastResult. With the fix
+    // the winner's hand goes from 13 → 14 tiles and the discarder's
+    // pile drops the winning tile (it was claimed, like chi/peng/gang
+    // pop the just-claimed tile).
+    const pool = new TilePool();
+    const seat1Hand = pool.takeMany([
+      suit('man', 1),
+      suit('man', 2),
+      suit('man', 3),
+      suit('man', 4),
+      suit('man', 5),
+      suit('man', 6),
+      suit('pin', 7),
+      suit('pin', 8),
+      suit('pin', 9),
+      suit('sou', 1),
+      suit('sou', 1),
+      suit('sou', 1),
+      honor('E'),
+    ]);
+    const seat0Hand = [pool.takeFace(honor('E')), ...pool.takeAny(13)];
+    const seat2 = pool.takeAny(13);
+    const seat3 = pool.takeAny(13);
+    const remainder = pool.remaining();
+    const deadWall = remainder.splice(remainder.length - 14, 14);
+    const wall = remainder;
+
+    const state: GameState = {
+      ...blankState(),
+      phase: 'turn',
+      turn: 0,
+      hasDrawn: true,
+      hands: { 0: seat0Hand, 1: seat1Hand, 2: seat2, 3: seat3 },
+      wall,
+      deadWall,
+    };
+
+    const eastInHand0 = seat0Hand[0]!;
+    const after = reduce(state, { t: 'discard', seat: 0, tile: eastInHand0 });
+    const won = reduce(after.state, { t: 'declareWin', seat: 1, selfDraw: false }).state;
+    expect(won.phase).toBe('resolved');
+    // Winner's hand is now 14 tiles (the East was added).
+    expect(won.hands[1].length).toBe(14);
+    expect(won.hands[1].some((t) => t.kind === 'honor' && t.honor === 'E')).toBe(true);
+    // Discarder's pile no longer has the East.
+    expect(won.discards[0].some((t) => t.kind === 'honor' && t.honor === 'E')).toBe(false);
+    // Tile conservation still holds — the winning tile moved, didn't duplicate.
+    assertTileConservation(won);
+  });
+});

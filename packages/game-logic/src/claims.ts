@@ -226,11 +226,20 @@ export function applyClaim(
     }
     meld = { kind: 'gang-exposed', tiles: [tile, ...used], from };
   } else {
-    // chi
+    // chi — sort tiles by rank so the meld renders 4-5-6 even when
+    // the discard came in as the middle or high tile. Without this,
+    // a chi where the player held [4,6] and called the 5 displayed
+    // as [5,4,6] in `MeldStrip`, which reads as out-of-order.
     const [a, b] = claim.with;
     newHand = removeOne(newHand, a);
     newHand = removeOne(newHand, b);
-    meld = { kind: 'chi', tiles: [tile, a, b], from };
+    const ordered = [tile, a, b].sort((x, y) => {
+      // chi is suit-only by construction (canChi rejects honors).
+      const xr = x.kind === 'suit' ? x.rank : 0;
+      const yr = y.kind === 'suit' ? y.rank : 0;
+      return xr - yr;
+    });
+    meld = { kind: 'chi', tiles: ordered, from };
   }
 
   const newMelds = { ...state.melds, [seat]: [...state.melds[seat], meld] };
