@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Animated, Pressable, Text, View } from 'react-native';
 import { nameForSeat, useGame } from '../state/game';
-import { useFadeInOut, usePulse } from './animations';
+import { PULSE_TEMPO, useFadeInOut, usePulse } from './animations';
 import { COLORS } from './colors';
 import { DISMISS_MS } from './timing';
 
@@ -144,7 +144,7 @@ export function WinCelebration() {
 }
 
 function PulseEmblem() {
-  const t = usePulse({ durationMs: 800 });
+  const t = usePulse({ durationMs: PULSE_TEMPO.ambient });
   const scale = t.interpolate({ inputRange: [0, 1], outputRange: [1, 1.12] });
   const rotate = t.interpolate({ inputRange: [0, 1], outputRange: ['-3deg', '3deg'] });
   return (

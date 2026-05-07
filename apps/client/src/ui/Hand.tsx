@@ -4,7 +4,7 @@ import { Animated, type LayoutChangeEvent, Pressable, View } from 'react-native'
 import { useGame } from '../state/game';
 import { HandTile } from './HandTile';
 import { Tile } from './Tile';
-import { usePulse } from './animations';
+import { PULSE_TEMPO, usePulse } from './animations';
 import type { SortMode } from './match/SortPicker';
 
 export interface DrawCue {
@@ -183,7 +183,7 @@ export function Hand({
  * thread stays free for engine ticks during animation.
  */
 function DrawGhostSlot({ cue, width, height }: { cue: DrawCue; width: number; height: number }) {
-  const t = usePulse();
+  const t = usePulse({ durationMs: PULSE_TEMPO.urgent });
   const scale = t.interpolate({ inputRange: [0, 1], outputRange: [1, 1.18] });
   const opacity = t.interpolate({ inputRange: [0, 1], outputRange: [0.6, 0] });
   return (
