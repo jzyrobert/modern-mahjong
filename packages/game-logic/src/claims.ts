@@ -79,6 +79,10 @@ function ccwDistance(from: Seat, to: Seat): number {
 export function legalClaimsFor(state: GameState, seat: Seat): Claim['kind'][] {
   if (state.phase !== 'awaitingClaims' || !state.lastDiscard) return [];
   if (seat === state.lastDiscard.from) return [];
+  // Promoted-gang rob window: only `hu` (left to caller) is a valid
+  // claim. Chi/peng/gang on a tile that's about to land in someone
+  // else's gang is never legal in HK rules.
+  if (state.pendingPromotedGang) return ['pass'];
   const out: Claim['kind'][] = ['pass'];
   const tile = state.lastDiscard.tile;
   const hand = state.hands[seat];
@@ -106,9 +110,19 @@ export function legalClaimsFor(state: GameState, seat: Seat): Claim['kind'][] {
 export function hasMeaningfulClaim(state: GameState, seat: Seat, discard: Tile): boolean {
   if (state.phase !== 'awaitingClaims' || !state.lastDiscard) return false;
   if (state.lastDiscard.from === seat) return false;
+  const allowSpecial = state.rules.allowSevenPairs || state.rules.allowThirteenOrphans;
+  // Promoted-gang rob window: the only meaningful action is hu —
+  // legalClaimsFor returns just ['pass'] above, so the standard
+  // "legal includes a non-pass" branch never fires here.
+  if (state.pendingPromotedGang) {
+    return isWinning({
+      hand: [...state.hands[seat], discard],
+      exposedMelds: state.melds[seat].length,
+      allowSpecial,
+    });
+  }
   const legal = legalClaimsFor(state, seat);
   if (legal.some((k) => k !== 'pass')) return true;
-  const allowSpecial = state.rules.allowSevenPairs || state.rules.allowThirteenOrphans;
   return isWinning({
     hand: [...state.hands[seat], discard],
     exposedMelds: state.melds[seat].length,

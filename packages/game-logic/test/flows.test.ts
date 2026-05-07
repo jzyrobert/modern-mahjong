@@ -336,3 +336,206 @@ describe('engine — win-on-discard flow', () => {
     }
   });
 });
+
+/**
+ * 搶槓 (Robbing the Kong) coverage. The engine wraps `declareGangPromoted`
+ * in a claim window where `hu` is the only legal claim — opponents one
+ * tile from a win can rob the promotion tile before it lands in the
+ * gang. Three paths to exercise:
+ *
+ *   1. No eligible robbers — engine skips the window entirely and
+ *      finalizes the gang in the same reduce step.
+ *   2. Rob fires — opponent declares hu, gang is cancelled (peng stays a
+ *      peng), promotion tile is removed from the gang seat's hand, win
+ *      finalizes with +1 fan for 搶槓.
+ *   3. All-pass — eligible robbers declare pass, gang finalizes after
+ *      the window, gangReplacementCount bumps to 1.
+ */
+describe('engine — promoted gang (搶槓) flow', () => {
+  // Seat 0 has an exposed peng of 5p (3 of 4 copies) and the 4th 5p in
+  // hand; declaring promote turns the meld into gang-promoted. Seat 1
+  // is set up one 5p away from a chi-completion win in different
+  // tests; seats 2 / 3 are random fillers that can't hold 5p (all 4
+  // copies are spoken for by seat 0).
+  //
+  // Solo-style rules (no hard/soft deadline) so the auto-resolve fast
+  // path inside `declareClaim` fires on the robber's submission
+  // without us having to advance Date.now or issue an explicit
+  // `resolveClaims` action — both of which would muddy what these
+  // tests are pinning down.
+  function soloRulesState(): GameState {
+    const { claimSoftWindowMs: _omitSoft, claimHardWindowMs: _omitHard, ...rules } = DEFAULT_RULES;
+    void _omitSoft;
+    void _omitHard;
+    return emptyState({ ...rules, faanMin: 0 });
+  }
+  function setupRobScenario(opts: { seat1Robbing: boolean }) {
+    const pool = new TilePool();
+    const pengTiles = pool.takeMany([suit('pin', 5), suit('pin', 5), suit('pin', 5)]);
+    const hand0 = pool.takeMany([
+      suit('pin', 5), // the 4th 5p — will be promoted
+      suit('man', 1),
+      suit('man', 2),
+      suit('man', 3),
+      suit('man', 4),
+      suit('man', 5),
+      suit('man', 6),
+      suit('man', 7),
+      suit('man', 8),
+      suit('man', 9),
+      honor('E'),
+    ]);
+    const hand1 = opts.seat1Robbing
+      ? pool.takeMany([
+          // Waiting on 5p for the 4p-5p-6p chi:
+          suit('pin', 4),
+          suit('pin', 6),
+          // Plus 4 sets + pair already locked in (without using 5p):
+          suit('man', 1),
+          suit('man', 1),
+          suit('man', 1),
+          honor('S'),
+          honor('S'),
+          suit('sou', 7),
+          suit('sou', 8),
+          suit('sou', 9),
+          suit('pin', 1),
+          suit('pin', 2),
+          suit('pin', 3),
+        ])
+      : pool.takeAny(13);
+    const hand2 = pool.takeAny(13);
+    const hand3 = pool.takeAny(13);
+    const remainder = pool.remaining();
+    const deadWall = remainder.splice(remainder.length - 14, 14);
+    const wall = remainder;
+
+    const state: GameState = {
+      ...soloRulesState(),
+      phase: 'turn',
+      turn: 0,
+      hasDrawn: true,
+      hands: { 0: hand0, 1: hand1, 2: hand2, 3: hand3 },
+      melds: {
+        0: [{ kind: 'peng', tiles: pengTiles, from: 1 }],
+        1: [],
+        2: [],
+        3: [],
+      },
+      wall,
+      deadWall,
+    };
+    assertTileConservation(state);
+    return state;
+  }
+
+  it('finalizes the gang in one step when no opponent can rob', () => {
+    const state = setupRobScenario({ seat1Robbing: false });
+    const startDeadWall = state.deadWall.length;
+    const { state: next, events } = reduce(state, {
+      t: 'declareGangPromoted',
+      seat: 0,
+      tile: suit('pin', 5),
+    });
+
+    // No claim window opened — phase stays on the seat's turn.
+    expect(next.phase).toBe('turn');
+    expect(next.turn).toBe(0);
+    expect(next.pendingClaims).toBeUndefined();
+    expect(next.pendingPromotedGang).toBeUndefined();
+    // Gang finalized: peng → gang-promoted, replacement drawn, count++.
+    expect(next.melds[0]).toHaveLength(1);
+    expect(next.melds[0][0]?.kind).toBe('gang-promoted');
+    expect(next.deadWall.length).toBe(startDeadWall - 1);
+    expect(next.gangReplacementCount).toBe(1);
+    // Single gangDeclared event, no claimsOpened/claimsResolved.
+    expect(events.map((e) => e.t)).toEqual(['gangDeclared']);
+    assertTileConservation(next);
+  });
+
+  it('opens a rob window when an opponent waits on the promotion tile, then robs it on hu', () => {
+    const state = setupRobScenario({ seat1Robbing: true });
+    const { state: opened, events: openEvents } = reduce(state, {
+      t: 'declareGangPromoted',
+      seat: 0,
+      tile: suit('pin', 5),
+    });
+
+    // Window opened: phase awaitingClaims, pendingPromotedGang set,
+    // lastDiscard records the promotion tile from the gang seat.
+    expect(opened.phase).toBe('awaitingClaims');
+    expect(opened.pendingPromotedGang?.seat).toBe(0);
+    expect(opened.lastDiscard?.from).toBe(0);
+    expect(opened.lastDiscard?.tile.kind).toBe('suit');
+    // The gangDeclared event is *not* emitted yet — the gang hasn't
+    // actually completed.
+    expect(openEvents.map((e) => e.t)).toContain('claimsOpened');
+    expect(openEvents.map((e) => e.t)).not.toContain('gangDeclared');
+    // Seats 2 / 3 (and potentially 1, depending on shape) are
+    // pre-passed where they can't rob; seat 1 is the robber and is
+    // not pre-passed.
+    expect(opened.pendingClaims?.submitted[1]).toBeUndefined();
+
+    // Seat 1 robs by declaring hu. setupRobScenario already used
+    // solo-style rules so the auto-resolve fast path fires the
+    // moment the only un-pre-passed seat (1) submits.
+    const { state: won, events: winEvents } = reduce(opened, {
+      t: 'declareClaim',
+      seat: 1,
+      claim: { kind: 'hu' },
+    });
+    expect(won.phase).toBe('resolved');
+    expect(won.pendingPromotedGang).toBeUndefined();
+    if (won.lastResult?.kind !== 'win') throw new Error('expected a win');
+    expect(won.lastResult.winner).toBe(1);
+    expect(won.lastResult.from).toBe(0);
+    expect(won.lastResult.selfDraw).toBe(false);
+    // Breakdown contains 搶槓 with +1 fan.
+    const robEntry = won.lastResult.breakdown.find((b) => b.name === '搶槓');
+    expect(robEntry).toBeDefined();
+    expect(robEntry?.faan).toBe(1);
+    // The gang did NOT actually finalize: seat 0's meld stays a peng
+    // and the promotion tile was removed from their hand.
+    expect(won.melds[0][0]?.kind).toBe('peng');
+    expect(won.hands[0].some((t) => t.kind === 'suit' && t.suit === 'pin' && t.rank === 5)).toBe(
+      false,
+    );
+    // No replacement was drawn from the dead wall — the gang fell through.
+    expect(won.deadWall.length).toBe(state.deadWall.length);
+    expect(won.gangReplacementCount).toBe(0);
+    expect(winEvents.map((e) => e.t)).toContain('claimsResolved');
+    expect(winEvents.map((e) => e.t)).toContain('won');
+  });
+
+  it('finalizes the gang when every robber-eligible seat passes', () => {
+    const state = setupRobScenario({ seat1Robbing: true });
+    const startDeadWall = state.deadWall.length;
+    const { state: opened } = reduce(state, {
+      t: 'declareGangPromoted',
+      seat: 0,
+      tile: suit('pin', 5),
+    });
+    expect(opened.pendingPromotedGang).toBeDefined();
+
+    const { state: next, events } = reduce(opened, {
+      t: 'declareClaim',
+      seat: 1,
+      claim: { kind: 'pass' },
+    });
+
+    // Gang finalized post-window: meld promoted, replacement drawn,
+    // count++.
+    expect(next.phase).toBe('turn');
+    expect(next.turn).toBe(0);
+    expect(next.pendingPromotedGang).toBeUndefined();
+    expect(next.pendingClaims).toBeUndefined();
+    expect(next.melds[0][0]?.kind).toBe('gang-promoted');
+    expect(next.deadWall.length).toBe(startDeadWall - 1);
+    expect(next.gangReplacementCount).toBe(1);
+    // claimsResolved + gangDeclared both emitted on the finalize.
+    const eventTypes = events.map((e) => e.t);
+    expect(eventTypes).toContain('claimsResolved');
+    expect(eventTypes).toContain('gangDeclared');
+    assertTileConservation(next);
+  });
+});

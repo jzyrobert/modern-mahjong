@@ -115,6 +115,21 @@ export interface GameState {
   discardOrder: { tile: Tile; from: Seat }[];
   lastDiscard?: { tile: Tile; from: Seat } | undefined;
   pendingClaims?: ClaimRound | undefined;
+  /**
+   * In-flight promoted-gang awaiting a possible rob (搶槓). When set,
+   * `phase` is 'awaitingClaims', `lastDiscard` carries the promotion
+   * tile + the gang seat as `from`, and only `hu` is a legal claim
+   * for non-gang seats. Cleared on either:
+   *   - all-pass resolution → engine finalizes the gang (tile moves
+   *     into the meld, replacement draws, gangReplacementCount++).
+   *   - a hu resolution → engine removes the tile from the gang
+   *     seat's hand, scores the win with +1 搶槓, transitions to
+   *     'resolved'.
+   * `meldIdx` is the index in `melds[seat]` of the peng being
+   * promoted; stashed at window-open so the finalize-on-pass path
+   * doesn't have to re-find it.
+   */
+  pendingPromotedGang?: { seat: Seat; tile: Tile; meldIdx: number } | undefined;
   /** Cumulative scores across hands in the same lobby session. */
   scoreboard: Record<Seat, number>;
   /** Result of the most recent hand, if any. */
