@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react';
 import { Animated, Easing, Text, View } from 'react-native';
 import type { LobbyState } from '../../state/game';
 import { nameForSeat } from '../../state/game';
+import { WIND_GLYPH } from '../winds';
 
 interface PlayerBadgeProps {
   seat: Seat;
@@ -25,8 +26,6 @@ interface PlayerBadgeProps {
    *  "drawing in Ns". Null before windup or in solo. */
   drawCountdown?: number | null;
 }
-
-const WIND_GLYPH: Record<Wind, string> = { E: '東', S: '南', W: '西', N: '北' };
 
 const SEAT_COLOR: Record<'top' | 'left' | 'right' | 'bottom', string> = {
   bottom: '#de7660',

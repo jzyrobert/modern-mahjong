@@ -1,6 +1,7 @@
 import type { Wind } from '@mahjong/game-logic';
 import type { ReactNode } from 'react';
 import { Pressable, Text, View } from 'react-native';
+import { WIND_GLYPH } from '../winds';
 
 interface GameStatusBarProps {
   prevailing: Wind;
@@ -22,8 +23,6 @@ interface GameStatusBarProps {
    *  separately (the perimeter felt has horizontal room to spare). */
   trailing?: ReactNode;
 }
-
-const WIND_GLYPH: Record<Wind, string> = { E: '東', S: '南', W: '西', N: '北' };
 
 const LOW_THRESHOLD = 14;
 

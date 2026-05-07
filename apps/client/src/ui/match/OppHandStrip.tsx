@@ -2,6 +2,7 @@ import type { Meld, Seat, Wind } from '@mahjong/game-logic';
 import { useEffect, useRef } from 'react';
 import { Animated, Easing, Text, View } from 'react-native';
 import type { LobbyState } from '../../state/game';
+import { WIND_GLYPH } from '../winds';
 import { MeldStrip } from './MeldStrip';
 
 interface OppHandStripProps {
@@ -29,8 +30,6 @@ interface OppHandStripProps {
    *  crossed. Renders next to the name as "drawing in Ns" when set. */
   drawCountdown?: number | null;
 }
-
-const WIND_GLYPH: Record<Wind, string> = { E: '東', S: '南', W: '西', N: '北' };
 
 const COLORS = {
   ink: '#3a3328',
