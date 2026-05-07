@@ -23,6 +23,18 @@ import {
   createOnlineTransport,
 } from './transport';
 
+/**
+ * Shape of the reconnect info we capture every time someone joins.
+ * Mirrors the runtime ref used by the AppState foreground re-join,
+ * but exposed as state through the context so route components can
+ * reconstruct the URL (`/match?code=…&host=…` / `?solo=1`) on a
+ * reload.
+ */
+export type JoinInfo =
+  | { kind: 'online'; code: string }
+  | { kind: 'lan'; hostUrl: string; code: string }
+  | { kind: 'solo' };
+
 interface TransportContextValue {
   matchCode: string | null;
   hasTransport: boolean;
@@ -30,6 +42,8 @@ interface TransportContextValue {
   status: 'idle' | TransportStatus;
   /** Resolved server host string for the most recent online join, for diagnostics. */
   resolvedHost: string;
+  /** Last successful join descriptor — null before any join + after `leave`. */
+  joinInfo: JoinInfo | null;
   joinOnline: (code: string) => void;
   joinLan: (hostUrl: string, code: string) => void;
   joinSolo: () => void;
@@ -109,13 +123,14 @@ export function TransportProvider({ children }: { children: ReactNode }) {
   const [matchCode, setMatchCode] = useState<string | null>(null);
   const [status, setStatus] = useState<'idle' | TransportStatus>('idle');
   const [resolvedHost, setResolvedHost] = useState<string>('');
-  /** Re-create info captured the last time we joined, so AppState foreground can re-join. */
-  const reconnectInfoRef = useRef<
-    | { kind: 'online'; code: string }
-    | { kind: 'lan'; hostUrl: string; code: string }
-    | { kind: 'solo' }
-    | null
-  >(null);
+  /** Re-create info captured the last time we joined, exposed via the
+   *  context so route components can rebuild the URL on reload. The
+   *  parallel ref mirrors the same value for callbacks that need the
+   *  latest value without the extra re-render churn of treating it as
+   *  a useCallback dep (AppState foreground listener, status close
+   *  handler). */
+  const [joinInfo, setJoinInfo] = useState<JoinInfo | null>(null);
+  const reconnectInfoRef = useRef<JoinInfo | null>(null);
 
   const setState = useGame((s) => s.setState);
   const setLobby = useGame((s) => s.setLobby);
@@ -145,7 +160,9 @@ export function TransportProvider({ children }: { children: ReactNode }) {
 
   const joinOnline = useCallback(
     (code: string) => {
-      reconnectInfoRef.current = { kind: 'online', code };
+      const info: JoinInfo = { kind: 'online', code };
+      reconnectInfoRef.current = info;
+      setJoinInfo(info);
       const host = resolveServerHost();
       setResolvedHost(host);
       swap(
@@ -163,7 +180,9 @@ export function TransportProvider({ children }: { children: ReactNode }) {
 
   const joinLan = useCallback(
     (hostUrl: string, code: string) => {
-      reconnectInfoRef.current = { kind: 'lan', hostUrl, code };
+      const info: JoinInfo = { kind: 'lan', hostUrl, code };
+      reconnectInfoRef.current = info;
+      setJoinInfo(info);
       swap(
         createLanTransport({
           hostUrl,
@@ -178,7 +197,9 @@ export function TransportProvider({ children }: { children: ReactNode }) {
   );
 
   const joinSolo = useCallback(() => {
-    reconnectInfoRef.current = { kind: 'solo' };
+    const info: JoinInfo = { kind: 'solo' };
+    reconnectInfoRef.current = info;
+    setJoinInfo(info);
     const skills = useGame.getState().settings.botSkills;
     swap(
       createSoloTransport({
@@ -221,6 +242,7 @@ export function TransportProvider({ children }: { children: ReactNode }) {
     setMatchCode(null);
     setStatus('idle');
     reconnectInfoRef.current = null;
+    setJoinInfo(null);
     reset();
   }, [transport, reset]);
 
@@ -329,6 +351,7 @@ export function TransportProvider({ children }: { children: ReactNode }) {
       hasTransport: transport !== null,
       status,
       resolvedHost,
+      joinInfo,
       joinOnline,
       joinLan,
       joinSolo,
@@ -343,6 +366,7 @@ export function TransportProvider({ children }: { children: ReactNode }) {
       transport,
       status,
       resolvedHost,
+      joinInfo,
       joinOnline,
       joinLan,
       joinSolo,
