@@ -42,7 +42,8 @@
       "router": {},
       "eas": {
         "projectId": "450b36a7-da19-47a7-9b05-f8e924785bdb"
-      }
+      },
+      "serverUrl": "https://modern-mahjong-server.jzyrobert.workers.dev"
     },
     "owner": "robertjin"
   }
