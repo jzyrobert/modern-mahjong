@@ -97,7 +97,7 @@ To build a real Android APK locally see [`docs/DEPLOY.md`](./docs/DEPLOY.md#andr
 
 ## Architecture
 
-The same `@mahjong/game-logic` package is the single source of truth on both server and client. Clients send `Action` messages over a thin `Transport` interface; the server runs them through the engine and broadcasts the resulting state. All claim races (`chi`/`peng`/`gong`/`hu`) are resolved server-authoritatively in the room actor's single-threaded event loop.
+The same `@mahjong/game-logic` package is the single source of truth on both server and client. Clients send `Action` messages over a thin `Transport` interface; the server runs them through the engine and broadcasts the resulting state. All claim races (`chi`/`peng`/`gang`/`hu`) are resolved server-authoritatively in the room actor's single-threaded event loop.
 
 There are three transport flavours, sharing a `createWsTransport` core:
 

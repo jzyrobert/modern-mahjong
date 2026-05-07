@@ -125,10 +125,10 @@ function DescribeEvent({ entry, lobby }: { entry: LogEntry; lobby: Lobby }) {
         </Line>
       );
     }
-    case 'kongDeclared':
+    case 'gangDeclared':
       return (
         <Line>
-          <SeatLabel seat={e.seat} lobby={lobby} /> declared <Strong>{e.kind} kong</Strong>.
+          <SeatLabel seat={e.seat} lobby={lobby} /> declared <Strong>{e.kind} gang</Strong>.
         </Line>
       );
     case 'won':
@@ -152,14 +152,14 @@ function DescribeEvent({ entry, lobby }: { entry: LogEntry; lobby: Lobby }) {
   }
 }
 
-function describeClaimKind(kind: 'pass' | 'chi' | 'peng' | 'gong' | 'hu'): string {
+function describeClaimKind(kind: 'pass' | 'chi' | 'peng' | 'gang' | 'hu'): string {
   switch (kind) {
     case 'chi':
-      return 'chow (吃)';
+      return 'chi (吃)';
     case 'peng':
-      return 'pung (碰)';
-    case 'gong':
-      return 'kong (槓)';
+      return 'peng (碰)';
+    case 'gang':
+      return 'gang (槓)';
     case 'hu':
       return 'win (糊)';
     case 'pass':

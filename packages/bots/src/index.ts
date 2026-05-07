@@ -38,7 +38,7 @@ export interface Bot {
 /**
  * `simple`: discards the most "isolated" tile — no neighbors of same suit
  * within ±2 ranks; no other copies of same honor. Falls through to first
- * tile if every tile is connected. Claims `peng`/`gong` only if it
+ * tile if every tile is connected. Claims `peng`/`gang` only if it
  * completes a meld (i.e. always — those are valid melds by definition).
  * Never claims `chi`. Declares `hu` whenever isWinning is true and the
  * declared faan would meet the lobby minimum.
@@ -64,7 +64,7 @@ export const simpleBot: Bot = {
     // Win first.
     if (canDeclareWin(state, seat)) return { kind: 'hu' };
     const legal = legalClaimsFor(state, seat);
-    if (legal.includes('gong')) return { kind: 'gong' };
+    if (legal.includes('gang')) return { kind: 'gang' };
     if (legal.includes('peng')) return { kind: 'peng' };
     return { kind: 'pass' };
   },
@@ -109,7 +109,7 @@ export const heuristicBot: Bot = {
     if (canDeclareWin(state, seat)) return { kind: 'hu' };
     const legal = legalClaimsFor(state, seat);
 
-    if (legal.includes('gong')) return { kind: 'gong' };
+    if (legal.includes('gang')) return { kind: 'gang' };
     if (legal.includes('peng')) return { kind: 'peng' };
 
     if (legal.includes('chi')) {

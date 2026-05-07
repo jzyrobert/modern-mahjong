@@ -10,13 +10,13 @@ interface ClaimBarProps {
   seat: Seat;
 }
 
-type CallKind = 'chi' | 'peng' | 'gong' | 'hu' | 'pass';
+type CallKind = 'chi' | 'peng' | 'gang' | 'hu' | 'pass';
 type Tone = 'jade' | 'blue' | 'plum' | 'gold' | 'cream';
 
 const LABELS: Record<CallKind, { en: string; zh: string; tone: Tone }> = {
-  chi: { en: 'Chow', zh: '吃', tone: 'jade' },
-  peng: { en: 'Pung', zh: '碰', tone: 'blue' },
-  gong: { en: 'Kong', zh: '槓', tone: 'plum' },
+  chi: { en: 'Chi', zh: '吃', tone: 'jade' },
+  peng: { en: 'Peng', zh: '碰', tone: 'blue' },
+  gang: { en: 'Gang', zh: '槓', tone: 'plum' },
   hu: { en: 'Win', zh: '糊', tone: 'gold' },
   pass: { en: 'Pass', zh: '過', tone: 'cream' },
 };
@@ -33,7 +33,7 @@ const TONE: Record<Tone, { bg: string; pressed: string; fg: string }> = {
   cream: { bg: '#ece4d3', pressed: '#d8cdb4', fg: '#3a3328' },
 };
 
-const ORDER: readonly CallKind[] = ['chi', 'peng', 'gong', 'hu', 'pass'];
+const ORDER: readonly CallKind[] = ['chi', 'peng', 'gang', 'hu', 'pass'];
 
 /**
  * Claim flow buttons.

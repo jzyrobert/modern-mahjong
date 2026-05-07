@@ -12,7 +12,7 @@ This document captures the original ground-up design for the project. The reposi
 - No traditional accounts; each device has a persistent player UUID stored in `localStorage`, plus a user-chosen display name that can be edited any time.
 - Lobby-based multiplayer: a host creates a match and shares a short join code; either an **online** match (via Cloudflare's `partyserver`) or a **LAN/offline** match (via a native WebSocket server inside the Capacitor app — Minecraft-LAN style: host advertises `ws://<lan-ip>:<port>` and guests connect directly).
 - A **pure, isolated, fully unit-testable** game-logic engine that is the single source of truth for legal moves, scoring, and end-of-hand resolution — the same engine runs on the server (authoritative) and the client (predictive/UI rendering).
-- Correct, race-condition-proof handling of `chi`/`peng`/`gong`/`hu` (chow/pong/kong/win) claims after a discard.
+- Correct, race-condition-proof handling of `chi`/`peng`/`gang`/`hu` (sequence/triplet/quad/win) claims after a discard.
 - Configurable AI bots (simple and heuristic strategies) to fill empty seats and enable single-player practice.
 
 **Decisions captured from clarifying Q&A**
@@ -130,9 +130,9 @@ interface GameState {
   dealer: Seat;
   turn: Seat;
   wall: Tile[];                 // remaining draw pile
-  deadWall: Tile[];             // 14 tiles for kong replacements
+  deadWall: Tile[];             // 14 tiles for gang replacements
   hands: Record<Seat, Tile[]>;  // concealed
-  melds: Record<Seat, Meld[]>;  // exposed pong/kong/chi
+  melds: Record<Seat, Meld[]>;  // exposed peng/gang/chi
   discards: Record<Seat, Tile[]>;
   lastDiscard?: { tile: Tile; from: Seat };
   pendingClaims?: ClaimRound;   // present only while phase === 'awaitingClaims'
@@ -149,7 +149,7 @@ type Action =
   | { t: 'discard'; seat: Seat; tile: Tile }
   | { t: 'declareClaim'; seat: Seat; claim: Claim }
   | { t: 'resolveClaims' }               // server-issued at end of claim window
-  | { t: 'declareKong'; seat: Seat; tiles: Tile[] }   // concealed kong on own turn
+  | { t: 'declareGang'; seat: Seat; tiles: Tile[] }   // concealed gang on own turn
   | { t: 'declareWin'; seat: Seat; selfDraw: boolean };
 
 function reduce(state: GameState, action: Action): { state: GameState; events: Event[] };
@@ -158,7 +158,7 @@ function reduce(state: GameState, action: Action): { state: GameState; events: E
 Key invariants enforced by the reducer (and asserted in tests):
 
 - `wall.length + deadWall.length + Σ hand sizes + Σ exposed-meld sizes + Σ discard sizes === 136` always.
-- A player's hand size is `13` between turns, `14` mid-turn (between draw and discard), plus 1 per kong they own.
+- A player's hand size is `13` between turns, `14` mid-turn (between draw and discard), plus 1 per gang they own.
 - Actions sent in the wrong phase or from the wrong seat are rejected with a typed error — never silently ignored.
 
 ### Shanten + winning-hand detection
@@ -195,7 +195,7 @@ Mahjong's hardest correctness problem: after a discard, multiple players can rac
      | { kind: 'pass' }
      | { kind: 'chi'; with: [Tile, Tile] }    // only legal for next-seat player
      | { kind: 'peng' }
-     | { kind: 'gong' }
+     | { kind: 'gang' }
      | { kind: 'hu' };                         // win
    ```
 
@@ -209,7 +209,7 @@ Mahjong's hardest correctness problem: after a discard, multiple players can rac
 
 5. `resolveClaims` picks the winner with strict priority:
    1. `hu` (win) beats everything. If multiple players declare `hu`, the one whose seat is closest counter-clockwise to the discarder wins.
-   2. `peng`/`gong` beat `chi`.
+   2. `peng`/`gang` beat `chi`.
    3. `chi` is only legal for the next seat.
    4. Otherwise the turn advances to the next seat.
 
@@ -361,7 +361,7 @@ interface Bot {
 }
 ```
 
-- **Simple bot**: discards the tile that maximizes "isolation" (no neighbors of the same suit within ±2 ranks; no other copies of the same honor). Claims `peng`/`gong` only if they complete a meld, never `chi` unless it reduces shanten. Never declares `hu` below the lobby's faan minimum.
+- **Simple bot**: discards the tile that maximizes "isolation" (no neighbors of the same suit within ±2 ranks; no other copies of the same honor). Claims `peng`/`gang` only if they complete a meld, never `chi` unless it reduces shanten. Never declares `hu` below the lobby's faan minimum.
 - **Heuristic bot**: same plus a one-step shanten lookahead — for each candidate discard, computes the resulting `shanten(hand)` and prefers the lowest. Ties broken by tile safety (count of same tile already discarded across all players).
 
 Bots run wherever the engine runs (server for online matches, host browser for LAN matches). They consume only `PlayerView` (the seat-restricted projection of `GameState`), guaranteeing a bot can't "cheat" by reading other players' hands.
@@ -377,7 +377,7 @@ The disconnect-stand-in is a special **passive bot**: never claims, always disca
 - `Tile` — one mahjong tile. SVG path/symbol, sized via CSS custom properties so the entire board scales to viewport. Memoized.
 - `Hand` — the local player's 13/14 tiles, draggable to reorder, click-to-discard with a confirmation halo on mobile.
 - `OpponentHand` — back-of-tile rendering for the three other players, oriented to the table's bottom/left/right/top edges.
-- `MeldRow` — exposed pongs/kongs/chis per seat.
+- `MeldRow` — exposed pengs/gangs/chis per seat.
 - `DiscardPile` — fan-laid discards in front of each seat.
 - `ClaimBar` — appears during the 3s claim window with available actions and a server-synced countdown ring.
 - `Hud` — turn indicator, wall count, faan target, scoreboard, chat affordance.
