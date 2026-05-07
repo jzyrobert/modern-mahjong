@@ -301,6 +301,85 @@ describe('MatchSession — snapshot + restore', () => {
     });
     expect(pickSends(out, 'c0b').filter((m) => m.t === 'error')).toHaveLength(0);
   });
+
+  it('attachAll re-binds seats to live connection ids after a hibernation cycle', () => {
+    // Multi-player bug regression: A creates a lobby, the DO hibernates,
+    // B joins → A's in-memory connectionId is wiped by snapshot+restore
+    // so A's seat reports `connected: false` even though A's WebSocket
+    // is alive, and host-only actions from A get bounced with HOST.
+    // The runtime persists `playerId` on each conn via `setState`; on
+    // wake `MatchRoom.onStart` calls `attachAll` to re-bind those
+    // playerIds to their live conn ids.
+    const a = new MatchSession();
+    helloAs(a, 'cA', 'pA', 'Alice');
+    const snap = JSON.parse(JSON.stringify(a.snapshot()));
+
+    const b = new MatchSession();
+    b.restore(snap);
+    // Before attachAll the lobby projection has Alice marked disconnected
+    // because `connectionId` is null on every seat post-restore.
+    const beforeOuts = helloAs(b, 'cB', 'pB', 'Bob');
+    const beforeLobby = pickBroadcasts(beforeOuts).find((m) => m.t === 'lobby');
+    if (beforeLobby?.t !== 'lobby') throw new Error('expected a lobby broadcast');
+    expect(beforeLobby.players.find((p) => p.playerId === 'pA')?.connected).toBe(false);
+
+    // attachAll re-binds the seats; the rebroadcast lobby reports Alice
+    // as connected again.
+    const attachOuts = b.attachAll(
+      new Map([
+        ['pA', 'cA'],
+        ['pB', 'cB'],
+      ]),
+    );
+    const reLobby = pickBroadcasts(attachOuts).find((m) => m.t === 'lobby');
+    if (reLobby?.t !== 'lobby') throw new Error('expected attachAll to rebroadcast lobby');
+    expect(reLobby.players.find((p) => p.playerId === 'pA')?.connected).toBe(true);
+    expect(reLobby.host).toBe('pA');
+
+    // Host-only actions from A now succeed: pre-fix Alice's seat had
+    // connectionId=null, so `playerIdFor('cA')` returned null and
+    // startHand bounced with HOST.
+    b.applyClientMessage('cA', { t: 'seatBot', seat: 2, kind: 'passive' });
+    b.applyClientMessage('cA', { t: 'seatBot', seat: 3, kind: 'passive' });
+    const startOut = b.applyClientMessage('cA', {
+      t: 'action',
+      action: { t: 'startHand', seed: 1, dealer: 0 },
+    });
+    expect(pickSends(startOut, 'cA').filter((m) => m.t === 'error')).toHaveLength(0);
+  });
+
+  it('attachAll skips seats with no playerId and is a no-op when nothing changed', () => {
+    const s = new MatchSession();
+    helloAs(s, 'cA', 'pA');
+    // Already-attached seat: re-passing the same map doesn't broadcast.
+    const out = s.attachAll(new Map([['pA', 'cA']]));
+    expect(out).toHaveLength(0);
+    // Empty seats are silently skipped — passing a map for an unseated
+    // playerId doesn't error.
+    const out2 = s.attachAll(new Map([['pUnknown', 'cZ']]));
+    expect(out2).toHaveLength(0);
+  });
+
+  it('host stays consistent when both players leave and rejoin within grace', () => {
+    // Multi-player bug regression #2: with two players in the lobby,
+    // both leaving and rejoining should leave the original host as
+    // host. Pre-fix, hibernation stripped connectionIds so leave
+    // events couldn't detach properly, but the rejoin path still
+    // matches by playerId, so `hostPlayerId` should be preserved.
+    const s = new MatchSession();
+    helloAs(s, 'cA', 'pA', 'Alice');
+    helloAs(s, 'cB', 'pB', 'Bob');
+    s.detachConnection('cA', 1_000);
+    s.detachConnection('cB', 1_500);
+    // Re-hello within reconnect grace.
+    const aOut = helloAs(s, 'cA2', 'pA');
+    expect(stateYouFor(aOut, 'cA2')).toBe(0);
+    const bOut = helloAs(s, 'cB2', 'pB');
+    expect(stateYouFor(bOut, 'cB2')).toBe(1);
+    const lobby = pickBroadcasts(bOut).find((m) => m.t === 'lobby');
+    if (lobby?.t !== 'lobby') throw new Error('expected a lobby broadcast');
+    expect(lobby.host).toBe('pA');
+  });
 });
 
 describe('MatchSession — claim ladder', () => {

@@ -6,6 +6,11 @@ export { botByKind } from './MatchSession.js';
 
 const STORAGE_KEY = 'session-snapshot';
 
+/** Per-WS state we persist via partyserver `Connection.setState`. Survives DO hibernation. */
+interface ConnState {
+  playerId: string;
+}
+
 /**
  * Authoritative match room. One Durable Object per match code. Owns a
  * MatchSession that handles all game logic; this class is the thin
@@ -22,6 +27,15 @@ export class MatchRoom extends Server {
   override async onStart(): Promise<void> {
     const snap = await this.ctx?.storage?.get<MatchSessionSnapshot>(STORAGE_KEY);
     if (snap) this.session.restore(snap);
+    // Cloudflare keeps WebSockets alive across hibernation but the JS heap
+    // is rebuilt from scratch — so the in-memory seat→connection mapping
+    // is gone. Each conn carries the player's identity via `setState`
+    // (set on hello below); rebuild the mapping by walking live conns.
+    const byPlayer = new Map<string, string>();
+    for (const conn of this.getConnections<ConnState>()) {
+      if (conn.state?.playerId) byPlayer.set(conn.state.playerId, conn.id);
+    }
+    if (byPlayer.size > 0) await this.dispatch(this.session.attachAll(byPlayer));
   }
 
   override onConnect(conn: Connection, ctx: ConnectionContext): void {
@@ -42,6 +56,17 @@ export class MatchRoom extends Server {
         } satisfies ServerMessage),
       );
       return;
+    }
+    // Stash the player's identity on the WS so wake-from-hibernation can
+    // rebind seat ↔ connection. setState mirrors to the runtime's
+    // serialised attachment, which survives the DO restart.
+    if (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      (parsed as { t?: unknown }).t === 'hello'
+    ) {
+      const playerId = (parsed as { playerId?: unknown }).playerId;
+      if (typeof playerId === 'string') conn.setState({ playerId } satisfies ConnState);
     }
     await this.dispatch(this.session.applyClientMessage(conn.id, parsed));
   }
