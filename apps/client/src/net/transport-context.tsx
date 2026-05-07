@@ -1,6 +1,5 @@
-import type { BotKind } from '@mahjong/bots';
-import type { Action } from '@mahjong/game-logic';
-import type { ServerMessage } from '@mahjong/protocol';
+import type { Action, Seat } from '@mahjong/game-logic';
+import type { BotKind, ServerMessage } from '@mahjong/protocol';
 import Constants from 'expo-constants';
 import {
   type ReactNode,
@@ -37,11 +36,20 @@ interface TransportContextValue {
   leave: () => void;
   send: (action: Action) => void;
   sendChat: (text: string) => void;
-  /** Live-update one bot seat's strategy on a solo match. No-op
-   *  when the active transport is online or LAN — the user can't
-   *  configure another player's behaviour over the network. The
-   *  solo waiting room calls this from its bot-skill picker. */
-  setSoloBotSkill: (seat: 1 | 2 | 3, kind: BotKind) => void;
+  /**
+   * Place / replace a bot in `seat`. For solo, also persists the
+   * choice to `useGame.settings.botSkills` so the next solo match
+   * boots with the same mix. For online / LAN, sends a `seatBot`
+   * message to the host server (which enforces host-only + the
+   * between-hands phase gate).
+   */
+  seatBot: (seat: Seat, kind: BotKind) => void;
+  /**
+   * Remove the bot at `seat`, freeing it for a joiner. No-op for
+   * solo (where the user is always seat 0 and the other three are
+   * always bots). For online / LAN, sends an `unseatBot` message.
+   */
+  unseatBot: (seat: Seat) => void;
 }
 
 const TransportContext = createContext<TransportContextValue | null>(null);
@@ -192,20 +200,37 @@ export function TransportProvider({ children }: { children: ReactNode }) {
     );
   }, [swap]);
 
-  const setSoloBotSkill = useCallback(
-    (seat: 1 | 2 | 3, kind: BotKind) => {
-      // The cast is safe — `swap` keeps the in-flight transport's
-      // identity, and only solo transports surface this method. We
-      // sniff for it instead of plumbing a separate `soloTransport`
-      // ref so online + LAN paths stay one-cast-cheap.
+  const seatBot = useCallback(
+    (seat: Seat, kind: BotKind) => {
+      // Solo path: live-update via the transport's setBotSkill +
+      // persist the choice to localStorage so the next solo match
+      // boots with the same mix. The cast sniffs for `setBotSkill`
+      // instead of plumbing a separate `soloTransport` ref so the
+      // online + LAN paths stay one-cast-cheap.
       const solo = transport as (Transport & Partial<SoloTransportControls>) | null;
-      if (!solo?.setBotSkill) return;
-      solo.setBotSkill(seat, kind);
-      // Persist so the next solo match picks up the same selection.
-      const cur = useGame.getState().settings.botSkills;
-      const next: [BotKind, BotKind, BotKind] = [...cur];
-      next[seat - 1] = kind;
-      useGame.getState().setSettings({ botSkills: next });
+      if (solo?.setBotSkill && seat >= 1 && seat <= 3) {
+        solo.setBotSkill(seat as 1 | 2 | 3, kind);
+        const cur = useGame.getState().settings.botSkills;
+        const next: [BotKind, BotKind, BotKind] = [...cur];
+        next[seat - 1] = kind;
+        useGame.getState().setSettings({ botSkills: next });
+        return;
+      }
+      // Online / LAN: send to the host server. The server enforces
+      // host-only + the between-hands phase gate; on success it
+      // re-broadcasts the lobby with the new `botKind` projected.
+      transport?.send({ t: 'seatBot', seat, kind });
+    },
+    [transport],
+  );
+
+  const unseatBot = useCallback(
+    (seat: Seat) => {
+      // Solo always has 3 bots in seats 1-3 — no concept of "freeing"
+      // a seat. Online + LAN sends through to the host server.
+      const solo = transport as (Transport & Partial<SoloTransportControls>) | null;
+      if (solo?.setBotSkill) return;
+      transport?.send({ t: 'unseatBot', seat });
     },
     [transport],
   );
@@ -339,7 +364,8 @@ export function TransportProvider({ children }: { children: ReactNode }) {
       leave,
       send,
       sendChat,
-      setSoloBotSkill,
+      seatBot,
+      unseatBot,
     }),
     [
       matchCode,
@@ -352,7 +378,8 @@ export function TransportProvider({ children }: { children: ReactNode }) {
       leave,
       send,
       sendChat,
-      setSoloBotSkill,
+      seatBot,
+      unseatBot,
     ],
   );
 
