@@ -1,7 +1,8 @@
 import { type Tile as MTile, type Seat, tileId } from '@mahjong/game-logic';
-import { type ReactNode, useEffect, useRef } from 'react';
-import { Animated, Easing, Pressable, Text, View } from 'react-native';
+import type { ReactNode } from 'react';
+import { Animated, Pressable, Text, View } from 'react-native';
 import { Tile } from '../Tile';
+import { usePulse } from '../animations';
 import type { WallSlot } from './wallLayout';
 
 /**
@@ -242,27 +243,7 @@ function PulseHalo({
   height,
   children,
 }: { width: number; height: number; children: React.ReactNode }) {
-  const t = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(t, {
-          toValue: 1,
-          duration: 700,
-          useNativeDriver: true,
-          easing: Easing.inOut(Easing.ease),
-        }),
-        Animated.timing(t, {
-          toValue: 0,
-          duration: 700,
-          useNativeDriver: true,
-          easing: Easing.inOut(Easing.ease),
-        }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [t]);
+  const t = usePulse();
   const scale = t.interpolate({ inputRange: [0, 1], outputRange: [1, 1.18] });
   const opacity = t.interpolate({ inputRange: [0, 1], outputRange: [0.6, 0] });
   return (
