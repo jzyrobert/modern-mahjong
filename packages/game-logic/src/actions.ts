@@ -64,6 +64,11 @@ export class IllegalActionError extends Error {
  * Pure reducer: takes a state and an action, returns a new state plus a list
  * of events to broadcast. Throws IllegalActionError on invalid input — the
  * server is expected to catch this and emit a typed error response.
+ *
+ * The trickiest action here is `declareClaim` and the `awaitingClaims`
+ * window it feeds into; for an end-to-end map of the discard / pre-pass /
+ * declareClaim / canFinalizeHu / resolveClaims / applyClaim / declareWin
+ * chain, see `docs/CLAIM_FLOW.md` in the repo root.
  */
 export function reduce(state: GameState, action: Action): { state: GameState; events: Event[] } {
   switch (action.t) {
