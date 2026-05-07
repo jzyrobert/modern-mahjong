@@ -245,6 +245,9 @@ export function applyClaim(
     discards: newDiscards,
     discardOrder: newDiscardOrder,
     lastDiscard: undefined,
+    // The previous seat's gang chain (if any) was broken by their
+    // discard; the new turn-holder starts with a fresh 0 count.
+    gangReplacementCount: 0,
   };
 }
 

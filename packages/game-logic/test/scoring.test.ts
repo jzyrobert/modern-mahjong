@@ -365,6 +365,178 @@ describe('scoring — concealed hand (門前清) on a discard win', () => {
   });
 });
 
+describe('scoring — last tile (海底撈月)', () => {
+  it('self-draw on the last live wall tile scores 1', () => {
+    const winningTile = suit('man', 5, 0);
+    const hand: Tile[] = [
+      suit('man', 1, 0),
+      suit('man', 1, 1),
+      suit('man', 1, 2),
+      suit('man', 9, 0),
+      suit('man', 9, 1),
+      suit('man', 9, 2),
+      suit('pin', 5, 0),
+      suit('pin', 5, 1),
+      suit('pin', 5, 2),
+      suit('sou', 3, 0),
+      suit('sou', 3, 1),
+      suit('sou', 3, 2),
+      suit('man', 5, 1),
+    ];
+    const state: GameState = { ...stateWith(hand), wall: [] };
+    const r = scoreHand({ state, winner: 0, winningTile, selfDraw: true });
+    expect(r.breakdown.find((b) => b.name === '海底撈月')?.faan).toBe(1);
+  });
+
+  it('does not fire when the win came off a gang replacement (槓上開花 covers it)', () => {
+    const winningTile = suit('man', 5, 0);
+    const hand: Tile[] = [
+      suit('man', 1, 0),
+      suit('man', 1, 1),
+      suit('man', 1, 2),
+      suit('man', 9, 0),
+      suit('man', 9, 1),
+      suit('man', 9, 2),
+      suit('pin', 5, 0),
+      suit('pin', 5, 1),
+      suit('pin', 5, 2),
+      suit('sou', 3, 0),
+      suit('sou', 3, 1),
+      suit('sou', 3, 2),
+      suit('man', 5, 1),
+    ];
+    const state: GameState = { ...stateWith(hand), wall: [], gangReplacementCount: 1 };
+    const r = scoreHand({ state, winner: 0, winningTile, selfDraw: true });
+    expect(r.breakdown.find((b) => b.name === '海底撈月')).toBeUndefined();
+    expect(r.breakdown.find((b) => b.name === '槓上開花')?.faan).toBe(2);
+  });
+});
+
+describe('scoring — kong replacement (槓上開花 / 槓上槓)', () => {
+  it('first gang replacement → 槓上開花 (2)', () => {
+    const winningTile = suit('man', 5, 0);
+    const hand: Tile[] = [
+      suit('man', 1, 0),
+      suit('pin', 2, 0),
+      suit('pin', 3, 0),
+      suit('pin', 4, 0),
+      suit('sou', 5, 0),
+      suit('sou', 6, 0),
+      suit('sou', 7, 0),
+      suit('sou', 8, 0),
+      suit('sou', 9, 0),
+      honor('E', 0),
+      honor('E', 1),
+      suit('man', 1, 1),
+      suit('man', 1, 2),
+    ];
+    const state: GameState = { ...stateWith(hand), gangReplacementCount: 1 };
+    const r = scoreHand({ state, winner: 0, winningTile, selfDraw: true });
+    expect(r.breakdown.find((b) => b.name === '槓上開花')?.faan).toBe(2);
+  });
+
+  it('chained second gang replacement → 槓上槓 (9)', () => {
+    const winningTile = suit('man', 5, 0);
+    const hand: Tile[] = [
+      suit('man', 1, 0),
+      suit('pin', 2, 0),
+      suit('pin', 3, 0),
+      suit('pin', 4, 0),
+      suit('sou', 5, 0),
+      suit('sou', 6, 0),
+      suit('sou', 7, 0),
+      suit('sou', 8, 0),
+      suit('sou', 9, 0),
+      honor('E', 0),
+      honor('E', 1),
+      suit('man', 1, 1),
+      suit('man', 1, 2),
+    ];
+    const state: GameState = { ...stateWith(hand), gangReplacementCount: 2 };
+    const r = scoreHand({ state, winner: 0, winningTile, selfDraw: true });
+    expect(r.breakdown.find((b) => b.name === '槓上槓')?.faan).toBe(9);
+    expect(r.breakdown.find((b) => b.name === '槓上開花')).toBeUndefined();
+  });
+});
+
+describe('scoring — blessings (天/地/人糊)', () => {
+  it('天糊: dealer self-draw on opening 14-tile hand → 13', () => {
+    const winningTile = suit('man', 5, 0);
+    const hand: Tile[] = [
+      suit('man', 1, 0),
+      suit('man', 2, 0),
+      suit('man', 3, 0),
+      suit('pin', 4, 0),
+      suit('pin', 5, 0),
+      suit('pin', 6, 0),
+      suit('sou', 7, 0),
+      suit('sou', 8, 0),
+      suit('sou', 9, 0),
+      suit('man', 5, 1),
+      suit('man', 5, 2),
+      honor('E', 0),
+      honor('E', 1),
+    ];
+    // dealer = 0 (default), no discards anywhere, no melds.
+    const state = stateWith(hand);
+    const r = scoreHand({ state, winner: 0, winningTile, selfDraw: true });
+    expect(r.breakdown.find((b) => b.name === '天糊')?.faan).toBe(13);
+  });
+
+  it("地糊: non-dealer rons on dealer's first discard → 13", () => {
+    const winningTile = suit('man', 5, 0);
+    const hand: Tile[] = [
+      suit('man', 1, 0),
+      suit('man', 2, 0),
+      suit('man', 3, 0),
+      suit('pin', 4, 0),
+      suit('pin', 5, 0),
+      suit('pin', 6, 0),
+      suit('sou', 7, 0),
+      suit('sou', 8, 0),
+      suit('sou', 9, 0),
+      suit('man', 5, 1),
+      suit('man', 5, 2),
+      honor('E', 0),
+      honor('E', 1),
+    ];
+    const state: GameState = {
+      ...stateWith(hand),
+      // dealer = 0, dealer has discarded the winning tile, others empty.
+      discards: { 0: [winningTile], 1: [], 2: [], 3: [] },
+    };
+    const r = scoreHand({ state, winner: 1, winningTile, selfDraw: false });
+    expect(r.breakdown.find((b) => b.name === '地糊')?.faan).toBe(13);
+  });
+
+  it('人糊: non-dealer wins on first own self-draw → 13', () => {
+    const winningTile = suit('man', 5, 0);
+    const hand: Tile[] = [
+      suit('man', 1, 0),
+      suit('man', 2, 0),
+      suit('man', 3, 0),
+      suit('pin', 4, 0),
+      suit('pin', 5, 0),
+      suit('pin', 6, 0),
+      suit('sou', 7, 0),
+      suit('sou', 8, 0),
+      suit('sou', 9, 0),
+      suit('man', 5, 1),
+      suit('man', 5, 2),
+      honor('E', 0),
+      honor('E', 1),
+    ];
+    const state: GameState = {
+      ...stateWith(hand),
+      // Dealer has discarded once; non-dealer (seat 1) has not
+      // discarded at all yet, no melds anywhere.
+      discards: { 0: [suit('pin', 9, 3)], 1: [], 2: [], 3: [] },
+    };
+    const r = scoreHand({ state, winner: 1, winningTile, selfDraw: true });
+    expect(r.breakdown.find((b) => b.name === '人糊')?.faan).toBe(13);
+  });
+});
+
 describe('scoring — small/large dragons', () => {
   it('all three dragon triplets = 大三元', () => {
     const winningTile = suit('man', 1, 0);

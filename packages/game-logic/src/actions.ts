@@ -255,6 +255,10 @@ function discard(state: GameState, seat: Seat, tile: Tile): { state: GameState; 
     discardOrder,
     hasDrawn: false,
     lastDiscard: { tile, from: seat },
+    // A discard breaks any in-flight gang-replacement chain, so the
+    // 槓上開花 / 槓上槓 scoring conditions are no longer satisfied
+    // for whoever's turn comes next.
+    gangReplacementCount: 0,
   };
   const submitted: Partial<Record<Seat, Claim>> = {};
   for (const s of SEATS) {
@@ -442,6 +446,7 @@ function declareGangConcealed(
       hands: { ...state.hands, [seat]: newHand },
       melds,
       deadWall,
+      gangReplacementCount: state.gangReplacementCount + 1,
     },
     events: [{ t: 'gangDeclared', seat, kind: 'concealed' }],
   };
@@ -481,6 +486,7 @@ function declareGangPromoted(
       hands: { ...state.hands, [seat]: newHand },
       melds: { ...state.melds, [seat]: newMelds },
       deadWall,
+      gangReplacementCount: state.gangReplacementCount + 1,
     },
     events: [{ t: 'gangDeclared', seat, kind: 'promoted' }],
   };

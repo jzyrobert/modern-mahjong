@@ -121,6 +121,15 @@ export interface GameState {
   lastResult?: HandResult | undefined;
   /** Opening dice for the current hand (cleared at the start of the next). */
   openingRolls?: OpeningRolls | undefined;
+  /**
+   * Number of consecutive gang-replacement draws taken by the current
+   * `turn` seat without an intervening discard. Set to 1 by
+   * `declareGangConcealed` / `declareGangPromoted`, incremented if they
+   * gang again on the replacement, reset to 0 on `discard`. Drives the
+   * `槓上開花` (kong replacement, 1 fan) / `槓上槓` (double kong
+   * replacement, 9 fan) scoring patterns.
+   */
+  gangReplacementCount: number;
 }
 
 /** One scoring pattern that contributed faan, with its name + value. */
@@ -166,6 +175,7 @@ export function emptyState(rules: RuleConfig = DEFAULT_RULES): GameState {
     discards: { 0: [], 1: [], 2: [], 3: [] },
     discardOrder: [],
     scoreboard: { 0: 0, 1: 0, 2: 0, 3: 0 },
+    gangReplacementCount: 0,
   };
 }
 
