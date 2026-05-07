@@ -17,6 +17,7 @@ import { GameStatusBar } from './GameStatusBar';
 import { MatchModals } from './MatchModals';
 import type { SortMode } from './SortPicker';
 import { TopBar } from './TopBar';
+import type { Position } from './seatColor';
 
 interface DesktopShellProps {
   /** Validated by `Match.tsx` to be non-null + non-`'spectator'`. */
@@ -52,7 +53,7 @@ interface DesktopShellProps {
   onSendChat: (text: string) => void;
   onTileTap: (t: MTile) => void;
   /** Position lookup for `ChatBubbles`'s positioning logic. */
-  seatToPosition: Record<Seat, 'bottom' | 'right' | 'top' | 'left'>;
+  seatToPosition: Record<Seat, Position>;
   /** Modal state — owned by `Match.tsx` so the modal lifetime is
    *  decoupled from the shell switch (i.e. flipping orientations
    *  doesn't slam the modals shut). */
