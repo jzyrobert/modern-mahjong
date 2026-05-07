@@ -469,16 +469,17 @@ function LobbySeatControls({ players, mySeat, isSolo, onSeat, onUnseat }: LobbyS
               <Pressable
                 onPress={() => onUnseat(seat)}
                 accessibilityLabel={`Remove bot from seat ${seat}`}
+                hitSlop={8}
                 style={({ pressed }) => ({
-                  paddingVertical: 6,
-                  paddingHorizontal: 10,
+                  paddingVertical: 10,
+                  paddingHorizontal: 14,
                   borderRadius: 6,
                   borderWidth: 1,
                   borderColor: COLORS.hairline,
                   backgroundColor: pressed ? '#dfd4bc' : 'transparent',
                 })}
               >
-                <Text style={{ fontSize: 11, fontWeight: '800', color: COLORS.ink3 }}>REMOVE</Text>
+                <Text style={{ fontSize: 12, fontWeight: '800', color: COLORS.ink3 }}>REMOVE</Text>
               </Pressable>
             ) : null}
           </View>

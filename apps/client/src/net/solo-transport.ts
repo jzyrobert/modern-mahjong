@@ -231,6 +231,7 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
           seat: 1,
           connected: true,
           isBot: true,
+          botKind: botKinds[1],
         },
         {
           playerId: BOT_PLAYER_IDS[1],
@@ -238,6 +239,7 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
           seat: 2,
           connected: true,
           isBot: true,
+          botKind: botKinds[2],
         },
         {
           playerId: BOT_PLAYER_IDS[2],
@@ -245,6 +247,7 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
           seat: 3,
           connected: true,
           isBot: true,
+          botKind: botKinds[3],
         },
       ],
       host: opts.playerId,

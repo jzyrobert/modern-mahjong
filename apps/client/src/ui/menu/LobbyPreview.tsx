@@ -130,16 +130,22 @@ export function LobbyPreview({ lobby, matchCode }: LobbyPreviewProps) {
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         {SEATS.map((seat) => {
           const p = players[seat];
+          // The server projects a placeholder PublicPlayer (`Seat N`,
+          // `bot-N`, isBot=false, connected=false) for genuinely-empty
+          // seats so the lobby array always has length 4. Detect those
+          // here so the card renders the dashed "Open seat…" affordance
+          // instead of an opaque cream card with a DISCONNECTED pill.
+          const filled = p !== null && p !== undefined && (p.isBot || p.connected);
           return (
             <View
               key={seat}
               style={{
                 flexBasis: cardBasis,
                 flexGrow: 1,
-                backgroundColor: p ? COLORS.cream : 'transparent',
+                backgroundColor: filled ? COLORS.cream : 'transparent',
                 borderColor: COLORS.hairline,
                 borderWidth: 1,
-                borderStyle: p ? 'solid' : 'dashed',
+                borderStyle: filled ? 'solid' : 'dashed',
                 borderRadius: 10,
                 padding: 10,
                 gap: 6,
@@ -168,7 +174,7 @@ export function LobbyPreview({ lobby, matchCode }: LobbyPreviewProps) {
                   SEAT {seat}
                 </Text>
               </View>
-              {p ? (
+              {filled && p ? (
                 <>
                   <Text
                     style={{

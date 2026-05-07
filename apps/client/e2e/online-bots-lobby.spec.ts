@@ -66,10 +66,14 @@ test('host can fill empty seats with bots and start the hand', async ({ browser 
     // Now every seat is filled; start button enables.
     await expect(startBtn).toBeEnabled();
 
-    // Remove the seat-2 bot — start button re-disables, hint reappears.
+    // Remove the seat-2 bot — start button re-disables, hint reappears,
+    // and LobbyPreview's seat-2 card flips back to the dashed "Open
+    // seat…" affordance (the visual that was missing pre-fix and made
+    // the click look like it had done nothing).
     await page.getByLabel('Remove bot from seat 2').click();
     await expect(startBtn).toBeDisabled();
     await expect(page.getByText('Bot (simple)', { exact: true })).toBeHidden();
+    await expect(page.getByText('Open seat…', { exact: true })).toBeVisible();
 
     // Re-seat seat 2 with a different kind, then start the hand.
     await page.getByLabel('Set seat 2 to Easy').click();
