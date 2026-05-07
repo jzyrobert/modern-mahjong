@@ -90,7 +90,11 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function FeltSwatchRow({ value, onChange }: { value: FeltSkin; onChange: (v: FeltSkin) => void }) {
   return (
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+    <View
+      accessibilityRole="radiogroup"
+      accessibilityLabel="Felt skin"
+      style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}
+    >
       {(Object.keys(FELT_SKINS) as FeltSkin[]).map((id) => {
         const skin = FELT_SKINS[id];
         const selected = value === id;
@@ -98,6 +102,9 @@ function FeltSwatchRow({ value, onChange }: { value: FeltSkin; onChange: (v: Fel
           <Pressable
             key={id}
             onPress={() => onChange(id)}
+            accessibilityRole="radio"
+            accessibilityLabel={`Felt skin: ${skin.name}`}
+            accessibilityState={{ selected }}
             style={({ pressed }) => ({
               flexDirection: 'row',
               alignItems: 'center',
@@ -133,7 +140,11 @@ function TileBackSwatchRow({
   onChange,
 }: { value: TileBackSkin; onChange: (v: TileBackSkin) => void }) {
   return (
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+    <View
+      accessibilityRole="radiogroup"
+      accessibilityLabel="Tile back skin"
+      style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}
+    >
       {(Object.keys(TILE_BACK_SKINS) as TileBackSkin[]).map((id) => {
         const skin = TILE_BACK_SKINS[id];
         const selected = value === id;
@@ -141,6 +152,9 @@ function TileBackSwatchRow({
           <Pressable
             key={id}
             onPress={() => onChange(id)}
+            accessibilityRole="radio"
+            accessibilityLabel={`Tile back skin: ${skin.name}`}
+            accessibilityState={{ selected }}
             style={({ pressed }) => ({
               flexDirection: 'row',
               alignItems: 'center',
@@ -185,7 +199,12 @@ function ToggleRow({ label, hint, value, onChange }: ToggleRowProps) {
         <Text style={{ fontSize: 13, fontWeight: '700', color: COLORS.ink }}>{label}</Text>
         <Text style={{ fontSize: 11, color: COLORS.ink3, fontWeight: '600' }}>{hint}</Text>
       </View>
-      <Switch value={value} onValueChange={onChange} />
+      <Switch
+        value={value}
+        onValueChange={onChange}
+        accessibilityLabel={label}
+        accessibilityState={{ checked: value }}
+      />
     </View>
   );
 }
