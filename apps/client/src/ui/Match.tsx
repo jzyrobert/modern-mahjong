@@ -75,6 +75,7 @@ export function Match() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
   const [referenceOpen, setReferenceOpen] = useState(false);
+  const [scoringOpen, setScoringOpen] = useState(false);
   const [playersOpen, setPlayersOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const felt = FELT_SKINS[settings.felt];
@@ -331,6 +332,8 @@ export function Match() {
     setLogOpen,
     referenceOpen,
     setReferenceOpen,
+    scoringOpen,
+    setScoringOpen,
     playersOpen,
     setPlayersOpen,
     menuOpen,

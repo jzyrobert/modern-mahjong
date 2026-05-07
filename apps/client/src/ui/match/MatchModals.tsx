@@ -2,6 +2,7 @@ import type { Seat } from '@mahjong/game-logic';
 import { GameLog } from './GameLog';
 import { MenuSheet } from './MenuSheet';
 import { PlayersSheet } from './PlayersSheet';
+import { ScoringRulesSheet } from './ScoringRulesSheet';
 import { SettingsPanel } from './SettingsPanel';
 import { TileReferenceSheet } from './TileReferenceSheet';
 
@@ -13,6 +14,8 @@ interface MatchModalsProps {
   setLogOpen: (open: boolean) => void;
   referenceOpen: boolean;
   setReferenceOpen: (open: boolean) => void;
+  scoringOpen: boolean;
+  setScoringOpen: (open: boolean) => void;
   playersOpen: boolean;
   setPlayersOpen: (open: boolean) => void;
   menuOpen: boolean;
@@ -44,6 +47,8 @@ export function MatchModals({
   setLogOpen,
   referenceOpen,
   setReferenceOpen,
+  scoringOpen,
+  setScoringOpen,
   playersOpen,
   setPlayersOpen,
   menuOpen,
@@ -56,6 +61,7 @@ export function MatchModals({
       <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <GameLog open={logOpen} onClose={() => setLogOpen(false)} />
       <TileReferenceSheet open={referenceOpen} onClose={() => setReferenceOpen(false)} />
+      <ScoringRulesSheet open={scoringOpen} onClose={() => setScoringOpen(false)} />
       <PlayersSheet open={playersOpen} onClose={() => setPlayersOpen(false)} mySeat={mySeat} />
       <MenuSheet
         open={menuOpen}
@@ -63,6 +69,7 @@ export function MatchModals({
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenLog={() => setLogOpen(true)}
         onOpenReference={() => setReferenceOpen(true)}
+        onOpenScoring={() => setScoringOpen(true)}
         onLeave={onLeave}
         onSendChat={onSendChat}
       />

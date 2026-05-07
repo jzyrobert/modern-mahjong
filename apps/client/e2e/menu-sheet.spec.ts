@@ -1,13 +1,15 @@
 import { expect, test } from './_helpers';
 
 // The match `TopBar` collapses Settings / Game log / Tile
-// reference / Leave into a single ☰ menu button so the row fits
-// on a 320 px iPhone SE without flex-wrap clipping. Tapping ☰
-// opens the menu bottom sheet; the four entries are reachable as
-// tappable rows. This test locks in the menu's existence + each
+// reference / Scoring rules / Leave into a single ☰ menu button so
+// the row fits on a 320 px iPhone SE without flex-wrap clipping.
+// Tapping ☰ opens the menu bottom sheet; the entries are reachable
+// as tappable rows. This test locks in the menu's existence + each
 // entry's role / accessibility-label.
 test.describe('Match menu sheet', () => {
-  test('☰ menu surfaces Settings, Game log, Tile reference, Leave', async ({ page }) => {
+  test('☰ menu surfaces Settings, Game log, Tile reference, Scoring rules, Leave', async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 412, height: 906 });
     await page.goto('/');
     await page.getByRole('button', { name: 'Play vs bots' }).click();
@@ -26,8 +28,14 @@ test.describe('Match menu sheet', () => {
     if (!headingBox) throw new Error('Menu heading has no bounding box');
     expect(headingBox.y).toBeGreaterThan(350);
 
-    // The four expected entries are present + tappable.
-    for (const label of ['Settings', 'Game log', 'Tile reference', 'Leave match']) {
+    // The five expected entries are present + tappable.
+    for (const label of [
+      'Settings',
+      'Game log',
+      'Tile reference',
+      'Scoring rules',
+      'Leave match',
+    ]) {
       await expect(page.getByRole('button', { name: label })).toBeVisible();
     }
 
