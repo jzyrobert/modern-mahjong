@@ -662,11 +662,55 @@ function declareWin(
     );
   }
   const fromSeat: Seat = selfDraw ? seat : state.lastDiscard!.from;
+  // Move the winning tile into the winner's concealed hand so the
+  // resolved-phase view shows the full 14-tile shape rather than the
+  // 13-tile pre-win one. Self-draw already has the tile in hand
+  // (it was the last drawn tile); ron / 搶槓 need the explicit push.
+  // For ron we also pop the tile back off the discarder's pile —
+  // mirrors `applyClaim`'s pop on chi/peng/gang and keeps
+  // `assertTileConservation` happy.
+  const wasRobbed = state.pendingPromotedGang !== undefined;
+  let winnerHand = state.hands[seat];
+  let newDiscards = state.discards;
+  let newDiscardOrder = state.discardOrder;
+  if (!selfDraw) {
+    winnerHand = [...winnerHand, winningTile];
+    if (!wasRobbed) {
+      // Pop the just-claimed tile back off the discarder's pile (it
+      // now lives in the winner's hand instead). For 搶槓 the tile
+      // never went into a discard pile in the first place — it was
+      // robbed straight out of the gang seat's hand by resolveAndApply.
+      const fromPile = [...state.discards[fromSeat]];
+      let popIdx = -1;
+      for (let i = fromPile.length - 1; i >= 0; i--) {
+        if (sameFace(fromPile[i]!, winningTile)) {
+          popIdx = i;
+          break;
+        }
+      }
+      if (popIdx >= 0) fromPile.splice(popIdx, 1);
+      newDiscards = { ...state.discards, [fromSeat]: fromPile };
+      const orderCopy = [...state.discardOrder];
+      let orderIdx = -1;
+      for (let i = orderCopy.length - 1; i >= 0; i--) {
+        const e = orderCopy[i]!;
+        if (e.from === fromSeat && sameFace(e.tile, winningTile)) {
+          orderIdx = i;
+          break;
+        }
+      }
+      if (orderIdx >= 0) orderCopy.splice(orderIdx, 1);
+      newDiscardOrder = orderCopy;
+    }
+  }
   return {
     state: {
       ...state,
       phase: 'resolved',
       pendingPromotedGang: undefined,
+      hands: { ...state.hands, [seat]: winnerHand },
+      discards: newDiscards,
+      discardOrder: newDiscardOrder,
       lastResult: {
         kind: 'win',
         winner: seat,
