@@ -52,7 +52,11 @@ export function RulePanel({ rules, isHost, onAction }: RulePanelProps) {
       </Text>
 
       <Row label="Minimum faan">
-        <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+        <View
+          accessibilityRole="radiogroup"
+          accessibilityLabel="Minimum faan"
+          style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}
+        >
           {FAAN_OPTIONS.map((n) => {
             const active = rules.faanMin === n;
             return (
@@ -60,6 +64,9 @@ export function RulePanel({ rules, isHost, onAction }: RulePanelProps) {
                 key={n}
                 disabled={disabled}
                 onPress={() => set({ faanMin: n as RuleConfig['faanMin'] })}
+                accessibilityRole="radio"
+                accessibilityLabel={`Minimum faan: ${n}`}
+                accessibilityState={{ selected: active, disabled }}
                 style={({ pressed }) => ({
                   borderWidth: 1,
                   borderColor: active ? COLORS.red : COLORS.hairline,
@@ -159,6 +166,8 @@ function ToggleRow({
         value={value}
         onValueChange={onChange}
         disabled={disabled}
+        accessibilityLabel={label}
+        accessibilityState={{ checked: value, disabled }}
         trackColor={{ true: COLORS.green, false: COLORS.hairline }}
       />
     </View>

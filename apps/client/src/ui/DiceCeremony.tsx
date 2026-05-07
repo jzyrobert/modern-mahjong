@@ -58,20 +58,33 @@ export function DiceCeremony() {
   const rolls = useGame((s) => s.state?.openingRolls);
   const dealer = useGame((s) => s.state?.dealer);
   const lobby = useGame((s) => s.lobby);
+  // Honour the OS / user "reduced motion" preference — when off, the
+  // overlay just snaps in / out instead of fading. The dismiss timer
+  // is unchanged so users get the same on-screen duration either way.
+  const animsEnabled = useGame((s) => s.settings.animations);
   const [dismissed, setDismissed] = useState(false);
   const fade = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (!rolls) return;
     setDismissed(false);
-    Animated.timing(fade, { toValue: 1, duration: 250, useNativeDriver: true }).start();
+    if (animsEnabled) {
+      Animated.timing(fade, { toValue: 1, duration: 250, useNativeDriver: true }).start();
+    } else {
+      fade.setValue(1);
+    }
     const timer = setTimeout(() => {
-      Animated.timing(fade, { toValue: 0, duration: 250, useNativeDriver: true }).start(() =>
-        setDismissed(true),
-      );
+      if (animsEnabled) {
+        Animated.timing(fade, { toValue: 0, duration: 250, useNativeDriver: true }).start(() =>
+          setDismissed(true),
+        );
+      } else {
+        fade.setValue(0);
+        setDismissed(true);
+      }
     }, DISMISS_MS);
     return () => clearTimeout(timer);
-  }, [rolls, fade]);
+  }, [rolls, fade, animsEnabled]);
 
   const visible = !!rolls && !dismissed && dealer !== undefined;
   if (!visible) return null;
@@ -80,9 +93,14 @@ export function DiceCeremony() {
   return (
     <Pressable
       onPress={() => {
-        Animated.timing(fade, { toValue: 0, duration: 250, useNativeDriver: true }).start(() =>
-          setDismissed(true),
-        );
+        if (animsEnabled) {
+          Animated.timing(fade, { toValue: 0, duration: 250, useNativeDriver: true }).start(() =>
+            setDismissed(true),
+          );
+        } else {
+          fade.setValue(0);
+          setDismissed(true);
+        }
       }}
       style={{
         position: 'absolute',
@@ -152,13 +170,18 @@ export function DiceCeremony() {
 }
 
 function Die({ value, delay }: { value: number; delay: number }) {
+  const animsEnabled = useGame((s) => s.settings.animations);
   const t = useRef(new Animated.Value(0)).current;
   useEffect(() => {
+    if (!animsEnabled) {
+      t.setValue(1);
+      return;
+    }
     Animated.sequence([
       Animated.delay(delay),
       Animated.spring(t, { toValue: 1, friction: 6, tension: 100, useNativeDriver: true }),
     ]).start();
-  }, [delay, t]);
+  }, [delay, t, animsEnabled]);
   const scale = t.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] });
   const rotate = t.interpolate({ inputRange: [0, 1], outputRange: ['-90deg', '0deg'] });
   return (
