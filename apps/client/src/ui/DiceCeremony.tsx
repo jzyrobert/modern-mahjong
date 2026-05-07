@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Pressable, Text, View } from 'react-native';
 import { nameForSeat, useGame } from '../state/game';
 import { COLORS } from './colors';
+import { DISMISS_MS } from './timing';
 
 const PIPS: Record<number, [number, number][]> = {
   1: [[2, 2]],
@@ -38,8 +39,6 @@ const PIPS: Record<number, [number, number][]> = {
     [3, 3],
   ],
 };
-
-const DISMISS_MS = 3500;
 
 /**
  * Opening-rolls overlay. Triggered by a fresh

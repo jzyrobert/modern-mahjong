@@ -2,12 +2,11 @@ import type { Seat } from '@mahjong/game-logic';
 import { useEffect, useRef } from 'react';
 import { Text, View, type ViewStyle } from 'react-native';
 import { useGame } from '../../state/game';
+import { DISMISS_MS } from '../timing';
 
 interface ChatBubblesProps {
   seatToPosition: Record<Seat, 'bottom' | 'right' | 'top' | 'left'>;
 }
-
-const DISMISS_MS = 3500;
 
 const ANCHOR: Record<'bottom' | 'right' | 'top' | 'left', ViewStyle> = {
   bottom: { left: '50%' as const, bottom: 120 },
