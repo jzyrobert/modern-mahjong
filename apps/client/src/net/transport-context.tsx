@@ -97,12 +97,12 @@ function resolveServerHost(): string {
  * it via `useTransport()`.
  *
  * **Background lifecycle:** iOS suspends WebSockets within ~30s of the
- * app being backgrounded. When `AppState` flips to `background`,
- * `transport.close()` runs so the server's reconnect-grace timer can
- * restore the seat when we come back. When we flip to `active`, if a
- * matchCode + identity is in scope, we re-create the same transport and
- * re-hello — `MatchSession.snapshot()/restore()` round-trips the engine
- * state so the user lands back where they were.
+ * app being backgrounded. We don't proactively close on background —
+ * short screen locks should leave the socket alive — but a `closed`
+ * status flip from a long-suspended socket nulls the transport, and
+ * the AppState foreground handler then re-creates it. `MatchSession.
+ * snapshot()/restore()` round-trips the engine state so the user lands
+ * back where they were.
  */
 export function TransportProvider({ children }: { children: ReactNode }) {
   const [transport, setTransport] = useState<Transport | null>(null);
@@ -241,15 +241,10 @@ export function TransportProvider({ children }: { children: ReactNode }) {
     [transport],
   );
 
-  // Track the active transport's connection status so the lobby can
-  // surface "Connecting…" / "Couldn't reach server" feedback. When an
-  // online / LAN socket flips to `closed` unexpectedly (OS suspending
-  // the ws after a long background, a network blip, a server restart),
-  // null the transport so the AppState foreground handler — and any
-  // explicit user retry — can rejoin via `findOrAssignSeat`'s
-  // playerId-match branch within the server's reconnect grace.
-  // Skipped for solo (the in-process loop never closes unexpectedly)
-  // and after `leave()` (which clears `reconnectInfoRef.current`).
+  // Surface "Connecting…" / "Couldn't reach server" feedback to the
+  // lobby. On an online/LAN `closed` flip, also null the transport so
+  // the AppState foreground handler (or a user retry) can rejoin via
+  // the server's reconnect-grace window. Solo never closes unexpectedly.
   useEffect(() => {
     if (!transport) return;
     return transport.onStatus((s) => {
@@ -304,43 +299,22 @@ export function TransportProvider({ children }: { children: ReactNode }) {
     });
   }, [transport, setState, setLobby, appendEvents, pushChat, flashClaimMissed]);
 
-  // AppState background/foreground lifecycle. For socket-backed
-  // transports (online + LAN), pre-emptively close on background so
-  // the server's reconnect grace can hold the seat, and re-create on
-  // foreground — the server's snapshot/restore brings the engine
-  // state back.
-  //
-  // For solo, deliberately keep the transport alive across
-  // background/foreground. There's no socket to suspend (the bot
-  // loop is in-process), and there's no server to restore from —
-  // closing would tear down the message listeners + the claim alarm,
-  // and the foreground branch's `joinSolo()` would then spin up a
-  // FRESH `emptyState` match, dumping the user back into "Waiting
-  // for the game to start…" with their in-progress hand gone. This
-  // is the bug behind "screen off then on → can't take any actions
-  // in a no-turn-timer solo game."
+  // AppState foreground re-join. We don't proactively close the socket
+  // on background — short screen locks shouldn't kick the user off
+  // their match, and iOS suspending a long-backgrounded WS surfaces
+  // as a `closed` flip the onStatus effect above already handles.
+  // On foreground, if the transport was nulled (closed mid-background),
+  // rejoin so the server reseats us by playerId within the reconnect
+  // grace. Solo stays alive across visibility flips by design — the
+  // in-process bot loop has no socket and no server snapshot to restore.
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
   useEffect(() => {
     const sub = AppState.addEventListener('change', (next) => {
       const prev = appStateRef.current;
       appStateRef.current = next;
-      // Backgrounding: don't proactively close the socket. A short
-      // screen lock (a few seconds — checking notifications, glancing
-      // at the time) shouldn't kick the user off their match. iOS
-      // will suspend long-backgrounded WebSockets on its own; that
-      // surfaces as a `closed` status, which the onStatus effect
-      // above nulls the transport on. A foreground re-tick then
-      // re-joins via `findOrAssignSeat`'s playerId-match branch.
-      // The previous behaviour (proactive close + null on every
-      // background) generated a server-visible disconnect on every
-      // brief lock, exhausting the seat's reconnect grace if the
-      // user toggled visibility a few times in quick succession.
       if (prev.match(/inactive|background/) && next === 'active') {
         const info = reconnectInfoRef.current;
         if (info && info.kind !== 'solo' && !transport) {
-          // Identity comes from localStorage so playerId is stable
-          // across the suspend; the server reseats us by playerId
-          // within the reconnect-grace window (default 60s).
           if (info.kind === 'online') joinOnline(info.code);
           else if (info.kind === 'lan') joinLan(info.hostUrl, info.code);
         }

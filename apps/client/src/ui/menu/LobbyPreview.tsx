@@ -67,8 +67,6 @@ export function LobbyPreview({ lobby, matchCode }: LobbyPreviewProps) {
   const { width } = useWindowDimensions();
   const players = SEATS.map((seat) => lobby.players.find((p) => p.seat === seat) ?? null);
   const cardBasis = width >= WIDE_GRID_BREAKPOINT ? '23%' : '47%';
-  // Tap-to-copy state for the match-code badge. Flips to true the
-  // moment the clipboard write resolves, auto-dismisses 1500ms later.
   const [copied, setCopied] = useState(false);
   useEffect(() => {
     if (!copied) return;
@@ -132,8 +130,12 @@ export function LobbyPreview({ lobby, matchCode }: LobbyPreviewProps) {
               flexDirection: 'row',
               alignItems: 'center',
               gap: 8,
-              backgroundColor: copied ? '#c2e2c5' : pressed ? '#dfd4bc' : COLORS.cream,
-              borderColor: copied ? '#2d8645' : COLORS.hairline,
+              backgroundColor: copied
+                ? STATUS_COLORS.online.bg
+                : pressed
+                  ? '#dfd4bc'
+                  : COLORS.cream,
+              borderColor: copied ? STATUS_COLORS.online.color : COLORS.hairline,
               borderWidth: 1,
               borderRadius: 8,
               paddingVertical: 6,
@@ -156,7 +158,7 @@ export function LobbyPreview({ lobby, matchCode }: LobbyPreviewProps) {
                 fontSize: 10,
                 fontWeight: '800',
                 letterSpacing: 0.6,
-                color: copied ? '#2d8645' : COLORS.ink3,
+                color: copied ? STATUS_COLORS.online.color : COLORS.ink3,
               }}
             >
               {copied ? 'COPIED' : 'COPY'}
@@ -168,12 +170,10 @@ export function LobbyPreview({ lobby, matchCode }: LobbyPreviewProps) {
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         {SEATS.map((seat) => {
           const p = players[seat];
-          // The server projects a placeholder PublicPlayer (`Seat N`,
-          // `bot-N`, isBot=false, connected=false) for genuinely-empty
-          // seats so the lobby array always has length 4. Detect those
-          // here so the card renders the dashed "Open seat…" affordance
-          // instead of an opaque cream card with a DISCONNECTED pill.
-          const filled = p !== null && p !== undefined && (p.isBot || p.connected);
+          // Server projects an inert placeholder for empty seats so the
+          // lobby array is always length 4 — flatten to a "filled" check
+          // so the card falls through to the dashed "Open seat…" state.
+          const filled = !!p && (p.isBot || p.connected);
           return (
             <View
               key={seat}

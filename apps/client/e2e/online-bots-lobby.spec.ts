@@ -1,3 +1,4 @@
+import { botDisplayName } from '@mahjong/protocol';
 import { type BrowserContext, expect, test } from '@playwright/test';
 import { type TestServerHandle, startTestServer } from './test-server/server.js';
 
@@ -59,9 +60,9 @@ test('host can fill empty seats with bots and start the hand', async ({ browser 
 
     // Lobby preview reflects the new bot names. Server projects the
     // bot kind back through the lobby broadcast.
-    await expect(page.getByText('Bot (Smart)', { exact: true })).toBeVisible();
-    await expect(page.getByText('Bot (Standard)', { exact: true })).toBeVisible();
-    await expect(page.getByText('Bot (Easy)', { exact: true })).toBeVisible();
+    await expect(page.getByText(botDisplayName('heuristic'), { exact: true })).toBeVisible();
+    await expect(page.getByText(botDisplayName('simple'), { exact: true })).toBeVisible();
+    await expect(page.getByText(botDisplayName('passive'), { exact: true })).toBeVisible();
 
     // Now every seat is filled; start button enables.
     await expect(startBtn).toBeEnabled();
@@ -72,12 +73,12 @@ test('host can fill empty seats with bots and start the hand', async ({ browser 
     // the click look like it had done nothing).
     await page.getByLabel('Remove bot from seat 2').click();
     await expect(startBtn).toBeDisabled();
-    await expect(page.getByText('Bot (Standard)', { exact: true })).toBeHidden();
+    await expect(page.getByText(botDisplayName('simple'), { exact: true })).toBeHidden();
     await expect(page.getByText('Open seat…', { exact: true })).toBeVisible();
 
     // Re-seat seat 2 with a different kind, then start the hand.
     await page.getByLabel('Set seat 2 to Easy').click();
-    await expect(page.getByText('Bot (Easy)', { exact: true })).toHaveCount(2);
+    await expect(page.getByText(botDisplayName('passive'), { exact: true })).toHaveCount(2);
     await expect(startBtn).toBeEnabled();
     await startBtn.click();
 
