@@ -163,7 +163,7 @@ function Hero() {
             lineHeight: subtitleSize,
           }}
         >
-          麻雀
+          麻將
         </Text>
       </View>
       <Text
