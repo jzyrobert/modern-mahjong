@@ -1,5 +1,7 @@
 import { SEATS } from '@mahjong/game-logic';
-import { Text, View, useWindowDimensions } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
+import { useEffect, useState } from 'react';
+import { Pressable, Text, View, useWindowDimensions } from 'react-native';
 import type { LobbyState } from '../../state/game';
 import { COLORS as SHARED_COLORS } from '../colors';
 import { SEAT_WIND_GLYPH } from '../winds';
@@ -65,6 +67,25 @@ export function LobbyPreview({ lobby, matchCode }: LobbyPreviewProps) {
   const { width } = useWindowDimensions();
   const players = SEATS.map((seat) => lobby.players.find((p) => p.seat === seat) ?? null);
   const cardBasis = width >= WIDE_GRID_BREAKPOINT ? '23%' : '47%';
+  // Tap-to-copy state for the match-code badge. Flips to true the
+  // moment the clipboard write resolves, auto-dismisses 1500ms later.
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const t = setTimeout(() => setCopied(false), 1500);
+    return () => clearTimeout(t);
+  }, [copied]);
+  const onCopy = async () => {
+    if (!matchCode) return;
+    try {
+      await Clipboard.setStringAsync(matchCode);
+      setCopied(true);
+    } catch {
+      // Clipboard access can be denied on browsers without HTTPS or
+      // on backgrounded native apps. Failing silently is fine — the
+      // user can long-press to fall back to native text selection.
+    }
+  };
 
   return (
     <View
@@ -102,15 +123,22 @@ export function LobbyPreview({ lobby, matchCode }: LobbyPreviewProps) {
           </Text>
         </View>
         {matchCode ? (
-          <View
-            style={{
-              backgroundColor: COLORS.cream,
-              borderColor: COLORS.hairline,
+          <Pressable
+            onPress={onCopy}
+            accessibilityRole="button"
+            accessibilityLabel={copied ? 'Match code copied' : `Copy match code ${matchCode}`}
+            hitSlop={8}
+            style={({ pressed }) => ({
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+              backgroundColor: copied ? '#c2e2c5' : pressed ? '#dfd4bc' : COLORS.cream,
+              borderColor: copied ? '#2d8645' : COLORS.hairline,
               borderWidth: 1,
               borderRadius: 8,
-              paddingVertical: 4,
-              paddingHorizontal: 10,
-            }}
+              paddingVertical: 6,
+              paddingHorizontal: 12,
+            })}
           >
             <Text
               style={{
@@ -123,7 +151,17 @@ export function LobbyPreview({ lobby, matchCode }: LobbyPreviewProps) {
             >
               {matchCode}
             </Text>
-          </View>
+            <Text
+              style={{
+                fontSize: 10,
+                fontWeight: '800',
+                letterSpacing: 0.6,
+                color: copied ? '#2d8645' : COLORS.ink3,
+              }}
+            >
+              {copied ? 'COPIED' : 'COPY'}
+            </Text>
+          </Pressable>
         ) : null}
       </View>
 
