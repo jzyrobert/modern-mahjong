@@ -1,14 +1,4 @@
-import {
-  type Tile as MTile,
-  type Meld,
-  type Phase,
-  type Seat,
-  type Wind,
-  acrossSeat,
-  nextSeat,
-  prevSeat,
-  seatWindFor,
-} from '@mahjong/game-logic';
+import type { Tile as MTile, Meld, Phase, Seat } from '@mahjong/game-logic';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 import type { LobbyState } from '../../state/game';
@@ -19,16 +9,10 @@ import { PlayerBadge } from './PlayerBadge';
 import { SeatDiscardPile } from './SeatDiscardPile';
 import { type SortMode, SortPicker } from './SortPicker';
 import { WallEdge } from './WallEdge';
+import type { Position } from './seatColor';
+import { type SeatPlacement, layoutFor } from './seatPlacement';
 import { FELT_SKINS } from './skins';
 import { LIVE_WALL_TILES, computeWallLayout } from './wallLayout';
-
-type Position = 'top' | 'right' | 'bottom' | 'left';
-
-interface SeatPlacement {
-  seat: Seat;
-  position: Position;
-  seatWind: Wind;
-}
 
 interface DesktopTableProps {
   mySeat: Seat;
@@ -516,17 +500,4 @@ function CenterDiscards({
       </View>
     </View>
   );
-}
-
-function layoutFor(mySeat: Seat, dealer: Seat): SeatPlacement[] {
-  return [
-    { seat: mySeat, position: 'bottom', seatWind: seatWindFor(dealer, mySeat) },
-    { seat: nextSeat(mySeat), position: 'right', seatWind: seatWindFor(dealer, nextSeat(mySeat)) },
-    {
-      seat: acrossSeat(mySeat),
-      position: 'top',
-      seatWind: seatWindFor(dealer, acrossSeat(mySeat)),
-    },
-    { seat: prevSeat(mySeat), position: 'left', seatWind: seatWindFor(dealer, prevSeat(mySeat)) },
-  ];
 }
