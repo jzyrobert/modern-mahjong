@@ -56,7 +56,7 @@ export type Claim =
   | { kind: 'pass' }
   | { kind: 'chi'; with: [Tile, Tile] } // the two tiles already in hand that complete the run
   | { kind: 'peng' }
-  | { kind: 'gong' }
+  | { kind: 'gang' }
   | { kind: 'hu' };
 
 export type DiePair = [number, number];

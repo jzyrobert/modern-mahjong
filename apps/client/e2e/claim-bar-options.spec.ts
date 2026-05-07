@@ -65,7 +65,7 @@ test('peng available: ClaimBar shows Peng + Pass but not Win', async ({ page }) 
 
   // ClaimBar surfaces — peng visible, pass visible, win NOT visible.
   await expect(page.getByText('CLAIM?', { exact: true })).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText('Pung', { exact: true })).toBeVisible();
+  await expect(page.getByText('Peng', { exact: true })).toBeVisible();
   await expect(page.getByText('Pass', { exact: true })).toBeVisible();
   await expect(page.getByText('Win', { exact: true })).toBeHidden();
 });
@@ -162,7 +162,7 @@ async function pickNonClaimableTarget(page: Page): Promise<FaceTile | null> {
     // Honors are easy: pick one (E/S/W/N/Z/F/B) the user doesn't hold.
     // chi only triggers if next-seat-after-discarder, which is the user
     // here, AND only on suit tiles in 2-step range — honors can never
-    // be claimed by chi/peng/gong unless the user has copies, so a
+    // be claimed by chi/peng/gang unless the user has copies, so a
     // missing honor is guaranteed-non-claimable.
     const holds = new Set<string>(
       hand.filter((t) => t.kind === 'honor').map((t) => `h:${t.honor}`),

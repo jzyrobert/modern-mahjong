@@ -8,7 +8,7 @@ import type { Seat } from '@mahjong/game-logic';
  * 2 × 4 = 136). Each stack here matches one physical pillbox. As tiles
  * are drawn the affected stack(s) shrink: a half-drawn stack shows 1
  * tile, a fully-drawn stack disappears entirely (no placeholder gap).
- * The dead wall (kong-replacement reserve) is excluded from the visual
+ * The dead wall (gang-replacement reserve) is excluded from the visual
  * because the player never sees it as separate at a real table — and a
  * faded reserve confuses casual players. Engine state (`state.wall.length`
  * + `state.deadWall.length`) still tracks both.
@@ -77,7 +77,7 @@ export function computeWallLayout(opts: ComputeOpts): WallLayout {
   const breakStack = STACKS_PER_WALL - breakPosition;
   const truths = emptyTruths();
 
-  // Mark dead-wall stacks as 0 (hidden). Engine still tracks the kong
+  // Mark dead-wall stacks as 0 (hidden). Engine still tracks the gang
   // reserve, but the player doesn't see it on the felt.
   let seat: Seat = breakWall;
   let slotIdx = breakStack;

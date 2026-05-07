@@ -128,12 +128,12 @@ describe('claim resolution', () => {
   });
 
   it('property: highest-priority kind always wins', () => {
-    const priority = { hu: 3, peng: 2, gong: 2, chi: 1, pass: 0 } as const;
+    const priority = { hu: 3, peng: 2, gang: 2, chi: 1, pass: 0 } as const;
     const claims: import('../src/index.js').Claim[] = [
       { kind: 'pass' },
       { kind: 'chi', with: [tile(1), tile(1)] },
       { kind: 'peng' },
-      { kind: 'gong' },
+      { kind: 'gang' },
       { kind: 'hu' },
     ];
 

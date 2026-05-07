@@ -13,7 +13,7 @@ import {
 
 /**
  * Targeted "happy path" flow tests for the more complex action paths:
- *   - Concealed kong (4 in hand, draw replacement)
+ *   - Concealed gang (4 in hand, draw replacement)
  *   - Win on discard (claim hu after another seat's discard)
  *
  * To stay deterministic without falling into duplicate-tile-copy traps, we
@@ -60,8 +60,8 @@ function blankState(): GameState {
   return emptyState({ ...DEFAULT_RULES, faanMin: 0 });
 }
 
-describe('engine — concealed kong flow', () => {
-  it('removes 4 same-face tiles from hand, builds kong meld, draws a replacement', () => {
+describe('engine — concealed gang flow', () => {
+  it('removes 4 same-face tiles from hand, builds gang meld, draws a replacement', () => {
     const pool = new TilePool();
     const fourFives = pool.takeMany([
       suit('man', 5),
@@ -101,12 +101,12 @@ describe('engine — concealed kong flow', () => {
     assertTileConservation(state);
 
     const { state: next } = reduce(state, {
-      t: 'declareKongConcealed',
+      t: 'declareGangConcealed',
       seat: 0,
       tile: suit('man', 5),
     });
     expect(next.melds[0]).toHaveLength(1);
-    expect(next.melds[0][0]?.kind).toBe('kong-concealed');
+    expect(next.melds[0][0]?.kind).toBe('gang-concealed');
     // Replacement drawn from dead wall: hand size = 14 - 4 + 1 = 11.
     expect(next.hands[0].length).toBe(11);
     expect(next.deadWall.length).toBe(13);

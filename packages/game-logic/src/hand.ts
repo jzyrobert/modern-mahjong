@@ -1,12 +1,12 @@
 import type { Tile } from './tiles.js';
 import { sameFace, sortHand } from './tiles.js';
 
-export type MeldKind = 'chi' | 'peng' | 'kong-exposed' | 'kong-concealed' | 'kong-promoted';
+export type MeldKind = 'chi' | 'peng' | 'gang-exposed' | 'gang-concealed' | 'gang-promoted';
 
 export interface Meld {
   kind: MeldKind;
-  tiles: Tile[]; // 3 for chi/peng, 4 for any kong
-  /** Seat the claimed tile came from (undefined for concealed kong). */
+  tiles: Tile[]; // 3 for chi/peng, 4 for any gang
+  /** Seat the claimed tile came from (undefined for concealed gang). */
   from?: 0 | 1 | 2 | 3;
 }
 

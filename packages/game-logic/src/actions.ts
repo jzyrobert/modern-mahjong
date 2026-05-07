@@ -26,8 +26,8 @@ export type Action =
   | { t: 'discard'; seat: Seat; tile: Tile }
   | { t: 'declareClaim'; seat: Seat; claim: Claim }
   | { t: 'resolveClaims'; nowMs: number } // server-issued (deadline reached or all submitted)
-  | { t: 'declareKongConcealed'; seat: Seat; tile: Tile } // 4 of a kind in hand
-  | { t: 'declareKongPromoted'; seat: Seat; tile: Tile } // adding to existing peng
+  | { t: 'declareGangConcealed'; seat: Seat; tile: Tile } // 4 of a kind in hand
+  | { t: 'declareGangPromoted'; seat: Seat; tile: Tile } // adding to existing peng
   | { t: 'declareWin'; seat: Seat; selfDraw: boolean };
 
 export type Event =
@@ -38,7 +38,7 @@ export type Event =
   | { t: 'discarded'; seat: Seat; tile: Tile }
   | { t: 'claimsOpened'; deadlineMs: number }
   | { t: 'claimsResolved'; result: ReturnType<typeof resolveClaims> }
-  | { t: 'kongDeclared'; seat: Seat; kind: 'concealed' | 'promoted' | 'exposed' }
+  | { t: 'gangDeclared'; seat: Seat; kind: 'concealed' | 'promoted' | 'exposed' }
   | {
       t: 'won';
       seat: Seat;
@@ -79,10 +79,10 @@ export function reduce(state: GameState, action: Action): { state: GameState; ev
       return declareClaim(state, action.seat, action.claim);
     case 'resolveClaims':
       return resolveAndApply(state, action.nowMs);
-    case 'declareKongConcealed':
-      return declareKongConcealed(state, action.seat, action.tile);
-    case 'declareKongPromoted':
-      return declareKongPromoted(state, action.seat, action.tile);
+    case 'declareGangConcealed':
+      return declareGangConcealed(state, action.seat, action.tile);
+    case 'declareGangPromoted':
+      return declareGangPromoted(state, action.seat, action.tile);
     case 'declareWin':
       return declareWin(state, action.seat, action.selfDraw);
   }
@@ -151,7 +151,7 @@ function startHand(
     dealer = bestSeat;
   }
   const wall = shuffle(buildWall(), seed);
-  // Last 14 tiles are the dead wall (kong replacements).
+  // Last 14 tiles are the dead wall (gang replacements).
   const deadWall = wall.splice(wall.length - 14, 14);
 
   const hands: Record<Seat, Tile[]> = { 0: [], 1: [], 2: [], 3: [] };
@@ -304,9 +304,9 @@ function declareClaim(
   // `legalClaimsFor` deliberately omits it (depends on shanten +
   // scoring), and the downstream `resolveAndApply` path runs
   // `canFinalizeHu` to enforce shape + faan together. For
-  // `chi` / `peng` / `gong` we reject claims that the seat couldn't
+  // `chi` / `peng` / `gang` we reject claims that the seat couldn't
   // actually make — chi from anyone other than the next seat after
-  // the discarder, peng/gong without enough copies in hand, etc.
+  // the discarder, peng/gang without enough copies in hand, etc.
   // Pre-fix `resolveClaims` silently filtered invalid chi (the
   // resolution returned `kind: 'pass'` instead of throwing), which
   // hid client-side bugs and gave a malicious or buggy client no
@@ -350,7 +350,7 @@ function resolveAndApply(state: GameState, nowMs: number): { state: GameState; e
   // Demote any hu submission that wouldn't actually finalize as a
   // win — typically a structurally-winning hand that scores below the
   // configured `faanMin` floor. Without this guard a low-faan hu would
-  // win priority over a valid peng/gong/chi on the same discard, and
+  // win priority over a valid peng/gang/chi on the same discard, and
   // then the chained declareWin below would throw FAAN and leave the
   // caller with a half-applied state. The bot's `pickClaim` and the
   // ClaimBar's Win button both use `isWinning` (shape only) for
@@ -389,7 +389,7 @@ function resolveAndApply(state: GameState, nowMs: number): { state: GameState; e
   // opponent's discard appeared to do nothing — the engine accepted
   // the hu claim, transitioned phase, and then sat there waiting for a
   // declareWin that never came. Chaining declareWin here closes the
-  // gap and matches the existing chi/peng/gong path which already
+  // gap and matches the existing chi/peng/gang path which already
   // returns a fully-applied state. The pre-filter above ensures
   // declareWin won't throw FAAN/SHAPE on the chained call.
   const stateAfterClaim = applyClaim(state, resolution);
@@ -414,17 +414,17 @@ function canFinalizeHu(state: GameState, seat: Seat): boolean {
   }
 }
 
-function declareKongConcealed(
+function declareGangConcealed(
   state: GameState,
   seat: Seat,
   tile: Tile,
 ): { state: GameState; events: Event[] } {
-  if (state.phase !== 'turn') throw new IllegalActionError('PHASE', 'wrong phase for kong');
+  if (state.phase !== 'turn') throw new IllegalActionError('PHASE', 'wrong phase for gang');
   if (state.turn !== seat) throw new IllegalActionError('SEAT', 'not your turn');
   const matching = state.hands[seat].filter((t) => sameFace(t, tile));
   if (matching.length < 4) throw new IllegalActionError('TILE', 'not 4 in hand');
   const newHand = state.hands[seat].filter((t) => !sameFace(t, tile));
-  const meld: Meld = { kind: 'kong-concealed', tiles: matching };
+  const meld: Meld = { kind: 'gang-concealed', tiles: matching };
   const melds = { ...state.melds, [seat]: [...state.melds[seat], meld] };
   // Replacement draw from the dead wall.
   const deadWall = [...state.deadWall];
@@ -438,16 +438,16 @@ function declareKongConcealed(
       melds,
       deadWall,
     },
-    events: [{ t: 'kongDeclared', seat, kind: 'concealed' }],
+    events: [{ t: 'gangDeclared', seat, kind: 'concealed' }],
   };
 }
 
-function declareKongPromoted(
+function declareGangPromoted(
   state: GameState,
   seat: Seat,
   tile: Tile,
 ): { state: GameState; events: Event[] } {
-  if (state.phase !== 'turn') throw new IllegalActionError('PHASE', 'wrong phase for kong');
+  if (state.phase !== 'turn') throw new IllegalActionError('PHASE', 'wrong phase for gang');
   if (state.turn !== seat) throw new IllegalActionError('SEAT', 'not your turn');
   const meldIdx = state.melds[seat].findIndex(
     (m) => m.kind === 'peng' && m.tiles.some((t) => sameFace(t, tile)),
@@ -460,7 +460,7 @@ function declareKongPromoted(
   const promoted = newHand.splice(handIdx, 1)[0]!;
   const oldMeld = state.melds[seat][meldIdx]!;
   const newMeld: Meld = {
-    kind: 'kong-promoted',
+    kind: 'gang-promoted',
     tiles: [...oldMeld.tiles, promoted],
     ...(oldMeld.from !== undefined ? { from: oldMeld.from } : {}),
   };
@@ -477,7 +477,7 @@ function declareKongPromoted(
       melds: { ...state.melds, [seat]: newMelds },
       deadWall,
     },
-    events: [{ t: 'kongDeclared', seat, kind: 'promoted' }],
+    events: [{ t: 'gangDeclared', seat, kind: 'promoted' }],
   };
 }
 

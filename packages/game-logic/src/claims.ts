@@ -13,7 +13,7 @@ import type { Tile } from './tiles.js';
  * Priority (highest first):
  *   1. hu (win). If multiple, the seat closest counter-clockwise to the
  *      discarder wins.
- *   2. peng / gong  (peng and gong are equivalent for ordering — only one
+ *   2. peng / gang  (peng and gang are equivalent for ordering — only one
  *      seat can hold three or four copies, so they don't truly compete).
  *   3. chi (only the next seat after the discarder is eligible).
  *
@@ -41,8 +41,8 @@ export function resolveClaims(round: ClaimRound): ClaimResolution {
     return { kind: 'win', seat: best.seat, claim: best.claim };
   }
 
-  // 2. peng / gong
-  const pengs = submissions.filter((s) => s.claim.kind === 'peng' || s.claim.kind === 'gong');
+  // 2. peng / gang
+  const pengs = submissions.filter((s) => s.claim.kind === 'peng' || s.claim.kind === 'gang');
   if (pengs.length > 0) {
     return { kind: 'win', seat: pengs[0]!.seat, claim: pengs[0]!.claim };
   }
@@ -84,7 +84,7 @@ export function legalClaimsFor(state: GameState, seat: Seat): Claim['kind'][] {
   const hand = state.hands[seat];
   const same = hand.filter((t) => sameFace(t, tile));
   if (same.length >= 2) out.push('peng');
-  if (same.length >= 3) out.push('gong');
+  if (same.length >= 3) out.push('gang');
   if (seat === nextSeat(state.lastDiscard.from)) {
     if (canChi(hand, tile)) out.push('chi');
   }
@@ -94,7 +94,7 @@ export function legalClaimsFor(state: GameState, seat: Seat): Claim['kind'][] {
 
 /**
  * Whether `seat` has any non-trivial action against the given discard:
- * a legal chi/peng/gong, OR a winning hand on `hu`. Mirrors what
+ * a legal chi/peng/gang, OR a winning hand on `hu`. Mirrors what
  * `Match.hasClaimOption` uses to decide whether to render the
  * `ClaimBar` — exposing it from the engine keeps client + server +
  * engine pre-pass logic in lockstep.
@@ -201,7 +201,7 @@ export function applyClaim(
       }
     }
     meld = { kind: 'peng', tiles: [tile, ...used], from };
-  } else if (claim.kind === 'gong') {
+  } else if (claim.kind === 'gang') {
     const used: Tile[] = [];
     for (let i = 0; i < newHand.length && used.length < 3; i++) {
       if (sameFace(newHand[i]!, tile)) {
@@ -210,7 +210,7 @@ export function applyClaim(
         i--;
       }
     }
-    meld = { kind: 'kong-exposed', tiles: [tile, ...used], from };
+    meld = { kind: 'gang-exposed', tiles: [tile, ...used], from };
   } else {
     // chi
     const [a, b] = claim.with;
