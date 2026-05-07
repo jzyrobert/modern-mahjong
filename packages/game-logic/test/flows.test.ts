@@ -239,4 +239,94 @@ describe('engine — win-on-discard flow', () => {
       throw new Error(`expected a win, got phase=${won.phase}`);
     }
   });
+
+  it('demotes a faan-below-min hu submission to a pass instead of crashing the engine', () => {
+    // Seat 1 hand (13 tiles) is one 7p away from a structurally
+    // winning shape that scores only 1 faan (just 平和 — all sequences,
+    // non-yakuhai pair):
+    //   1m2m3m 4p5p6p 7s8s9s 2m3m4m + lone 7p
+    // 1 faan is below the default `faanMin: 3`, so the engine's
+    // `canFinalizeHu` pre-filter inside `resolveAndApply` should
+    // demote the hu submission to a pass — silently — rather than
+    // letting `applyClaim` + `declareWin` chain throw FAAN. Pre-#157
+    // the engine also accepted the bad hu but didn't follow up;
+    // post-#157 the chained `declareWin` would throw without this
+    // pre-filter. The test pins the demotion behaviour so a future
+    // refactor of `canFinalizeHu` doesn't accidentally restart the
+    // crash.
+    const pool = new TilePool();
+    const seat1Hand = pool.takeMany([
+      suit('man', 1),
+      suit('man', 2),
+      suit('man', 3),
+      suit('pin', 4),
+      suit('pin', 5),
+      suit('pin', 6),
+      suit('sou', 7),
+      suit('sou', 8),
+      suit('sou', 9),
+      suit('man', 2),
+      suit('man', 3),
+      suit('man', 4),
+      suit('pin', 7),
+    ]);
+    // Seat 0 holds and will discard a 7p.
+    const seat0Hand = [pool.takeFace(suit('pin', 7)), ...pool.takeAny(13)];
+    // Pull the remaining two 7p copies out of the random pool so
+    // seats 2 / 3 can't end up with a peng on the discarded 7p — that
+    // would un-pre-pass them and the auto-resolve wouldn't fire on
+    // the seat-1 declareClaim alone.
+    const extraSevenP = [pool.takeFace(suit('pin', 7)), pool.takeFace(suit('pin', 7))];
+    const seat2 = pool.takeAny(13);
+    const seat3 = pool.takeAny(13);
+    const remainder = pool.remaining();
+    const deadWall = remainder.splice(remainder.length - 14, 14);
+    const wall = [...remainder, ...extraSevenP];
+
+    // Strip the soft + hard claim windows (mirrors solo's rule patch
+    // in `apps/client/src/net/solo-transport.ts`) so resolveAndApply
+    // fires the moment every non-discarder seat is in `submitted`.
+    // `faanMin` keeps the default value of 3 so the demotion path
+    // actually runs.
+    const { claimSoftWindowMs: _omitSoft, claimHardWindowMs: _omitHard, ...rules } = DEFAULT_RULES;
+    void _omitSoft;
+    void _omitHard;
+    expect(rules.faanMin).toBe(3);
+
+    const state: GameState = {
+      ...emptyState(rules),
+      phase: 'turn',
+      turn: 0,
+      hasDrawn: true,
+      hands: { 0: seat0Hand, 1: seat1Hand, 2: seat2, 3: seat3 },
+      wall,
+      deadWall,
+    };
+    assertTileConservation(state);
+
+    const sevenP = seat0Hand[0]!;
+    const after = reduce(state, { t: 'discard', seat: 0, tile: sevenP });
+    expect(after.state.phase).toBe('awaitingClaims');
+
+    // declareClaim hu — the engine demotes it to a pass and the round
+    // resolves to `kind: 'pass'`. Phase advances to seat 1's turn for
+    // a draw (next seat counter-clockwise from the discarder).
+    const { state: next, events } = reduce(after.state, {
+      t: 'declareClaim',
+      seat: 1,
+      claim: { kind: 'hu' },
+    });
+    expect(next.phase).toBe('turn');
+    expect(next.turn).toBe(1);
+    expect(next.hasDrawn).toBe(false);
+    expect(next.lastResult).toBeUndefined();
+    expect(next.pendingClaims).toBeUndefined();
+
+    // The `claimsResolved` event should reflect the demoted resolution.
+    const resolved = events.find((e) => e.t === 'claimsResolved');
+    expect(resolved).toBeDefined();
+    if (resolved && resolved.t === 'claimsResolved') {
+      expect(resolved.result.kind).toBe('pass');
+    }
+  });
 });
