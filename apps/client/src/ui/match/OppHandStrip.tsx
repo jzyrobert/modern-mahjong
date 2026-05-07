@@ -1,7 +1,7 @@
 import type { Meld, Seat, Wind } from '@mahjong/game-logic';
-import { useEffect, useRef } from 'react';
-import { Animated, Easing, Text, View } from 'react-native';
+import { Animated, Text, View } from 'react-native';
 import type { LobbyState } from '../../state/game';
+import { usePulse } from '../animations';
 import { WIND_GLYPH } from '../winds';
 import { MeldStrip } from './MeldStrip';
 
@@ -66,31 +66,7 @@ export function OppHandStrip({
 
   // Mirror PlayerBadge's pulse — driven on the native thread so it
   // doesn't compete with engine updates for the JS thread.
-  const pulse = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    if (!isActive) {
-      pulse.setValue(0);
-      return;
-    }
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, {
-          toValue: 1,
-          duration: 700,
-          useNativeDriver: true,
-          easing: Easing.inOut(Easing.ease),
-        }),
-        Animated.timing(pulse, {
-          toValue: 0,
-          duration: 700,
-          useNativeDriver: true,
-          easing: Easing.inOut(Easing.ease),
-        }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [isActive, pulse]);
+  const pulse = usePulse({ enabled: isActive });
   const scale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.03] });
 
   // `aboutToDraw` only surfaces when this seat is *not* the current

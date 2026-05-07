@@ -1,9 +1,9 @@
 import type { Seat, Wind } from '@mahjong/game-logic';
-import { useEffect, useRef } from 'react';
-import { Animated, Easing, Text, View } from 'react-native';
+import { Animated, Text, View } from 'react-native';
 import type { LobbyState } from '../../state/game';
 import { nameForSeat } from '../../state/game';
 import { computeInitials } from '../../util';
+import { usePulse } from '../animations';
 import { WIND_GLYPH } from '../winds';
 import { type Position, SEAT_COLOR } from './seatColor';
 
@@ -60,34 +60,9 @@ export function PlayerBadge({
   const avatarBg = SEAT_COLOR[position];
 
   // Soft scale pulse while active — driven on the native thread so it
-  // doesn't compete with engine-side state updates. Interpolated up to
-  // 1.04 over 1.4s with easeInOut, looping. Stops cleanly when the seat
-  // is no longer active.
-  const pulse = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    if (!isActive) {
-      pulse.setValue(0);
-      return;
-    }
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, {
-          toValue: 1,
-          duration: 700,
-          useNativeDriver: true,
-          easing: Easing.inOut(Easing.ease),
-        }),
-        Animated.timing(pulse, {
-          toValue: 0,
-          duration: 700,
-          useNativeDriver: true,
-          easing: Easing.inOut(Easing.ease),
-        }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [isActive, pulse]);
+  // doesn't compete with engine-side state updates. Stops cleanly when
+  // the seat is no longer active.
+  const pulse = usePulse({ enabled: isActive });
   const scale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.04] });
 
   // The `aboutToDraw` halo shares its tone with the active-turn glow

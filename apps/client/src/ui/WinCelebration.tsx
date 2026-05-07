@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Pressable, Text, View } from 'react-native';
+import { Animated, Pressable, Text, View } from 'react-native';
 import { nameForSeat, useGame } from '../state/game';
+import { usePulse } from './animations';
 import { COLORS } from './colors';
 import { DISMISS_MS } from './timing';
 
@@ -145,27 +146,7 @@ export function WinCelebration() {
 }
 
 function PulseEmblem() {
-  const t = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(t, {
-          toValue: 1,
-          duration: 800,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-        Animated.timing(t, {
-          toValue: 0,
-          duration: 800,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [t]);
+  const t = usePulse({ durationMs: 800 });
   const scale = t.interpolate({ inputRange: [0, 1], outputRange: [1, 1.12] });
   const rotate = t.interpolate({ inputRange: [0, 1], outputRange: ['-3deg', '3deg'] });
   return (

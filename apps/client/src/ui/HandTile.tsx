@@ -1,9 +1,10 @@
 import type { Tile as MTile } from '@mahjong/game-logic';
 import { tileId } from '@mahjong/game-logic';
 import { useContext, useEffect, useRef, useState } from 'react';
-import { Animated, Easing, PanResponder, View } from 'react-native';
+import { Animated, PanResponder, View } from 'react-native';
 import { FlipBagContext } from './FlipBag';
 import { Tile } from './Tile';
+import { usePulse } from './animations';
 
 interface HandTileProps {
   tile: MTile;
@@ -94,32 +95,7 @@ export function HandTile({
   // only updated translateX and ignored g.dy entirely.
   const dragY = useRef(new Animated.Value(0)).current;
   const liftAnim = useRef(new Animated.Value(0)).current; // 0 = at-rest, 1 = lifted
-  const hintPulse = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    if (!recommended) {
-      hintPulse.stopAnimation();
-      hintPulse.setValue(0);
-      return;
-    }
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(hintPulse, {
-          toValue: 1,
-          duration: 800,
-          useNativeDriver: true,
-          easing: Easing.inOut(Easing.ease),
-        }),
-        Animated.timing(hintPulse, {
-          toValue: 0,
-          duration: 800,
-          useNativeDriver: true,
-          easing: Easing.inOut(Easing.ease),
-        }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [recommended, hintPulse]);
+  const hintPulse = usePulse({ enabled: recommended, durationMs: 800 });
 
   // Refs so the PanResponder closures see the latest values. Re-creating
   // the responder on every render breaks the active gesture mid-drag.
