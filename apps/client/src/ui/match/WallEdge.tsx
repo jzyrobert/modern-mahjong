@@ -6,18 +6,23 @@ import { PULSE_TEMPO, usePulse } from '../animations';
 import type { WallSlot } from './wallLayout';
 
 /**
- * Visual wall edge for one seat. Renders the seat's still-undrawn stacks
- * as 2-tile-tall pillboxes (1-tile if the stack is half-drawn). Real
- * Hong Kong mahjong builds the wall as 17 stacks × 2 per side; as the
- * dealer + dice break feed plays, drawn stacks vanish and the visible
- * wall shrinks to match.
+ * Visual wall edge for one seat. Renders the seat's still-undrawn
+ * stacks as a single row of tile-backs whose perpendicular extent
+ * encodes how many tiles each stack still holds — matching how a real
+ * Hong Kong wall (17 stacks × 2 tiles per side) reads from the
+ * player's seat, not as two separate rows of tiles but as one row of
+ * variable-height stacks receding into the table as draws happen.
  *
- *   - Full stack (`tiles: 2`)  → two stacked face-down tile-backs.
- *   - Half stack (`tiles: 1`)  → one face-down tile-back.
- *   - Next-to-draw (`isNextDraw`) — top tile renders as the engine's
- *     real next `Tile` (face-down) so the wall→hand FLIP via
- *     `FlipBag` has a real tile object to track. Pulse halo signals
- *     "your draw."
+ *   - Full stack (`tiles: 2`)  → tile-back at full 2-tile depth, with
+ *     a faint seam hairline at the midpoint so the "two physical
+ *     tiles abutting" reading isn't lost.
+ *   - Half stack (`tiles: 1`)  → tile-back at one-tile depth, pinned
+ *     to the inner edge (closer to the felt centre) — so the wall
+ *     visibly recedes as the outer tiles get drawn.
+ *   - Next-to-draw (`isNextDraw`) — the inner-half slot renders the
+ *     engine's real next `Tile` (face-down) so the wall→hand FLIP
+ *     via `FlipBag` has a real tile object to track. A pulse halo
+ *     signals "your draw."
  *
  * The dead wall is not rendered separately — it's part of the
  * engine's state but never visible at a real table.
@@ -143,90 +148,83 @@ function SlotCell({
   onPress,
   enableDrawTestId,
 }: SlotCellProps) {
-  // Each cell reserves the full 2-tile slot dimensions regardless of
-  // how many tiles are still in this stack — half stacks then render
-  // a single tile pinned to the inner-facing edge so the wall reads
-  // as receding inward as tiles are drawn (the bottom tile of a phys
-  // stack sits closer to the centre).
+  // Cell reserves the full 2-tile depth so wall stacks of varying height
+  // share a common outer baseline — matching a physical 17×2 row that
+  // recedes from the outer edge inward as tiles are drawn.
   const containerStyle =
     stackDir === 'column'
       ? { width: tileW, height: tileH * 2 + 1 }
       : { width: tileW * 2 + 1, height: tileH };
   const justifyContent = innerEdge === 'end' ? ('flex-end' as const) : ('flex-start' as const);
+  // Stack rectangle's perpendicular extent — full cell for a 2-tile
+  // stack (the side of two physical tiles), half for a half-drawn one.
+  const stackPerp = slot.tiles === 2 ? tileH * 2 + 1 : tileH;
+  const stackBackW = stackDir === 'column' ? tileW : stackPerp;
+  const stackBackH = stackDir === 'column' ? stackPerp : tileH;
 
-  // Build the visible tile elements (1 or 2). The next-draw cue takes
-  // the slot's "front" position — the tile closest to the inner edge,
-  // which is what the user is about to pull from the wall.
-  const tiles: ReactNode[] = [];
-  if (slot.tiles === 2) {
-    // Outer tile (away from centre), then the inner tile. flex order
-    // means index 0 is at the start; with `justifyContent: 'flex-end'`
-    // the start is closer to the OUTER edge.
-    tiles.push(<PlaceholderBack key="outer" width={tileW} height={tileH} />);
-    if (slot.isNextDraw && nextDrawTile) {
+  if (slot.isNextDraw && nextDrawTile) {
+    // Two children for the next-draw cell: a static outer-half back
+    // (only when the stack is full) and the FlipBag-tracked Tile +
+    // pulse halo at the inner half. The Tile must stay at one-tile
+    // dimensions so the wall→hand FLIP animation lands at the right
+    // hand-tile size.
+    const tiles: ReactNode[] = [];
+    if (slot.tiles === 2) {
       tiles.push(
-        <Pressable
-          key="inner"
-          onPress={onPress}
-          testID={enableDrawTestId ? 'wall-draw-next' : undefined}
-          style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
-        >
-          <PulseHalo width={tileW} height={tileH}>
-            <Tile
-              tile={nextDrawTile}
-              flipId={`tile-${tileId(nextDrawTile)}`}
-              faceDown
-              width={tileW}
-              height={tileH}
-            />
-          </PulseHalo>
-        </Pressable>,
+        <StackBack key="outer" width={tileW} height={tileH} doubled={false} stackDir={stackDir} />,
       );
-    } else {
-      tiles.push(<PlaceholderBack key="inner" width={tileW} height={tileH} />);
     }
-  } else {
-    // Half stack — only the inner tile remains.
-    if (slot.isNextDraw && nextDrawTile) {
-      tiles.push(
-        <Pressable
-          key="inner"
-          onPress={onPress}
-          testID={enableDrawTestId ? 'wall-draw-next' : undefined}
-          style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
-        >
-          <PulseHalo width={tileW} height={tileH}>
-            <Tile
-              tile={nextDrawTile}
-              flipId={`tile-${tileId(nextDrawTile)}`}
-              faceDown
-              width={tileW}
-              height={tileH}
-            />
-          </PulseHalo>
-        </Pressable>,
-      );
-    } else {
-      tiles.push(<PlaceholderBack key="inner" width={tileW} height={tileH} />);
-    }
+    tiles.push(
+      <Pressable
+        key="inner"
+        onPress={onPress}
+        testID={enableDrawTestId ? 'wall-draw-next' : undefined}
+        style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
+      >
+        <PulseHalo width={tileW} height={tileH}>
+          <Tile
+            tile={nextDrawTile}
+            flipId={`tile-${tileId(nextDrawTile)}`}
+            faceDown
+            width={tileW}
+            height={tileH}
+          />
+        </PulseHalo>
+      </Pressable>,
+    );
+    const ordered = innerEdge === 'end' ? tiles : [...tiles].reverse();
+    return (
+      <View
+        style={{
+          ...containerStyle,
+          flexDirection: stackDir,
+          justifyContent,
+          gap: 1,
+        }}
+      >
+        {ordered}
+      </View>
+    );
   }
 
-  // For full stacks, `justifyContent: 'flex-end'` (innerEdge='end')
-  // also lays the tiles "outer-then-inner" along the stack axis. For
-  // 'flex-start' (innerEdge='start'), reverse so the inner tile is
-  // still adjacent to the inner edge.
-  const ordered = innerEdge === 'end' ? tiles : [...tiles].reverse();
-
+  // Static stack — one rectangle pinned to the inner edge, depth
+  // varying with the tile count. A subtle seam line at the midpoint
+  // of 2-tile stacks reads as the join between the two physical
+  // tiles without forking the wall into a second visual row.
   return (
     <View
       style={{
         ...containerStyle,
         flexDirection: stackDir,
         justifyContent,
-        gap: 1,
       }}
     >
-      {ordered}
+      <StackBack
+        width={stackBackW}
+        height={stackBackH}
+        doubled={slot.tiles === 2}
+        stackDir={stackDir}
+      />
     </View>
   );
 }
@@ -273,7 +271,30 @@ function PulseHalo({
   );
 }
 
-function PlaceholderBack({ width, height }: { width: number; height: number }) {
+interface StackBackProps {
+  width: number;
+  height: number;
+  /** True for full 2-tile stacks — adds a faint seam hairline through
+   *  the middle perpendicular to the stack height, suggesting two
+   *  physical tiles abutting without splitting the wall into two
+   *  visual rows. */
+  doubled: boolean;
+  /** Stack height direction — drives seam orientation. 'column' stacks
+   *  rise vertically (top/bottom walls), so the seam runs horizontally;
+   *  'row' stacks extend horizontally (left/right walls), seam runs
+   *  vertically. */
+  stackDir: 'row' | 'column';
+}
+
+/**
+ * One wall stack rendered as a single tile-back rectangle. Sized by
+ * the caller to either one-tile depth (half-drawn) or two-tile depth
+ * (full); `doubled` overlays a hairline at the midpoint so a 2-tile
+ * stack is distinguishable from a really-tall 1-tile stack at a
+ * glance — without rendering as two separate tile-backs (which read
+ * as a second wall row).
+ */
+function StackBack({ width, height, doubled, stackDir }: StackBackProps) {
   return (
     <View
       style={{
@@ -284,6 +305,30 @@ function PlaceholderBack({ width, height }: { width: number; height: number }) {
         borderColor: COLORS.backEdge,
         borderWidth: 0.5,
       }}
-    />
+    >
+      {doubled ? (
+        <View
+          style={
+            stackDir === 'column'
+              ? {
+                  position: 'absolute',
+                  left: 0,
+                  right: 0,
+                  top: '50%',
+                  height: 1,
+                  backgroundColor: 'rgba(0,0,0,0.22)',
+                }
+              : {
+                  position: 'absolute',
+                  top: 0,
+                  bottom: 0,
+                  left: '50%',
+                  width: 1,
+                  backgroundColor: 'rgba(0,0,0,0.22)',
+                }
+          }
+        />
+      ) : null}
+    </View>
   );
 }
