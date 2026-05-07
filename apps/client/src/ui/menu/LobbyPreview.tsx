@@ -1,6 +1,7 @@
 import { SEATS } from '@mahjong/game-logic';
 import { Text, View, useWindowDimensions } from 'react-native';
 import type { LobbyState } from '../../state/game';
+import { COLORS as SHARED_COLORS } from '../colors';
 import { SEAT_WIND_GLYPH } from '../winds';
 
 interface LobbyPreviewProps {
@@ -22,16 +23,16 @@ interface LobbyPreviewProps {
 const WIDE_GRID_BREAKPOINT = 620;
 
 const COLORS = {
-  ink: '#3a3328',
-  ink3: '#918275',
-  paperHi: '#fbf8f0',
+  ...SHARED_COLORS,
+  // LobbyPreview's "filled seat" cards use a darker cream than the
+  // shared `cream` so they read as recessed against the paperHi
+  // outer card. Kept local since no other surface wants this exact
+  // tone.
   cream: '#ece4d3',
-  hairline: '#cdc1ad',
-  red: '#b14d3a',
   /** Lobby's "open / waiting" indicator dot — slightly bluer-green
-   *  than the COLORS.green used for connection states elsewhere so
-   *  the two reads as distinct cues (lobby room status vs per-seat
-   *  online state). */
+   *  than the shared `green` used for connection states elsewhere
+   *  so the two read as distinct cues (lobby room status vs
+   *  per-seat online state). */
   lobbyDot: '#44ad60',
 };
 

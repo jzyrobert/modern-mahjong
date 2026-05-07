@@ -1,5 +1,6 @@
 import { type ReactNode, useState } from 'react';
 import { Pressable, Text, TextInput, type TextInputProps, View } from 'react-native';
+import { COLORS as SHARED_COLORS } from './colors';
 
 interface PrimaryButtonProps {
   children: ReactNode;
@@ -17,13 +18,14 @@ const PRIMARY_PADDING: Record<'sm' | 'md' | 'lg', { vertical: number; horizontal
 const PRIMARY_FONT: Record<'sm' | 'md' | 'lg', number> = { sm: 11, md: 13, lg: 14 };
 
 const COLORS = {
-  red: '#b14d3a',
+  ...SHARED_COLORS,
+  // PrimaryButton's pressed state uses a slightly less-saturated red
+  // than the shared `redHot` (which is tuned for the YOUR-TURN dot
+  // and ClaimMissedToast border). On a paper-coloured CTA button the
+  // shared hue read as too hot — kept this local override + shifted
+  // by ~6% saturation so the pressed state still feels distinct
+  // without overpowering the surrounding chrome.
   redHot: '#d05746',
-  ink: '#3a3328',
-  hairline: '#cdc1ad',
-  paper: '#f1ebe0',
-  paperHi: '#fbf8f0',
-  ink3: '#918275',
 };
 
 /**

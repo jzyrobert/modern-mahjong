@@ -4,6 +4,7 @@ import type { LobbyState } from '../../state/game';
 import { nameForSeat } from '../../state/game';
 import { computeInitials } from '../../util';
 import { usePulse } from '../animations';
+import { COLORS as SHARED_COLORS } from '../colors';
 import { WIND_GLYPH } from '../winds';
 import { type Position, SEAT_COLOR } from './seatColor';
 
@@ -30,9 +31,11 @@ interface PlayerBadgeProps {
 }
 
 const COLORS = {
-  ink: '#3a3328',
-  red: '#b14d3a',
-  redHot: '#db5d4a',
+  ...SHARED_COLORS,
+  // PlayerBadge's idle background is a translucent white rather than
+  // the shared opaque `paperHi` so the badge reads as floating over
+  // the felt instead of carved into it. Stays a local override since
+  // no other surface wants this exact alpha.
   paperHi: 'rgba(255,255,255,0.92)',
 };
 
