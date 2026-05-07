@@ -208,6 +208,30 @@ export class MatchSession {
     return this.handle(connectionId, r.msg);
   }
 
+  /**
+   * Re-bind seats to live connection ids after a hibernation cycle.
+   * The snapshot intentionally drops `connectionId` (a partyserver
+   * connection id is meaningless after the JS heap is recreated), but
+   * Cloudflare keeps the WebSockets themselves alive across hibernation.
+   * On wake, the runtime hands us a `playerId → connectionId` map
+   * derived from each connection's persisted state, and we restore the
+   * seat→connection mapping so subsequent broadcasts and host-action
+   * gates work without forcing every client to re-hello.
+   */
+  attachAll(byPlayerId: Map<string, string>): Outbound[] {
+    let changed = false;
+    for (const seat of SEATS) {
+      const slot = this.seats[seat];
+      if (slot.playerId === null) continue;
+      const connId = byPlayerId.get(slot.playerId);
+      if (connId !== undefined && slot.connectionId !== connId) {
+        slot.connectionId = connId;
+        changed = true;
+      }
+    }
+    return changed ? [this.lobbyBroadcast()] : [];
+  }
+
   /** True when every seat holds a connected human or a bot. */
   private allSeatsFilled(): boolean {
     for (const s of SEATS) {
