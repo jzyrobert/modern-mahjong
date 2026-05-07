@@ -2,6 +2,7 @@ import type { Meld, Seat, Wind } from '@mahjong/game-logic';
 import { Animated, Text, View } from 'react-native';
 import type { LobbyState } from '../../state/game';
 import { usePulse } from '../animations';
+import { COLORS as SHARED_COLORS } from '../colors';
 import { WIND_GLYPH } from '../winds';
 import { MeldStrip } from './MeldStrip';
 
@@ -32,12 +33,12 @@ interface OppHandStripProps {
 }
 
 const COLORS = {
-  ink: '#3a3328',
-  ink3: '#918275',
-  paperHi: '#fbf8f0',
-  hairline: '#cdc1ad',
-  red: '#b14d3a',
-  redHot: '#db5d4a',
+  ...SHARED_COLORS,
+  // OppHandStrip's "about-to-draw" gold halo uses a brighter
+  // saturation than the shared `gold` (which targets win badges +
+  // dealer ribbons). The opponent strip's halo competes with the
+  // active-turn red glow for attention, so we lean into a more
+  // luminous tone. Local override.
   gold: '#f3c54a',
 };
 
