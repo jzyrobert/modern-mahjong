@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Text, View } from 'react-native';
 import { useGame } from '../state/game';
+import { useFadeInOut } from './animations';
 
 const SHUFFLE_MS = 1700;
 const SPIN_COUNT = 12;
@@ -12,22 +13,27 @@ const RADIUS = 80;
  * fans 12 face-down tile tokens out from centre while the wall is
  * being rebuilt for the next hand. RN core `Animated` (no reanimated)
  * so it works in Expo Go.
+ *
+ * The outer fade-in / fade-out goes through the shared
+ * `useFadeInOut` hook so the overlay snaps in / out when the user
+ * has disabled animations via `useGame.settings.animations` (the
+ * SHUFFLE_MS lifecycle still elapses so the engine's seed swap
+ * lands cleanly either way).
  */
 export function ShuffleOverlay() {
   const seed = useGame((s) => s.state?.seed);
   const setShuffling = useGame((s) => s.setShuffling);
   const lastSeed = useRef<number | undefined>(undefined);
   const [active, setActive] = useState(false);
-  const fade = useRef(new Animated.Value(0)).current;
+  const { fade, fadeOut } = useFadeInOut({ visible: active, durationMs: 200 });
 
   useEffect(() => {
     if (seed === undefined) return;
     if (lastSeed.current !== undefined && lastSeed.current !== seed) {
       setActive(true);
       setShuffling(true);
-      Animated.timing(fade, { toValue: 1, duration: 200, useNativeDriver: true }).start();
       const timer = setTimeout(() => {
-        Animated.timing(fade, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
+        fadeOut(() => {
           setActive(false);
           setShuffling(false);
         });
@@ -36,7 +42,7 @@ export function ShuffleOverlay() {
       return () => clearTimeout(timer);
     }
     lastSeed.current = seed;
-  }, [seed, setShuffling, fade]);
+  }, [seed, setShuffling, fadeOut]);
 
   if (!active) return null;
   return (
@@ -89,12 +95,20 @@ export function ShuffleOverlay() {
 }
 
 function SpinningTile({ index }: { index: number }) {
+  const animsEnabled = useGame((s) => s.settings.animations);
   const angle = (index / SPIN_COUNT) * Math.PI * 2;
   const targetX = Math.cos(angle) * RADIUS;
   const targetY = Math.sin(angle) * RADIUS;
   const t = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    if (!animsEnabled) {
+      // Reduced-motion path — snap each token straight to its final
+      // ring position. Visual still reads as "tiles fanned around the
+      // wall" so the user knows shuffling is happening.
+      t.setValue(1);
+      return;
+    }
     const delay = index * 25;
     Animated.sequence([
       Animated.delay(delay),
@@ -105,7 +119,7 @@ function SpinningTile({ index }: { index: number }) {
         useNativeDriver: true,
       }),
     ]).start();
-  }, [index, t]);
+  }, [index, t, animsEnabled]);
 
   const tx = t.interpolate({ inputRange: [0, 1], outputRange: [0, targetX] });
   const ty = t.interpolate({ inputRange: [0, 1], outputRange: [0, targetY] });
