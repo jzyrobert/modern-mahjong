@@ -6,21 +6,13 @@ import { useGame } from '../state/game';
 import { RulePanel } from './RulePanel';
 import { ScoringBreakdownModal } from './ScoringBreakdownModal';
 import { GhostButton, PrimaryButton } from './buttons';
+import { COLORS } from './colors';
 
 interface ResultPanelProps {
   onAction: (a: Action) => void;
   mySeat: Seat;
   isHost: boolean;
 }
-
-const COLORS = {
-  ink: '#3a3328',
-  ink3: '#918275',
-  paper: '#f1ebe0',
-  hairline: '#cdc1ad',
-  red: '#b14d3a',
-  gold: '#d8a85a',
-};
 
 /**
  * End-of-hand result.

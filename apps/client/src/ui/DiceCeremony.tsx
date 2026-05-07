@@ -3,6 +3,7 @@ import { SEATS } from '@mahjong/game-logic';
 import { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Pressable, Text, View } from 'react-native';
 import { nameForSeat, useGame } from '../state/game';
+import { COLORS } from './colors';
 
 const PIPS: Record<number, [number, number][]> = {
   1: [[2, 2]],
@@ -39,14 +40,6 @@ const PIPS: Record<number, [number, number][]> = {
 };
 
 const DISMISS_MS = 3500;
-
-const COLORS = {
-  ink: '#3a3328',
-  ink3: '#918275',
-  paperHi: '#fbf8f0',
-  hairline: '#cdc1ad',
-  red: '#b14d3a',
-};
 
 /**
  * Opening-rolls overlay. Triggered by a fresh

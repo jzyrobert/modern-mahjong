@@ -2,6 +2,7 @@ import type { FaanBreakdown, HandResult, Tile as MTile } from '@mahjong/game-log
 import { ScrollView, Text, View } from 'react-native';
 import { Modal } from './Modal';
 import { Tile } from './Tile';
+import { COLORS } from './colors';
 
 type WinResult = Extract<HandResult, { kind: 'win' }>;
 
@@ -11,16 +12,6 @@ interface ScoringBreakdownModalProps {
   result: WinResult;
   faanMin: number;
 }
-
-const COLORS = {
-  ink: '#3a3328',
-  ink2: '#65594c',
-  ink3: '#918275',
-  hairline: '#cdc1ad',
-  cream: '#f1eadc',
-  red: '#b14d3a',
-  green: '#58c280',
-};
 
 /**
  * Per-pattern faan breakdown shown when a hand resolves to `kind: 'win'`.
