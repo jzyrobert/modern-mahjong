@@ -2,6 +2,7 @@ import { useTransport } from '@/src/net/transport-context';
 import {
   type Action,
   type Tile as MTile,
+  SEATS,
   type Seat,
   hasMeaningfulClaim,
   isWinning,
@@ -232,10 +233,8 @@ export function Match() {
           <RulePanel rules={state.rules} isHost={isHost} onAction={onAction} />
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
             <PrimaryButton
-              // The server's `SEATS` gate refuses `startHand` while any
-              // seat is empty (no connected human, no bot). Mirror it
-              // client-side so the host gets a disabled button + a hint
-              // instead of a silent server error after clicking.
+              // Mirror the server's all-seats-filled gate so the host
+              // gets a disabled button instead of a silent error.
               disabled={!isHost || !allSeatsFilled(lobby)}
               // No explicit dealer — engine derives it from the
               // opening dice roll (highest sum wins; ties go to the
@@ -345,15 +344,10 @@ export function Match() {
   return <MobileShell {...sharedProps} felt={felt} byPosition={byPosition} />;
 }
 
-/**
- * Mirror of `MatchSession.allSeatsFilled()` for client-side gating of
- * the "Start match" button. A seat counts as filled when its lobby
- * projection has a connected human or a bot in it; an open slot has
- * `connected: false` and `isBot: false`.
- */
+/** Mirrors the server's `startHand` SEATS gate. */
 function allSeatsFilled(lobby: { players: readonly PublicPlayer[] } | null): boolean {
   if (!lobby) return false;
-  for (const seat of [0, 1, 2, 3] as const) {
+  for (const seat of SEATS) {
     const p = lobby.players.find((x) => x.seat === seat);
     if (!p) return false;
     if (!p.connected && !p.isBot) return false;
@@ -376,29 +370,15 @@ interface LobbySeatControlsProps {
 }
 
 /**
- * Per-seat host controls in the waiting room. For each non-self seat
- * that isn't holding a connected human, the host gets:
- *   - a three-way segmented Easy / Standard / Smart picker that maps
- *     to `passive` / `simple` / `heuristic`. Clicking a kind on an
- *     empty seat seats a fresh bot of that kind; clicking on an
- *     already-botted seat swaps the brain.
- *   - a "Remove" affordance for online / LAN matches, freeing the
- *     seat for an incoming joiner. Solo always has three bots in
- *     seats 1..3 so the affordance is hidden there.
- *
- * All edits route through `transport.seatBot` / `unseatBot`. For solo
- * the context wrapper also writes-through to `useGame.settings.botSkills`
- * so the next solo match boots with the same picks. For online / LAN
- * the host server enforces the host-only + between-hands phase gate.
+ * Host's lobby controls — segmented Easy/Standard/Smart picker per
+ * non-self, non-human-occupied seat, with a Remove button for online/LAN
+ * (solo always has three bots in seats 1..3).
  */
 function LobbySeatControls({ players, mySeat, isSolo, onSeat, onUnseat }: LobbySeatControlsProps) {
-  // Show controls for any seat that isn't me and isn't a connected
-  // human. That covers empty seats, host-seated bots, and auto-bot
-  // stand-ins. Bots may report `connected: true` (solo always does;
-  // they're "connected" to the in-process loop), so the human filter
-  // is `connected && !isBot` rather than just `connected`.
+  // A bot reports `connected: true` (solo bots are "connected" to the
+  // in-process loop), so the human predicate is connected-and-not-bot.
   const editable = players.filter(
-    (p) => p.seat !== null && p.seat !== mySeat && !(p.connected && !p.isBot),
+    (p) => p.seat !== null && p.seat !== mySeat && (p.isBot || !p.connected),
   );
   if (editable.length === 0) return null;
   return (

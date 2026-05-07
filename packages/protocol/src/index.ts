@@ -13,14 +13,12 @@ import { z } from 'zod';
  */
 
 /**
- * Bot strategy identifier — must stay in sync with the registry exported
- * from `@mahjong/bots`. Lifted into the wire layer so the host can pick a
- * bot by kind without dragging the bots package into a transport-only
- * client build.
+ * Bot strategy identifier. Must stay in sync with the registry in
+ * `@mahjong/bots`; declared here so the wire layer can validate it
+ * without depending on the bots package.
  */
-export type BotKind = 'simple' | 'heuristic' | 'passive';
-
-export const BOT_KINDS: readonly BotKind[] = ['simple', 'heuristic', 'passive'] as const;
+export const BOT_KINDS = ['simple', 'heuristic', 'passive'] as const;
+export type BotKind = (typeof BOT_KINDS)[number];
 
 export interface PublicPlayer {
   playerId: string;
@@ -30,12 +28,7 @@ export interface PublicPlayer {
   connected: boolean;
   /** Whether this seat is filled by a bot. */
   isBot: boolean;
-  /**
-   * The bot's strategy kind, when `isBot` is true. Lets the lobby UI
-   * label "Heuristic" / "Simple" / "Passive" without a follow-up
-   * round-trip. Older servers omit this; the lobby falls back to a
-   * generic "Bot" pill.
-   */
+  /** Strategy kind when `isBot` is true; older servers omit it. */
   botKind?: BotKind;
 }
 
@@ -44,13 +37,9 @@ export type ClientMessage =
   | { t: 'action'; action: Action }
   | { t: 'chat'; text: string }
   | { t: 'leave' }
-  /**
-   * Host-only: place / replace a bot in `seat`. Server enforces that
-   * the seat doesn't currently hold a connected human and that the
-   * room is between hands (`phase` is `waiting` or `resolved`).
-   */
+  /** Host-only; server enforces seat-empty + between-hands phase. */
   | { t: 'seatBot'; seat: Seat; kind: BotKind }
-  /** Host-only: remove the bot at `seat`, freeing the seat for a joiner. */
+  /** Host-only; frees the seat for a joiner. */
   | { t: 'unseatBot'; seat: Seat };
 
 export type ServerMessage =
@@ -98,7 +87,7 @@ const seatLiteral = z.union([z.literal(0), z.literal(1), z.literal(2), z.literal
 export const seatBotSchema = z.object({
   t: z.literal('seatBot'),
   seat: seatLiteral,
-  kind: z.enum(['simple', 'heuristic', 'passive']),
+  kind: z.enum(BOT_KINDS),
 });
 
 export const unseatBotSchema = z.object({
