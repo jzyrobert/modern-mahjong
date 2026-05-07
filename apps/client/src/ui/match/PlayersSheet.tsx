@@ -1,6 +1,7 @@
 import { SEATS, type Seat, type Wind, seatWindFor } from '@mahjong/game-logic';
 import { ScrollView, Text, View } from 'react-native';
 import { type LobbyState, nameForSeat, useGame } from '../../state/game';
+import { computeInitials } from '../../util';
 import { Modal } from '../Modal';
 import { WIND_GLYPH } from '../winds';
 
@@ -206,12 +207,4 @@ function relativeKey(mySeat: Seat | null, seat: Seat): 'you' | 'next' | 'across'
   if (offset === 1) return 'next';
   if (offset === 2) return 'across';
   return 'prev';
-}
-
-function computeInitials(name: string): string {
-  const trimmed = name.trim();
-  if (!trimmed) return '?';
-  const parts = trimmed.split(/\s+/);
-  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
-  return (parts[0]![0]! + parts[parts.length - 1]![0]!).toUpperCase();
 }

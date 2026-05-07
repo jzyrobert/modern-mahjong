@@ -4,15 +4,11 @@ import {
   type Action,
   type Tile as MTile,
   type Seat,
-  type Wind,
-  acrossSeat,
   hasMeaningfulClaim,
   isWinning,
   nextSeat,
-  prevSeat,
   rankDiscards,
   sameFace,
-  seatWindFor,
   tileId,
 } from '@mahjong/game-logic';
 import { useRouter } from 'expo-router';
@@ -20,11 +16,14 @@ import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { isSeatHost, useGame } from '../state/game';
+import { randomSeed } from '../util';
 import { RulePanel } from './RulePanel';
 import { GhostButton, PrimaryButton } from './buttons';
 import { DesktopShell } from './match/DesktopShell';
 import { MobileShell } from './match/MobileShell';
 import type { SortMode } from './match/SortPicker';
+import type { Position } from './match/seatColor';
+import { type SeatPlacement, layoutFor } from './match/seatPlacement';
 import { FELT_SKINS } from './match/skins';
 import { useDeadlineCrossed, useSecondsUntil } from './match/useClaimCue';
 import { LobbyPreview } from './menu/LobbyPreview';
@@ -42,13 +41,6 @@ import { SEAT_WIND_GLYPH } from './winds';
  */
 const DESKTOP_WIDTH = 768;
 const DESKTOP_HEIGHT = 600;
-
-type Position = 'bottom' | 'right' | 'top' | 'left';
-interface SeatPlacement {
-  seat: Seat;
-  position: Position;
-  seatWind: Wind;
-}
 
 const COLORS = {
   cream: '#f1eadc',
@@ -343,40 +335,6 @@ export function Match() {
   }
 
   return <MobileShell {...sharedProps} felt={felt} byPosition={byPosition} />;
-}
-
-function layoutFor(mySeat: Seat, dealer: Seat): SeatPlacement[] {
-  return [
-    { seat: mySeat, position: 'bottom', seatWind: seatWindFor(dealer, mySeat) },
-    {
-      seat: nextSeat(mySeat),
-      position: 'right',
-      seatWind: seatWindFor(dealer, nextSeat(mySeat)),
-    },
-    {
-      seat: acrossSeat(mySeat),
-      position: 'top',
-      seatWind: seatWindFor(dealer, acrossSeat(mySeat)),
-    },
-    {
-      seat: prevSeat(mySeat),
-      position: 'left',
-      seatWind: seatWindFor(dealer, prevSeat(mySeat)),
-    },
-  ];
-}
-
-function randomSeed(): number {
-  // Test override hatch: Playwright sets `__MAHJONG_TEST_SEED__` via
-  // `addInitScript` before navigation so the dice roll (and thus the
-  // dealer pick) is deterministic. Production / dev never sets it,
-  // so the fallback is the regular `Math.random`-driven seed.
-  if (typeof window !== 'undefined') {
-    const override = (window as unknown as { __MAHJONG_TEST_SEED__?: number })
-      .__MAHJONG_TEST_SEED__;
-    if (typeof override === 'number') return override;
-  }
-  return Math.floor(Math.random() * 0xffffffff);
 }
 
 const BOT_KINDS: ReadonlyArray<{ kind: BotKind; label: string; hint: string }> = [

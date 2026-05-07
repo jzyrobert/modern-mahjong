@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react';
 import { Animated, Easing, Text, View } from 'react-native';
 import type { LobbyState } from '../../state/game';
 import { nameForSeat } from '../../state/game';
+import { computeInitials } from '../../util';
 import { WIND_GLYPH } from '../winds';
 import { type Position, SEAT_COLOR } from './seatColor';
 
@@ -163,12 +164,4 @@ export function PlayerBadge({
       </View>
     </Animated.View>
   );
-}
-
-function computeInitials(name: string): string {
-  const trimmed = name.trim();
-  if (!trimmed) return '?';
-  const parts = trimmed.split(/\s+/);
-  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
-  return (parts[0]![0]! + parts[parts.length - 1]![0]!).toUpperCase();
 }

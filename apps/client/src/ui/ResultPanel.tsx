@@ -3,6 +3,7 @@ import { nextDealer } from '@mahjong/game-logic';
 import { useState } from 'react';
 import { Text, View } from 'react-native';
 import { useGame } from '../state/game';
+import { randomSeed } from '../util';
 import { RulePanel } from './RulePanel';
 import { ScoringBreakdownModal } from './ScoringBreakdownModal';
 import { GhostButton, PrimaryButton } from './buttons';
@@ -80,16 +81,4 @@ export function ResultPanel({ onAction, mySeat, isHost }: ResultPanelProps) {
       ) : null}
     </View>
   );
-}
-
-function randomSeed(): number {
-  // Mirrors the override in Match.tsx so e2e tests can pin both the
-  // first hand's seed (lobby button) and subsequent hands' seeds
-  // (this button) to the same deterministic value.
-  if (typeof window !== 'undefined') {
-    const override = (window as unknown as { __MAHJONG_TEST_SEED__?: number })
-      .__MAHJONG_TEST_SEED__;
-    if (typeof override === 'number') return override;
-  }
-  return Math.floor(Math.random() * 0xffffffff);
 }
