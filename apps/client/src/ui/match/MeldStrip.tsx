@@ -2,6 +2,7 @@ import type { Meld } from '@mahjong/game-logic';
 import { tileId } from '@mahjong/game-logic';
 import { Text, View } from 'react-native';
 import { Tile } from '../Tile';
+import { COLORS } from '../colors';
 
 interface MeldStripProps {
   melds: readonly Meld[];
@@ -25,8 +26,8 @@ export function MeldStrip({ melds, tileWidth = 18, tileHeight = 24 }: MeldStripP
           style={{
             flexDirection: 'row',
             gap: 1,
-            backgroundColor: '#ece4d3',
-            borderColor: '#cdc1ad',
+            backgroundColor: COLORS.creamLow,
+            borderColor: COLORS.hairline,
             borderWidth: 1,
             borderRadius: 4,
             padding: 2,
@@ -42,7 +43,7 @@ export function MeldStrip({ melds, tileWidth = 18, tileHeight = 24 }: MeldStripP
             />
           ))}
           <View style={{ alignSelf: 'flex-end', paddingLeft: 4 }}>
-            <Text style={{ fontSize: 8, fontWeight: '700', color: '#918275' }}>
+            <Text style={{ fontSize: 8, fontWeight: '700', color: COLORS.ink3 }}>
               {meld.kind.toUpperCase()}
             </Text>
           </View>

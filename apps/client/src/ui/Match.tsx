@@ -445,7 +445,7 @@ function LobbySeatControls({ players, mySeat, isSolo, onSeat, onUnseat }: LobbyS
                 flexDirection: 'row',
                 flex: 1,
                 minWidth: 220,
-                backgroundColor: '#ece4d3',
+                backgroundColor: COLORS.creamLow,
                 borderRadius: 8,
                 padding: 2,
               }}
@@ -462,14 +462,18 @@ function LobbySeatControls({ players, mySeat, isSolo, onSeat, onUnseat }: LobbyS
                       paddingVertical: 6,
                       borderRadius: 6,
                       alignItems: 'center',
-                      backgroundColor: active ? '#fbe5d9' : pressed ? '#dfd4bc' : 'transparent',
+                      backgroundColor: active
+                        ? COLORS.accentSalmonSwatch
+                        : pressed
+                          ? COLORS.creamPressed
+                          : 'transparent',
                     })}
                   >
                     <Text
                       style={{
                         fontSize: 12,
                         fontWeight: active ? '900' : '600',
-                        color: active ? '#b14d3a' : COLORS.ink,
+                        color: active ? COLORS.red : COLORS.ink,
                         letterSpacing: 0.4,
                       }}
                     >
@@ -490,7 +494,7 @@ function LobbySeatControls({ players, mySeat, isSolo, onSeat, onUnseat }: LobbyS
                   borderRadius: 6,
                   borderWidth: 1,
                   borderColor: COLORS.hairline,
-                  backgroundColor: pressed ? '#dfd4bc' : 'transparent',
+                  backgroundColor: pressed ? COLORS.creamPressed : 'transparent',
                 })}
               >
                 <Text style={{ fontSize: 12, fontWeight: '800', color: COLORS.ink3 }}>REMOVE</Text>

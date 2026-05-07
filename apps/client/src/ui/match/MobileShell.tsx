@@ -8,6 +8,7 @@ import { Hand } from '../Hand';
 import { ResultPanel } from '../ResultPanel';
 import { Scoreboard } from '../Scoreboard';
 import { PrimaryButton } from '../buttons';
+import { COLORS } from '../colors';
 import { ChatBubbles } from './ChatBubbles';
 import { ClaimMissedToast } from './ClaimMissedToast';
 import { GameStatusBar } from './GameStatusBar';
@@ -419,7 +420,7 @@ function MenuPill({ onPress }: { onPress: () => void }) {
         paddingHorizontal: 12,
         paddingVertical: 7,
         borderRadius: 14,
-        backgroundColor: pressed ? '#ece4d3' : 'rgba(255,255,255,0.88)',
+        backgroundColor: pressed ? COLORS.creamLow : 'rgba(255,255,255,0.88)',
         borderColor: MENU_PILL_COLORS.hairline,
         borderWidth: 1,
         boxShadow: '0px 4px 16px rgba(0,0,0,0.1)',

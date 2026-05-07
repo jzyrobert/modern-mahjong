@@ -14,13 +14,12 @@ interface ModeCardProps {
 
 const COLORS = {
   ...SHARED_COLORS,
-  // Per-card accent palette — ModeCard's "accent" variant uses a
-  // softer salmon than the shared red, since the card is a hero
-  // element rather than a CTA. Kept local because no other surface
-  // wants this specific tone today.
+  // Border for the salmon-accented "RECOMMENDED" card. Slightly
+  // hotter than `accentSalmonEdge` (used for the swatch outline) so
+  // the card edge reads from across the page; kept local because no
+  // other surface uses this specific tone.
   accentBorder: '#ec9275',
-  accentSwatch: '#fbe5d9',
-  accentSwatchEdge: '#d8b09f',
+  // Neutral icon-swatch background for non-accent cards.
   neutralSwatch: '#ede5d3',
 };
 
@@ -54,8 +53,8 @@ export function ModeCard({ title, subtitle, icon, accent = false, children }: Mo
             width: 40,
             height: 40,
             borderRadius: 10,
-            backgroundColor: accent ? COLORS.accentSwatch : COLORS.neutralSwatch,
-            borderColor: accent ? COLORS.accentSwatchEdge : COLORS.hairline,
+            backgroundColor: accent ? COLORS.accentSalmonSwatch : COLORS.neutralSwatch,
+            borderColor: accent ? COLORS.accentSalmonEdge : COLORS.hairline,
             borderWidth: 1,
             alignItems: 'center',
             justifyContent: 'center',
@@ -133,8 +132,8 @@ function RecommendedBadge() {
   return (
     <View
       style={{
-        backgroundColor: COLORS.accentSwatch,
-        borderColor: COLORS.accentSwatchEdge,
+        backgroundColor: COLORS.accentSalmonSwatch,
+        borderColor: COLORS.accentSalmonEdge,
         borderWidth: 1,
         borderRadius: 6,
         paddingHorizontal: 7,

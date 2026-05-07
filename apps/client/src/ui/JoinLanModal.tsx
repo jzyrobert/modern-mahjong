@@ -171,7 +171,7 @@ function DiscoveryList({ hosts, onPick, currentUrl }: DiscoveryListProps) {
               paddingVertical: 10,
               paddingHorizontal: 12,
               borderRadius: 10,
-              backgroundColor: pressed ? '#ece4d3' : COLORS.cream,
+              backgroundColor: pressed ? COLORS.creamLow : COLORS.cream,
               borderColor: selected ? COLORS.green : COLORS.hairline,
               borderWidth: selected ? 2 : 1,
             })}

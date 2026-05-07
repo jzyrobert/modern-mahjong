@@ -99,7 +99,7 @@ export function WinCelebration() {
             flexDirection: 'row',
             alignItems: 'baseline',
             gap: 6,
-            backgroundColor: '#fbe5d9',
+            backgroundColor: COLORS.accentSalmonSwatch,
             borderColor: '#e8a890',
             borderWidth: 1,
             borderRadius: 12,
