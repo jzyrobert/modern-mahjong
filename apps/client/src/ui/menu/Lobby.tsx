@@ -102,12 +102,12 @@ export function Lobby() {
           >
             <Text style={{ fontSize: 12, color: '#918275', lineHeight: 18 }}>
               Three opponents at varying skill —{' '}
-              <Text style={{ color: '#65594c', fontWeight: '800' }}>heuristic</Text>,{' '}
-              <Text style={{ color: '#65594c', fontWeight: '800' }}>simple</Text>, and{' '}
-              <Text style={{ color: '#65594c', fontWeight: '800' }}>passive</Text>. Runs entirely on
+              <Text style={{ color: '#65594c', fontWeight: '800' }}>Smart</Text>,{' '}
+              <Text style={{ color: '#65594c', fontWeight: '800' }}>Standard</Text>, and{' '}
+              <Text style={{ color: '#65594c', fontWeight: '800' }}>Easy</Text>. Runs entirely on
               this device.
             </Text>
-            <TagRow tags={['Heuristic', 'Simple', 'Passive']} />
+            <TagRow tags={['Smart', 'Standard', 'Easy']} />
             <ButtonRow>
               <PrimaryButton onPress={transport.joinSolo}>Play vs bots</PrimaryButton>
             </ButtonRow>

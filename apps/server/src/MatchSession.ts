@@ -16,6 +16,7 @@ import {
   type PublicPlayer,
   type ServerMessage,
   parseClientMessage,
+  botDisplayName as protocolBotDisplayName,
 } from '@mahjong/protocol';
 
 interface SeatState {
@@ -677,7 +678,7 @@ function emptySeat(): SeatState {
 }
 
 function botDisplayName(bot: Bot): string {
-  return `Bot (${bot.kind})`;
+  return protocolBotDisplayName(bot.kind);
 }
 
 export function botByKind(kind: BotKind): Bot {

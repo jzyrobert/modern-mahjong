@@ -20,6 +20,28 @@ import { z } from 'zod';
 export const BOT_KINDS = ['simple', 'heuristic', 'passive'] as const;
 export type BotKind = (typeof BOT_KINDS)[number];
 
+/**
+ * Canonical user-facing label for each bot strategy. The internal kind
+ * names are an implementation detail of `@mahjong/bots` (`passive` was
+ * named for its docstring, not for what users want to see in a lobby
+ * card). All UI surfaces — server `botDisplayName`, solo lobby
+ * projection, picker text, home-page blurb — read from this map so the
+ * label stays in lockstep.
+ */
+export const BOT_LABELS = {
+  passive: 'Easy',
+  simple: 'Standard',
+  heuristic: 'Smart',
+} as const satisfies Record<BotKind, string>;
+
+export function botLabel(kind: BotKind): string {
+  return BOT_LABELS[kind];
+}
+
+export function botDisplayName(kind: BotKind): string {
+  return `Bot (${BOT_LABELS[kind]})`;
+}
+
 export interface PublicPlayer {
   playerId: string;
   displayName: string;

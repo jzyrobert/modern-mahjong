@@ -38,9 +38,9 @@ test.describe('Players sheet', () => {
     // bot/human display name. The dealer for hand 1 is the human
     // (seat 0 by default in the solo seed sequence) — the
     // 'DEALER' badge proves the per-seat metadata renders.
-    await expect(page.getByText('Bot (heuristic)').first()).toBeVisible();
-    await expect(page.getByText('Bot (simple)').first()).toBeVisible();
-    await expect(page.getByText('Bot (passive)').first()).toBeVisible();
+    await expect(page.getByText('Bot (Smart)').first()).toBeVisible();
+    await expect(page.getByText('Bot (Standard)').first()).toBeVisible();
+    await expect(page.getByText('Bot (Easy)').first()).toBeVisible();
     // The local seat carries a YOU badge.
     await expect(page.getByText('YOU').first()).toBeVisible();
 

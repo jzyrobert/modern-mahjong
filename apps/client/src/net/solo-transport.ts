@@ -12,7 +12,7 @@ import {
   reduce,
   sameFace,
 } from '@mahjong/game-logic';
-import type { ServerMessage } from '@mahjong/protocol';
+import { type ServerMessage, botDisplayName } from '@mahjong/protocol';
 import type { Transport, TransportStatus } from './transport';
 
 /**
@@ -227,7 +227,7 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
         },
         {
           playerId: BOT_PLAYER_IDS[0],
-          displayName: `Bot (${botKinds[1]})`,
+          displayName: botDisplayName(botKinds[1]),
           seat: 1,
           connected: true,
           isBot: true,
@@ -235,7 +235,7 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
         },
         {
           playerId: BOT_PLAYER_IDS[1],
-          displayName: `Bot (${botKinds[2]})`,
+          displayName: botDisplayName(botKinds[2]),
           seat: 2,
           connected: true,
           isBot: true,
@@ -243,7 +243,7 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
         },
         {
           playerId: BOT_PLAYER_IDS[2],
-          displayName: `Bot (${botKinds[3]})`,
+          displayName: botDisplayName(botKinds[3]),
           seat: 3,
           connected: true,
           isBot: true,
