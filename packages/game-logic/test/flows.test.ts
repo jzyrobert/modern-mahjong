@@ -296,6 +296,12 @@ describe('engine — win-on-discard flow', () => {
     const state: GameState = {
       ...emptyState(rules),
       phase: 'turn',
+      // Dealer = seat 2 so that seat 0's pending discard isn't the
+      // dealer's *first* discard — without this, the 地糊 (Blessing
+      // of Earth, +13 faan) detector added in the engine-driven fan
+      // PR would push the would-be 1-faan ron well above the 3 faan
+      // floor and the demotion path under test would never run.
+      dealer: 2,
       turn: 0,
       hasDrawn: true,
       hands: { 0: seat0Hand, 1: seat1Hand, 2: seat2, 3: seat3 },

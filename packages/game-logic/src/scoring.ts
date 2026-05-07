@@ -1,4 +1,4 @@
-import type { FaanBreakdown, GameState, Seat } from './state.js';
+import { type FaanBreakdown, type GameState, SEATS, type Seat } from './state.js';
 import {
   DRAGONS,
   WINDS,
@@ -50,6 +50,58 @@ export function scoreHand(input: ScoringInput): ScoreResult {
   // 門前清: no melds claimed from anyone, regardless of self-draw vs ron.
   // Stacks with 自摸 (a self-draw on a fully concealed hand scores both).
   if (exposed.length === 0) add('門前清', 'concealed hand', 1, [winningTile]);
+
+  // 槓上開花 / 槓上槓: win on a gang-replacement draw. The engine
+  // increments `state.gangReplacementCount` inside
+  // `declareGangConcealed` / `declareGangPromoted` and resets it on
+  // any discard, so a non-zero count at win time means we're still
+  // inside the chain. Only meaningful for self-draw (ron on someone
+  // else's gang replacement isn't possible — it goes straight to
+  // their hand without a discard window).
+  if (selfDraw && state.gangReplacementCount >= 2) {
+    add('槓上槓', 'double kong replacement', 9, [winningTile]);
+  } else if (selfDraw && state.gangReplacementCount === 1) {
+    add('槓上開花', 'kong replacement', 2, [winningTile]);
+  }
+
+  // 海底撈月: win on the last tile from the live wall, or the final
+  // discard before the wall would otherwise empty into a draw-game.
+  // Excluded when the win came off a gang replacement (the winning
+  // tile was from the dead wall, not the live wall) — that's already
+  // covered by 槓上開花 / 槓上槓.
+  if (state.wall.length === 0 && state.gangReplacementCount === 0) {
+    add('海底撈月', 'last tile', 1, [winningTile]);
+  }
+
+  // 天/地/人糊: the three "blessing" hands. All depend on no
+  // intervening play (zero claimed melds across the whole table)
+  // and very specific discard-pile contents:
+  //   - 天糊: dealer wins on opening 14-tile self-draw. Discards
+  //     entirely empty.
+  //   - 地糊: non-dealer wins on the dealer's first discard.
+  //     Exactly one discard total, and it's the dealer's.
+  //   - 人糊: non-dealer wins on their first own self-draw. The
+  //     winning seat hasn't discarded yet.
+  const totalDiscards = SEATS.reduce((n: number, s) => n + state.discards[s].length, 0);
+  const totalMelds = SEATS.reduce((n: number, s) => n + state.melds[s].length, 0);
+  if (selfDraw && winner === state.dealer && totalDiscards === 0 && totalMelds === 0) {
+    add('天糊', 'blessing of heaven', 13, allTiles);
+  } else if (
+    !selfDraw &&
+    winner !== state.dealer &&
+    totalDiscards === 1 &&
+    state.discards[state.dealer].length === 1 &&
+    totalMelds === 0
+  ) {
+    add('地糊', 'blessing of earth', 13, allTiles);
+  } else if (
+    selfDraw &&
+    winner !== state.dealer &&
+    state.discards[winner].length === 0 &&
+    state.melds[winner].length === 0
+  ) {
+    add('人糊', 'blessing of man', 13, allTiles);
+  }
 
   // All-honors win — the canonical 字一色. Implicitly includes the
   // 對對和 baseline (you can't form sequences out of honors), so
