@@ -4,7 +4,7 @@ import { useContext, useEffect, useRef, useState } from 'react';
 import { Animated, PanResponder, View } from 'react-native';
 import { FlipBagContext } from './FlipBag';
 import { Tile } from './Tile';
-import { usePulse } from './animations';
+import { PULSE_TEMPO, usePulse } from './animations';
 
 interface HandTileProps {
   tile: MTile;
@@ -95,7 +95,7 @@ export function HandTile({
   // only updated translateX and ignored g.dy entirely.
   const dragY = useRef(new Animated.Value(0)).current;
   const liftAnim = useRef(new Animated.Value(0)).current; // 0 = at-rest, 1 = lifted
-  const hintPulse = usePulse({ enabled: recommended, durationMs: 800 });
+  const hintPulse = usePulse({ enabled: recommended, durationMs: PULSE_TEMPO.ambient });
 
   // Refs so the PanResponder closures see the latest values. Re-creating
   // the responder on every render breaks the active gesture mid-drag.

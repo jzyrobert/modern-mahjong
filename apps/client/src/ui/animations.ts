@@ -2,6 +2,27 @@ import { useCallback, useEffect, useRef } from 'react';
 import { Animated, Easing } from 'react-native';
 import { useGame } from '../state/game';
 
+/**
+ * Pulse tempos by purpose. A flat 700 ms across every loop reads as
+ * "the UI is alive" but doesn't signal what kind of attention each
+ * cue wants. Three tiers:
+ *
+ *   - `urgent` (450 ms): "act now" cues — the wall next-draw halo
+ *     and the in-hand draw-cue ghost slot. Sharper rhythm pushes
+ *     the user toward action.
+ *   - `state` (700 ms, default): ambient "this is happening"
+ *     indicators — active-turn pulse on player badges and opponent
+ *     hand strips. Acknowledges without demanding.
+ *   - `ambient` (1100 ms): slow advisory or celebratory cues —
+ *     discard-hint halo on a recommended tile, win-emblem rock.
+ *     Felt rather than read.
+ */
+export const PULSE_TEMPO = {
+  urgent: 450,
+  state: 700,
+  ambient: 1100,
+} as const;
+
 interface UsePulseOptions {
   /**
    * When false, the pulse stops and the value snaps back to 0.
