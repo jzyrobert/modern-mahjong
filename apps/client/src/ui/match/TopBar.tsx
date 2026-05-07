@@ -51,7 +51,7 @@ export function TopBar({ matchCode, viewers, onOpenMenu }: TopBarProps) {
           paddingHorizontal: 10,
           paddingVertical: 4,
           borderRadius: 8,
-          backgroundColor: pressed ? '#ece4d3' : 'transparent',
+          backgroundColor: pressed ? COLORS.creamLow : 'transparent',
           borderColor: COLORS.hairline,
           borderWidth: 1,
         })}

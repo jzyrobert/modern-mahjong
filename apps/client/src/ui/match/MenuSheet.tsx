@@ -166,7 +166,7 @@ function MenuRow({ icon, title, hint, onPress, destructive }: MenuRowProps) {
         paddingVertical: 12,
         paddingHorizontal: 14,
         borderRadius: 10,
-        backgroundColor: pressed ? '#ece4d3' : COLORS.paperHi,
+        backgroundColor: pressed ? COLORS.creamLow : COLORS.paperHi,
         borderColor: COLORS.hairline,
         borderWidth: 1,
       })}
@@ -178,8 +178,8 @@ function MenuRow({ icon, title, hint, onPress, destructive }: MenuRowProps) {
           borderRadius: 8,
           alignItems: 'center',
           justifyContent: 'center',
-          backgroundColor: destructive ? '#fbe5d9' : '#ede5d3',
-          borderColor: destructive ? '#d8b09f' : COLORS.hairline,
+          backgroundColor: destructive ? COLORS.accentSalmonSwatch : '#ede5d3',
+          borderColor: destructive ? COLORS.accentSalmonEdge : COLORS.hairline,
           borderWidth: 1,
         }}
       >

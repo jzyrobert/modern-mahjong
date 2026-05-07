@@ -8,6 +8,7 @@ import { useGame } from '../../state/game';
 import { HostLanModal } from '../HostLanModal';
 import { JoinLanModal } from '../JoinLanModal';
 import { GhostButton, PrimaryButton, TextField } from '../buttons';
+import { COLORS } from '../colors';
 import { LobbyHeader } from './LobbyHeader';
 import { LobbyPreview } from './LobbyPreview';
 import { LobbyWatermark } from './LobbyWatermark';
@@ -247,8 +248,8 @@ function InlineHint({ icon, children }: { icon: ReactNode; children: ReactNode }
         flexDirection: 'row',
         alignItems: 'center',
         gap: 8,
-        backgroundColor: '#ece4d3',
-        borderColor: '#cdc1ad',
+        backgroundColor: COLORS.creamLow,
+        borderColor: COLORS.hairline,
         borderWidth: 1,
         borderRadius: 8,
         paddingHorizontal: 10,
@@ -256,7 +257,9 @@ function InlineHint({ icon, children }: { icon: ReactNode; children: ReactNode }
       }}
     >
       {icon}
-      <Text style={{ flex: 1, fontSize: 11, color: '#918275', fontWeight: '600' }}>{children}</Text>
+      <Text style={{ flex: 1, fontSize: 11, color: COLORS.ink3, fontWeight: '600' }}>
+        {children}
+      </Text>
     </View>
   );
 }

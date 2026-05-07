@@ -26,11 +26,6 @@ const WIDE_GRID_BREAKPOINT = 620;
 
 const COLORS = {
   ...SHARED_COLORS,
-  // LobbyPreview's "filled seat" cards use a darker cream than the
-  // shared `cream` so they read as recessed against the paperHi
-  // outer card. Kept local since no other surface wants this exact
-  // tone.
-  cream: '#ece4d3',
   /** Lobby's "open / waiting" indicator dot — slightly bluer-green
    *  than the shared `green` used for connection states elsewhere
    *  so the two read as distinct cues (lobby room status vs
@@ -54,7 +49,7 @@ const COLORS = {
 const STATUS_COLORS = {
   bot: { color: '#735aa3', bg: '#e1d3ed', label: 'Bot' },
   online: { color: '#2d8645', bg: '#c2e2c5', label: 'Online' },
-  offline: { color: COLORS.ink3, bg: COLORS.cream, label: 'Disconnected' },
+  offline: { color: COLORS.ink3, bg: COLORS.creamLow, label: 'Disconnected' },
 } as const;
 
 /**
@@ -133,8 +128,8 @@ export function LobbyPreview({ lobby, matchCode }: LobbyPreviewProps) {
               backgroundColor: copied
                 ? STATUS_COLORS.online.bg
                 : pressed
-                  ? '#dfd4bc'
-                  : COLORS.cream,
+                  ? COLORS.creamPressed
+                  : COLORS.creamLow,
               borderColor: copied ? STATUS_COLORS.online.color : COLORS.hairline,
               borderWidth: 1,
               borderRadius: 8,
@@ -180,7 +175,7 @@ export function LobbyPreview({ lobby, matchCode }: LobbyPreviewProps) {
               style={{
                 flexBasis: cardBasis,
                 flexGrow: 1,
-                backgroundColor: filled ? COLORS.cream : 'transparent',
+                backgroundColor: filled ? COLORS.creamLow : 'transparent',
                 borderColor: COLORS.hairline,
                 borderWidth: 1,
                 borderStyle: filled ? 'solid' : 'dashed',

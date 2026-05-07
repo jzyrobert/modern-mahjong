@@ -27,6 +27,16 @@ export const COLORS = {
   /** Slightly cooler cream — used for press / hover states and
    *  log-card backgrounds. */
   cream: '#f1eadc',
+  /** Recessed-surface cream — a step deeper than `cream`, used for
+   *  inset cards (LobbyPreview seat tiles, the bot-skill picker
+   *  container, MeldStrip, the lobby InlineHint), and as the
+   *  press-state tone for buttons that sit directly on `paper` /
+   *  `paperHi`. */
+  creamLow: '#ece4d3',
+  /** Deeper press-state tone — used by interactive surfaces that
+   *  already sit on `creamLow` (the bot-skill picker chips, the
+   *  REMOVE button on a bot card, the copy-match-code badge). */
+  creamPressed: '#dfd4bc',
   /** Hairline border colour — used for almost every divider in the UI. */
   hairline: '#cdc1ad',
   /** Primary accent — the red used for dealer markers, claim
@@ -41,4 +51,12 @@ export const COLORS = {
   /** Soft gold — used for win badges, dealer ribbons, and "about to
    *  draw" cues. */
   gold: '#d8a85a',
+  /** Salmon highlight bg — paired with `red` text for active /
+   *  selected chip-style controls (mode-card RECOMMENDED badge,
+   *  bot-skill active chip, sort-picker active option, win-banner
+   *  body, destructive menu items). */
+  accentSalmonSwatch: '#fbe5d9',
+  /** Salmon edge — border tone for `accentSalmonSwatch` surfaces
+   *  (RECOMMENDED badge, destructive Leave item in MenuSheet). */
+  accentSalmonEdge: '#d8b09f',
 };

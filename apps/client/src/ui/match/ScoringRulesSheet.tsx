@@ -199,8 +199,8 @@ function ExampleHand({ concealed, melds, winningTile, note }: ExampleHandProps) 
               style={{
                 flexDirection: 'row',
                 gap: 1,
-                backgroundColor: '#ece4d3',
-                borderColor: '#cdc1ad',
+                backgroundColor: COLORS.creamLow,
+                borderColor: COLORS.hairline,
                 borderWidth: 1,
                 borderRadius: 4,
                 padding: 2,
