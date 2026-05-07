@@ -3,13 +3,12 @@ import type { ReactNode } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { type LogEntry, nameForSeat, useGame } from '../../state/game';
 import { Modal } from '../Modal';
+import { SEAT_WIND_GLYPH } from '../winds';
 
 interface GameLogProps {
   open: boolean;
   onClose: () => void;
 }
-
-const WIND_GLYPH = ['東', '南', '西', '北'] as const;
 
 const COLORS = {
   ink: '#3a3328',
@@ -176,7 +175,9 @@ function SeatLabel({ seat, lobby }: { seat: Seat; lobby: Lobby }) {
   return (
     <>
       <Text style={{ fontWeight: '800', color: COLORS.ink }}>{name}</Text>
-      <Text style={{ fontFamily: 'Noto Serif TC', color: COLORS.red }}> {WIND_GLYPH[seat]}</Text>
+      <Text
+        style={{ fontFamily: 'Noto Serif TC', color: COLORS.red }}
+      >{` ${SEAT_WIND_GLYPH[seat]}`}</Text>
     </>
   );
 }

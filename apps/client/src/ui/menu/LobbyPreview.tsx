@@ -1,13 +1,12 @@
 import { SEATS } from '@mahjong/game-logic';
 import { Text, View, useWindowDimensions } from 'react-native';
 import type { LobbyState } from '../../state/game';
+import { SEAT_WIND_GLYPH } from '../winds';
 
 interface LobbyPreviewProps {
   lobby: LobbyState;
   matchCode: string | null;
 }
-
-const WIND_GLYPH = ['東', '南', '西', '北'] as const;
 
 /**
  * Live preview of the four-seat lobby — wind glyphs, seat cards,
@@ -111,7 +110,7 @@ export function LobbyPreview({ lobby, matchCode }: LobbyPreviewProps) {
                     fontWeight: '700',
                   }}
                 >
-                  {WIND_GLYPH[seat]}
+                  {SEAT_WIND_GLYPH[seat]}
                 </Text>
                 <Text
                   style={{

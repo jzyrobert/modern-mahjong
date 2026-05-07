@@ -28,6 +28,7 @@ import type { SortMode } from './match/SortPicker';
 import { FELT_SKINS } from './match/skins';
 import { useDeadlineCrossed, useSecondsUntil } from './match/useClaimCue';
 import { LobbyPreview } from './menu/LobbyPreview';
+import { SEAT_WIND_GLYPH } from './winds';
 
 /**
  * Viewport thresholds above which the Match screen renders the
@@ -383,7 +384,6 @@ const BOT_KINDS: ReadonlyArray<{ kind: BotKind; label: string; hint: string }> =
   { kind: 'simple', label: 'Standard', hint: 'Drops the most isolated tile.' },
   { kind: 'heuristic', label: 'Smart', hint: 'Minimises shanten + claims to improve.' },
 ];
-const SEAT_WIND_GLYPH = ['東', '南', '西', '北'] as const;
 
 interface SoloBotSkillPickerProps {
   skills: readonly [BotKind, BotKind, BotKind];

@@ -18,3 +18,14 @@ export const WIND_GLYPH: Record<Wind, string> = {
   W: '西',
   N: '北',
 };
+
+/**
+ * Seat-indexed wind glyph for surfaces that show a seat's *permanent*
+ * label rather than the dealer-relative round-wind. Seat 0 is always
+ * East / 東, seat 1 South / 南, seat 2 West / 西, seat 3 North / 北 —
+ * the engine's `WINDS` array in this exact order, paired with the
+ * matching glyph from `WIND_GLYPH`. Used by the GameLog seat tag, the
+ * LobbyPreview seat cards, and the Match lobby waiting-room — all of
+ * which want a stable label that doesn't shift with dealer rotation.
+ */
+export const SEAT_WIND_GLYPH = ['東', '南', '西', '北'] as const;
