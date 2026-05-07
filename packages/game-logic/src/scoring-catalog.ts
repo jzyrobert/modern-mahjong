@@ -74,6 +74,39 @@ function gangConcealed(t: Tile): ExampleMeld {
   return { kind: 'gang-concealed', tiles: [t, t, t, t] };
 }
 
+// Three concealed sequences across the suits — the most common
+// "boring filler" that lets the *interesting* part of an example
+// hand stand out. 1m-2m-3m, 4p-5p-6p, 7s-8s-9s.
+const CROSS_SUIT_STRAIGHTS: Tile[] = [
+  s('man', 1),
+  s('man', 2),
+  s('man', 3),
+  s('pin', 4),
+  s('pin', 5),
+  s('pin', 6),
+  s('sou', 7),
+  s('sou', 8),
+  s('sou', 9),
+];
+
+// Vanilla 13-tile concealed used as the worked example for any
+// pattern that doesn't constrain the rest of the hand: the three
+// cross-suit straights + a 5m pair + a 2p pair, winning on 2p.
+const VANILLA_CONCEALED: Tile[] = [
+  ...CROSS_SUIT_STRAIGHTS,
+  s('man', 5),
+  s('man', 5),
+  s('pin', 2),
+  s('pin', 2),
+];
+
+// 13-tile concealed used by patterns that pin one specific honor
+// triplet (三元牌, 圈風, 門風): cross-suit straights + the triplet
+// + the 2p winning pair.
+function straightsWithHonorTriplet(honor: 'E' | 'S' | 'W' | 'N' | 'Z' | 'F' | 'B'): Tile[] {
+  return [...CROSS_SUIT_STRAIGHTS, h(honor), h(honor), h(honor), s('pin', 2)];
+}
+
 export const SCORING_RULES: ScoringRule[] = [
   // — Win conditions ——————————————————————————————————————————————
   {
@@ -83,21 +116,7 @@ export const SCORING_RULES: ScoringRule[] = [
     category: 'win-condition',
     description: 'Win on a tile you drew yourself rather than on an opponent’s discard.',
     example: {
-      concealed: [
-        s('man', 1),
-        s('man', 2),
-        s('man', 3),
-        s('pin', 4),
-        s('pin', 5),
-        s('pin', 6),
-        s('sou', 7),
-        s('sou', 8),
-        s('sou', 9),
-        s('man', 5),
-        s('man', 5),
-        s('pin', 2),
-        s('pin', 2),
-      ],
+      concealed: VANILLA_CONCEALED,
       melds: [],
       winningTile: s('pin', 2),
       note: 'Drawn from the wall.',
@@ -111,21 +130,7 @@ export const SCORING_RULES: ScoringRule[] = [
     description:
       'No claimed melds — the entire hand stayed in your concealed tiles, regardless of self-draw or ron.',
     example: {
-      concealed: [
-        s('man', 1),
-        s('man', 2),
-        s('man', 3),
-        s('pin', 4),
-        s('pin', 5),
-        s('pin', 6),
-        s('sou', 7),
-        s('sou', 8),
-        s('sou', 9),
-        s('man', 5),
-        s('man', 5),
-        s('pin', 2),
-        s('pin', 2),
-      ],
+      concealed: VANILLA_CONCEALED,
       melds: [],
       winningTile: s('pin', 2),
     },
@@ -186,21 +191,7 @@ export const SCORING_RULES: ScoringRule[] = [
     description:
       'Win on the very last live-wall draw or discard before the hand would have run out of tiles.',
     example: {
-      concealed: [
-        s('man', 1),
-        s('man', 2),
-        s('man', 3),
-        s('pin', 4),
-        s('pin', 5),
-        s('pin', 6),
-        s('sou', 7),
-        s('sou', 8),
-        s('sou', 9),
-        s('man', 5),
-        s('man', 5),
-        s('pin', 2),
-        s('pin', 2),
-      ],
+      concealed: VANILLA_CONCEALED,
       melds: [],
       winningTile: s('pin', 2),
       note: 'Wall is empty after this tile is taken.',
@@ -427,21 +418,7 @@ export const SCORING_RULES: ScoringRule[] = [
     description:
       'A triplet (or gang) of any dragon — 中, 發, or 白. Stacks per dragon and on top of 大三元 / 小三元.',
     example: {
-      concealed: [
-        s('man', 1),
-        s('man', 2),
-        s('man', 3),
-        s('pin', 4),
-        s('pin', 5),
-        s('pin', 6),
-        s('sou', 7),
-        s('sou', 8),
-        s('sou', 9),
-        h('Z'),
-        h('Z'),
-        h('Z'),
-        s('pin', 2),
-      ],
+      concealed: straightsWithHonorTriplet('Z'),
       melds: [],
       winningTile: s('pin', 2),
     },
@@ -508,21 +485,7 @@ export const SCORING_RULES: ScoringRule[] = [
     description:
       'A triplet of the prevailing (round) wind. Stacks with 門風 when seat wind is also the prevailing wind.',
     example: {
-      concealed: [
-        s('man', 1),
-        s('man', 2),
-        s('man', 3),
-        s('pin', 4),
-        s('pin', 5),
-        s('pin', 6),
-        s('sou', 7),
-        s('sou', 8),
-        s('sou', 9),
-        h('E'),
-        h('E'),
-        h('E'),
-        s('pin', 2),
-      ],
+      concealed: straightsWithHonorTriplet('E'),
       melds: [],
       winningTile: s('pin', 2),
       note: 'Prevailing wind is East.',
@@ -536,21 +499,7 @@ export const SCORING_RULES: ScoringRule[] = [
     description:
       'A triplet of your own seat wind. When seat wind matches the prevailing wind, both fire (+2 total).',
     example: {
-      concealed: [
-        s('man', 1),
-        s('man', 2),
-        s('man', 3),
-        s('pin', 4),
-        s('pin', 5),
-        s('pin', 6),
-        s('sou', 7),
-        s('sou', 8),
-        s('sou', 9),
-        h('S'),
-        h('S'),
-        h('S'),
-        s('pin', 2),
-      ],
+      concealed: straightsWithHonorTriplet('S'),
       melds: [],
       winningTile: s('pin', 2),
       note: 'Winning seat is South.',
@@ -743,21 +692,7 @@ export const SCORING_RULES: ScoringRule[] = [
     category: 'blessing',
     description: 'Dealer wins on the opening 14-tile self-draw — before anyone has discarded.',
     example: {
-      concealed: [
-        s('man', 1),
-        s('man', 2),
-        s('man', 3),
-        s('pin', 4),
-        s('pin', 5),
-        s('pin', 6),
-        s('sou', 7),
-        s('sou', 8),
-        s('sou', 9),
-        s('man', 5),
-        s('man', 5),
-        s('pin', 2),
-        s('pin', 2),
-      ],
+      concealed: VANILLA_CONCEALED,
       melds: [],
       winningTile: s('pin', 2),
     },
@@ -770,21 +705,7 @@ export const SCORING_RULES: ScoringRule[] = [
     description:
       'Non-dealer wins on the dealer’s very first discard — before any other tile has been pitched.',
     example: {
-      concealed: [
-        s('man', 1),
-        s('man', 2),
-        s('man', 3),
-        s('pin', 4),
-        s('pin', 5),
-        s('pin', 6),
-        s('sou', 7),
-        s('sou', 8),
-        s('sou', 9),
-        s('man', 5),
-        s('man', 5),
-        s('pin', 2),
-        s('pin', 2),
-      ],
+      concealed: VANILLA_CONCEALED,
       melds: [],
       winningTile: s('pin', 2),
     },
@@ -797,21 +718,7 @@ export const SCORING_RULES: ScoringRule[] = [
     description:
       'Non-dealer wins on their own first self-draw — before they’ve discarded anything.',
     example: {
-      concealed: [
-        s('man', 1),
-        s('man', 2),
-        s('man', 3),
-        s('pin', 4),
-        s('pin', 5),
-        s('pin', 6),
-        s('sou', 7),
-        s('sou', 8),
-        s('sou', 9),
-        s('man', 5),
-        s('man', 5),
-        s('pin', 2),
-        s('pin', 2),
-      ],
+      concealed: VANILLA_CONCEALED,
       melds: [],
       winningTile: s('pin', 2),
     },
