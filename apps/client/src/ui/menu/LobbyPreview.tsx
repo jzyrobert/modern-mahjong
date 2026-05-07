@@ -8,6 +8,52 @@ interface LobbyPreviewProps {
   matchCode: string | null;
 }
 
+// Layout breakpoint for the seat-card grid. Below 620 px the four
+// cards reflow to 2 × 2 (each at flexBasis 47%); at or above we get
+// 4 × 1 (each at flexBasis 23%). 620 px is roughly the lowest tablet
+// portrait width (iPad mini = 768) plus enough margin to avoid
+// triggering the wide layout on phones in landscape.
+//
+// Note: this exceeds the 520 px max-width the in-match modals use,
+// so on a 620–700 px tablet width the lobby grid will look wider
+// than a Settings / Players sheet would. That asymmetry is
+// intentional — the lobby header is a hero element shown
+// pre-match, where modals don't compete for attention.
+const WIDE_GRID_BREAKPOINT = 620;
+
+const COLORS = {
+  ink: '#3a3328',
+  ink3: '#918275',
+  paperHi: '#fbf8f0',
+  cream: '#ece4d3',
+  hairline: '#cdc1ad',
+  red: '#b14d3a',
+  /** Lobby's "open / waiting" indicator dot — slightly bluer-green
+   *  than the COLORS.green used for connection states elsewhere so
+   *  the two reads as distinct cues (lobby room status vs per-seat
+   *  online state). */
+  lobbyDot: '#44ad60',
+};
+
+/**
+ * Per-seat status pill colour palette. Three explicit kinds:
+ *   - `bot`     — purple (lavender bg, deep purple text). Reads as
+ *                 a non-human player.
+ *   - `online`  — soft green. Real human, currently connected.
+ *   - `offline` — neutral cream / muted text. Real human, dropped.
+ *
+ * Lifted out of the inline `kind === 'x' ? … : …` ternary in
+ * `StatusPill` so a designer can tweak the palette without grepping
+ * the component body. The shapes intentionally use bg + text-color
+ * pairs (not a single accent) so the pill stays legible at the
+ * 9 px font size.
+ */
+const STATUS_COLORS = {
+  bot: { color: '#735aa3', bg: '#e1d3ed', label: 'Bot' },
+  online: { color: '#2d8645', bg: '#c2e2c5', label: 'Online' },
+  offline: { color: COLORS.ink3, bg: COLORS.cream, label: 'Disconnected' },
+} as const;
+
 /**
  * Live preview of the four-seat lobby — wind glyphs, seat cards,
  * connection-status pills. Uses a `useWindowDimensions`-driven
@@ -17,16 +63,14 @@ interface LobbyPreviewProps {
 export function LobbyPreview({ lobby, matchCode }: LobbyPreviewProps) {
   const { width } = useWindowDimensions();
   const players = SEATS.map((seat) => lobby.players.find((p) => p.seat === seat) ?? null);
-  // ≥620px → 4 cols (1fr each); below → 2 cols. Matches the legacy
-  // `repeat(auto-fit, minmax(140px, 1fr))` semantics.
-  const cardBasis = width >= 620 ? '23%' : '47%';
+  const cardBasis = width >= WIDE_GRID_BREAKPOINT ? '23%' : '47%';
 
   return (
     <View
       style={{
         marginTop: 20,
-        backgroundColor: '#fbf8f0',
-        borderColor: '#cdc1ad',
+        backgroundColor: COLORS.paperHi,
+        borderColor: COLORS.hairline,
         borderWidth: 1,
         borderRadius: 14,
         padding: 18,
@@ -48,19 +92,19 @@ export function LobbyPreview({ lobby, matchCode }: LobbyPreviewProps) {
               width: 8,
               height: 8,
               borderRadius: 4,
-              backgroundColor: '#44ad60',
+              backgroundColor: COLORS.lobbyDot,
             }}
           />
-          <Text style={{ fontSize: 14, fontWeight: '900', color: '#3a3328' }}>In lobby</Text>
-          <Text style={{ fontSize: 11, color: '#918275', fontWeight: '700' }}>
+          <Text style={{ fontSize: 14, fontWeight: '900', color: COLORS.ink }}>In lobby</Text>
+          <Text style={{ fontSize: 11, color: COLORS.ink3, fontWeight: '700' }}>
             · waiting for players
           </Text>
         </View>
         {matchCode ? (
           <View
             style={{
-              backgroundColor: '#ece4d3',
-              borderColor: '#cdc1ad',
+              backgroundColor: COLORS.cream,
+              borderColor: COLORS.hairline,
               borderWidth: 1,
               borderRadius: 8,
               paddingVertical: 4,
@@ -73,7 +117,7 @@ export function LobbyPreview({ lobby, matchCode }: LobbyPreviewProps) {
                 fontSize: 13,
                 fontWeight: '800',
                 letterSpacing: 3,
-                color: '#3a3328',
+                color: COLORS.ink,
               }}
             >
               {matchCode}
@@ -91,8 +135,8 @@ export function LobbyPreview({ lobby, matchCode }: LobbyPreviewProps) {
               style={{
                 flexBasis: cardBasis,
                 flexGrow: 1,
-                backgroundColor: p ? '#ece4d3' : 'transparent',
-                borderColor: '#cdc1ad',
+                backgroundColor: p ? COLORS.cream : 'transparent',
+                borderColor: COLORS.hairline,
                 borderWidth: 1,
                 borderStyle: p ? 'solid' : 'dashed',
                 borderRadius: 10,
@@ -106,7 +150,7 @@ export function LobbyPreview({ lobby, matchCode }: LobbyPreviewProps) {
                   style={{
                     fontFamily: 'Noto Serif TC',
                     fontSize: 16,
-                    color: '#b14d3a',
+                    color: COLORS.red,
                     fontWeight: '700',
                   }}
                 >
@@ -116,7 +160,7 @@ export function LobbyPreview({ lobby, matchCode }: LobbyPreviewProps) {
                   style={{
                     fontSize: 10,
                     fontWeight: '800',
-                    color: '#918275',
+                    color: COLORS.ink3,
                     letterSpacing: 0.6,
                   }}
                 >
@@ -129,7 +173,7 @@ export function LobbyPreview({ lobby, matchCode }: LobbyPreviewProps) {
                     style={{
                       fontSize: 13,
                       fontWeight: '800',
-                      color: '#3a3328',
+                      color: COLORS.ink,
                       lineHeight: 16,
                     }}
                   >
@@ -141,7 +185,7 @@ export function LobbyPreview({ lobby, matchCode }: LobbyPreviewProps) {
                 <Text
                   style={{
                     fontSize: 12,
-                    color: '#918275',
+                    color: COLORS.ink3,
                     fontStyle: 'italic',
                     fontWeight: '600',
                   }}
@@ -158,12 +202,7 @@ export function LobbyPreview({ lobby, matchCode }: LobbyPreviewProps) {
 }
 
 function StatusPill({ kind }: { kind: 'bot' | 'online' | 'offline' }) {
-  const palette =
-    kind === 'bot'
-      ? { color: '#735aa3', bg: '#e1d3ed', label: 'Bot' }
-      : kind === 'online'
-        ? { color: '#2d8645', bg: '#c2e2c5', label: 'Online' }
-        : { color: '#918275', bg: '#ece4d3', label: 'Disconnected' };
+  const palette = STATUS_COLORS[kind];
   return (
     <View
       style={{
