@@ -1,43 +1,41 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Animated, Pressable, Text, View } from 'react-native';
 import { nameForSeat, useGame } from '../state/game';
-import { usePulse } from './animations';
+import { useFadeInOut, usePulse } from './animations';
 import { COLORS } from './colors';
 import { DISMISS_MS } from './timing';
 
 /**
- * Celebratory overlay on `state.lastResult.kind === 'win'`. Auto-dismisses after
- * `DISMISS_MS` (or on tap). The 和 emblem pulses + rocks subtly via RN
- * core `Animated` (no reanimated, so it works in Expo Go).
+ * Celebratory overlay on `state.lastResult.kind === 'win'`.
+ * Auto-dismisses after `DISMISS_MS` (or on tap). The 和 emblem
+ * pulses + rocks subtly via the shared `usePulse` hook; the fade-in
+ * / fade-out lifecycle goes through `useFadeInOut` which honours
+ * `useGame.settings.animations` (snap when reduced-motion is on).
  */
 export function WinCelebration() {
   const result = useGame((s) => s.state?.lastResult);
   const lobby = useGame((s) => s.lobby);
   const [dismissed, setDismissed] = useState(false);
-  const fade = useRef(new Animated.Value(0)).current;
+  const isWin = !!result && result.kind === 'win';
+  const visibleForFade = isWin && !dismissed;
+  const { fade, fadeOut } = useFadeInOut({ visible: visibleForFade });
 
   useEffect(() => {
     if (!result) return;
     setDismissed(false);
-    Animated.timing(fade, { toValue: 1, duration: 250, useNativeDriver: true }).start();
     const timer = setTimeout(() => {
-      Animated.timing(fade, { toValue: 0, duration: 250, useNativeDriver: true }).start(() =>
-        setDismissed(true),
-      );
+      fadeOut(() => setDismissed(true));
     }, DISMISS_MS);
     return () => clearTimeout(timer);
-  }, [result, fade]);
+  }, [result, fadeOut]);
 
-  const visible = !!result && result.kind === 'win' && !dismissed;
   const win = result && result.kind === 'win' ? result : null;
-  if (!visible || !win) return null;
+  if (!visibleForFade || !win) return null;
 
   return (
     <Pressable
       onPress={() => {
-        Animated.timing(fade, { toValue: 0, duration: 250, useNativeDriver: true }).start(() =>
-          setDismissed(true),
-        );
+        fadeOut(() => setDismissed(true));
       }}
       style={{
         position: 'absolute',

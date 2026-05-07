@@ -3,6 +3,7 @@ import { SEATS } from '@mahjong/game-logic';
 import { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Pressable, Text, View } from 'react-native';
 import { nameForSeat, useGame } from '../state/game';
+import { useFadeInOut } from './animations';
 import { COLORS } from './colors';
 import { DISMISS_MS } from './timing';
 
@@ -50,49 +51,31 @@ export function DiceCeremony() {
   const rolls = useGame((s) => s.state?.openingRolls);
   const dealer = useGame((s) => s.state?.dealer);
   const lobby = useGame((s) => s.lobby);
-  // Honour the OS / user "reduced motion" preference — when off, the
-  // overlay just snaps in / out instead of fading. The dismiss timer
-  // is unchanged so users get the same on-screen duration either way.
-  const animsEnabled = useGame((s) => s.settings.animations);
   const [dismissed, setDismissed] = useState(false);
-  const fade = useRef(new Animated.Value(0)).current;
+  // `useFadeInOut` honours `useGame.settings.animations` — when the
+  // user has reduced-motion on the overlay snaps in / out instead of
+  // fading. The dismiss timer is unchanged so on-screen duration is
+  // the same either way.
+  const visibleForFade = !!rolls && !dismissed;
+  const { fade, fadeOut } = useFadeInOut({ visible: visibleForFade });
 
   useEffect(() => {
     if (!rolls) return;
     setDismissed(false);
-    if (animsEnabled) {
-      Animated.timing(fade, { toValue: 1, duration: 250, useNativeDriver: true }).start();
-    } else {
-      fade.setValue(1);
-    }
     const timer = setTimeout(() => {
-      if (animsEnabled) {
-        Animated.timing(fade, { toValue: 0, duration: 250, useNativeDriver: true }).start(() =>
-          setDismissed(true),
-        );
-      } else {
-        fade.setValue(0);
-        setDismissed(true);
-      }
+      fadeOut(() => setDismissed(true));
     }, DISMISS_MS);
     return () => clearTimeout(timer);
-  }, [rolls, fade, animsEnabled]);
+  }, [rolls, fadeOut]);
 
-  const visible = !!rolls && !dismissed && dealer !== undefined;
+  const visible = visibleForFade && dealer !== undefined;
   if (!visible) return null;
   const rolling = SEATS.filter((s) => rolls.dice[s]);
 
   return (
     <Pressable
       onPress={() => {
-        if (animsEnabled) {
-          Animated.timing(fade, { toValue: 0, duration: 250, useNativeDriver: true }).start(() =>
-            setDismissed(true),
-          );
-        } else {
-          fade.setValue(0);
-          setDismissed(true);
-        }
+        fadeOut(() => setDismissed(true));
       }}
       style={{
         position: 'absolute',
