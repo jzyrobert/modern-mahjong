@@ -23,6 +23,25 @@ export const test = base.extend({
 export { expect };
 
 /**
+ * Spoof the document's `visibilityState` + `hidden` and dispatch
+ * `visibilitychange` so RN-Web's AppState shim flips. Specs use this
+ * to simulate Android Chrome / iOS Safari backgrounding the tab.
+ */
+export async function setVisibility(page: Page, state: 'hidden' | 'visible'): Promise<void> {
+  await page.evaluate((s) => {
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => s,
+    });
+    Object.defineProperty(document, 'hidden', {
+      configurable: true,
+      get: () => s === 'hidden',
+    });
+    document.dispatchEvent(new Event('visibilitychange'));
+  }, state);
+}
+
+/**
  * Wait for the user's draw-cue (`wall-draw-next`) to appear, dismissing
  * any incidental ClaimBar windows along the way by clicking `Pass`.
  *

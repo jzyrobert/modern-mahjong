@@ -34,10 +34,6 @@ export const BOT_LABELS = {
   heuristic: 'Smart',
 } as const satisfies Record<BotKind, string>;
 
-export function botLabel(kind: BotKind): string {
-  return BOT_LABELS[kind];
-}
-
 export function botDisplayName(kind: BotKind): string {
   return `Bot (${BOT_LABELS[kind]})`;
 }

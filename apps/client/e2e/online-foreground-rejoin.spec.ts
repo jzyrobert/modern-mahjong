@@ -1,4 +1,5 @@
-import { type BrowserContext, type Page, expect, test } from '@playwright/test';
+import { type BrowserContext, expect, test } from '@playwright/test';
+import { setVisibility } from './_helpers';
 import { type TestServerHandle, startTestServer } from './test-server/server.js';
 
 /**
@@ -157,17 +158,3 @@ test('online: hard-disconnect during background recovers via foreground rejoin',
     await bCtx.close();
   }
 });
-
-async function setVisibility(page: Page, state: 'hidden' | 'visible') {
-  await page.evaluate((s) => {
-    Object.defineProperty(document, 'visibilityState', {
-      configurable: true,
-      get: () => s,
-    });
-    Object.defineProperty(document, 'hidden', {
-      configurable: true,
-      get: () => s === 'hidden',
-    });
-    document.dispatchEvent(new Event('visibilitychange'));
-  }, state);
-}

@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { expect, test } from './_helpers';
+import { expect, setVisibility, test } from './_helpers';
 
 /**
  * Solo matches run entirely in-process — no server-side session to
@@ -64,20 +64,6 @@ async function dismissOpeningRolls(page: Page) {
     await page.mouse.click(206, 400);
     await expect(dialog).toBeHidden({ timeout: 10_000 });
   }
-}
-
-async function setVisibility(page: Page, state: 'hidden' | 'visible') {
-  await page.evaluate((s) => {
-    Object.defineProperty(document, 'visibilityState', {
-      configurable: true,
-      get: () => s,
-    });
-    Object.defineProperty(document, 'hidden', {
-      configurable: true,
-      get: () => s === 'hidden',
-    });
-    document.dispatchEvent(new Event('visibilitychange'));
-  }, state);
 }
 
 async function readWallCount(page: Page): Promise<number> {

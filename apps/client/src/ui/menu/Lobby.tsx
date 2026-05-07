@@ -1,5 +1,5 @@
 import { useTransport } from '@/src/net/transport-context';
-import { generateMatchCode } from '@mahjong/protocol';
+import { BOT_LABELS, generateMatchCode } from '@mahjong/protocol';
 import { type ReactNode, useState } from 'react';
 import { Platform, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -102,12 +102,12 @@ export function Lobby() {
           >
             <Text style={{ fontSize: 12, color: '#918275', lineHeight: 18 }}>
               Three opponents at varying skill —{' '}
-              <Text style={{ color: '#65594c', fontWeight: '800' }}>Smart</Text>,{' '}
-              <Text style={{ color: '#65594c', fontWeight: '800' }}>Standard</Text>, and{' '}
-              <Text style={{ color: '#65594c', fontWeight: '800' }}>Easy</Text>. Runs entirely on
-              this device.
+              <Text style={{ color: '#65594c', fontWeight: '800' }}>{BOT_LABELS.heuristic}</Text>,{' '}
+              <Text style={{ color: '#65594c', fontWeight: '800' }}>{BOT_LABELS.simple}</Text>, and{' '}
+              <Text style={{ color: '#65594c', fontWeight: '800' }}>{BOT_LABELS.passive}</Text>.
+              Runs entirely on this device.
             </Text>
-            <TagRow tags={['Smart', 'Standard', 'Easy']} />
+            <TagRow tags={[BOT_LABELS.heuristic, BOT_LABELS.simple, BOT_LABELS.passive]} />
             <ButtonRow>
               <PrimaryButton onPress={transport.joinSolo}>Play vs bots</PrimaryButton>
             </ButtonRow>

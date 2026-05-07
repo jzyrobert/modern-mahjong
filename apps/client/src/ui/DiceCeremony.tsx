@@ -52,13 +52,10 @@ export function DiceCeremony() {
   const rolls = useGame((s) => s.state?.openingRolls);
   const dealer = useGame((s) => s.state?.dealer);
   const lobby = useGame((s) => s.lobby);
-  // Track which hand's ceremony has been shown by seed. A bare
-  // `dismissed` boolean re-fires every time the server sends a
-  // fresh state delta — JSON.parse spawns a new `openingRolls`
-  // reference on every action, even when the contents are the
-  // same — so the previous `useEffect([rolls])` retriggered the
-  // ceremony on every move in online matches. Keying on seed
-  // gives us "once per hand" without depending on object identity.
+  // Key dismissal by `state.seed` rather than a boolean — JSON.parse
+  // on every server delta produces a fresh `openingRolls` reference,
+  // so a bare `dismissed` boolean reset by `useEffect([rolls])` would
+  // retrigger the ceremony on every action.
   const [dismissedSeed, setDismissedSeed] = useState<number | null>(null);
   const open = !!rolls && seed !== undefined && seed !== dismissedSeed;
   // `useFadeInOut` honours `useGame.settings.animations` — when the
