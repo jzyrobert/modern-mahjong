@@ -2,8 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Pressable, Text, View } from 'react-native';
 import { nameForSeat, useGame } from '../state/game';
 import { COLORS } from './colors';
-
-const DISMISS_MS = 3500;
+import { DISMISS_MS } from './timing';
 
 /**
  * Celebratory overlay on `state.lastResult.kind === 'win'`. Auto-dismisses after
