@@ -242,11 +242,23 @@ export function TransportProvider({ children }: { children: ReactNode }) {
   );
 
   // Track the active transport's connection status so the lobby can
-  // surface "Connecting…" / "Couldn't reach server" feedback. Without
-  // this, a failed online join just looks like an unresponsive button.
+  // surface "Connecting…" / "Couldn't reach server" feedback. When an
+  // online / LAN socket flips to `closed` unexpectedly (OS suspending
+  // the ws after a long background, a network blip, a server restart),
+  // null the transport so the AppState foreground handler — and any
+  // explicit user retry — can rejoin via `findOrAssignSeat`'s
+  // playerId-match branch within the server's reconnect grace.
+  // Skipped for solo (the in-process loop never closes unexpectedly)
+  // and after `leave()` (which clears `reconnectInfoRef.current`).
   useEffect(() => {
     if (!transport) return;
-    return transport.onStatus(setStatus);
+    return transport.onStatus((s) => {
+      setStatus(s);
+      if (s !== 'closed') return;
+      const info = reconnectInfoRef.current;
+      if (!info || info.kind === 'solo') return;
+      setTransport(null);
+    });
   }, [transport]);
 
   // Wire inbound messages into the zustand store + side-effects.
@@ -312,17 +324,23 @@ export function TransportProvider({ children }: { children: ReactNode }) {
     const sub = AppState.addEventListener('change', (next) => {
       const prev = appStateRef.current;
       appStateRef.current = next;
-      if (prev === 'active' && next.match(/inactive|background/)) {
-        if (reconnectInfoRef.current?.kind !== 'solo') {
-          transport?.close();
-        }
-      } else if (prev.match(/inactive|background/) && next === 'active') {
+      // Backgrounding: don't proactively close the socket. A short
+      // screen lock (a few seconds — checking notifications, glancing
+      // at the time) shouldn't kick the user off their match. iOS
+      // will suspend long-backgrounded WebSockets on its own; that
+      // surfaces as a `closed` status, which the onStatus effect
+      // above nulls the transport on. A foreground re-tick then
+      // re-joins via `findOrAssignSeat`'s playerId-match branch.
+      // The previous behaviour (proactive close + null on every
+      // background) generated a server-visible disconnect on every
+      // brief lock, exhausting the seat's reconnect grace if the
+      // user toggled visibility a few times in quick succession.
+      if (prev.match(/inactive|background/) && next === 'active') {
         const info = reconnectInfoRef.current;
-        if (info && !transport) {
-          // Re-create the same transport. Identity comes from
-          // localStorage so playerId is stable across the suspend.
-          // Solo never reaches here: we don't close it on
-          // background, so `transport` is still set.
+        if (info && info.kind !== 'solo' && !transport) {
+          // Identity comes from localStorage so playerId is stable
+          // across the suspend; the server reseats us by playerId
+          // within the reconnect-grace window (default 60s).
           if (info.kind === 'online') joinOnline(info.code);
           else if (info.kind === 'lan') joinLan(info.hostUrl, info.code);
         }
