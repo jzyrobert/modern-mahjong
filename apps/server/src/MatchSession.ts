@@ -84,9 +84,9 @@ export interface MatchSessionSnapshot {
    * Server-clock deadline for the currently-pending bot discard, if any.
    * Round-trips through hibernation so a bot that drew right before a
    * DO sleep still discards `botPaceMs` after that draw, not instantly
-   * on wake. Older snapshots omit it (defaults to null on restore).
+   * on wake.
    */
-  botActionDeadline?: number | null;
+  botActionDeadline: number | null;
 }
 
 /**
@@ -168,7 +168,7 @@ export class MatchSession {
       state: this.state,
       hostPlayerId: this.hostPlayerId,
       seats,
-      ...(this.botActionDeadline !== null ? { botActionDeadline: this.botActionDeadline } : {}),
+      botActionDeadline: this.botActionDeadline,
     };
   }
 
@@ -241,26 +241,16 @@ export class MatchSession {
   fireAlarm(nowMs: number): Outbound[] {
     const out: Outbound[] = [];
     out.push(...this.expireGraceTimers(nowMs));
-    // Claim resolution timing follows the human-anchored ladder:
-    //   - Soft floor (`deadlineMs`): only resolve when every non-discarder
-    //     *human* seat is in `submitted`. Bot seats don't count toward
-    //     the ladder — their decisions land at resolution time, not as
-    //     timer pressure on humans.
-    //   - Hard fallback (`hardDeadlineMs`): silent humans get auto-passed
-    //     by `resolveClaims`, bots get polled-and-applied first, and the
-    //     round resolves regardless.
-    //   - When `hardDeadlineMs` is undefined (defensive — server rules
-    //     always set it), resolve immediately on any awaitingClaims tick.
+    // Humans-only claim ladder: bots don't gate the soft floor; they're
+    // polled at resolution time. Hard fallback resolves regardless. The
+    // DO alarm fires at or after the armed deadline, so reaching either
+    // condition here means we're past the soft floor.
     if (this.state.phase === 'awaitingClaims' && this.state.pendingClaims) {
       const pending = this.state.pendingClaims;
       const allHumansSubmitted = this.allHumansSubmittedFor(pending);
       const hard = pending.hardDeadlineMs;
       const pastHard = hard === undefined ? false : nowMs >= hard;
       const noLadder = hard === undefined;
-      // The DO alarm only fires at or after the armed deadline, so when
-      // `allHumansSubmitted` we trust that the scheduler has already
-      // observed the soft-floor minimum and resolve unconditionally.
-      // Tests that pump `fireAlarm` manually rely on this contract too.
       if (allHumansSubmitted || pastHard || noLadder) {
         try {
           out.push(...this.resolveClaimWindow(nowMs));
@@ -270,10 +260,6 @@ export class MatchSession {
         }
       }
     }
-    // Bot pacing: a draw armed `botActionDeadline` and the alarm has
-    // now caught up — `runBots(nowMs)` will see `nowMs >= deadline` and
-    // fire the discard. Safe to call even when the deadline is in the
-    // future or unset (it bails immediately in those cases).
     if (this.botActionDeadline !== null && nowMs >= this.botActionDeadline) {
       try {
         out.push(...this.runBots(nowMs));
@@ -285,12 +271,7 @@ export class MatchSession {
     return out;
   }
 
-  /**
-   * Whether every non-discarder human seat has either submitted a claim
-   * or been pre-passed by the `discard` reducer. Bot seats are skipped —
-   * their decisions are polled at resolution time and never gate the
-   * claim-window timer.
-   */
+  /** Bot seats and the discarder are skipped; bots are polled at resolution. */
   private allHumansSubmittedFor(pending: NonNullable<GameState['pendingClaims']>): boolean {
     return SEATS.every(
       (s) =>
@@ -301,14 +282,9 @@ export class MatchSession {
   }
 
   /**
-   * Drive a stuck claim window to completion. First polls every bot seat
-   * that hasn't submitted (each picks `pickClaim` → `declareClaim`), then
-   * — if the engine hasn't auto-resolved on the last submission — emits
-   * an explicit `resolveClaims` so silent humans get padded with passes.
-   *
-   * Bot picks that turn out to be illegal (e.g. an out-of-band `chi` from
-   * a non-next seat — bots shouldn't return these but defence-in-depth)
-   * fall back to `pass`.
+   * Drive a stuck claim window to completion: poll each unsubmitted bot,
+   * then `resolveClaims` to pad silent humans with passes. A bot pick
+   * that the engine refuses (defence-in-depth) is retried as `pass`.
    */
   private resolveClaimWindow(nowMs: number): Outbound[] {
     const out: Outbound[] = [];
@@ -446,10 +422,6 @@ export class MatchSession {
     try {
       const out: Outbound[] = [this.apply(action)];
       out.push(...this.runBots(nowMs));
-      // After a human's `declareClaim` (or any action that left the room
-      // in `awaitingClaims`), check whether every human has now weighed
-      // in. If yes — and the soft floor has elapsed — poll bots and let
-      // the engine resolve. Bots never push the timer themselves.
       out.push(...this.maybeFinishClaimWindow(nowMs));
       out.push(...this.maybeScheduleAlarm());
       return out;
@@ -471,59 +443,56 @@ export class MatchSession {
     return out;
   }
 
-  private onSeatBot(connectionId: string, seat: Seat, kind: BotKind): Outbound[] {
+  /** Returns error outbounds on rejection, or null when the caller may proceed. */
+  private requireHostBetweenHands(connectionId: string, verb: string): Outbound[] | null {
     const sender = this.playerIdFor(connectionId);
     if (sender === null || sender !== this.hostPlayerId) {
-      return [errMsg(connectionId, 'HOST', 'only the host can seat bots')];
+      return [errMsg(connectionId, 'HOST', `only the host can ${verb}`)];
     }
     if (this.state.phase !== 'waiting' && this.state.phase !== 'resolved') {
-      return [errMsg(connectionId, 'PHASE', 'bot seating only allowed between hands')];
+      return [errMsg(connectionId, 'PHASE', `bot ${verb} only allowed between hands`)];
     }
+    return null;
+  }
+
+  private onSeatBot(connectionId: string, seat: Seat, kind: BotKind): Outbound[] {
+    const gate = this.requireHostBetweenHands(connectionId, 'seat bots');
+    if (gate) return gate;
     const slot = this.seats[seat];
-    // Don't displace a connected human. An already-seated bot (auto- or
-    // host-installed) is fair game — that's the "swap skill" path.
     if (slot.connectionId !== null) {
       return [errMsg(connectionId, 'OCCUPIED', 'seat is held by a connected player')];
     }
-    // A disconnected human still inside their reconnect grace also gets
-    // protection — the host should call `unseatBot` first if they really
-    // mean to evict, but v1 doesn't expose that path. Auto-bot stand-ins
-    // (`botAutoInstalled = true`) are reseatable; the host can just pick
-    // a stronger brain than `passive`.
+    // Auto-installed stand-ins are reseatable; a still-graced disconnected
+    // human is not — the seat is held for them to reconnect into.
     if (slot.playerId !== null && !slot.botAutoInstalled) {
       return [errMsg(connectionId, 'OCCUPIED', 'seat is held for a disconnected player')];
     }
+    const bot = botByKind(kind);
     this.seats[seat] = {
       playerId: null,
-      displayName: botDisplayNameByKind(kind),
-      bot: botByKind(kind),
+      displayName: botDisplayName(bot),
+      bot,
       connectionId: null,
       disconnectedSinceMs: null,
       botAutoInstalled: false,
     };
-    return [this.lobbyBroadcast()];
+    // Overwriting an auto-bot stand-in clears its grace deadline; re-arm
+    // so the previously-armed alarm doesn't wake the DO for nothing.
+    return [this.lobbyBroadcast(), ...this.maybeScheduleAlarm()];
   }
 
   private onUnseatBot(connectionId: string, seat: Seat): Outbound[] {
-    const sender = this.playerIdFor(connectionId);
-    if (sender === null || sender !== this.hostPlayerId) {
-      return [errMsg(connectionId, 'HOST', 'only the host can unseat bots')];
-    }
-    if (this.state.phase !== 'waiting' && this.state.phase !== 'resolved') {
-      return [errMsg(connectionId, 'PHASE', 'bot unseating only allowed between hands')];
-    }
+    const gate = this.requireHostBetweenHands(connectionId, 'unseat bots');
+    if (gate) return gate;
     const slot = this.seats[seat];
     if (slot.bot === null) {
       return [errMsg(connectionId, 'EMPTY', 'seat does not hold a bot')];
     }
-    // An auto-installed bot is a stand-in for a still-graced human —
-    // unseating would forfeit the seat the human is reconnecting to.
-    // Defer to the existing grace timer instead.
     if (slot.botAutoInstalled) {
       return [errMsg(connectionId, 'AUTO_BOT', 'cannot unseat a stand-in for a graced player')];
     }
     this.seats[seat] = emptySeat();
-    return [this.lobbyBroadcast()];
+    return [this.lobbyBroadcast(), ...this.maybeScheduleAlarm()];
   }
 
   private playerIdFor(connectionId: string): string | null {
@@ -592,9 +561,6 @@ export class MatchSession {
     let soonest: number | null = null;
     if (this.state.phase === 'awaitingClaims' && this.state.pendingClaims) {
       const pending = this.state.pendingClaims;
-      // Mirror `fireAlarm`'s humans-only ladder: with every human in,
-      // arm at the soft floor (we'll poll bots and resolve there).
-      // Otherwise wait for the hard fallback.
       if (this.allHumansSubmittedFor(pending)) {
         soonest = pending.deadlineMs;
       } else {
@@ -618,30 +584,17 @@ export class MatchSession {
   }
 
   /**
-   * Step bot-controlled seats forward through the engine. The draw is
-   * applied immediately (so the felt animates the wall tick + the new
-   * tile sliding into the bot's hidden hand) but the discard is deferred
-   * until `botActionDeadline` elapses — `botPaceMs` of "thinking" between
-   * draw and discard so humans can read what the bot pulled.
-   *
-   * The alarm chains: each bot turn arms a deadline, the DO scheduler
-   * fires `fireAlarm` at that deadline, which calls `runBots` again to
-   * emit the discard. After the discard the loop continues into the
-   * next bot's turn (if any) and arms a new deadline.
-   *
-   * Tests can pass `botPaceMs: 0` in the constructor to make bot
-   * actions fire instantly and synchronously, matching the pre-pacing
-   * behaviour for hands the test wants to drive in one shot.
+   * Step bot-controlled seats forward through the engine. The draw fires
+   * immediately; the discard is paced — once `botActionDeadline` is armed
+   * the loop returns and the DO alarm wakes us at the deadline to emit
+   * the discard. Tests construct with `botPaceMs: 0` to short-circuit
+   * pacing and drive a full hand in one synchronous call.
    */
-  private runBots(nowMs: number = Date.now()): Outbound[] {
+  private runBots(nowMs: number): Outbound[] {
     const out: Outbound[] = [];
-    // Safety bound matches the legacy `runBotTurns` loop — a real hand
-    // never iterates more than a handful of times per call, but a
-    // pathological state shouldn't lock the DO.
     for (let i = 0; i < 16; i++) {
       const state = this.state;
       if (state.phase !== 'turn') {
-        // No bot turn in progress — clear any stale pacing deadline.
         this.botActionDeadline = null;
         return out;
       }
@@ -651,8 +604,6 @@ export class MatchSession {
         this.botActionDeadline = null;
         return out;
       }
-      // Step 1: bot needs to draw. Apply immediately so the tile is
-      // visibly pulled from the wall.
       if (!state.hasDrawn) {
         try {
           out.push(this.apply({ t: 'draw', seat }));
@@ -660,28 +611,21 @@ export class MatchSession {
           if (e instanceof IllegalActionError) return out;
           throw e;
         }
-        if (this.state.phase !== 'turn') continue; // wall-empty draw
+        if (this.state.phase !== 'turn') continue;
       }
-      // Step 2: pace the discard. Arm the deadline if not already set.
       if (this.botActionDeadline === null) {
         this.botActionDeadline = nowMs + this.botPaceMs;
       }
-      if (nowMs < this.botActionDeadline) {
-        // Wait for the alarm to fire at the deadline.
-        return out;
-      }
-      // Deadline reached: fire the discard.
+      if (nowMs < this.botActionDeadline) return out;
       this.botActionDeadline = null;
       try {
         out.push(this.apply({ t: 'declareWin', seat, selfDraw: true }));
-        continue; // hand resolved (or moved on)
+        continue;
       } catch (e) {
         if (!(e instanceof IllegalActionError)) throw e;
       }
       const tile = bot.pickDiscard({ state: this.state, seat });
       out.push(this.apply({ t: 'discard', seat, tile }));
-      // After a discard the engine transitions to `awaitingClaims`,
-      // which the loop top will detect and exit on.
     }
     return out;
   }
@@ -734,10 +678,6 @@ function emptySeat(): SeatState {
 
 function botDisplayName(bot: Bot): string {
   return `Bot (${bot.kind})`;
-}
-
-function botDisplayNameByKind(kind: BotKind): string {
-  return `Bot (${kind})`;
 }
 
 export function botByKind(kind: BotKind): Bot {

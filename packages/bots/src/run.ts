@@ -4,19 +4,10 @@ import type { Bot } from './index.js';
 const TICK_LIMIT = 16;
 
 /**
- * Drive every bot-controlled seat forward through the engine while it's
- * their turn. Each step: the bot draws if it hasn't yet, attempts a
- * self-draw win, and otherwise picks a discard.
- *
- * Claim-window submissions are deliberately *not* handled here — both
- * callers (server `MatchSession` and client solo transport) drive bot
- * claims through their own code path so they can control timer fairness
- * (server: bots stay silent until humans submit / hard fallback fires;
- * solo: bots submit instantly because there are no other humans).
- *
- * `apply(action)` is expected to run the action through `reduce`, persist
- * the resulting state, and emit whatever delta the caller needs. Throws
- * propagate (the caller decides what to do with `IllegalActionError`).
+ * Drive bot-controlled seats forward while it's their turn (draw, try a
+ * self-draw win, otherwise discard). Claim-window submissions are handled
+ * by callers — server holds bots until humans submit; solo fires them
+ * synchronously.
  */
 export function runBotTurns(
   getState: () => GameState,

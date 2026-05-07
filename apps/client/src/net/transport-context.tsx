@@ -36,19 +36,9 @@ interface TransportContextValue {
   leave: () => void;
   send: (action: Action) => void;
   sendChat: (text: string) => void;
-  /**
-   * Place / replace a bot in `seat`. For solo, also persists the
-   * choice to `useGame.settings.botSkills` so the next solo match
-   * boots with the same mix. For online / LAN, sends a `seatBot`
-   * message to the host server (which enforces host-only + the
-   * between-hands phase gate).
-   */
+  /** Solo: live-update + persist `settings.botSkills`. Online/LAN: send to host. */
   seatBot: (seat: Seat, kind: BotKind) => void;
-  /**
-   * Remove the bot at `seat`, freeing it for a joiner. No-op for
-   * solo (where the user is always seat 0 and the other three are
-   * always bots). For online / LAN, sends an `unseatBot` message.
-   */
+  /** No-op for solo (the user always holds seat 0). Online/LAN: send to host. */
   unseatBot: (seat: Seat) => void;
 }
 
@@ -202,23 +192,15 @@ export function TransportProvider({ children }: { children: ReactNode }) {
 
   const seatBot = useCallback(
     (seat: Seat, kind: BotKind) => {
-      // Solo path: live-update via the transport's setBotSkill +
-      // persist the choice to localStorage so the next solo match
-      // boots with the same mix. The cast sniffs for `setBotSkill`
-      // instead of plumbing a separate `soloTransport` ref so the
-      // online + LAN paths stay one-cast-cheap.
-      const solo = transport as (Transport & Partial<SoloTransportControls>) | null;
-      if (solo?.setBotSkill && seat >= 1 && seat <= 3) {
-        solo.setBotSkill(seat as 1 | 2 | 3, kind);
+      if (reconnectInfoRef.current?.kind === 'solo' && seat >= 1 && seat <= 3) {
+        const solo = transport as (Transport & Partial<SoloTransportControls>) | null;
+        solo?.setBotSkill?.(seat as 1 | 2 | 3, kind);
         const cur = useGame.getState().settings.botSkills;
         const next: [BotKind, BotKind, BotKind] = [...cur];
         next[seat - 1] = kind;
         useGame.getState().setSettings({ botSkills: next });
         return;
       }
-      // Online / LAN: send to the host server. The server enforces
-      // host-only + the between-hands phase gate; on success it
-      // re-broadcasts the lobby with the new `botKind` projected.
       transport?.send({ t: 'seatBot', seat, kind });
     },
     [transport],
@@ -226,10 +208,7 @@ export function TransportProvider({ children }: { children: ReactNode }) {
 
   const unseatBot = useCallback(
     (seat: Seat) => {
-      // Solo always has 3 bots in seats 1-3 — no concept of "freeing"
-      // a seat. Online + LAN sends through to the host server.
-      const solo = transport as (Transport & Partial<SoloTransportControls>) | null;
-      if (solo?.setBotSkill) return;
+      if (reconnectInfoRef.current?.kind === 'solo') return;
       transport?.send({ t: 'unseatBot', seat });
     },
     [transport],
