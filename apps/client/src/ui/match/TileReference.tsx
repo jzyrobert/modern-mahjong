@@ -9,6 +9,7 @@ import {
 } from '@mahjong/game-logic';
 import { Text, View } from 'react-native';
 import { Tile } from '../Tile';
+import { COLORS } from '../colors';
 
 interface TileGroup {
   title: string;
@@ -33,12 +34,6 @@ const SUIT_LABEL: Record<Suit, { title: string; info: string }> = {
   man: { title: 'Characters · 萬子 (Man)', info: '36 tiles · 9 unique × 4' },
   pin: { title: 'Dots · 筒子 (Pin)', info: '36 tiles · 9 unique × 4' },
   sou: { title: 'Bamboo · 索子 (Sou)', info: '36 tiles · 9 unique × 4' },
-};
-
-const COLORS = {
-  ink2: '#65594c',
-  ink3: '#918275',
-  paper: '#f1eadc',
 };
 
 /**
@@ -79,7 +74,7 @@ export function TileReference() {
               flexWrap: 'wrap',
               gap: 8,
               padding: 12,
-              backgroundColor: COLORS.paper,
+              backgroundColor: COLORS.cream,
               borderRadius: 12,
             }}
           >
