@@ -237,11 +237,7 @@ function discard(state: GameState, seat: Seat, tile: Tile): { state: GameState; 
   const discardOrder = [...state.discardOrder, { tile, from: seat }];
 
   const now = Date.now();
-  const deadlineMs = now + state.rules.claimWindowMs;
-  const softExpiryMs =
-    state.rules.claimSoftWindowMs !== undefined ? now + state.rules.claimSoftWindowMs : undefined;
-  const hardDeadlineMs =
-    state.rules.claimHardWindowMs !== undefined ? now + state.rules.claimHardWindowMs : undefined;
+  const { deadlineMs, softExpiryMs, hardDeadlineMs } = computeClaimDeadlines(state.rules, now);
 
   // Pre-pass non-discarder seats that have no meaningful claim against
   // this tile. The hand resolves the moment every "interesting" seat
@@ -534,11 +530,7 @@ function declareGangPromoted(
   // the window auto-resolves the moment the eligible robbers weigh
   // in.
   const now = Date.now();
-  const deadlineMs = now + state.rules.claimWindowMs;
-  const softExpiryMs =
-    state.rules.claimSoftWindowMs !== undefined ? now + state.rules.claimSoftWindowMs : undefined;
-  const hardDeadlineMs =
-    state.rules.claimHardWindowMs !== undefined ? now + state.rules.claimHardWindowMs : undefined;
+  const { deadlineMs, softExpiryMs, hardDeadlineMs } = computeClaimDeadlines(state.rules, now);
   const submitted: Partial<Record<Seat, Claim>> = {};
   for (const s of SEATS) {
     if (s === seat) continue;
@@ -572,6 +564,28 @@ function declareGangPromoted(
     return { state: resolved.state, events: [...events, ...resolved.events] };
   }
   return { state: baseState, events };
+}
+
+/**
+ * Compute the three deadline timestamps for a claim window starting
+ * at `now`. Used both by the discard reducer's claim window and the
+ * promoted-gang rob window — the deadline shape is identical (one
+ * soft floor + optional soft expiry + optional hard fallback) so the
+ * two reducers share this helper instead of duplicating the offsets.
+ */
+function computeClaimDeadlines(
+  rules: RuleConfig,
+  now: number,
+): { deadlineMs: number; softExpiryMs?: number; hardDeadlineMs?: number } {
+  return {
+    deadlineMs: now + rules.claimWindowMs,
+    ...(rules.claimSoftWindowMs !== undefined
+      ? { softExpiryMs: now + rules.claimSoftWindowMs }
+      : {}),
+    ...(rules.claimHardWindowMs !== undefined
+      ? { hardDeadlineMs: now + rules.claimHardWindowMs }
+      : {}),
+  };
 }
 
 /** Finalize a promoted gang: move the tile from hand to meld, draw a
