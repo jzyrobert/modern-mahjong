@@ -1,6 +1,7 @@
 import { Pressable, Text, View } from 'react-native';
 import { Modal } from '../Modal';
 import { COLORS } from '../colors';
+import { EMOTES } from './ChatBar';
 
 interface MenuSheetProps {
   open: boolean;
@@ -15,8 +16,6 @@ interface MenuSheetProps {
    *  row is hidden. */
   onSendChat?: ((text: string) => void) | undefined;
 }
-
-const EMOTES = ['👍', '😎', '🎉', '🤔', '😅', '🔥'] as const;
 
 interface MenuRowProps {
   icon: string;

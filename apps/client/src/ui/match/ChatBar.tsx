@@ -5,7 +5,14 @@ interface ChatBarProps {
   onSend: (text: string) => void;
 }
 
-const EMOTES = ['👍', '😎', '🎉', '🤔', '😅', '🔥'] as const;
+/**
+ * Six-emote palette used by both the desktop `<ChatBar>` and the
+ * mobile `<MenuSheet>`'s `EmoteRow`. Surface-level rendering differs
+ * (size + layout), but the set of emotes should stay identical so a
+ * desktop user sending 🎉 sees the same emote a phone user can send
+ * back.
+ */
+export const EMOTES = ['👍', '😎', '🎉', '🤔', '😅', '🔥'] as const;
 
 /**
  * Six-emote chat bar. Each tap fires `onSend` with
