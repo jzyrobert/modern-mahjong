@@ -8,6 +8,7 @@ import { ClaimBar } from '../ClaimBar';
 import { ResultPanel } from '../ResultPanel';
 import { Scoreboard } from '../Scoreboard';
 import { PrimaryButton } from '../buttons';
+import { COLORS } from '../colors';
 import { ChatBar } from './ChatBar';
 import { ChatBubbles } from './ChatBubbles';
 import { ClaimMissedToast } from './ClaimMissedToast';
@@ -66,10 +67,6 @@ interface DesktopShellProps {
   menuOpen: boolean;
   setMenuOpen: (open: boolean) => void;
 }
-
-const COLORS = {
-  cream: '#f1eadc',
-};
 
 /**
  * Desktop / large-tablet match body — perimeter felt with seats around

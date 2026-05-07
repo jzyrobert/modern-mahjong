@@ -8,6 +8,7 @@ import {
 } from '../native/lan-server';
 import { Modal } from './Modal';
 import { GhostButton, PrimaryButton, TextField } from './buttons';
+import { COLORS } from './colors';
 
 interface JoinLanModalProps {
   open: boolean;
@@ -23,14 +24,6 @@ interface DiscoveredHost {
   name: string;
   url: string; // Stored as `http://<host>:<port>` to match the URL field.
 }
-
-const COLORS = {
-  ink: '#3a3328',
-  ink3: '#918275',
-  cream: '#f1eadc',
-  hairline: '#cdc1ad',
-  green: '#58c280',
-};
 
 /**
  * Guest-side modal for joining a LAN match. Two TextFields (URL + match code)
