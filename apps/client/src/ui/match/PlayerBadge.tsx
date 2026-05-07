@@ -4,11 +4,12 @@ import { Animated, Easing, Text, View } from 'react-native';
 import type { LobbyState } from '../../state/game';
 import { nameForSeat } from '../../state/game';
 import { WIND_GLYPH } from '../winds';
+import { type Position, SEAT_COLOR } from './seatColor';
 
 interface PlayerBadgeProps {
   seat: Seat;
   /** Visual seat slot — drives flex direction + accent color. */
-  position: 'top' | 'left' | 'right' | 'bottom';
+  position: Position;
   /** Wind glyph for this seat (E/S/W/N relative to dealer). */
   seatWind: Wind;
   /** Lobby snapshot — drives display name lookup. */
@@ -26,13 +27,6 @@ interface PlayerBadgeProps {
    *  "drawing in Ns". Null before windup or in solo. */
   drawCountdown?: number | null;
 }
-
-const SEAT_COLOR: Record<'top' | 'left' | 'right' | 'bottom', string> = {
-  bottom: '#de7660',
-  right: '#5db698',
-  top: '#c581b7',
-  left: '#729fc6',
-};
 
 const COLORS = {
   ink: '#3a3328',

@@ -2,21 +2,15 @@ import type { GameState, Tile as MTile, Seat } from '@mahjong/game-logic';
 import { tileId } from '@mahjong/game-logic';
 import { Text, View } from 'react-native';
 import { Tile } from '../Tile';
+import { type Position, SEAT_COLOR } from './seatColor';
 
 interface SharedDiscardPoolProps {
   discardOrder: GameState['discardOrder'];
   /** Map from seat → visual position so each tile gets a colour underline. */
-  seatToPosition: Record<Seat, 'bottom' | 'right' | 'top' | 'left'>;
+  seatToPosition: Record<Seat, Position>;
   /** TileId of the live discard while in awaitingClaims; gets a static gold halo. */
   latestId: number | null;
 }
-
-const SEAT_COLOR: Record<'bottom' | 'right' | 'top' | 'left', string> = {
-  bottom: '#de7660', // coral — you
-  right: '#5db698', // jade
-  top: '#c581b7', // mauve
-  left: '#729fc6', // sky
-};
 
 const TILE_W = 24;
 const TILE_H = 32;
