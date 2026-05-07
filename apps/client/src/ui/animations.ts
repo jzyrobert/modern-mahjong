@@ -1,5 +1,6 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { Animated, Easing } from 'react-native';
+import { useGame } from '../state/game';
 
 interface UsePulseOptions {
   /**
@@ -66,4 +67,66 @@ export function usePulse({ enabled = true, durationMs = 700 }: UsePulseOptions =
     return () => loop.stop();
   }, [enabled, durationMs, value]);
   return value;
+}
+
+interface UseFadeInOutOptions {
+  /**
+   * When `visible` flips from false to true the hook fades in to
+   * opacity 1 (or snaps if `settings.animations` is off). The
+   * fade-out is intentionally a manual call (`fadeOut(callback)`)
+   * because the typical caller pattern interleaves the fade-out
+   * with a `setDismissed(true)` flag whose timing it controls
+   * directly.
+   */
+  visible: boolean;
+  /** Fade duration when animations are on. Defaults to 250 ms. */
+  durationMs?: number;
+}
+
+/**
+ * Fade-in on visibility, manual fade-out for dismissal.
+ *
+ * Both `<DiceCeremony>` and `<WinCelebration>` repeated the same
+ * Animated.timing(fade, { toValue: 0/1, duration: 250 }) plumbing
+ * three times each — fade-in on `visible`, fade-out from the
+ * auto-dismiss timer, fade-out from the tap-dismiss handler. This
+ * hook returns the value and a single `fadeOut(onComplete)` helper
+ * that runs the right Animated path or snaps when the user has
+ * disabled animations via `useGame.settings.animations`.
+ *
+ * Caller still owns the `dismissed` state + the auto-dismiss
+ * `setTimeout` because the lifecycle (fade-in then wait then
+ * fade-out then unmount) needs the caller's setState to land
+ * after the animation completes.
+ */
+export function useFadeInOut({ visible, durationMs = 250 }: UseFadeInOutOptions) {
+  const animsEnabled = useGame((s) => s.settings.animations);
+  const fade = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!visible) return;
+    if (animsEnabled) {
+      Animated.timing(fade, { toValue: 1, duration: durationMs, useNativeDriver: true }).start();
+    } else {
+      fade.setValue(1);
+    }
+  }, [visible, animsEnabled, durationMs, fade]);
+
+  const fadeOut = useCallback(
+    (onComplete?: () => void) => {
+      if (animsEnabled) {
+        Animated.timing(fade, {
+          toValue: 0,
+          duration: durationMs,
+          useNativeDriver: true,
+        }).start(() => onComplete?.());
+      } else {
+        fade.setValue(0);
+        onComplete?.();
+      }
+    },
+    [animsEnabled, durationMs, fade],
+  );
+
+  return { fade, fadeOut };
 }
