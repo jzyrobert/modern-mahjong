@@ -2,6 +2,7 @@ import { SEATS, type Seat, type Wind, seatWindFor } from '@mahjong/game-logic';
 import { ScrollView, Text, View } from 'react-native';
 import { type LobbyState, nameForSeat, useGame } from '../../state/game';
 import { Modal } from '../Modal';
+import { WIND_GLYPH } from '../winds';
 
 interface PlayersSheetProps {
   open: boolean;
@@ -12,7 +13,6 @@ interface PlayersSheetProps {
   mySeat: Seat | null;
 }
 
-const WIND_GLYPH: Record<Wind, string> = { E: '東', S: '南', W: '西', N: '北' };
 const WIND_NAME: Record<Wind, string> = { E: 'East', S: 'South', W: 'West', N: 'North' };
 
 // Seat colours mirror the perimeter layout (`PlayerBadge.SEAT_COLOR`):

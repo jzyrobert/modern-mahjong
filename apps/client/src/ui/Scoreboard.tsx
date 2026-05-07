@@ -1,6 +1,7 @@
-import { SEATS, type Wind, seatWindFor } from '@mahjong/game-logic';
+import { SEATS, seatWindFor } from '@mahjong/game-logic';
 import { Text, View } from 'react-native';
 import { useGame } from '../state/game';
+import { WIND_GLYPH } from './winds';
 
 const COLORS = {
   ink: '#3a3328',
@@ -9,8 +10,6 @@ const COLORS = {
   hairline: '#cdc1ad',
   red: '#b14d3a',
 };
-
-const WIND_GLYPH: Record<Wind, string> = { E: '東', S: '南', W: '西', N: '北' };
 
 /**
  * Compact running-score chip strip — one entry per seat showing the
