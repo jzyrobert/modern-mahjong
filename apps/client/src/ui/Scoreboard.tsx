@@ -1,15 +1,8 @@
 import { SEATS, seatWindFor } from '@mahjong/game-logic';
 import { Text, View } from 'react-native';
 import { useGame } from '../state/game';
+import { COLORS } from './colors';
 import { WIND_GLYPH } from './winds';
-
-const COLORS = {
-  ink: '#3a3328',
-  ink3: '#918275',
-  paper: '#f1ebe0',
-  hairline: '#cdc1ad',
-  red: '#b14d3a',
-};
 
 /**
  * Compact running-score chip strip — one entry per seat showing the

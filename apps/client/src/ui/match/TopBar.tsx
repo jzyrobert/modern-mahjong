@@ -1,4 +1,5 @@
 import { Pressable, Text, View } from 'react-native';
+import { COLORS } from '../colors';
 
 interface TopBarProps {
   matchCode: string | null;
@@ -7,15 +8,6 @@ interface TopBarProps {
    *  Tile reference / Leave. Wired by `Match.tsx`. */
   onOpenMenu: () => void;
 }
-
-const COLORS = {
-  ink: '#3a3328',
-  ink3: '#918275',
-  paperHi: '#fbf8f0',
-  hairline: '#cdc1ad',
-  red: '#b14d3a',
-  green: '#58c280',
-};
 
 /**
  * Top-right corner — Live · #CODE pill, viewer count, ☰ menu
