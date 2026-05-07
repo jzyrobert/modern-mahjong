@@ -3,6 +3,7 @@ import { ScrollView, Text, View } from 'react-native';
 import { type LobbyState, nameForSeat, useGame } from '../../state/game';
 import { computeInitials } from '../../util';
 import { Modal } from '../Modal';
+import { COLORS } from '../colors';
 import { WIND_GLYPH } from '../winds';
 
 interface PlayersSheetProps {
@@ -26,16 +27,6 @@ const RELATIVE_COLOR: Record<'you' | 'next' | 'across' | 'prev', string> = {
   next: '#5db698',
   across: '#c581b7',
   prev: '#729fc6',
-};
-
-const COLORS = {
-  ink: '#3a3328',
-  ink3: '#918275',
-  paperHi: '#fbf8f0',
-  hairline: '#cdc1ad',
-  red: '#b14d3a',
-  green: '#58c280',
-  gold: '#d8a85a',
 };
 
 /**

@@ -1,15 +1,12 @@
 import { ScrollView, Text, View } from 'react-native';
 import { Modal } from '../Modal';
+import { COLORS } from '../colors';
 import { TileReference } from './TileReference';
 
 interface TileReferenceSheetProps {
   open: boolean;
   onClose: () => void;
 }
-
-const COLORS = {
-  ink3: '#918275',
-};
 
 /**
  * Bottom-sheet wrapper around the 136-tile reference grid. Opens from

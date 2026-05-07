@@ -11,21 +11,13 @@ import {
 } from '../native/lan-server';
 import { Modal } from './Modal';
 import { GhostButton, PrimaryButton, TextField } from './buttons';
+import { COLORS } from './colors';
 
 interface HostLanModalProps {
   open: boolean;
   onClose: () => void;
   onHosted: (hostUrl: string, matchCode: string) => void;
 }
-
-const COLORS = {
-  ink: '#3a3328',
-  ink3: '#918275',
-  cream: '#f1eadc',
-  hairline: '#cdc1ad',
-  green: '#58c280',
-  red: '#b14d3a',
-};
 
 // Port the embedded NanoHTTPD WSD listens on. Matches the legacy
 // Capacitor LanServer convention so any prior copy-pasted URLs from

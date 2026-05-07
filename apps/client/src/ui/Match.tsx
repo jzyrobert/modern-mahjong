@@ -19,6 +19,7 @@ import { isSeatHost, useGame } from '../state/game';
 import { randomSeed } from '../util';
 import { RulePanel } from './RulePanel';
 import { GhostButton, PrimaryButton } from './buttons';
+import { COLORS } from './colors';
 import { DesktopShell } from './match/DesktopShell';
 import { MobileShell } from './match/MobileShell';
 import type { SortMode } from './match/SortPicker';
@@ -41,14 +42,6 @@ import { SEAT_WIND_GLYPH } from './winds';
  */
 const DESKTOP_WIDTH = 768;
 const DESKTOP_HEIGHT = 600;
-
-const COLORS = {
-  cream: '#f1eadc',
-  ink: '#3a3328',
-  ink3: '#918275',
-  paperHi: '#fbf8f0',
-  hairline: '#cdc1ad',
-};
 
 /**
  * Live-match orchestrator. Owns the per-match React state (modal

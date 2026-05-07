@@ -1,4 +1,5 @@
 import { Pressable, Text, View } from 'react-native';
+import { COLORS } from '../colors';
 
 export type SortMode = 'suit' | 'num' | 'manual';
 
@@ -12,14 +13,6 @@ const OPTIONS: { id: SortMode; label: string }[] = [
   { id: 'num', label: 'Number' },
   { id: 'manual', label: 'Manual' },
 ];
-
-const COLORS = {
-  ink: '#3a3328',
-  ink3: '#918275',
-  paperHi: '#fbf8f0',
-  hairline: '#cdc1ad',
-  red: '#b14d3a',
-};
 
 /**
  * Three-way segmented picker for the user's hand sort mode. In

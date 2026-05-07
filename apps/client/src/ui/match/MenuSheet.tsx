@@ -1,5 +1,6 @@
 import { Pressable, Text, View } from 'react-native';
 import { Modal } from '../Modal';
+import { COLORS } from '../colors';
 
 interface MenuSheetProps {
   open: boolean;
@@ -16,14 +17,6 @@ interface MenuSheetProps {
 }
 
 const EMOTES = ['👍', '😎', '🎉', '🤔', '😅', '🔥'] as const;
-
-const COLORS = {
-  ink: '#3a3328',
-  ink3: '#918275',
-  paperHi: '#fbf8f0',
-  hairline: '#cdc1ad',
-  red: '#b14d3a',
-};
 
 interface MenuRowProps {
   icon: string;

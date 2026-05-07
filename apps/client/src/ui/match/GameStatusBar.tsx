@@ -1,6 +1,7 @@
 import type { Wind } from '@mahjong/game-logic';
 import type { ReactNode } from 'react';
 import { Pressable, Text, View } from 'react-native';
+import { COLORS } from '../colors';
 import { WIND_GLYPH } from '../winds';
 
 interface GameStatusBarProps {
@@ -25,14 +26,6 @@ interface GameStatusBarProps {
 }
 
 const LOW_THRESHOLD = 14;
-
-const COLORS = {
-  ink: '#3a3328',
-  ink3: '#918275',
-  red: '#b14d3a',
-  redHot: '#db5d4a',
-  hairline: '#cdc1ad',
-};
 
 /**
  * Top-of-table status pill — prevailing wind glyph, round/dealer
