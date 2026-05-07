@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Pressable, Modal as RNModal, Text, View } from 'react-native';
+import { COLORS as SHARED_COLORS } from './colors';
 
 interface ModalProps {
   open: boolean;
@@ -22,11 +23,11 @@ interface ModalProps {
 }
 
 const COLORS = {
-  ink: '#3a3328',
-  ink3: '#918275',
-  paper: '#fbf8f0',
-  hairline: '#cdc1ad',
-  cream: '#f1eadc',
+  ...SHARED_COLORS,
+  // Scrim is the only Modal-specific accent — sits between the
+  // backdrop tap surface and the dialog body, tuned a bit darker
+  // than a typical 0.4-alpha black to compensate for the missing
+  // backdrop-filter blur.
   scrim: 'rgba(20,15,10,0.55)',
 };
 
@@ -75,7 +76,7 @@ export function Modal({
             width: '100%',
             maxWidth,
             maxHeight: isBottom ? '90%' : '90%',
-            backgroundColor: COLORS.paper,
+            backgroundColor: COLORS.paperHi,
             borderTopLeftRadius: 16,
             borderTopRightRadius: 16,
             borderBottomLeftRadius: isBottom ? 0 : 16,
