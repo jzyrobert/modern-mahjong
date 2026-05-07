@@ -1,4 +1,4 @@
-import type { Action, GameState, Tile as MTile, Seat, Wind } from '@mahjong/game-logic';
+import type { Action, GameState, Tile as MTile, Seat } from '@mahjong/game-logic';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { LobbyState } from '../../state/game';
@@ -16,15 +16,9 @@ import { MeldStrip } from './MeldStrip';
 import { OppHandStrip } from './OppHandStrip';
 import { SharedDiscardPool } from './SharedDiscardPool';
 import { type SortMode, SortPicker } from './SortPicker';
+import type { Position } from './seatColor';
+import type { SeatPlacement } from './seatPlacement';
 import type { FELT_SKINS } from './skins';
-
-type Position = 'bottom' | 'right' | 'top' | 'left';
-
-interface SeatPlacement {
-  seat: Seat;
-  position: Position;
-  seatWind: Wind;
-}
 
 interface MobileShellProps {
   state: GameState;

@@ -3,12 +3,13 @@ import { useEffect, useRef } from 'react';
 import { Text, View, type ViewStyle } from 'react-native';
 import { useGame } from '../../state/game';
 import { DISMISS_MS } from '../timing';
+import type { Position } from './seatColor';
 
 interface ChatBubblesProps {
-  seatToPosition: Record<Seat, 'bottom' | 'right' | 'top' | 'left'>;
+  seatToPosition: Record<Seat, Position>;
 }
 
-const ANCHOR: Record<'bottom' | 'right' | 'top' | 'left', ViewStyle> = {
+const ANCHOR: Record<Position, ViewStyle> = {
   bottom: { left: '50%' as const, bottom: 120 },
   right: { right: 24, top: '50%' as const },
   top: { left: '50%' as const, top: 120 },
