@@ -1,16 +1,11 @@
 import { Pressable, Text, View } from 'react-native';
+import { COLORS } from '../colors';
 
 interface ChatBarProps {
   onSend: (text: string) => void;
 }
 
 const EMOTES = ['👍', '😎', '🎉', '🤔', '😅', '🔥'] as const;
-
-const COLORS = {
-  ink3: '#918275',
-  paperHi: '#fbf8f0',
-  hairline: '#cdc1ad',
-};
 
 /**
  * Six-emote chat bar. Each tap fires `onSend` with

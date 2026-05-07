@@ -3,21 +3,13 @@ import type { ReactNode } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { type LogEntry, nameForSeat, useGame } from '../../state/game';
 import { Modal } from '../Modal';
+import { COLORS } from '../colors';
 import { SEAT_WIND_GLYPH } from '../winds';
 
 interface GameLogProps {
   open: boolean;
   onClose: () => void;
 }
-
-const COLORS = {
-  ink: '#3a3328',
-  ink3: '#918275',
-  cream: '#f1eadc',
-  hairline: '#cdc1ad',
-  red: '#b14d3a',
-  paperHi: '#fbf8f0',
-};
 
 /**
  * Recent-actions sheet — renders the last `LOG_CAPACITY` engine events
