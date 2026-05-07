@@ -1,4 +1,5 @@
 import { Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { COLORS as SHARED_COLORS } from '../colors';
 import { WindEmblem } from './WindEmblem';
 
 // Phone-class viewports get a tighter hero so the brand mark + tagline
@@ -14,11 +15,11 @@ interface LobbyHeaderProps {
 }
 
 const COLORS = {
-  ink: '#3a3328',
-  ink3: '#918275',
-  red: '#b14d3a',
-  paperHi: '#fbf8f0',
-  hairline: '#cdc1ad',
+  ...SHARED_COLORS,
+  // Avatar circle background — a slightly darker / more saturated
+  // red-orange than the shared `red` so the initials read as a
+  // distinct accent rather than blending into the wind emblem
+  // glyph above it.
   avatarBg: '#c66b58',
 };
 
