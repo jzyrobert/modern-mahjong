@@ -49,4 +49,24 @@ describe('protocol — message parsing', () => {
     });
     expect(r.ok).toBe(true);
   });
+
+  it('accepts a seatBot message', () => {
+    const r = parseClientMessage({ t: 'seatBot', seat: 1, kind: 'heuristic' });
+    expect(r.ok).toBe(true);
+  });
+
+  it('rejects seatBot with an out-of-range seat', () => {
+    const r = parseClientMessage({ t: 'seatBot', seat: 4, kind: 'heuristic' });
+    expect(r.ok).toBe(false);
+  });
+
+  it('rejects seatBot with an unknown bot kind', () => {
+    const r = parseClientMessage({ t: 'seatBot', seat: 1, kind: 'genius' });
+    expect(r.ok).toBe(false);
+  });
+
+  it('accepts an unseatBot message', () => {
+    const r = parseClientMessage({ t: 'unseatBot', seat: 2 });
+    expect(r.ok).toBe(true);
+  });
 });

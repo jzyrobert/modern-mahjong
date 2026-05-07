@@ -12,6 +12,16 @@ import { z } from 'zod';
  * is enforced by the engine reducer, not here.
  */
 
+/**
+ * Bot strategy identifier — must stay in sync with the registry exported
+ * from `@mahjong/bots`. Lifted into the wire layer so the host can pick a
+ * bot by kind without dragging the bots package into a transport-only
+ * client build.
+ */
+export type BotKind = 'simple' | 'heuristic' | 'passive';
+
+export const BOT_KINDS: readonly BotKind[] = ['simple', 'heuristic', 'passive'] as const;
+
 export interface PublicPlayer {
   playerId: string;
   displayName: string;
@@ -20,13 +30,28 @@ export interface PublicPlayer {
   connected: boolean;
   /** Whether this seat is filled by a bot. */
   isBot: boolean;
+  /**
+   * The bot's strategy kind, when `isBot` is true. Lets the lobby UI
+   * label "Heuristic" / "Simple" / "Passive" without a follow-up
+   * round-trip. Older servers omit this; the lobby falls back to a
+   * generic "Bot" pill.
+   */
+  botKind?: BotKind;
 }
 
 export type ClientMessage =
   | { t: 'hello'; playerId: string; displayName: string; matchCode: string }
   | { t: 'action'; action: Action }
   | { t: 'chat'; text: string }
-  | { t: 'leave' };
+  | { t: 'leave' }
+  /**
+   * Host-only: place / replace a bot in `seat`. Server enforces that
+   * the seat doesn't currently hold a connected human and that the
+   * room is between hands (`phase` is `waiting` or `resolved`).
+   */
+  | { t: 'seatBot'; seat: Seat; kind: BotKind }
+  /** Host-only: remove the bot at `seat`, freeing the seat for a joiner. */
+  | { t: 'unseatBot'; seat: Seat };
 
 export type ServerMessage =
   | { t: 'state'; state: GameState; you: Seat | 'spectator' }
@@ -68,6 +93,19 @@ export const chatSchema = z.object({
 
 export const leaveSchema = z.object({ t: z.literal('leave') });
 
+const seatLiteral = z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]);
+
+export const seatBotSchema = z.object({
+  t: z.literal('seatBot'),
+  seat: seatLiteral,
+  kind: z.enum(['simple', 'heuristic', 'passive']),
+});
+
+export const unseatBotSchema = z.object({
+  t: z.literal('unseatBot'),
+  seat: seatLiteral,
+});
+
 /**
  * We do not deeply schema-validate Action — its discriminated-union shape is
  * enforced by the engine reducer (which throws IllegalActionError on
@@ -83,6 +121,8 @@ export const clientMessageSchema = z.union([
   actionEnvelopeSchema,
   chatSchema,
   leaveSchema,
+  seatBotSchema,
+  unseatBotSchema,
 ]);
 
 export type ParsedClientMessage = z.infer<typeof clientMessageSchema>;

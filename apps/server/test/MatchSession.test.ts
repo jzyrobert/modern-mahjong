@@ -1,5 +1,5 @@
 import { heuristicBot, passiveBot, simpleBot } from '@mahjong/bots';
-import { SEATS } from '@mahjong/game-logic';
+import { SEATS, type Seat } from '@mahjong/game-logic';
 import type { ServerMessage } from '@mahjong/protocol';
 import { describe, expect, it } from 'vitest';
 import { MatchSession, type Outbound } from '../src/MatchSession.js';
@@ -27,6 +27,15 @@ function helloAs(
 function stateYouFor(out: Outbound[], connectionId: string) {
   const m = pickSends(out, connectionId).find((x) => x.t === 'state');
   return m && m.t === 'state' ? m.you : null;
+}
+
+/**
+ * Fill the given seats with passive bots. Used by the legacy tests that
+ * predate the all-seats-filled gate on `startHand` — they only care
+ * about a hand actually starting, not who's in the other seats.
+ */
+function seatPassiveBots(s: MatchSession, seats: Seat[]): void {
+  for (const seat of seats) s.seatBot(seat, passiveBot);
 }
 
 describe('MatchSession — hello + lobby', () => {
@@ -137,11 +146,26 @@ describe('MatchSession — host gating', () => {
   it('accepts host-issued startHand', () => {
     const s = new MatchSession();
     helloAs(s, 'c0', 'p0', 'Host');
+    seatPassiveBots(s, [1, 2, 3]);
     s.applyClientMessage('c0', {
       t: 'action',
       action: { t: 'startHand', seed: 1, dealer: 0 },
     });
     expect(s.getState().phase).toBe('turn');
+  });
+
+  it('rejects startHand when any seat is unfilled', () => {
+    const s = new MatchSession();
+    helloAs(s, 'c0', 'p0', 'Host');
+    helloAs(s, 'c1', 'p1', 'Guest');
+    // Seats 2 + 3 are open — no humans, no bots.
+    const out = s.applyClientMessage('c0', {
+      t: 'action',
+      action: { t: 'startHand', seed: 1, dealer: 0 },
+    });
+    const errs = pickSends(out, 'c0').filter((m) => m.t === 'error');
+    expect(errs[0]?.t === 'error' && errs[0].code).toBe('SEATS');
+    expect(s.getState().phase).toBe('waiting');
   });
 });
 
@@ -158,6 +182,7 @@ describe('MatchSession — disconnect + reconnect grace', () => {
   it('reconnect by the same playerId clears the stand-in bot', () => {
     const s = new MatchSession();
     helloAs(s, 'c0', 'p0');
+    seatPassiveBots(s, [1, 2, 3]);
     s.detachConnection('c0');
     const reconn = helloAs(s, 'c0b', 'p0');
     expect(stateYouFor(reconn, 'c0b')).toBe(0);
@@ -204,6 +229,7 @@ describe('MatchSession — disconnect + reconnect grace', () => {
     const s = new MatchSession({ reconnectGraceMs: 1_000 });
     helloAs(s, 'c0', 'p0', 'Host');
     helloAs(s, 'c1', 'p1', 'Guest');
+    seatPassiveBots(s, [2, 3]);
     s.detachConnection('c0', 0);
     s.fireAlarm(2_000);
     // Guest (p1) is now host: their startHand must succeed (no HOST error).
@@ -218,6 +244,7 @@ describe('MatchSession — disconnect + reconnect grace', () => {
   it('reconnect within the grace window keeps the original seat (no eviction)', () => {
     const s = new MatchSession({ reconnectGraceMs: 1_000 });
     helloAs(s, 'c0', 'p0');
+    seatPassiveBots(s, [1, 2, 3]);
     s.detachConnection('c0', 0);
     const reconn = helloAs(s, 'c0b', 'p0');
     expect(stateYouFor(reconn, 'c0b')).toBe(0);
@@ -237,6 +264,7 @@ describe('MatchSession — snapshot + restore', () => {
     const a = new MatchSession();
     helloAs(a, 'c0', 'p0', 'Host');
     helloAs(a, 'c1', 'p1', 'Guest');
+    seatPassiveBots(a, [2, 3]);
     a.applyClientMessage('c0', {
       t: 'action',
       action: { t: 'startHand', seed: 42, dealer: 0 },
@@ -255,6 +283,7 @@ describe('MatchSession — snapshot + restore', () => {
   it('rebuilds the auto-bot stand-in seat across a snapshot/restore cycle', () => {
     const a = new MatchSession();
     helloAs(a, 'c0', 'p0');
+    seatPassiveBots(a, [1, 2, 3]);
     a.detachConnection('c0', 1_000);
     const snap = JSON.parse(JSON.stringify(a.snapshot()));
 
@@ -336,10 +365,173 @@ describe('MatchSession — claim ladder', () => {
   });
 });
 
+describe('MatchSession — seatBot / unseatBot', () => {
+  it('host can seat a bot in an empty seat; lobby exposes the kind', () => {
+    const s = new MatchSession();
+    helloAs(s, 'c0', 'p0', 'Host');
+    const out = s.applyClientMessage('c0', { t: 'seatBot', seat: 1, kind: 'heuristic' });
+    expect(pickSends(out, 'c0').filter((m) => m.t === 'error')).toHaveLength(0);
+    const lobby = pickBroadcasts(out).find((m) => m.t === 'lobby');
+    if (lobby?.t !== 'lobby') throw new Error('expected lobby broadcast');
+    const seat1 = lobby.players.find((p) => p.seat === 1);
+    expect(seat1?.isBot).toBe(true);
+    expect(seat1?.botKind).toBe('heuristic');
+  });
+
+  it('non-host seatBot returns HOST', () => {
+    const s = new MatchSession();
+    helloAs(s, 'c0', 'p0', 'Host');
+    helloAs(s, 'c1', 'p1', 'Guest');
+    const out = s.applyClientMessage('c1', { t: 'seatBot', seat: 2, kind: 'simple' });
+    const errs = pickSends(out, 'c1').filter((m) => m.t === 'error');
+    expect(errs[0]?.t === 'error' && errs[0].code).toBe('HOST');
+  });
+
+  it('seatBot rejected mid-hand with PHASE', () => {
+    const s = new MatchSession();
+    helloAs(s, 'c0', 'p0', 'Host');
+    seatPassiveBots(s, [1, 2, 3]);
+    s.applyClientMessage('c0', {
+      t: 'action',
+      action: { t: 'startHand', seed: 1, dealer: 0 },
+    });
+    const out = s.applyClientMessage('c0', { t: 'seatBot', seat: 1, kind: 'heuristic' });
+    const errs = pickSends(out, 'c0').filter((m) => m.t === 'error');
+    expect(errs[0]?.t === 'error' && errs[0].code).toBe('PHASE');
+  });
+
+  it('seatBot cannot displace a connected human (OCCUPIED)', () => {
+    const s = new MatchSession();
+    helloAs(s, 'c0', 'p0', 'Host');
+    helloAs(s, 'c1', 'p1', 'Guest');
+    const out = s.applyClientMessage('c0', { t: 'seatBot', seat: 1, kind: 'simple' });
+    const errs = pickSends(out, 'c0').filter((m) => m.t === 'error');
+    expect(errs[0]?.t === 'error' && errs[0].code).toBe('OCCUPIED');
+  });
+
+  it('seatBot can replace an auto-bot stand-in (graced disconnect)', () => {
+    const s = new MatchSession();
+    helloAs(s, 'c0', 'p0', 'Host');
+    helloAs(s, 'c1', 'p1', 'Guest');
+    s.detachConnection('c1');
+    // The grace timer evicts after default 60s; fire just past it.
+    s.fireAlarm(Date.now() + 120_000);
+    const out = s.applyClientMessage('c0', { t: 'seatBot', seat: 1, kind: 'heuristic' });
+    expect(pickSends(out, 'c0').filter((m) => m.t === 'error')).toHaveLength(0);
+    const lobby = pickBroadcasts(out).find((m) => m.t === 'lobby');
+    if (lobby?.t === 'lobby') {
+      const seat1 = lobby.players.find((p) => p.seat === 1);
+      expect(seat1?.botKind).toBe('heuristic');
+    }
+  });
+
+  it('unseatBot frees a host-seated bot back to an empty seat', () => {
+    const s = new MatchSession();
+    helloAs(s, 'c0', 'p0', 'Host');
+    s.applyClientMessage('c0', { t: 'seatBot', seat: 2, kind: 'simple' });
+    const out = s.applyClientMessage('c0', { t: 'unseatBot', seat: 2 });
+    expect(pickSends(out, 'c0').filter((m) => m.t === 'error')).toHaveLength(0);
+    const lobby = pickBroadcasts(out).find((m) => m.t === 'lobby');
+    if (lobby?.t === 'lobby') {
+      const seat2 = lobby.players.find((p) => p.seat === 2);
+      expect(seat2?.isBot).toBe(false);
+    }
+  });
+
+  it('unseatBot refuses to evict an auto-bot stand-in (AUTO_BOT)', () => {
+    const s = new MatchSession();
+    helloAs(s, 'c0', 'p0', 'Host');
+    helloAs(s, 'c1', 'p1', 'Guest');
+    s.detachConnection('c1');
+    const out = s.applyClientMessage('c0', { t: 'unseatBot', seat: 1 });
+    const errs = pickSends(out, 'c0').filter((m) => m.t === 'error');
+    expect(errs[0]?.t === 'error' && errs[0].code).toBe('AUTO_BOT');
+  });
+
+  it('snapshot/restore preserves a host-seated bot kind', () => {
+    const a = new MatchSession();
+    helloAs(a, 'c0', 'p0', 'Host');
+    a.applyClientMessage('c0', { t: 'seatBot', seat: 2, kind: 'heuristic' });
+    const snap = JSON.parse(JSON.stringify(a.snapshot()));
+
+    const b = new MatchSession();
+    b.restore(snap);
+    // Re-trigger a lobby broadcast by re-helloing the host.
+    const out = helloAs(b, 'c0b', 'p0', 'Host');
+    const lobby = pickBroadcasts(out).find((m) => m.t === 'lobby');
+    if (lobby?.t === 'lobby') {
+      const seat2 = lobby.players.find((p) => p.seat === 2);
+      expect(seat2?.botKind).toBe('heuristic');
+    }
+  });
+});
+
+describe('MatchSession — bots stay out of the claim timer', () => {
+  it('bot seats do not gate the soft floor; human pending blocks resolution', () => {
+    const s = new MatchSession();
+    helloAs(s, 'c0', 'p0', 'Host');
+    helloAs(s, 'c1', 'p1', 'Guest');
+    s.applyClientMessage('c0', { t: 'seatBot', seat: 2, kind: 'passive' });
+    s.applyClientMessage('c0', { t: 'seatBot', seat: 3, kind: 'passive' });
+    s.applyClientMessage('c0', {
+      t: 'action',
+      action: { t: 'startHand', seed: 42, dealer: 0 },
+    });
+    const tile = s.getState().hands[0][0]!;
+    s.applyClientMessage('c0', { t: 'action', action: { t: 'discard', seat: 0, tile } });
+    if (s.getState().phase !== 'awaitingClaims' || !s.getState().pendingClaims) {
+      // Discard could not be claimed by anyone; nothing to assert.
+      return;
+    }
+    const pending = s.getState().pendingClaims!;
+    const human1Pending = !pending.submitted[1];
+    if (!human1Pending) return; // p1 had no meaningful claim, was pre-passed
+    // Soft-floor alarm tick — p1 (human, in seat 1) is still pending,
+    // so resolution should NOT happen here.
+    s.fireAlarm(pending.deadlineMs);
+    expect(s.getState().phase).toBe('awaitingClaims');
+    // Hard fallback resolves regardless.
+    s.fireAlarm(pending.hardDeadlineMs!);
+    expect(s.getState().phase === 'awaitingClaims').toBe(false);
+  });
+
+  it('human submission triggers resolution + bot-claim polling without waiting on bots', () => {
+    const s = new MatchSession();
+    helloAs(s, 'c0', 'p0', 'Host');
+    helloAs(s, 'c1', 'p1', 'Guest');
+    s.applyClientMessage('c0', { t: 'seatBot', seat: 2, kind: 'passive' });
+    s.applyClientMessage('c0', { t: 'seatBot', seat: 3, kind: 'passive' });
+    s.applyClientMessage('c0', {
+      t: 'action',
+      action: { t: 'startHand', seed: 7, dealer: 0 },
+    });
+    const tile = s.getState().hands[0][0]!;
+    s.applyClientMessage('c0', { t: 'action', action: { t: 'discard', seat: 0, tile } });
+    if (s.getState().phase !== 'awaitingClaims' || !s.getState().pendingClaims) return;
+    const pending = s.getState().pendingClaims!;
+    if (pending.submitted[1]) return; // p1 was pre-passed; nothing to do
+    // p1 passes — engine doesn't auto-resolve because bots haven't submitted,
+    // but MatchSession's maybeFinishClaimWindow polls them once allHumans are in.
+    // Use a future-now so the soft floor is satisfied for the post-action check.
+    const original = Date.now;
+    Date.now = () => pending.deadlineMs + 100;
+    try {
+      s.applyClientMessage('c1', {
+        t: 'action',
+        action: { t: 'declareClaim', seat: 1, claim: { kind: 'pass' } },
+      });
+    } finally {
+      Date.now = original;
+    }
+    expect(s.getState().phase === 'awaitingClaims').toBe(false);
+  });
+});
+
 describe('MatchSession — illegal action error path', () => {
   it('out-of-turn discard returns a typed error to the offending connection', () => {
     const s = new MatchSession();
     helloAs(s, 'c0', 'p0');
+    seatPassiveBots(s, [1, 2, 3]);
     s.applyClientMessage('c0', { t: 'action', action: { t: 'startHand', seed: 1, dealer: 0 } });
 
     const out = s.applyClientMessage('c0', {
