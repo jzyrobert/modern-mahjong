@@ -11,7 +11,7 @@ import {
   sameFace,
   tileId,
 } from '@mahjong/game-logic';
-import type { BotKind, PublicPlayer } from '@mahjong/protocol';
+import { BOT_LABELS, type BotKind, type PublicPlayer } from '@mahjong/protocol';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
@@ -355,10 +355,21 @@ function allSeatsFilled(lobby: { players: readonly PublicPlayer[] } | null): boo
   return true;
 }
 
+// Picker rows in lobby-row order (Easy → Standard → Smart). `label`
+// pulls from the canonical `BOT_LABELS` map in `@mahjong/protocol` so
+// it stays in lockstep with `botDisplayName(kind)` everywhere else.
 const BOT_KIND_OPTIONS: ReadonlyArray<{ kind: BotKind; label: string; hint: string }> = [
-  { kind: 'passive', label: 'Easy', hint: 'Discards the last drawn tile, never claims.' },
-  { kind: 'simple', label: 'Standard', hint: 'Drops the most isolated tile.' },
-  { kind: 'heuristic', label: 'Smart', hint: 'Minimises shanten + claims to improve.' },
+  {
+    kind: 'passive',
+    label: BOT_LABELS.passive,
+    hint: 'Discards the last drawn tile, never claims.',
+  },
+  { kind: 'simple', label: BOT_LABELS.simple, hint: 'Drops the most isolated tile.' },
+  {
+    kind: 'heuristic',
+    label: BOT_LABELS.heuristic,
+    hint: 'Minimises shanten + claims to improve.',
+  },
 ];
 
 interface LobbySeatControlsProps {

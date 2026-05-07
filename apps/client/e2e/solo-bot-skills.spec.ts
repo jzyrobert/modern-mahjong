@@ -21,18 +21,18 @@ test('solo bot-skill picker updates LobbyPreview names + persists', async ({ pag
   await expect(page.getByRole('heading', { name: 'Lobby' })).toBeVisible({ timeout: 10_000 });
 
   // Default mix: bot 1 = heuristic, bot 2 = simple, bot 3 = passive.
-  await expect(page.getByText('Bot (heuristic)', { exact: true })).toBeVisible();
-  await expect(page.getByText('Bot (simple)', { exact: true })).toBeVisible();
-  await expect(page.getByText('Bot (passive)', { exact: true })).toBeVisible();
+  await expect(page.getByText('Bot (Smart)', { exact: true })).toBeVisible();
+  await expect(page.getByText('Bot (Standard)', { exact: true })).toBeVisible();
+  await expect(page.getByText('Bot (Easy)', { exact: true })).toBeVisible();
 
   // The picker for seat 1 starts on SMART. Switch to EASY.
   await page.getByLabel('Set seat 1 to Easy').click();
 
   // LobbyPreview re-renders with the new bot name (re-emitted via
   // setBotSkill → emitLobby).
-  await expect(page.getByText('Bot (passive)', { exact: true })).toHaveCount(2);
+  await expect(page.getByText('Bot (Easy)', { exact: true })).toHaveCount(2);
   // Seat 1's old name is gone — only seat 3 still maps to passive.
-  await expect(page.getByText('Bot (heuristic)', { exact: true })).toBeHidden();
+  await expect(page.getByText('Bot (Smart)', { exact: true })).toBeHidden();
 
   // Persistence: leave and re-enter from a fresh transport, check
   // the picker re-loads the saved skill.
@@ -45,8 +45,8 @@ test('solo bot-skill picker updates LobbyPreview names + persists', async ({ pag
 
   // Both seat 1 and seat 3 are now `passive` — that's the persisted
   // override, applied on top of the default for the remaining seats.
-  await expect(page.getByText('Bot (passive)', { exact: true })).toHaveCount(2);
-  await expect(page.getByText('Bot (simple)', { exact: true })).toBeVisible();
+  await expect(page.getByText('Bot (Easy)', { exact: true })).toHaveCount(2);
+  await expect(page.getByText('Bot (Standard)', { exact: true })).toBeVisible();
 });
 
 test('solo bot-skill picker is hidden for online matches', async ({ page }) => {
