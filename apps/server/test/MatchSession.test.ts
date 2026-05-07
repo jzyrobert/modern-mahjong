@@ -88,7 +88,9 @@ describe('MatchSession — hello + lobby', () => {
 
 describe('MatchSession — bot-driven hand to completion', () => {
   it('four bots play a full hand and end up in a resolved state', () => {
-    const s = new MatchSession();
+    // `botPaceMs: 0` short-circuits the alarm-driven 3s "thinking" gap
+    // between draw and discard so a 100+-step hand fits in one tick.
+    const s = new MatchSession({ botPaceMs: 0 });
     // Seat a human host first so we can pass the host-only `startHand` gate.
     s.applyClientMessage('host', {
       t: 'hello',
@@ -463,6 +465,89 @@ describe('MatchSession — seatBot / unseatBot', () => {
       const seat2 = lobby.players.find((p) => p.seat === 2);
       expect(seat2?.botKind).toBe('heuristic');
     }
+  });
+});
+
+describe('MatchSession — bot pacing', () => {
+  /**
+   * Drive a session into a state where seat 1 (a bot) has just drawn
+   * and the discard is paced behind a `botActionDeadline`. The flow:
+   *   1. Host discards the first tile of the hand.
+   *   2. Claim window opens; only the host is human, so the soft floor
+   *      gates resolution.
+   *   3. Caller fires the soft-floor alarm → claim resolves → seat 1
+   *      bot draws → discard is deferred to `nowMs + botPaceMs`.
+   */
+  function discardThenAdvanceToBotPace(
+    s: MatchSession,
+    softFloorMs: number,
+  ): { drawAlarm: number | null } {
+    s.applyClientMessage('c0', {
+      t: 'action',
+      action: { t: 'startHand', seed: 5, dealer: 0 },
+    });
+    const human = s.getState().hands[0][0]!;
+    s.applyClientMessage('c0', {
+      t: 'action',
+      action: { t: 'discard', seat: 0, tile: human },
+    });
+    const out = s.fireAlarm(softFloorMs);
+    const alarm = out.find((o) => o.kind === 'scheduleAlarm');
+    return {
+      drawAlarm: alarm?.kind === 'scheduleAlarm' ? alarm.deadlineMs : null,
+    };
+  }
+
+  it('paces a bot discard via the alarm scheduler (draw immediate, discard deferred)', () => {
+    const PACE = 3_000;
+    const s = new MatchSession({ botPaceMs: PACE });
+    helloAs(s, 'c0', 'p0', 'Host');
+    seatPassiveBots(s, [1, 2, 3]);
+    const softFloor = Date.now() + 5_000; // somewhere past the soft floor
+
+    const { drawAlarm } = discardThenAdvanceToBotPace(s, softFloor);
+    // After resolving the claim window, seat 1's draw fires + the bot
+    // discard is deferred. The next alarm should be armed for
+    // `softFloor + PACE`.
+    expect(drawAlarm).not.toBeNull();
+    expect(drawAlarm!).toBeGreaterThanOrEqual(softFloor + PACE - 100);
+    expect(drawAlarm!).toBeLessThanOrEqual(softFloor + PACE + 200);
+
+    // Firing the alarm at that deadline produces the deferred discard.
+    const after = s.fireAlarm(drawAlarm! + 50);
+    const events: string[] = [];
+    for (const o of after) {
+      if (o.kind === 'broadcast' && o.msg.t === 'delta') {
+        for (const e of o.msg.events) events.push(e.t);
+      }
+    }
+    expect(events.some((t) => t === 'discarded')).toBe(true);
+  });
+
+  it('snapshot round-trips a pending botActionDeadline so hibernation resumes pacing', () => {
+    const PACE = 3_000;
+    const a = new MatchSession({ botPaceMs: PACE });
+    helloAs(a, 'c0', 'p0', 'Host');
+    seatPassiveBots(a, [1, 2, 3]);
+    const softFloor = Date.now() + 5_000;
+    discardThenAdvanceToBotPace(a, softFloor);
+
+    const snapAny = JSON.parse(JSON.stringify(a.snapshot())) as {
+      botActionDeadline?: number | null;
+    };
+    expect(typeof snapAny.botActionDeadline).toBe('number');
+    const deadline = snapAny.botActionDeadline!;
+
+    const b = new MatchSession({ botPaceMs: PACE });
+    b.restore(snapAny as Parameters<MatchSession['restore']>[0]);
+    const out = b.fireAlarm(deadline + 50);
+    const events: string[] = [];
+    for (const o of out) {
+      if (o.kind === 'broadcast' && o.msg.t === 'delta') {
+        for (const e of o.msg.events) events.push(e.t);
+      }
+    }
+    expect(events.some((t) => t === 'discarded')).toBe(true);
   });
 });
 

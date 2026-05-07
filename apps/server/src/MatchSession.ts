@@ -1,11 +1,4 @@
-import {
-  type Bot,
-  type BotKind,
-  heuristicBot,
-  passiveBot,
-  runBotTurns,
-  simpleBot,
-} from '@mahjong/bots';
+import { type Bot, type BotKind, heuristicBot, passiveBot, simpleBot } from '@mahjong/bots';
 import {
   type Action,
   type Claim,
@@ -57,7 +50,16 @@ export interface MatchSessionOptions {
    * playing) so a new player can take it. Default 60s.
    */
   reconnectGraceMs?: number;
+  /**
+   * Minimum delay between a bot's draw and its discard, in milliseconds.
+   * Gives humans time to read what the bot just pulled before the next
+   * action fires. Default 3000ms; tests pass 0 to short-circuit the
+   * alarm-driven pacing entirely.
+   */
+  botPaceMs?: number;
 }
+
+const DEFAULT_BOT_PACE_MS = 3_000;
 
 interface SerializableSeat {
   playerId: string | null;
@@ -78,6 +80,13 @@ export interface MatchSessionSnapshot {
   state: GameState;
   hostPlayerId: string | null;
   seats: Record<Seat, SerializableSeat>;
+  /**
+   * Server-clock deadline for the currently-pending bot discard, if any.
+   * Round-trips through hibernation so a bot that drew right before a
+   * DO sleep still discards `botPaceMs` after that draw, not instantly
+   * on wake. Older snapshots omit it (defaults to null on restore).
+   */
+  botActionDeadline?: number | null;
 }
 
 /**
@@ -103,6 +112,15 @@ export class MatchSession {
    */
   private spectators: Set<string> = new Set();
   private readonly reconnectGraceMs: number;
+  private readonly botPaceMs: number;
+  /**
+   * Server-clock deadline at which the bot whose turn it currently is
+   * should fire its discard. Set when a bot draws (so the felt animates
+   * the wall tick) and cleared after the discard fires; null when no
+   * bot is mid-turn. The DO alarm is armed for whichever is sooner —
+   * this, the claim-window deadline, or a reconnect grace timer.
+   */
+  private botActionDeadline: number | null = null;
   /**
    * The deadline currently armed via `scheduleAlarm`, or null if no
    * alarm is set. Cached so we don't re-emit the same `scheduleAlarm`
@@ -112,6 +130,7 @@ export class MatchSession {
 
   constructor(opts: MatchSessionOptions = {}) {
     this.reconnectGraceMs = opts.reconnectGraceMs ?? 60_000;
+    this.botPaceMs = opts.botPaceMs ?? DEFAULT_BOT_PACE_MS;
   }
 
   getState(): GameState {
@@ -149,6 +168,7 @@ export class MatchSession {
       state: this.state,
       hostPlayerId: this.hostPlayerId,
       seats,
+      ...(this.botActionDeadline !== null ? { botActionDeadline: this.botActionDeadline } : {}),
     };
   }
 
@@ -166,6 +186,7 @@ export class MatchSession {
     }
     this.state = snap.state;
     this.hostPlayerId = snap.hostPlayerId;
+    this.botActionDeadline = snap.botActionDeadline ?? null;
     this.lastEmittedDeadline = null;
     for (const seat of SEATS) {
       const ser = snap.seats[seat];
@@ -212,7 +233,7 @@ export class MatchSession {
     if (this.spectators.delete(connectionId)) changed = true;
     if (!changed) return [];
     const out: Outbound[] = [this.lobbyBroadcast()];
-    out.push(...this.runBots());
+    out.push(...this.runBots(nowMs));
     out.push(...this.maybeScheduleAlarm());
     return out;
   }
@@ -243,10 +264,21 @@ export class MatchSession {
       if (allHumansSubmitted || pastHard || noLadder) {
         try {
           out.push(...this.resolveClaimWindow(nowMs));
-          out.push(...this.runBots());
+          out.push(...this.runBots(nowMs));
         } catch (e) {
           console.error('alarm reduce error', e);
         }
+      }
+    }
+    // Bot pacing: a draw armed `botActionDeadline` and the alarm has
+    // now caught up — `runBots(nowMs)` will see `nowMs >= deadline` and
+    // fire the discard. Safe to call even when the deadline is in the
+    // future or unset (it bails immediately in those cases).
+    if (this.botActionDeadline !== null && nowMs >= this.botActionDeadline) {
+      try {
+        out.push(...this.runBots(nowMs));
+      } catch (e) {
+        console.error('alarm bot-pace error', e);
       }
     }
     out.push(...this.maybeScheduleAlarm());
@@ -410,14 +442,15 @@ export class MatchSession {
     if (action.t === 'startHand' && !this.allSeatsFilled()) {
       return [errMsg(connectionId, 'SEATS', 'all seats must be filled before starting')];
     }
+    const nowMs = Date.now();
     try {
       const out: Outbound[] = [this.apply(action)];
-      out.push(...this.runBots());
+      out.push(...this.runBots(nowMs));
       // After a human's `declareClaim` (or any action that left the room
       // in `awaitingClaims`), check whether every human has now weighed
       // in. If yes — and the soft floor has elapsed — poll bots and let
       // the engine resolve. Bots never push the timer themselves.
-      out.push(...this.maybeFinishClaimWindow(Date.now()));
+      out.push(...this.maybeFinishClaimWindow(nowMs));
       out.push(...this.maybeScheduleAlarm());
       return out;
     } catch (e) {
@@ -434,7 +467,7 @@ export class MatchSession {
     if (!this.allHumansSubmittedFor(pending)) return [];
     if (nowMs < pending.deadlineMs) return [];
     const out = this.resolveClaimWindow(nowMs);
-    out.push(...this.runBots());
+    out.push(...this.runBots(nowMs));
     return out;
   }
 
@@ -568,6 +601,11 @@ export class MatchSession {
         soonest = pending.hardDeadlineMs ?? pending.deadlineMs;
       }
     }
+    if (this.botActionDeadline !== null) {
+      if (soonest === null || this.botActionDeadline < soonest) {
+        soonest = this.botActionDeadline;
+      }
+    }
     for (const seat of SEATS) {
       const slot = this.seats[seat];
       if (slot.disconnectedSinceMs === null) continue;
@@ -579,21 +617,72 @@ export class MatchSession {
     return soonest !== null ? [{ kind: 'scheduleAlarm', deadlineMs: soonest }] : [];
   }
 
-  private runBots(): Outbound[] {
+  /**
+   * Step bot-controlled seats forward through the engine. The draw is
+   * applied immediately (so the felt animates the wall tick + the new
+   * tile sliding into the bot's hidden hand) but the discard is deferred
+   * until `botActionDeadline` elapses — `botPaceMs` of "thinking" between
+   * draw and discard so humans can read what the bot pulled.
+   *
+   * The alarm chains: each bot turn arms a deadline, the DO scheduler
+   * fires `fireAlarm` at that deadline, which calls `runBots` again to
+   * emit the discard. After the discard the loop continues into the
+   * next bot's turn (if any) and arms a new deadline.
+   *
+   * Tests can pass `botPaceMs: 0` in the constructor to make bot
+   * actions fire instantly and synchronously, matching the pre-pacing
+   * behaviour for hands the test wants to drive in one shot.
+   */
+  private runBots(nowMs: number = Date.now()): Outbound[] {
     const out: Outbound[] = [];
-    const seatBots: Record<Seat, Bot | null> = {
-      0: this.seats[0].bot,
-      1: this.seats[1].bot,
-      2: this.seats[2].bot,
-      3: this.seats[3].bot,
-    };
-    runBotTurns(
-      () => this.state,
-      seatBots,
-      (action) => {
-        out.push(this.apply(action));
-      },
-    );
+    // Safety bound matches the legacy `runBotTurns` loop — a real hand
+    // never iterates more than a handful of times per call, but a
+    // pathological state shouldn't lock the DO.
+    for (let i = 0; i < 16; i++) {
+      const state = this.state;
+      if (state.phase !== 'turn') {
+        // No bot turn in progress — clear any stale pacing deadline.
+        this.botActionDeadline = null;
+        return out;
+      }
+      const seat = state.turn;
+      const bot = this.seats[seat].bot;
+      if (!bot) {
+        this.botActionDeadline = null;
+        return out;
+      }
+      // Step 1: bot needs to draw. Apply immediately so the tile is
+      // visibly pulled from the wall.
+      if (!state.hasDrawn) {
+        try {
+          out.push(this.apply({ t: 'draw', seat }));
+        } catch (e) {
+          if (e instanceof IllegalActionError) return out;
+          throw e;
+        }
+        if (this.state.phase !== 'turn') continue; // wall-empty draw
+      }
+      // Step 2: pace the discard. Arm the deadline if not already set.
+      if (this.botActionDeadline === null) {
+        this.botActionDeadline = nowMs + this.botPaceMs;
+      }
+      if (nowMs < this.botActionDeadline) {
+        // Wait for the alarm to fire at the deadline.
+        return out;
+      }
+      // Deadline reached: fire the discard.
+      this.botActionDeadline = null;
+      try {
+        out.push(this.apply({ t: 'declareWin', seat, selfDraw: true }));
+        continue; // hand resolved (or moved on)
+      } catch (e) {
+        if (!(e instanceof IllegalActionError)) throw e;
+      }
+      const tile = bot.pickDiscard({ state: this.state, seat });
+      out.push(this.apply({ t: 'discard', seat, tile }));
+      // After a discard the engine transitions to `awaitingClaims`,
+      // which the loop top will detect and exit on.
+    }
     return out;
   }
 
