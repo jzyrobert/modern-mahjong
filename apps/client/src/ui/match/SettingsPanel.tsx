@@ -1,20 +1,13 @@
 import { Pressable, ScrollView, Switch, Text, View } from 'react-native';
 import { type FeltSkin, type TileBackSkin, type UserSettings, useGame } from '../../state/game';
 import { Modal } from '../Modal';
+import { COLORS } from '../colors';
 import { FELT_SKINS, TILE_BACK_SKINS } from './skins';
 
 interface SettingsPanelProps {
   open: boolean;
   onClose: () => void;
 }
-
-const COLORS = {
-  ink: '#3a3328',
-  ink3: '#918275',
-  cream: '#f1eadc',
-  hairline: '#cdc1ad',
-  red: '#b14d3a',
-};
 
 /**
  * In-match preferences modal. v1 covers the controls that

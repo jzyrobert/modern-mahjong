@@ -2,6 +2,7 @@ import { FAAN_OPTIONS } from '@mahjong/game-logic';
 import type { Action, RuleConfig } from '@mahjong/protocol';
 import { useState } from 'react';
 import { Pressable, Switch, Text, TextInput, View } from 'react-native';
+import { COLORS } from './colors';
 
 interface RulePanelProps {
   rules: RuleConfig;
@@ -11,16 +12,6 @@ interface RulePanelProps {
 
 const TURN_TIMER_OFF = 0;
 const TURN_TIMER_DEFAULT_MS = 20_000;
-
-const COLORS = {
-  paper: '#f1ebe0',
-  paperHi: '#fbf8f0',
-  hairline: '#cdc1ad',
-  ink: '#3a3328',
-  ink3: '#918275',
-  red: '#b14d3a',
-  green: '#58c280',
-};
 
 /**
  * Match-rules editor.
