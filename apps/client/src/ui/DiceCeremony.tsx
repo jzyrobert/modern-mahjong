@@ -48,34 +48,41 @@ const PIPS: Record<number, [number, number][]> = {
  * (no reanimated) so it works in Expo Go.
  */
 export function DiceCeremony() {
+  const seed = useGame((s) => s.state?.seed);
   const rolls = useGame((s) => s.state?.openingRolls);
   const dealer = useGame((s) => s.state?.dealer);
   const lobby = useGame((s) => s.lobby);
-  const [dismissed, setDismissed] = useState(false);
+  // Track which hand's ceremony has been shown by seed. A bare
+  // `dismissed` boolean re-fires every time the server sends a
+  // fresh state delta — JSON.parse spawns a new `openingRolls`
+  // reference on every action, even when the contents are the
+  // same — so the previous `useEffect([rolls])` retriggered the
+  // ceremony on every move in online matches. Keying on seed
+  // gives us "once per hand" without depending on object identity.
+  const [dismissedSeed, setDismissedSeed] = useState<number | null>(null);
+  const open = !!rolls && seed !== undefined && seed !== dismissedSeed;
   // `useFadeInOut` honours `useGame.settings.animations` — when the
   // user has reduced-motion on the overlay snaps in / out instead of
   // fading. The dismiss timer is unchanged so on-screen duration is
   // the same either way.
-  const visibleForFade = !!rolls && !dismissed;
-  const { fade, fadeOut } = useFadeInOut({ visible: visibleForFade });
+  const { fade, fadeOut } = useFadeInOut({ visible: open });
 
   useEffect(() => {
-    if (!rolls) return;
-    setDismissed(false);
+    if (!open || seed === undefined) return;
     const timer = setTimeout(() => {
-      fadeOut(() => setDismissed(true));
+      fadeOut(() => setDismissedSeed(seed));
     }, DISMISS_MS);
     return () => clearTimeout(timer);
-  }, [rolls, fadeOut]);
+  }, [open, seed, fadeOut]);
 
-  const visible = visibleForFade && dealer !== undefined;
+  const visible = open && dealer !== undefined;
   if (!visible) return null;
   const rolling = SEATS.filter((s) => rolls.dice[s]);
 
   return (
     <Pressable
       onPress={() => {
-        fadeOut(() => setDismissed(true));
+        fadeOut(() => setDismissedSeed(seed));
       }}
       style={{
         position: 'absolute',
