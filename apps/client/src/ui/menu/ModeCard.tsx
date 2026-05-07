@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Text, View } from 'react-native';
+import { COLORS as SHARED_COLORS } from '../colors';
 
 interface ModeCardProps {
   title: string;
@@ -12,11 +13,11 @@ interface ModeCardProps {
 }
 
 const COLORS = {
-  ink: '#3a3328',
-  ink3: '#918275',
-  red: '#b14d3a',
-  paperHi: '#fbf8f0',
-  hairline: '#cdc1ad',
+  ...SHARED_COLORS,
+  // Per-card accent palette — ModeCard's "accent" variant uses a
+  // softer salmon than the shared red, since the card is a hero
+  // element rather than a CTA. Kept local because no other surface
+  // wants this specific tone today.
   accentBorder: '#ec9275',
   accentSwatch: '#fbe5d9',
   accentSwatchEdge: '#d8b09f',
