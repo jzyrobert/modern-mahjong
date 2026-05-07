@@ -8,6 +8,7 @@ import {
 } from '@mahjong/bots';
 import {
   type Action,
+  type Claim,
   DEFAULT_RULES,
   type Event,
   type GameState,
@@ -185,6 +186,15 @@ export class MatchSession {
     return this.handle(connectionId, r.msg);
   }
 
+  /** True when every seat holds a connected human or a bot. */
+  private allSeatsFilled(): boolean {
+    for (const s of SEATS) {
+      const slot = this.seats[s];
+      if (slot.playerId === null && slot.bot === null) return false;
+    }
+    return true;
+  }
+
   detachConnection(connectionId: string, nowMs: number = Date.now()): Outbound[] {
     let changed = false;
     for (const seat of SEATS) {
@@ -210,25 +220,29 @@ export class MatchSession {
   fireAlarm(nowMs: number): Outbound[] {
     const out: Outbound[] = [];
     out.push(...this.expireGraceTimers(nowMs));
-    // Claim resolution timing follows the new ladder (PR A):
+    // Claim resolution timing follows the human-anchored ladder:
     //   - Soft floor (`deadlineMs`): only resolve when every non-discarder
-    //     seat is in `submitted`. If any seat is still pending (a real
-    //     human deliberating), wait — the alarm will re-fire at hard
-    //     fallback.
-    //   - Hard fallback (`hardDeadlineMs`): silent seats are auto-passed
-    //     and the round resolves regardless of how many were pending.
-    //   - When `hardDeadlineMs` is undefined (defensive — production
-    //     rules always set it), behave like the old single-deadline alarm
-    //     and resolve at any awaitingClaims tick.
+    //     *human* seat is in `submitted`. Bot seats don't count toward
+    //     the ladder — their decisions land at resolution time, not as
+    //     timer pressure on humans.
+    //   - Hard fallback (`hardDeadlineMs`): silent humans get auto-passed
+    //     by `resolveClaims`, bots get polled-and-applied first, and the
+    //     round resolves regardless.
+    //   - When `hardDeadlineMs` is undefined (defensive — server rules
+    //     always set it), resolve immediately on any awaitingClaims tick.
     if (this.state.phase === 'awaitingClaims' && this.state.pendingClaims) {
       const pending = this.state.pendingClaims;
-      const allSubmitted = SEATS.every((s) => s === pending.discard.from || pending.submitted[s]);
+      const allHumansSubmitted = this.allHumansSubmittedFor(pending);
       const hard = pending.hardDeadlineMs;
       const pastHard = hard === undefined ? false : nowMs >= hard;
       const noLadder = hard === undefined;
-      if (allSubmitted || pastHard || noLadder) {
+      // The DO alarm only fires at or after the armed deadline, so when
+      // `allHumansSubmitted` we trust that the scheduler has already
+      // observed the soft-floor minimum and resolve unconditionally.
+      // Tests that pump `fireAlarm` manually rely on this contract too.
+      if (allHumansSubmitted || pastHard || noLadder) {
         try {
-          out.push(this.apply({ t: 'resolveClaims', nowMs }));
+          out.push(...this.resolveClaimWindow(nowMs));
           out.push(...this.runBots());
         } catch (e) {
           console.error('alarm reduce error', e);
@@ -236,6 +250,63 @@ export class MatchSession {
       }
     }
     out.push(...this.maybeScheduleAlarm());
+    return out;
+  }
+
+  /**
+   * Whether every non-discarder human seat has either submitted a claim
+   * or been pre-passed by the `discard` reducer. Bot seats are skipped —
+   * their decisions are polled at resolution time and never gate the
+   * claim-window timer.
+   */
+  private allHumansSubmittedFor(pending: NonNullable<GameState['pendingClaims']>): boolean {
+    return SEATS.every(
+      (s) =>
+        s === pending.discard.from ||
+        this.seats[s].bot !== null ||
+        pending.submitted[s] !== undefined,
+    );
+  }
+
+  /**
+   * Drive a stuck claim window to completion. First polls every bot seat
+   * that hasn't submitted (each picks `pickClaim` → `declareClaim`), then
+   * — if the engine hasn't auto-resolved on the last submission — emits
+   * an explicit `resolveClaims` so silent humans get padded with passes.
+   *
+   * Bot picks that turn out to be illegal (e.g. an out-of-band `chi` from
+   * a non-next seat — bots shouldn't return these but defence-in-depth)
+   * fall back to `pass`.
+   */
+  private resolveClaimWindow(nowMs: number): Outbound[] {
+    const out: Outbound[] = [];
+    for (const seat of SEATS) {
+      const cur = this.state;
+      if (cur.phase !== 'awaitingClaims' || !cur.pendingClaims) break;
+      if (seat === cur.pendingClaims.discard.from) continue;
+      if (cur.pendingClaims.submitted[seat] !== undefined) continue;
+      const bot = this.seats[seat].bot;
+      if (!bot) continue;
+      let claim: Claim;
+      try {
+        claim = bot.pickClaim({ state: cur, seat });
+      } catch (e) {
+        console.error('bot pickClaim threw', e);
+        claim = { kind: 'pass' };
+      }
+      try {
+        out.push(this.apply({ t: 'declareClaim', seat, claim }));
+      } catch (e) {
+        if (e instanceof IllegalActionError) {
+          out.push(this.apply({ t: 'declareClaim', seat, claim: { kind: 'pass' } }));
+        } else {
+          throw e;
+        }
+      }
+    }
+    if (this.state.phase === 'awaitingClaims') {
+      out.push(this.apply({ t: 'resolveClaims', nowMs }));
+    }
     return out;
   }
 
@@ -273,6 +344,10 @@ export class MatchSession {
         return this.onChat(connectionId, msg.text);
       case 'leave':
         return [{ kind: 'closeConnection', connectionId }];
+      case 'seatBot':
+        return this.onSeatBot(connectionId, msg.seat, msg.kind);
+      case 'unseatBot':
+        return this.onUnseatBot(connectionId, msg.seat);
     }
   }
 
@@ -332,9 +407,17 @@ export class MatchSession {
         return [errMsg(connectionId, 'HOST', 'only the host can perform this action')];
       }
     }
+    if (action.t === 'startHand' && !this.allSeatsFilled()) {
+      return [errMsg(connectionId, 'SEATS', 'all seats must be filled before starting')];
+    }
     try {
       const out: Outbound[] = [this.apply(action)];
       out.push(...this.runBots());
+      // After a human's `declareClaim` (or any action that left the room
+      // in `awaitingClaims`), check whether every human has now weighed
+      // in. If yes — and the soft floor has elapsed — poll bots and let
+      // the engine resolve. Bots never push the timer themselves.
+      out.push(...this.maybeFinishClaimWindow(Date.now()));
       out.push(...this.maybeScheduleAlarm());
       return out;
     } catch (e) {
@@ -343,6 +426,71 @@ export class MatchSession {
       }
       return [errMsg(connectionId, 'INTERNAL', String(e))];
     }
+  }
+
+  private maybeFinishClaimWindow(nowMs: number): Outbound[] {
+    if (this.state.phase !== 'awaitingClaims' || !this.state.pendingClaims) return [];
+    const pending = this.state.pendingClaims;
+    if (!this.allHumansSubmittedFor(pending)) return [];
+    if (nowMs < pending.deadlineMs) return [];
+    const out = this.resolveClaimWindow(nowMs);
+    out.push(...this.runBots());
+    return out;
+  }
+
+  private onSeatBot(connectionId: string, seat: Seat, kind: BotKind): Outbound[] {
+    const sender = this.playerIdFor(connectionId);
+    if (sender === null || sender !== this.hostPlayerId) {
+      return [errMsg(connectionId, 'HOST', 'only the host can seat bots')];
+    }
+    if (this.state.phase !== 'waiting' && this.state.phase !== 'resolved') {
+      return [errMsg(connectionId, 'PHASE', 'bot seating only allowed between hands')];
+    }
+    const slot = this.seats[seat];
+    // Don't displace a connected human. An already-seated bot (auto- or
+    // host-installed) is fair game — that's the "swap skill" path.
+    if (slot.connectionId !== null) {
+      return [errMsg(connectionId, 'OCCUPIED', 'seat is held by a connected player')];
+    }
+    // A disconnected human still inside their reconnect grace also gets
+    // protection — the host should call `unseatBot` first if they really
+    // mean to evict, but v1 doesn't expose that path. Auto-bot stand-ins
+    // (`botAutoInstalled = true`) are reseatable; the host can just pick
+    // a stronger brain than `passive`.
+    if (slot.playerId !== null && !slot.botAutoInstalled) {
+      return [errMsg(connectionId, 'OCCUPIED', 'seat is held for a disconnected player')];
+    }
+    this.seats[seat] = {
+      playerId: null,
+      displayName: botDisplayNameByKind(kind),
+      bot: botByKind(kind),
+      connectionId: null,
+      disconnectedSinceMs: null,
+      botAutoInstalled: false,
+    };
+    return [this.lobbyBroadcast()];
+  }
+
+  private onUnseatBot(connectionId: string, seat: Seat): Outbound[] {
+    const sender = this.playerIdFor(connectionId);
+    if (sender === null || sender !== this.hostPlayerId) {
+      return [errMsg(connectionId, 'HOST', 'only the host can unseat bots')];
+    }
+    if (this.state.phase !== 'waiting' && this.state.phase !== 'resolved') {
+      return [errMsg(connectionId, 'PHASE', 'bot unseating only allowed between hands')];
+    }
+    const slot = this.seats[seat];
+    if (slot.bot === null) {
+      return [errMsg(connectionId, 'EMPTY', 'seat does not hold a bot')];
+    }
+    // An auto-installed bot is a stand-in for a still-graced human —
+    // unseating would forfeit the seat the human is reconnecting to.
+    // Defer to the existing grace timer instead.
+    if (slot.botAutoInstalled) {
+      return [errMsg(connectionId, 'AUTO_BOT', 'cannot unseat a stand-in for a graced player')];
+    }
+    this.seats[seat] = emptySeat();
+    return [this.lobbyBroadcast()];
   }
 
   private playerIdFor(connectionId: string): string | null {
@@ -411,8 +559,10 @@ export class MatchSession {
     let soonest: number | null = null;
     if (this.state.phase === 'awaitingClaims' && this.state.pendingClaims) {
       const pending = this.state.pendingClaims;
-      const allSubmitted = SEATS.every((s) => s === pending.discard.from || pending.submitted[s]);
-      if (allSubmitted) {
+      // Mirror `fireAlarm`'s humans-only ladder: with every human in,
+      // arm at the soft floor (we'll poll bots and resolve there).
+      // Otherwise wait for the hard fallback.
+      if (this.allHumansSubmittedFor(pending)) {
         soonest = pending.deadlineMs;
       } else {
         soonest = pending.hardDeadlineMs ?? pending.deadlineMs;
@@ -460,6 +610,7 @@ export class MatchSession {
         seat,
         connected: slot.connectionId !== null,
         isBot: slot.bot !== null,
+        ...(slot.bot ? { botKind: slot.bot.kind } : {}),
       };
     });
     return {
@@ -496,7 +647,11 @@ function botDisplayName(bot: Bot): string {
   return `Bot (${bot.kind})`;
 }
 
-export function botByKind(kind: 'simple' | 'heuristic' | 'passive'): Bot {
+function botDisplayNameByKind(kind: BotKind): string {
+  return `Bot (${kind})`;
+}
+
+export function botByKind(kind: BotKind): Bot {
   switch (kind) {
     case 'simple':
       return simpleBot;

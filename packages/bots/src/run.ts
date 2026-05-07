@@ -1,26 +1,18 @@
-import {
-  type Action,
-  type GameState,
-  IllegalActionError,
-  SEATS,
-  type Seat,
-} from '@mahjong/game-logic';
+import { type Action, type GameState, IllegalActionError, type Seat } from '@mahjong/game-logic';
 import type { Bot } from './index.js';
 
 const TICK_LIMIT = 16;
 
 /**
- * Drive every bot-controlled seat forward through the engine until no
- * progress can be made (or we hit the safety bound). Each step:
+ * Drive every bot-controlled seat forward through the engine while it's
+ * their turn. Each step: the bot draws if it hasn't yet, attempts a
+ * self-draw win, and otherwise picks a discard.
  *
- * - If `awaitingClaims`, every non-discarder bot submits a claim/pass.
- * - On a bot's turn, the bot draws if it hasn't yet, attempts a self-draw
- *   win, and otherwise picks a discard.
- *
- * Used by both the server's `MatchSession` (online + LAN) and the client's
- * `createSoloTransport` (single-player). The two callers diverge wildly in
- * how they dispatch broadcasts (DO outbounds vs. local emit) but the
- * engine-step logic itself is identical and lives here.
+ * Claim-window submissions are deliberately *not* handled here — both
+ * callers (server `MatchSession` and client solo transport) drive bot
+ * claims through their own code path so they can control timer fairness
+ * (server: bots stay silent until humans submit / hard fallback fires;
+ * solo: bots submit instantly because there are no other humans).
  *
  * `apply(action)` is expected to run the action through `reduce`, persist
  * the resulting state, and emit whatever delta the caller needs. Throws
@@ -42,41 +34,25 @@ function tickOnce(
   apply: (action: Action) => void,
 ): boolean {
   const state = getState();
-  if (state.phase === 'awaitingClaims' && state.pendingClaims) {
-    let progressed = false;
-    const pending = state.pendingClaims;
-    for (const seat of SEATS) {
-      if (seat === state.lastDiscard?.from) continue;
-      const bot = bots[seat];
-      if (!bot) continue;
-      if (pending.submitted[seat]) continue;
-      const claim = bot.pickClaim({ state, seat });
-      apply({ t: 'declareClaim', seat, claim });
-      progressed = true;
-    }
-    return progressed;
+  if (state.phase !== 'turn') return false;
+  const seat = state.turn;
+  const bot = bots[seat];
+  if (!bot) return false;
+  if (!state.hasDrawn) {
+    apply({ t: 'draw', seat });
+    if (getState().phase !== 'turn') return true;
   }
-  if (state.phase === 'turn') {
-    const seat = state.turn;
-    const bot = bots[seat];
-    if (!bot) return false;
-    if (!state.hasDrawn) {
-      apply({ t: 'draw', seat });
-      if (getState().phase !== 'turn') return true;
-    }
-    // Try a self-draw win first; the engine throws SHAPE/FAAN if illegal,
-    // which we treat as "fall through to a normal discard". A predicate
-    // would be cleaner but `declareWin` does both shape + faan-min + score
-    // in one place and we'd otherwise duplicate that here.
-    try {
-      apply({ t: 'declareWin', seat, selfDraw: true });
-      return true;
-    } catch (e) {
-      if (!(e instanceof IllegalActionError)) throw e;
-    }
-    const tile = bot.pickDiscard({ state: getState(), seat });
-    apply({ t: 'discard', seat, tile });
+  // Try a self-draw win first; the engine throws SHAPE/FAAN if illegal,
+  // which we treat as "fall through to a normal discard". A predicate
+  // would be cleaner but `declareWin` does both shape + faan-min + score
+  // in one place and we'd otherwise duplicate that here.
+  try {
+    apply({ t: 'declareWin', seat, selfDraw: true });
     return true;
+  } catch (e) {
+    if (!(e instanceof IllegalActionError)) throw e;
   }
-  return false;
+  const tile = bot.pickDiscard({ state: getState(), seat });
+  apply({ t: 'discard', seat, tile });
+  return true;
 }
