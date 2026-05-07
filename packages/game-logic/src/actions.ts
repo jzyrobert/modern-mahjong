@@ -1,6 +1,6 @@
 import { applyClaim, hasMeaningfulClaim, legalClaimsFor, resolveClaims } from './claims.js';
 import type { Meld } from './hand.js';
-import { meldSize } from './hand.js';
+import { meldSize, removeFirstFace } from './hand.js';
 import { rollDice, shuffle } from './rng.js';
 import { scoreHand } from './scoring.js';
 import { isWinning } from './shanten.js';
@@ -376,6 +376,39 @@ function resolveAndApply(state: GameState, nowMs: number): { state: GameState; e
   const events: Event[] = [{ t: 'claimsResolved', result: resolution }];
   void nowMs;
 
+  // Promoted-gang rob window — special handling. Either nobody robs
+  // (gang finalizes as if no window had opened) or a robber wins the
+  // hand off the promotion tile (+1 fan for 搶槓).
+  if (state.pendingPromotedGang) {
+    const gang = state.pendingPromotedGang;
+    if (resolution.kind === 'pass') {
+      // Nobody could / nobody did rob — finalize the gang.
+      const finalized = finalizePromotion(state, gang.seat, gang.tile, gang.meldIdx);
+      return {
+        state: finalized,
+        events: [...events, { t: 'gangDeclared', seat: gang.seat, kind: 'promoted' }],
+      };
+    }
+    // resolution.kind === 'win'. The only legal claim during a rob
+    // window is `hu` (legalClaimsFor restricts non-pass to hu). The
+    // promotion tile is "robbed" out of the gang seat's hand and
+    // becomes the winning tile; the peng stays a peng (the gang
+    // never completed). `pendingPromotedGang` stays set on the
+    // state so `declareWin` can detect the rob and add 搶槓 to the
+    // breakdown.
+    const robbedHand = removeFirstFace(state.hands[gang.seat], gang.tile);
+    const stateAfterRob: GameState = {
+      ...state,
+      phase: 'turn',
+      hands: { ...state.hands, [gang.seat]: robbedHand },
+      pendingClaims: undefined,
+      turn: resolution.seat,
+      hasDrawn: false,
+    };
+    const finalized = declareWin(stateAfterRob, resolution.seat, false);
+    return { state: finalized.state, events: [...events, ...finalized.events] };
+  }
+
   if (resolution.kind === 'pass') {
     // Advance to next seat for a draw.
     const next = nextSeat(state.pendingClaims.discard.from);
@@ -463,10 +496,93 @@ function declareGangPromoted(
     (m) => m.kind === 'peng' && m.tiles.some((t) => sameFace(t, tile)),
   );
   if (meldIdx < 0) throw new IllegalActionError('MELD', 'no matching peng to promote');
-  const handIdx = state.hands[seat].findIndex((t) => sameFace(t, tile));
-  if (handIdx < 0) throw new IllegalActionError('TILE', 'no matching tile in hand');
+  if (!state.hands[seat].some((t) => sameFace(t, tile))) {
+    throw new IllegalActionError('TILE', 'no matching tile in hand');
+  }
 
+  // 搶槓 (Robbing the Kong): any non-gang seat whose concealed hand
+  // is one tile from a winning shape — and that tile happens to be
+  // the one being promoted — gets a window to declare hu before the
+  // gang completes. We open a claim window only if at least one
+  // opponent could rob; otherwise we skip the window entirely so
+  // multiplayer doesn't add a needless 3s pause to the gang.
+  const allowSpecial = state.rules.allowSevenPairs || state.rules.allowThirteenOrphans;
+  const robbers: Seat[] = [];
+  for (const s of SEATS) {
+    if (s === seat) continue;
+    if (
+      isWinning({
+        hand: [...state.hands[s], tile],
+        exposedMelds: state.melds[s].length,
+        allowSpecial,
+      })
+    ) {
+      robbers.push(s);
+    }
+  }
+
+  if (robbers.length === 0) {
+    return {
+      state: finalizePromotion(state, seat, tile, meldIdx),
+      events: [{ t: 'gangDeclared', seat, kind: 'promoted' }],
+    };
+  }
+
+  // Open the rob window. The promotion tile stays in the seat's
+  // hand (we'll either pop it on a successful rob, or move it into
+  // the meld on all-pass). Pre-pass every seat that *can't* rob so
+  // the window auto-resolves the moment the eligible robbers weigh
+  // in.
+  const now = Date.now();
+  const deadlineMs = now + state.rules.claimWindowMs;
+  const softExpiryMs =
+    state.rules.claimSoftWindowMs !== undefined ? now + state.rules.claimSoftWindowMs : undefined;
+  const hardDeadlineMs =
+    state.rules.claimHardWindowMs !== undefined ? now + state.rules.claimHardWindowMs : undefined;
+  const submitted: Partial<Record<Seat, Claim>> = {};
+  for (const s of SEATS) {
+    if (s === seat) continue;
+    if (!robbers.includes(s)) submitted[s] = { kind: 'pass' };
+  }
+  const pendingClaims: ClaimRound = {
+    discard: { tile, from: seat },
+    deadlineMs,
+    submitted,
+    ...(softExpiryMs !== undefined ? { softExpiryMs } : {}),
+    ...(hardDeadlineMs !== undefined ? { hardDeadlineMs } : {}),
+  };
+  const baseState: GameState = {
+    ...state,
+    phase: 'awaitingClaims',
+    lastDiscard: { tile, from: seat },
+    pendingClaims,
+    pendingPromotedGang: { seat, tile, meldIdx },
+  };
+  const events: Event[] = [{ t: 'claimsOpened', deadlineMs }];
+
+  // Solo: when no fairness gate is set AND every non-gang seat was
+  // pre-passed (= no robbers, but we already short-circuited above
+  // so this only fires when robbers exist *and* the rules opt out
+  // of the soft floor — robbers must still submit). Mirrors the
+  // discard reducer's auto-resolve fast path.
+  const allIn = SEATS.every((s) => s === seat || submitted[s]);
+  const noFairnessGate = hardDeadlineMs === undefined;
+  if (allIn && noFairnessGate) {
+    const resolved = resolveAndApply(baseState, now);
+    return { state: resolved.state, events: [...events, ...resolved.events] };
+  }
+  return { state: baseState, events };
+}
+
+/** Finalize a promoted gang: move the tile from hand to meld, draw a
+ *  replacement from the dead wall, bump the gang-replacement counter.
+ *  Used both by the no-robbers fast path in `declareGangPromoted` and
+ *  by the all-pass branch in `resolveAndApply` once the rob window
+ *  closes. */
+function finalizePromotion(state: GameState, seat: Seat, tile: Tile, meldIdx: number): GameState {
   const newHand = [...state.hands[seat]];
+  const handIdx = newHand.findIndex((t) => sameFace(t, tile));
+  if (handIdx < 0) throw new IllegalActionError('TILE', 'no matching tile in hand');
   const promoted = newHand.splice(handIdx, 1)[0]!;
   const oldMeld = state.melds[seat][meldIdx]!;
   const newMeld: Meld = {
@@ -479,16 +595,18 @@ function declareGangPromoted(
   const deadWall = [...state.deadWall];
   const replacement = deadWall.shift();
   if (replacement) newHand.push(replacement);
-
   return {
-    state: {
-      ...state,
-      hands: { ...state.hands, [seat]: newHand },
-      melds: { ...state.melds, [seat]: newMelds },
-      deadWall,
-      gangReplacementCount: state.gangReplacementCount + 1,
-    },
-    events: [{ t: 'gangDeclared', seat, kind: 'promoted' }],
+    ...state,
+    phase: 'turn',
+    turn: seat,
+    hasDrawn: true,
+    hands: { ...state.hands, [seat]: newHand },
+    melds: { ...state.melds, [seat]: newMelds },
+    deadWall,
+    gangReplacementCount: state.gangReplacementCount + 1,
+    pendingClaims: undefined,
+    pendingPromotedGang: undefined,
+    lastDiscard: undefined,
   };
 }
 
@@ -516,7 +634,13 @@ function declareWin(
   });
   if (!winning) throw new IllegalActionError('SHAPE', 'hand is not winning');
 
-  const score = scoreHand({ state, winner: seat, winningTile, selfDraw });
+  // 搶槓 (Robbing the Kong): when `pendingPromotedGang` is still set
+  // by the time we reach declareWin, the win came off a robbed
+  // promotion tile (resolveAndApply leaves the field intact for this
+  // exact detection). Self-draw can't be a rob — the gang seat
+  // can't claim against their own promotion — so we gate on `!selfDraw`.
+  const robbingKong = !selfDraw && state.pendingPromotedGang !== undefined;
+  const score = scoreHand({ state, winner: seat, winningTile, selfDraw, robbingKong });
   if (score.faan < state.rules.faanMin) {
     throw new IllegalActionError(
       'FAAN',
@@ -528,6 +652,7 @@ function declareWin(
     state: {
       ...state,
       phase: 'resolved',
+      pendingPromotedGang: undefined,
       lastResult: {
         kind: 'win',
         winner: seat,

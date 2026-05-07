@@ -459,6 +459,58 @@ describe('scoring — kong replacement (槓上開花 / 槓上槓)', () => {
   });
 });
 
+describe('scoring — robbing the kong (搶槓)', () => {
+  it('adds +1 fan when robbingKong is set on a ron win', () => {
+    const winningTile = suit('man', 5, 0);
+    const hand: Tile[] = [
+      suit('man', 1, 0),
+      suit('pin', 2, 0),
+      suit('pin', 3, 0),
+      suit('pin', 4, 0),
+      suit('sou', 5, 0),
+      suit('sou', 6, 0),
+      suit('sou', 7, 0),
+      suit('sou', 8, 0),
+      suit('sou', 9, 0),
+      honor('E', 0),
+      honor('E', 1),
+      suit('man', 1, 1),
+      suit('man', 1, 2),
+    ];
+    const state = stateWith(hand);
+    const r = scoreHand({
+      state,
+      winner: 0,
+      winningTile,
+      selfDraw: false,
+      robbingKong: true,
+    });
+    expect(r.breakdown.find((b) => b.name === '搶槓')?.faan).toBe(1);
+  });
+
+  it('omits the fan when robbingKong is unset (default ron)', () => {
+    const winningTile = suit('man', 5, 0);
+    const hand: Tile[] = [
+      suit('man', 1, 0),
+      suit('pin', 2, 0),
+      suit('pin', 3, 0),
+      suit('pin', 4, 0),
+      suit('sou', 5, 0),
+      suit('sou', 6, 0),
+      suit('sou', 7, 0),
+      suit('sou', 8, 0),
+      suit('sou', 9, 0),
+      honor('E', 0),
+      honor('E', 1),
+      suit('man', 1, 1),
+      suit('man', 1, 2),
+    ];
+    const state = stateWith(hand);
+    const r = scoreHand({ state, winner: 0, winningTile, selfDraw: false });
+    expect(r.breakdown.find((b) => b.name === '搶槓')).toBeUndefined();
+  });
+});
+
 describe('scoring — blessings (天/地/人糊)', () => {
   it('天糊: dealer self-draw on opening 14-tile hand → 13', () => {
     const winningTile = suit('man', 5, 0);

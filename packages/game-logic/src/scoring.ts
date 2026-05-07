@@ -18,6 +18,14 @@ export interface ScoringInput {
   winningTile: Tile;
   /** True if the player drew the winning tile themselves. */
   selfDraw: boolean;
+  /**
+   * True when the win came off robbing an opponent's promoted gang
+   * (搶槓). The engine sets this in `declareWin` based on whether
+   * `state.pendingPromotedGang` is still set at win time; callers
+   * outside the engine (e.g. tests, hypothetical replay tools)
+   * default to false. Adds +1 fan to the breakdown.
+   */
+  robbingKong?: boolean;
 }
 
 export interface ScoreResult {
@@ -35,7 +43,7 @@ export interface ScoreResult {
  * combining exposed melds with the implied concealed groups.
  */
 export function scoreHand(input: ScoringInput): ScoreResult {
-  const { state, winner, winningTile, selfDraw } = input;
+  const { state, winner, winningTile, selfDraw, robbingKong } = input;
   const concealed = [...state.hands[winner], winningTile];
   const exposed = state.melds[winner];
   const breakdown: FaanBreakdown[] = [];
@@ -47,6 +55,10 @@ export function scoreHand(input: ScoringInput): ScoreResult {
   }
 
   if (selfDraw) add('自摸', 'self-draw', 1, [winningTile]);
+  // 搶槓: the win came off another seat's about-to-land promoted
+  // gang. Always a ron (the gang seat held the tile), so it's
+  // mutually exclusive with 自摸.
+  if (robbingKong) add('搶槓', 'robbing the kong', 1, [winningTile]);
   // 門前清: no melds claimed from anyone, regardless of self-draw vs ron.
   // Stacks with 自摸 (a self-draw on a fully concealed hand scores both).
   if (exposed.length === 0) add('門前清', 'concealed hand', 1, [winningTile]);

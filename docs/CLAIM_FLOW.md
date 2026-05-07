@@ -35,6 +35,10 @@ waiting  →  dealing  →  turn  ⇄  awaitingClaims  →  resolved
 - **`resolved`** — `lastResult` is populated with `kind: 'win' | 'draw'`.
   Between hands the host issues `startHand` to advance.
 
+There is also a second flavour of `awaitingClaims` window, opened by
+`declareGangPromoted` instead of `discard`: see "Promoted gang +
+搶槓 (Robbing the Kong)" below.
+
 ## The claim window in detail
 
 ### 1. `discard` opens the window
@@ -128,6 +132,51 @@ hu and silently sat in `phase: 'turn'` waiting forever.
 | `applyClaim`                  | `claims.ts:applyClaim`                                |
 | `declareWin` (selfDraw=false) | `actions.ts:declareWin`                               |
 | `scoreHand` (faan + breakdown)| `scoring.ts:scoreHand`                                |
+
+## Promoted gang + 搶槓 (Robbing the Kong)
+
+When a seat declares `declareGangPromoted` — adding a 4th tile from hand
+to an existing exposed peng — the engine doesn't finalise the gang
+immediately. Instead it opens a second flavour of `awaitingClaims`
+window where **only `hu` is legal** (chi/peng/gang on a tile destined
+for someone else's gang is never legal in HK rules).
+
+Mechanically:
+
+- `declareGangPromoted` first scans every non-gang seat for a winning
+  shape on the promotion tile (`isWinning(hand + tile)`). If no seat
+  qualifies, the window is **skipped** and the gang finalises in one
+  step exactly like the pre-搶槓 engine — same single `gangDeclared`
+  event, same replacement-draw, same `gangReplacementCount++`.
+- If at least one seat *can* rob, the engine sets
+  `state.pendingPromotedGang = { seat, tile, meldIdx }`, transitions to
+  `phase: 'awaitingClaims'`, and emits `claimsOpened`. `lastDiscard`
+  carries the promotion tile + the gang seat as `from`. The promotion
+  tile **stays in the gang seat's hand** during the window — neither
+  the meld nor the dead wall has been touched yet.
+- `legalClaimsFor` returns `['pass']` for non-gang seats during a
+  promoted-gang window so `declareClaim` rejects any peng/chi/gang
+  attempt. `hu` (left to caller) is still allowed.
+- `resolveAndApply` branches on `state.pendingPromotedGang`:
+  - **All-pass** → `finalizePromotion` runs (move tile, draw
+    replacement, bump count), and a `gangDeclared` event is emitted
+    *now* (the gang only completed once the window closed cleanly).
+  - **`hu`** → the promotion tile is removed from the gang seat's
+    hand (it was robbed), `pendingClaims` is cleared but
+    `pendingPromotedGang` is **left set** so the chained
+    `declareWin(state, robber, false)` can detect the rob and add
+    `搶槓` (+1 fan) to the breakdown. The peng stays a peng — the
+    gang never completed. `declareWin` clears
+    `pendingPromotedGang` on its way to `phase: 'resolved'`.
+
+`scoreHand` adds `搶槓` (+1 fan) when its `robbingKong` input is true.
+The engine drives this off `state.pendingPromotedGang !== undefined &&
+!selfDraw` inside `declareWin`, so non-engine callers (tests,
+hypothetical replay tools) default to false unless they pass it
+explicitly.
+
+Concealed gang (`declareGangConcealed`) is **not** wrapped in a rob
+window — only the promoted-from-peng case is robbable in HK rules.
 
 ## Solo's quirks (recap)
 
