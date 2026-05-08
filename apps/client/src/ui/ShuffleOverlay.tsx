@@ -22,13 +22,26 @@ const RADIUS = 80;
  */
 export function ShuffleOverlay() {
   const seed = useGame((s) => s.state?.seed);
+  const phase = useGame((s) => s.state?.phase);
   const setShuffling = useGame((s) => s.setShuffling);
   const lastSeed = useRef<number | undefined>(undefined);
   const [active, setActive] = useState(false);
   const { fade, fadeOut } = useFadeInOut({ visible: active, durationMs: 200 });
 
   useEffect(() => {
-    if (seed === undefined) return;
+    // Reset the cached seed in two cases so a "fresh" first hand
+    // never trips the shuffle:
+    //   - `seed === undefined`: state was cleared (user left a
+    //     match). The overlay is mounted at the root layout so its
+    //     ref otherwise persists across leave / rejoin.
+    //   - `phase === 'waiting'`: lobby state. `emptyState`'s seed
+    //     is 0; without this gate, the lobby seed → first
+    //     `startHand` seed transition would always trigger a
+    //     shuffle on hand one of every match.
+    if (seed === undefined || phase === 'waiting') {
+      lastSeed.current = undefined;
+      return;
+    }
     if (lastSeed.current !== undefined && lastSeed.current !== seed) {
       setActive(true);
       setShuffling(true);
@@ -42,7 +55,7 @@ export function ShuffleOverlay() {
       return () => clearTimeout(timer);
     }
     lastSeed.current = seed;
-  }, [seed, setShuffling, fadeOut]);
+  }, [seed, phase, setShuffling, fadeOut]);
 
   if (!active) return null;
   return (
