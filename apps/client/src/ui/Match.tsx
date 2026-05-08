@@ -189,9 +189,9 @@ export function Match() {
                   maxWidth: 360,
                 }}
               >
-                This match isn't available anymore — practice and LAN matches don't survive a
-                reload, and the original session has ended. Head back to the main menu to start a
-                new one.
+                This match isn't available anymore — the original session has ended or the link
+                doesn't carry enough info to restore it. Head back to the main menu to start a new
+                one.
               </Text>
               <PrimaryButton onPress={() => router.replace('/')}>Back to main menu</PrimaryButton>
             </>

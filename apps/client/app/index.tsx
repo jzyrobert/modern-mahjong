@@ -28,14 +28,13 @@ export default function Index() {
 
 function matchUrlFor(info: ReturnType<typeof useTransport>['joinInfo']): string {
   if (!info) return '/match';
-  // Solo is intentionally not URL-encoded — the solo transport is an
-  // in-process bot loop with no server snapshot to restore from, so a
-  // reload can't recover the engine state. The match route's
-  // "stranded" screen is the right UX for that case (see
-  // `match-reload-stranded.spec.ts`). Only online + LAN, both backed
-  // by a server that rebinds by playerId, push reload-survivable
-  // params.
-  if (info.kind === 'solo') return '/match';
+  // Solo gets `?solo=1` so a reload of the route can tell the auto-
+  // rejoin effect (`app/match.tsx`) to look in localStorage for the
+  // persisted engine snapshot rather than fall through to the
+  // "stranded" recovery screen. The actual state-of-the-world lives
+  // in `mj.activeMatch.solo.v1` — the URL param is just a hint that
+  // there *should* be something to rebuild.
+  if (info.kind === 'solo') return '/match?solo=1';
   if (info.kind === 'online') return `/match?code=${encodeURIComponent(info.code)}`;
   // LAN — both code + hostUrl are required for a returning client to
   // re-establish the WS, so we encode both.
