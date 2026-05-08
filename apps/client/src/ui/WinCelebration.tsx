@@ -1,3 +1,4 @@
+import { tileId } from '@mahjong/game-logic';
 import { useEffect, useState } from 'react';
 import { Animated, Pressable, Text, View } from 'react-native';
 import { nameForSeat, useGame } from '../state/game';
@@ -20,14 +21,29 @@ export function WinCelebration() {
   const visibleForFade = isWin && !dismissed;
   const { fade, fadeOut } = useFadeInOut({ visible: visibleForFade });
 
+  // Content-derived key for the current result. Multiplayer hosts
+  // can mutate session settings (faanMin, etc.) while a result is
+  // still on screen between hands; each setRules broadcast hands
+  // the client a fresh `state` object whose `lastResult` is content-
+  // equal but reference-different. Keying the dismiss effect on
+  // `result` directly re-fired on every such delta and snapped
+  // `dismissed` back to false, re-opening the popup. The string
+  // key only changes when the underlying win actually changes.
+  const resultKey =
+    result?.kind === 'win'
+      ? `win:${result.winner}:${result.from}:${tileId(result.tile)}:${result.faan}:${result.selfDraw ? 1 : 0}`
+      : result?.kind === 'draw'
+        ? `draw:${result.reason}`
+        : null;
+
   useEffect(() => {
-    if (!result) return;
+    if (resultKey === null) return;
     setDismissed(false);
     const timer = setTimeout(() => {
       fadeOut(() => setDismissed(true));
     }, DISMISS_MS);
     return () => clearTimeout(timer);
-  }, [result, fadeOut]);
+  }, [resultKey, fadeOut]);
 
   const win = result && result.kind === 'win' ? result : null;
   if (!visibleForFade || !win) return null;
