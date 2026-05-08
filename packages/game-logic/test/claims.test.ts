@@ -127,6 +127,78 @@ describe('claim resolution', () => {
     expect(hasMeaningfulClaim(state, 1, m(5))).toBe(true);
   });
 
+  it('hasMeaningfulClaim returns false for a shape-winning hand below faanMin', () => {
+    // Seat 2's 13-tile hand completes on a 7p with the canonical 1-faan
+    // 平和 shape (all sequences, non-yakuhai pair):
+    //   1m2m3m 2m3m4m 4p5p6p 7s8s9s + 7p7p (pair completed by discard)
+    // Default `faanMin` is 3, so the hu would be silently demoted by
+    // `canFinalizeHu`. The bar must not render — otherwise the user
+    // sees CLAIM? with PASS as the only option (a forced no-op).
+    // Seat 2 (not next after the discarder at seat 0) so the
+    // 5-6-7p chi isn't legal — otherwise the legal-claim branch
+    // would short-circuit before the faan check matters.
+    const t = (suit: 'man' | 'pin' | 'sou', rank: number, copy = 0): Tile => ({
+      kind: 'suit',
+      suit,
+      rank: rank as 1,
+      copy: copy as 0,
+    });
+    const sevenP = t('pin', 7);
+    const state = pseudoAwaitingClaims({
+      hand: [
+        t('man', 1),
+        t('man', 2),
+        t('man', 3),
+        t('man', 2, 1),
+        t('man', 3, 1),
+        t('man', 4),
+        t('pin', 4),
+        t('pin', 5),
+        t('pin', 6),
+        t('sou', 7),
+        t('sou', 8),
+        t('sou', 9),
+        t('pin', 7, 1),
+      ],
+      lastDiscard: { tile: sevenP, from: 0 },
+      seat: 2,
+    });
+    expect(hasMeaningfulClaim(state, 2, sevenP)).toBe(false);
+  });
+
+  it('hasMeaningfulClaim returns true for a shape-winning hand at or above faanMin', () => {
+    // Same skeleton as above but with `faanMin: 1` so the 1-faan win
+    // is legal — the bar must surface so the user can declare Win.
+    const t = (suit: 'man' | 'pin' | 'sou', rank: number, copy = 0): Tile => ({
+      kind: 'suit',
+      suit,
+      rank: rank as 1,
+      copy: copy as 0,
+    });
+    const sevenP = t('pin', 7);
+    const baseline = pseudoAwaitingClaims({
+      hand: [
+        t('man', 1),
+        t('man', 2),
+        t('man', 3),
+        t('man', 2, 1),
+        t('man', 3, 1),
+        t('man', 4),
+        t('pin', 4),
+        t('pin', 5),
+        t('pin', 6),
+        t('sou', 7),
+        t('sou', 8),
+        t('sou', 9),
+        t('pin', 7, 1),
+      ],
+      lastDiscard: { tile: sevenP, from: 0 },
+      seat: 2,
+    });
+    const state = { ...baseline, rules: { ...baseline.rules, faanMin: 1 as const } };
+    expect(hasMeaningfulClaim(state, 2, sevenP)).toBe(true);
+  });
+
   it('property: highest-priority kind always wins', () => {
     const priority = { hu: 3, peng: 2, gang: 2, chi: 1, pass: 0 } as const;
     const claims: import('../src/index.js').Claim[] = [
@@ -173,13 +245,17 @@ function pseudoAwaitingClaims({
   lastDiscard: { tile: Tile; from: Seat };
   seat: Seat;
 }): GameState {
-  void seat;
+  // Wall has at least one tile so `scoreHand` doesn't trip the
+  // 海底撈月 (last-tile / sea-bottom) bonus. The exact contents
+  // don't matter — scoring only inspects `wall.length`.
+  const wallFiller = buildWall().slice(0, 1);
   return {
     ...emptyState(DEFAULT_RULES),
     phase: 'awaitingClaims',
     hands: { 0: [], 1: [], 2: [], 3: [], [seat]: hand } as GameState['hands'],
     lastDiscard,
     pendingClaims: { discard: lastDiscard, deadlineMs: 0, submitted: {} },
+    wall: wallFiller,
   };
 }
 
