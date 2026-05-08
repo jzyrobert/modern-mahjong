@@ -289,8 +289,89 @@ function hasNoConcealedRun(concealed: readonly Tile[]): boolean {
   return true;
 }
 
+/**
+ * 平和 (all sequences) requires the concealed tiles to decompose as
+ * (some number of chi runs) + (exactly one pair), with no triplets
+ * or gangs concealed. The previous implementation just checked for
+ * the absence of honors, which let `9p 9p 9p` and friends through —
+ * a concealed pung in an otherwise all-sequence hand would falsely
+ * score as 平和.
+ *
+ * Algorithm: try every face that appears at least twice as the pair,
+ * remove those two tiles, then verify the remainder is purely runs.
+ * Honors with count 0 or (the chosen pair's) 2 are fine; any honor
+ * triplet or unpaired honor leftover fails. For each suit, greedy
+ * extract runs from the lowest rank — at position i the count there
+ * must equal the number of runs starting at i, since runs from
+ * earlier positions have already been resolved when we processed
+ * those.
+ */
+type HonorFace = Extract<Tile, { kind: 'honor' }>['honor'];
+
 function hasOnlyRunsConcealed(concealed: readonly Tile[]): boolean {
-  if (concealed.some(isHonor)) return false;
+  const honorCounts = new Map<HonorFace, number>();
+  const suitCounts: Record<'man' | 'pin' | 'sou', number[]> = {
+    man: new Array(9).fill(0),
+    pin: new Array(9).fill(0),
+    sou: new Array(9).fill(0),
+  };
+  for (const t of concealed) {
+    if (t.kind === 'honor') {
+      honorCounts.set(t.honor, (honorCounts.get(t.honor) ?? 0) + 1);
+    } else {
+      suitCounts[t.suit][t.rank - 1]!++;
+    }
+  }
+  // Try every face with count >= 2 as the pair candidate.
+  for (const [honor, count] of honorCounts) {
+    if (count !== 2) continue;
+    if (decomposesIntoRunsAndOnePair(suitCounts, honorCounts, { kind: 'honor', honor })) {
+      return true;
+    }
+  }
+  for (const suit of ['man', 'pin', 'sou'] as const) {
+    for (let i = 0; i < 9; i++) {
+      if (suitCounts[suit][i]! < 2) continue;
+      if (
+        decomposesIntoRunsAndOnePair(suitCounts, honorCounts, { kind: 'suit', suit, rank: i + 1 })
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+type PairFace =
+  | { kind: 'honor'; honor: HonorFace }
+  | { kind: 'suit'; suit: 'man' | 'pin' | 'sou'; rank: number };
+
+function decomposesIntoRunsAndOnePair(
+  suitCounts: Record<'man' | 'pin' | 'sou', number[]>,
+  honorCounts: Map<HonorFace, number>,
+  pair: PairFace,
+): boolean {
+  // Honors must all be zero except the chosen pair (if any).
+  for (const [honor, c] of honorCounts) {
+    const isPair = pair.kind === 'honor' && pair.honor === honor;
+    if (c !== (isPair ? 2 : 0)) return false;
+  }
+  // For each suit, subtract the pair (if it lives here) then greedy-
+  // extract runs from the lowest rank. Caller ensures the chosen
+  // pair's count is >= 2, so the subtraction can't underflow.
+  for (const suit of ['man', 'pin', 'sou'] as const) {
+    const c = [...suitCounts[suit]];
+    if (pair.kind === 'suit' && pair.suit === suit) c[pair.rank - 1]! -= 2;
+    for (let i = 0; i < 7; i++) {
+      const runs = c[i]!;
+      if (runs === 0) continue;
+      c[i + 1]! -= runs;
+      c[i + 2]! -= runs;
+      c[i]! = 0;
+      if (c[i + 1]! < 0 || c[i + 2]! < 0) return false;
+    }
+    if (c[7]! !== 0 || c[8]! !== 0) return false;
+  }
   return true;
 }
 
