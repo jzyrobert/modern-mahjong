@@ -6,25 +6,30 @@ import type { WallSlot } from './wallLayout';
 
 /**
  * Visual wall edge for one seat. Renders the seat's still-undrawn
- * stacks as a single row of tile-backs whose perpendicular extent
- * encodes how many tiles each stack still holds — matching how a real
- * Hong Kong wall (17 stacks × 2 tiles per side) reads from the
- * player's seat, not as two separate rows of tiles but as one row of
- * variable-height stacks receding into the table as draws happen.
+ * stacks as a single row of 17, where each stack reads as a vertical
+ * tower of 1–2 tiles via a faux-3D treatment: a flat blue top face +
+ * a cream side-face strip on the felt-facing edge whose thickness
+ * encodes how tall the stack still is. This is the trick for "make a
+ * top-down 2D view feel slightly 3D" — pin a side-face sliver to the
+ * inner edge so the wall reads as rising up out of the felt instead
+ * of laying flat as a 17×2 grid of abutted tile-backs.
  *
- *   - Full stack (`tiles: 2`)  → tile-back at full 2-tile depth, with
- *     a faint seam hairline at the midpoint so the "two physical
- *     tiles abutting" reading isn't lost.
- *   - Half stack (`tiles: 1`)  → tile-back at one-tile depth, pinned
- *     to the inner edge (closer to the felt centre) — so the wall
- *     visibly recedes as the outer tiles get drawn.
- *   - Next-to-draw (`isNextDraw`) — same single-rectangle StackBack
- *     as the static stacks, wrapped in a pulse halo to signal "your
- *     draw". An invisible FlipBag-tracked `Tile` sits on the inner
- *     half so the wall→hand FLIP origin lands at the right place.
+ *   - Full stack (`tiles: 2`)  → top face + tall side-face strip
+ *     (`SIDE_FULL`) with a midpoint seam suggesting the join between
+ *     the two physically-stacked tiles.
+ *   - Half stack (`tiles: 1`)  → top face + half-thickness strip
+ *     (`SIDE_HALF`), no seam — the upper tile has been drawn so the
+ *     stack now stands one tile high.
+ *   - Next-to-draw (`isNextDraw`) — same composition, wrapped in a
+ *     pulse halo. An invisible FlipBag-tracked `Tile` sits on the
+ *     top face so the wall→hand FLIP origin matches the visible top
+ *     of the stack.
  *
- * The dead wall is not rendered separately — it's part of the
- * engine's state but never visible at a real table.
+ * Both 1- and 2-tile stacks share the same X/Y footprint on the felt
+ * (cells reserve `tileH + SIDE_FULL` perpendicular extent and align on
+ * the OUTER edge); only the side-face thickness changes. That mirrors
+ * the physics of a real wall, where a half-drawn stack stays in place
+ * but is shorter.
  */
 
 interface WallEdgeProps {
@@ -41,10 +46,9 @@ interface WallEdgeProps {
   /** Stack orientation — horizontal row (top/bottom seats) or vertical
    *  column (left/right seats). The pillbox direction flips to match. */
   orient: 'row' | 'column';
-  /** Which edge of each stack faces the felt centre. Half-drawn stacks
-   *  collapse against this edge so the wall reads as receding from the
-   *  middle, matching a physical 2-high row where the top tile is gone
-   *  but the bottom (closer to the centre) remains. */
+  /** Which edge of each stack faces the felt centre. The side-face
+   *  strip pins to this edge so the wall reads as having visible
+   *  vertical height from the centre's perspective. */
   innerEdge: 'start' | 'end';
   /** Tile width. Defaults to 14 — matches OppHandStrip face-down tiles. */
   tileW?: number;
@@ -64,10 +68,22 @@ const COLORS = {
   back1: '#7fa9c1',
   back2: '#5a8cb0',
   backEdge: 'rgba(50,80,100,0.6)',
+  // Cream/bone tone for the side face — matches the natural side of
+  // an unfinished mahjong tile. Slightly desaturated so it reads as a
+  // vertical face in indirect light vs. the blue top face in direct
+  // light.
+  sideFace: '#d6c290',
+  sideEdge: '#8a6e3c',
+  sideSeam: 'rgba(40,30,15,0.4)',
   drawHalo: '#dc9f4f',
   countBg: 'rgba(0,0,0,0.35)',
   countFg: 'rgba(255,255,255,0.85)',
 };
+
+/** Side-face strip thickness for a full 2-tile stack. */
+const SIDE_FULL = 6;
+/** Side-face strip thickness for a half-drawn 1-tile stack. */
+const SIDE_HALF = 3;
 
 export function WallEdge({
   slots,
@@ -122,13 +138,13 @@ export function WallEdge({
 
 interface SlotCellProps {
   slot: WallSlot;
-  /** Layout direction for the inner pillbox. 'row' = stacked horizontally
-   *  (used when the wall row is vertical); 'column' = stacked vertically
-   *  (used when the wall row is horizontal). */
+  /** Layout direction for the inner stack composition. 'column' for
+   *  top/bottom walls (top face above side face); 'row' for left/right
+   *  walls (top face beside side face). */
   stackDir: 'row' | 'column';
-  /** Which edge of the cell is "inner" (faces the felt centre). Half-
-   *  drawn stacks render their single tile against this edge, so a
-   *  phys-mahjong-style "the top one is gone" reads correctly. */
+  /** Which edge of the cell is "inner" (faces the felt centre). The
+   *  side face pins to this edge so the wall reads as standing up
+   *  off the felt with its felt-facing vertical face visible. */
   innerEdge: 'start' | 'end';
   tileW: number;
   tileH: number;
@@ -147,113 +163,122 @@ function SlotCell({
   onPress,
   enableDrawTestId,
 }: SlotCellProps) {
-  // Cell reserves the full 2-tile depth so wall stacks of varying height
-  // share a common outer baseline — matching a physical 17×2 row that
-  // recedes from the outer edge inward as tiles are drawn.
+  const isFull = slot.tiles === 2;
+  const sideExtent = isFull ? SIDE_FULL : SIDE_HALF;
+
+  // Cell reserves the FULL side-face thickness so 1- and 2-tile stacks
+  // share an outer baseline — their footprints on the felt are
+  // identical, only the visible "height" differs. The leftover gap on
+  // half-drawn stacks pads against the felt-centre side, so the
+  // visible top face stays anchored to the OUTER edge of the wall.
+  const cellExtent = tileH + SIDE_FULL;
   const containerStyle =
     stackDir === 'column'
-      ? { width: tileW, height: tileH * 2 + 1 }
-      : { width: tileW * 2 + 1, height: tileH };
-  const justifyContent = innerEdge === 'end' ? ('flex-end' as const) : ('flex-start' as const);
-  // Per-tile depth on the wall's perpendicular axis. h walls measure
-  // depth on the long face axis (`tileH=20`); v walls do it on the
-  // long axis after the per-seat 90° rotation (`tileW=20`). Both
-  // resolve to 20 px, so a 2-tile stack is `20+1+20 = 41` regardless
-  // of orientation, and a 1-tile residue is 20.
-  const perpUnit = stackDir === 'column' ? tileH : tileW;
-  const stackPerp = slot.tiles === 2 ? perpUnit * 2 + 1 : perpUnit;
-  const stackBackW = stackDir === 'column' ? tileW : stackPerp;
-  const stackBackH = stackDir === 'column' ? stackPerp : tileH;
+      ? { width: tileW, height: cellExtent }
+      : { width: cellExtent, height: tileH };
+
+  // Element order is always [top face, side face]; flexDirection flips
+  // when the inner edge is at the START of the cell so the side face
+  // still ends up on the felt-facing side.
+  const flexDirection: 'row' | 'row-reverse' | 'column' | 'column-reverse' =
+    stackDir === 'column'
+      ? innerEdge === 'end'
+        ? 'column'
+        : 'column-reverse'
+      : innerEdge === 'end'
+        ? 'row'
+        : 'row-reverse';
+
+  // Half-stack: pad the leftover space on the inner side so the top
+  // face stays at the outer edge.
+  const innerPad = SIDE_FULL - sideExtent;
+  const innerPadStyle =
+    innerPad > 0
+      ? stackDir === 'column'
+        ? { width: tileW, height: innerPad }
+        : { width: innerPad, height: tileH }
+      : null;
+
+  // `Tile`'s SVG locks to a 36×50 portrait viewBox; on row-stack walls
+  // (left/right seats) the landscape top face needs the FLIP-source
+  // Tile rotated 90° so its rect matches the visible top of the stack.
+  const landscape = stackDir === 'row';
 
   if (slot.isNextDraw && nextDrawTile) {
-    // Inner-half offset within the StackBack — anchors the invisible
-    // FLIP-source `<Tile>` so the wall→hand spring originates at the
-    // half closer to the felt centre. For 1-tile stacks the whole
-    // StackBack IS the inner half, so the offset collapses to (0,0).
-    const innerHalfOffset =
-      slot.tiles === 2
-        ? stackDir === 'column'
-          ? { left: 0, top: innerEdge === 'end' ? perpUnit + 1 : 0 }
-          : { left: innerEdge === 'end' ? perpUnit + 1 : 0, top: 0 }
-        : { left: 0, top: 0 };
-    // `Tile`'s SVG locks to a 36×50 portrait viewBox; on v walls the
-    // landscape slot needs the rendered Tile rotated 90° so the FLIP
-    // source rect aligns with the visible block.
-    const landscape = stackDir === 'row';
     return (
-      <View style={{ ...containerStyle, flexDirection: stackDir, justifyContent }}>
-        <Pressable
-          onPress={onPress}
-          testID={enableDrawTestId ? 'wall-draw-next' : undefined}
-          style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
-        >
-          <PulseHalo width={stackBackW} height={stackBackH}>
-            <StackBack
-              width={stackBackW}
-              height={stackBackH}
-              doubled={slot.tiles === 2}
-              stackDir={stackDir}
-            />
-            <View
-              style={{
-                position: 'absolute',
-                ...innerHalfOffset,
-                width: tileW,
-                height: tileH,
-                alignItems: 'center',
-                justifyContent: 'center',
-                opacity: 0,
-                pointerEvents: 'none',
-              }}
-            >
-              <View style={landscape ? { transform: [{ rotate: '90deg' }] } : undefined}>
-                <Tile
-                  tile={nextDrawTile}
-                  flipId={`tile-${tileId(nextDrawTile)}`}
-                  faceDown
-                  width={landscape ? tileH : tileW}
-                  height={landscape ? tileW : tileH}
-                />
+      <Pressable
+        onPress={onPress}
+        testID={enableDrawTestId ? 'wall-draw-next' : undefined}
+        style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
+      >
+        <PulseHalo width={containerStyle.width} height={containerStyle.height}>
+          <View style={{ ...containerStyle, flexDirection }}>
+            <View style={{ width: tileW, height: tileH }}>
+              <TopFace width={tileW} height={tileH} />
+              <View
+                style={{
+                  position: 'absolute',
+                  left: 0,
+                  top: 0,
+                  width: tileW,
+                  height: tileH,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  opacity: 0,
+                  pointerEvents: 'none',
+                }}
+              >
+                <View style={landscape ? { transform: [{ rotate: '90deg' }] } : undefined}>
+                  <Tile
+                    tile={nextDrawTile}
+                    flipId={`tile-${tileId(nextDrawTile)}`}
+                    faceDown
+                    width={landscape ? tileH : tileW}
+                    height={landscape ? tileW : tileH}
+                  />
+                </View>
               </View>
             </View>
-          </PulseHalo>
-        </Pressable>
-      </View>
+            <SideFace
+              stackDir={stackDir}
+              extent={sideExtent}
+              long={tileLong(stackDir, tileW, tileH)}
+              isFull={isFull}
+            />
+            {innerPadStyle ? <View style={innerPadStyle} /> : null}
+          </View>
+        </PulseHalo>
+      </Pressable>
     );
   }
 
-  // Static stack — one rectangle pinned to the inner edge, depth
-  // varying with the tile count. A subtle seam line at the midpoint
-  // of 2-tile stacks reads as the join between the two physical
-  // tiles without forking the wall into a second visual row.
   return (
-    <View
-      style={{
-        ...containerStyle,
-        flexDirection: stackDir,
-        justifyContent,
-      }}
-    >
-      <StackBack
-        width={stackBackW}
-        height={stackBackH}
-        doubled={slot.tiles === 2}
+    <View style={{ ...containerStyle, flexDirection }}>
+      <TopFace width={tileW} height={tileH} />
+      <SideFace
         stackDir={stackDir}
+        extent={sideExtent}
+        long={tileLong(stackDir, tileW, tileH)}
+        isFull={isFull}
       />
+      {innerPadStyle ? <View style={innerPadStyle} /> : null}
     </View>
   );
 }
 
+/** Long-axis length of the side-face strip — perpendicular to the
+ *  stack direction. For column stacks the strip runs across the
+ *  tile width; for row stacks it runs across the tile height. */
+function tileLong(stackDir: 'row' | 'column', tileW: number, tileH: number): number {
+  return stackDir === 'column' ? tileW : tileH;
+}
+
 /**
  * Pulse halo wrapper for the next-draw stack — gold border + scale +
- * opacity loop using RN core `Animated`. Replaces the framer-motion
- * `motion.span animate={PULSE_HALO_ANIMATE}` from the legacy build.
- * Compositor-only properties (transform + opacity), `useNativeDriver`
- * so the JS thread stays free during animation. Border + fill are
- * both absolute-positioned so the halo doesn't add to the wrapper's
- * layout box — the wall cell is fixed-size, and an outward border
- * would otherwise overflow into adjacent cells when the StackBack
- * fills the cell (2-tile stacks).
+ * opacity loop using RN core `Animated`. Border + fill are both
+ * absolute-positioned so the halo doesn't add to the wrapper's layout
+ * box; the fixed-size cell would otherwise overflow into adjacent
+ * cells when the stack fills it.
  */
 function PulseHalo({
   width,
@@ -297,30 +322,11 @@ function PulseHalo({
   );
 }
 
-interface StackBackProps {
-  width: number;
-  height: number;
-  /** True for full 2-tile stacks — adds a faint seam hairline through
-   *  the middle perpendicular to the stack height, suggesting two
-   *  physical tiles abutting without splitting the wall into two
-   *  visual rows. */
-  doubled: boolean;
-  /** Stack height direction — drives seam orientation. 'column' stacks
-   *  rise vertically (top/bottom walls), so the seam runs horizontally;
-   *  'row' stacks extend horizontally (left/right walls), seam runs
-   *  vertically. */
-  stackDir: 'row' | 'column';
-}
-
 /**
- * One wall stack rendered as a single tile-back rectangle. Sized by
- * the caller to either one-tile depth (half-drawn) or two-tile depth
- * (full); `doubled` overlays a hairline at the midpoint so a 2-tile
- * stack is distinguishable from a really-tall 1-tile stack at a
- * glance — without rendering as two separate tile-backs (which read
- * as a second wall row).
+ * Top face — the blue mahjong-back rectangle, the visible "lid" of
+ * the stack as seen from above.
  */
-function StackBack({ width, height, doubled, stackDir }: StackBackProps) {
+function TopFace({ width, height }: { width: number; height: number }) {
   return (
     <View
       style={{
@@ -331,30 +337,50 @@ function StackBack({ width, height, doubled, stackDir }: StackBackProps) {
         borderColor: COLORS.backEdge,
         borderWidth: 0.5,
       }}
+    />
+  );
+}
+
+interface SideFaceProps {
+  /** Layout direction of the cell. 'column' = top face above, side face
+   *  below (top/bottom walls); 'row' = top face left, side face right
+   *  (left/right walls). */
+  stackDir: 'row' | 'column';
+  /** Strip thickness along the stack-perpendicular axis — encodes how
+   *  tall the stack still is (full vs half). */
+  extent: number;
+  /** Strip length along the stack-perpendicular axis (tile width for
+   *  column stacks, tile height for row stacks). */
+  long: number;
+  /** True for full 2-tile stacks — adds a hairline at the strip's
+   *  midpoint suggesting the join between the two stacked tiles. */
+  isFull: boolean;
+}
+
+/**
+ * Side face — the cream/bone strip pinned to the felt-facing edge of
+ * the stack, suggesting the stack's vertical height as seen from a
+ * slightly-tilted top-down camera. For full 2-tile stacks, a midpoint
+ * seam reads as the join between the two physically-stacked tiles.
+ */
+function SideFace({ stackDir, extent, long, isFull }: SideFaceProps) {
+  const width = stackDir === 'column' ? long : extent;
+  const height = stackDir === 'column' ? extent : long;
+  const seamStyle =
+    stackDir === 'column'
+      ? ({ position: 'absolute', left: 0, right: 0, top: '50%', height: 0.5 } as const)
+      : ({ position: 'absolute', top: 0, bottom: 0, left: '50%', width: 0.5 } as const);
+  return (
+    <View
+      style={{
+        width,
+        height,
+        backgroundColor: COLORS.sideFace,
+        borderColor: COLORS.sideEdge,
+        borderWidth: 0.5,
+      }}
     >
-      {doubled ? (
-        <View
-          style={
-            stackDir === 'column'
-              ? {
-                  position: 'absolute',
-                  left: 0,
-                  right: 0,
-                  top: '50%',
-                  height: 1,
-                  backgroundColor: 'rgba(0,0,0,0.22)',
-                }
-              : {
-                  position: 'absolute',
-                  top: 0,
-                  bottom: 0,
-                  left: '50%',
-                  width: 1,
-                  backgroundColor: 'rgba(0,0,0,0.22)',
-                }
-          }
-        />
-      ) : null}
+      {isFull ? <View style={{ ...seamStyle, backgroundColor: COLORS.sideSeam }} /> : null}
     </View>
   );
 }
