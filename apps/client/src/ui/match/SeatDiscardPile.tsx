@@ -1,4 +1,4 @@
-import { type Tile as MTile, mulberry32, tileId } from '@mahjong/game-logic';
+import { type Tile as MTile, tileId } from '@mahjong/game-logic';
 import { View } from 'react-native';
 import { Tile } from '../Tile';
 
@@ -26,22 +26,16 @@ interface SeatDiscardPileProps {
 
 const HALO = '#dc9f4f';
 
-/** Max ± jitter in degrees added on top of the seat orientation, so each
- *  tile lands at a slightly different angle (a "toss" feel rather than
- *  perfect alignment). Same MAX_TOSS_DEGREES as legacy DiscardPile. */
-const MAX_TOSS_DEGREES = 8;
-
 /**
  * One seat's discard pile, oriented for that seat's view of the table.
  * Uses RN flex-wrap with a `maxWidth` (horizontal piles) or `maxHeight`
  * (vertical piles) constraint so a long run breaks into a second
- * row/column instead of spilling across the centre area. Per-tile
- * mulberry32 jitter on top of the seat rotation produces the "toss"
- * angles.
+ * row/column instead of spilling across the centre area. Tiles align
+ * cleanly to the grid — Riichi-style — so a row reads as a single
+ * scannable line of suits/ranks rather than a tossed pile.
  *
- * The latest claim-window tile gets a static gold border — kept
- * still here so it doesn't fight the per-seat colour underline that
- * lives one row down on the same tile.
+ * The latest claim-window tile gets a static gold border so it pops
+ * out of the otherwise uniform grid.
  */
 export function SeatDiscardPile({
   tiles,
@@ -53,10 +47,10 @@ export function SeatDiscardPile({
 }: SeatDiscardPileProps) {
   const isVertical = rotate === 90 || rotate === -90;
   const flexDirection = flowFor(rotate);
-  // 6 tiles per row/column matches the visual density of the legacy
-  // pile: 6 × (22+2gap) ≈ 144px row width, 6 × (30+2gap) ≈ 192px column
-  // height. Caller can override.
-  const extent = maxExtent ?? (isVertical ? 6 * (tileH + 2) : 6 * (tileW + 2));
+  // 6 tiles per row/column. Tighter 1px gap fits the Riichi-style
+  // grid: 6 × (22+1gap) = 138px row width, 6 × (30+1gap) = 186px column
+  // height. Caller can override via `maxExtent`.
+  const extent = maxExtent ?? (isVertical ? 6 * (tileH + 1) : 6 * (tileW + 1));
 
   // Empty discard piles render nothing — the felt centre stays clean
   // until someone actually plays. The dashes were left over from an
@@ -69,28 +63,23 @@ export function SeatDiscardPile({
       style={{
         flexDirection,
         flexWrap: 'wrap',
-        gap: 2,
+        gap: 1,
         justifyContent: 'flex-start',
         ...(isVertical ? { maxHeight: extent } : { maxWidth: extent }),
       }}
     >
       {tiles.map((t, i) => {
         const id = tileId(t);
-        const tossOffset = (mulberry32(id)() - 0.5) * 2 * MAX_TOSS_DEGREES;
-        const tileRotate = rotate + tossOffset;
         const isLatest = latestId === id;
-        // The latest-discard halo lives on this wrapper, but the
-        // wrapper has to share the tile's rotation otherwise the
-        // axis-aligned halo box drifts off the tilted tile (visible
-        // as a misaligned "frame" when toss-jitter is non-zero).
-        // Apply the rotate transform to the wrapper and stop passing
-        // it down to `<Tile>` so the two stay locked together.
+        // The wrapper carries the seat orientation so the halo box
+        // stays axis-aligned with the tile under it; `<Tile>`'s own
+        // `rotate` prop is left unset to avoid double-rotating.
         return (
           <View
             // biome-ignore lint/suspicious/noArrayIndexKey: discard order is append-only and stable; tiles can repeat (multiple of the same face) so we composite with i
             key={`${id}-${i}`}
             style={{
-              transform: [{ rotate: `${tileRotate}deg` }],
+              transform: [{ rotate: `${rotate}deg` }],
               ...(isLatest && {
                 boxShadow: `0px 0px 6px ${HALO}b3`,
                 borderWidth: 1.5,
