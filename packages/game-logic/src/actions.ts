@@ -681,25 +681,10 @@ function declareWin(
       // never went into a discard pile in the first place — it was
       // robbed straight out of the gang seat's hand by resolveAndApply.
       const fromPile = [...state.discards[fromSeat]];
-      let popIdx = -1;
-      for (let i = fromPile.length - 1; i >= 0; i--) {
-        if (sameFace(fromPile[i]!, winningTile)) {
-          popIdx = i;
-          break;
-        }
-      }
-      if (popIdx >= 0) fromPile.splice(popIdx, 1);
+      spliceLastMatch(fromPile, (t) => sameFace(t, winningTile));
       newDiscards = { ...state.discards, [fromSeat]: fromPile };
       const orderCopy = [...state.discardOrder];
-      let orderIdx = -1;
-      for (let i = orderCopy.length - 1; i >= 0; i--) {
-        const e = orderCopy[i]!;
-        if (e.from === fromSeat && sameFace(e.tile, winningTile)) {
-          orderIdx = i;
-          break;
-        }
-      }
-      if (orderIdx >= 0) orderCopy.splice(orderIdx, 1);
+      spliceLastMatch(orderCopy, (e) => e.from === fromSeat && sameFace(e.tile, winningTile));
       newDiscardOrder = orderCopy;
     }
   }
@@ -739,6 +724,16 @@ function declareWin(
 function countExposedGroups(melds: readonly Meld[]): number {
   // Each meld counts as one group for shanten purposes.
   return melds.length;
+}
+
+/** Remove the last element matching `pred` in-place. No-op if no match. */
+function spliceLastMatch<T>(arr: T[], pred: (t: T) => boolean): void {
+  for (let i = arr.length - 1; i >= 0; i--) {
+    if (pred(arr[i]!)) {
+      arr.splice(i, 1);
+      return;
+    }
+  }
 }
 
 /** Convenience invariant assertion used by tests. */

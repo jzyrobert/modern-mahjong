@@ -164,11 +164,17 @@ export function TransportProvider({ children }: { children: ReactNode }) {
     setStatus(next.status());
   }, []);
 
+  // Mirror the join descriptor into the React state (for URL
+  // reconstruction on reload) and the parallel ref (for callbacks that
+  // need the latest value without a useCallback dep churn).
+  const recordJoin = useCallback((info: JoinInfo) => {
+    reconnectInfoRef.current = info;
+    setJoinInfo(info);
+  }, []);
+
   const joinOnline = useCallback(
     (code: string) => {
-      const info: JoinInfo = { kind: 'online', code };
-      reconnectInfoRef.current = info;
-      setJoinInfo(info);
+      recordJoin({ kind: 'online', code });
       // Switching transports invalidates any prior solo snapshot — the
       // engine state about to arrive belongs to a different match.
       clearSoloSnapshot();
@@ -184,14 +190,12 @@ export function TransportProvider({ children }: { children: ReactNode }) {
         code,
       );
     },
-    [swap],
+    [swap, recordJoin],
   );
 
   const joinLan = useCallback(
     (hostUrl: string, code: string) => {
-      const info: JoinInfo = { kind: 'lan', hostUrl, code };
-      reconnectInfoRef.current = info;
-      setJoinInfo(info);
+      recordJoin({ kind: 'lan', hostUrl, code });
       clearSoloSnapshot();
       swap(
         createLanTransport({
@@ -203,13 +207,11 @@ export function TransportProvider({ children }: { children: ReactNode }) {
         code,
       );
     },
-    [swap],
+    [swap, recordJoin],
   );
 
   const joinSolo = useCallback(() => {
-    const info: JoinInfo = { kind: 'solo' };
-    reconnectInfoRef.current = info;
-    setJoinInfo(info);
+    recordJoin({ kind: 'solo' });
     // Fresh solo launch wipes any stale snapshot from a previous run —
     // the new transport will overwrite it on its first `setState` /
     // `setLobby`, but clearing first guarantees a hard reload between
@@ -225,13 +227,11 @@ export function TransportProvider({ children }: { children: ReactNode }) {
       }),
       'SOLO',
     );
-  }, [swap]);
+  }, [swap, recordJoin]);
 
   const joinSoloResume = useCallback(
     (snap: SoloSnapshot) => {
-      const info: JoinInfo = { kind: 'solo' };
-      reconnectInfoRef.current = info;
-      setJoinInfo(info);
+      recordJoin({ kind: 'solo' });
       // Hydrate the zustand store BEFORE creating the transport so the
       // first render after route mount already has the engine + lobby
       // wired up. Without this, the brief gap between transport creation
@@ -250,7 +250,7 @@ export function TransportProvider({ children }: { children: ReactNode }) {
         'SOLO',
       );
     },
-    [swap],
+    [swap, recordJoin],
   );
 
   const seatBot = useCallback(
@@ -277,17 +277,24 @@ export function TransportProvider({ children }: { children: ReactNode }) {
     [transport],
   );
 
-  const leave = useCallback(() => {
-    transport?.send({ t: 'leave' });
-    transport?.close();
+  // Tear down all local transport / match state. Used by both an
+  // explicit `leave()` and the HOST_LEFT server message, which both
+  // need to reset the same fields plus reset the engine store.
+  const teardown = useCallback(() => {
     setTransport(null);
     setMatchCode(null);
     setStatus('idle');
     reconnectInfoRef.current = null;
     setJoinInfo(null);
-    clearSoloSnapshot();
     reset();
-  }, [transport, reset]);
+  }, [reset]);
+
+  const leave = useCallback(() => {
+    transport?.send({ t: 'leave' });
+    transport?.close();
+    clearSoloSnapshot();
+    teardown();
+  }, [transport, teardown]);
 
   const send = useCallback(
     (action: Action) => {
@@ -338,23 +345,25 @@ export function TransportProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!transport) return;
     return transport.onMessage((m: ServerMessage) => {
+      // Any inbound that mutates engine / lobby state needs to flow back
+      // into the solo snapshot so a reload of `/match?solo=1` rebuilds
+      // from up-to-date data. Online + LAN are no-ops in
+      // `persistSoloIfActive` (it gates on `kind === 'solo'`).
+      const isStateUpdate = m.t === 'state' || m.t === 'delta' || m.t === 'lobby';
       switch (m.t) {
         case 'state':
           setState(m.state, m.you);
-          persistSoloIfActive();
-          return;
+          break;
         case 'delta':
           setState(m.state);
           appendEvents(m.events);
           for (const event of m.events) {
             if (event.t === 'discarded') playDiscard();
           }
-          persistSoloIfActive();
-          return;
+          break;
         case 'lobby':
           setLobby(m);
-          persistSoloIfActive();
-          return;
+          break;
         case 'error': {
           console.warn('server error:', m.code, m.detail);
           // Flash a "claim missed" toast when a `PHASE` error follows
@@ -378,12 +387,7 @@ export function TransportProvider({ children }: { children: ReactNode }) {
           // screen.
           if (m.code === 'HOST_LEFT') {
             transport?.close();
-            setTransport(null);
-            setMatchCode(null);
-            setStatus('idle');
-            reconnectInfoRef.current = null;
-            setJoinInfo(null);
-            reset();
+            teardown();
             router.replace('/');
           }
           return;
@@ -394,6 +398,7 @@ export function TransportProvider({ children }: { children: ReactNode }) {
           pushChat({ from: m.from, text: m.text, ts: m.ts });
           return;
       }
+      if (isStateUpdate) persistSoloIfActive();
     });
   }, [
     transport,
@@ -402,7 +407,7 @@ export function TransportProvider({ children }: { children: ReactNode }) {
     appendEvents,
     pushChat,
     flashClaimMissed,
-    reset,
+    teardown,
     persistSoloIfActive,
   ]);
 
