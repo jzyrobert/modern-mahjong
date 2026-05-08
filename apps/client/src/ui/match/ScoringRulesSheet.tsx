@@ -72,7 +72,7 @@ export function ScoringRulesSheet({ open, onClose }: ScoringRulesSheetProps) {
         </Text>
         {CATEGORY_ORDER.map((cat) => {
           const rules = SCORING_RULES.filter((r) => r.category === cat).sort(
-            (a, b) => b.faan - a.faan,
+            (a, b) => a.faan - b.faan,
           );
           if (rules.length === 0) return null;
           const meta = CATEGORY_LABEL[cat];
