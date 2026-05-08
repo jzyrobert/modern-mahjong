@@ -42,6 +42,47 @@ describe('reducer — startHand', () => {
   });
 });
 
+describe('reducer — turn deadline', () => {
+  it('startHand stamps turnDeadlineMs when the rule is on (DEFAULT_RULES)', () => {
+    const before = Date.now();
+    const s = startedHand();
+    const after = Date.now();
+    expect(s.turnDeadlineMs).toBeDefined();
+    // Deadline lands somewhere in the [before, after] window plus the
+    // 20s default; widen the upper bound by a few ms for slow CI.
+    if (s.turnDeadlineMs !== undefined) {
+      expect(s.turnDeadlineMs).toBeGreaterThanOrEqual(before + DEFAULT_RULES.turnTimeoutMs);
+      expect(s.turnDeadlineMs).toBeLessThanOrEqual(after + DEFAULT_RULES.turnTimeoutMs + 5);
+    }
+  });
+
+  it('startHand leaves turnDeadlineMs undefined when the rule is disabled', () => {
+    const init = emptyState({ ...DEFAULT_RULES, turnTimeoutMs: 0 });
+    const { state } = reduce(init, { t: 'startHand', seed: 1, dealer: 0 });
+    expect(state.turnDeadlineMs).toBeUndefined();
+  });
+
+  it('discard clears turnDeadlineMs for the awaitingClaims phase', () => {
+    const s = startedHand();
+    const { state: afterDiscard } = reduce(s, { t: 'discard', seat: 0, tile: s.hands[0][0]! });
+    expect(afterDiscard.phase).toBe('awaitingClaims');
+    expect(afterDiscard.turnDeadlineMs).toBeUndefined();
+  });
+
+  it('all-pass resolution arms a fresh turnDeadlineMs for the next seat', () => {
+    let s = startedHand();
+    s = reduce(s, { t: 'discard', seat: 0, tile: s.hands[0][0]! }).state;
+    s = reduce(s, { t: 'declareClaim', seat: 1, claim: { kind: 'pass' } }).state;
+    s = reduce(s, { t: 'declareClaim', seat: 2, claim: { kind: 'pass' } }).state;
+    s = reduce(s, { t: 'declareClaim', seat: 3, claim: { kind: 'pass' } }).state;
+    const before = Date.now();
+    const { state: afterResolve } = reduce(s, { t: 'resolveClaims', nowMs: before });
+    expect(afterResolve.phase).toBe('turn');
+    expect(afterResolve.turn).toBe(1);
+    expect(afterResolve.turnDeadlineMs).toBe(before + DEFAULT_RULES.turnTimeoutMs);
+  });
+});
+
 describe('reducer — discard / claim', () => {
   it('discard moves a tile from hand to discards and opens claim window', () => {
     const s = startedHand();

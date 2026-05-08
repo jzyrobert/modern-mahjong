@@ -40,6 +40,10 @@ interface DesktopShellProps {
   /** Whole seconds remaining until `hardDeadlineMs` once `softExpiryMs`
    *  is crossed. Null before windup or in solo. */
   drawCountdown: number | null;
+  /** Whole seconds remaining until the active seat's
+   *  `state.turnDeadlineMs`. Null when the rule is off, in solo, or
+   *  outside `phase: 'turn'`. */
+  turnCountdown: number | null;
   latestDiscardId: number | null;
   dealerName: string;
   drawnTileId: number | null;
@@ -96,6 +100,7 @@ export function DesktopShell(props: DesktopShellProps) {
     nextDrawerSeat,
     aboutToDraw,
     drawCountdown,
+    turnCountdown,
     latestDiscardId,
     dealerName,
     drawnTileId,
@@ -194,6 +199,7 @@ export function DesktopShell(props: DesktopShellProps) {
           nextDrawerSeat={nextDrawerSeat}
           aboutToDraw={aboutToDraw}
           drawCountdown={drawCountdown}
+          turnCountdown={turnCountdown}
         />
 
         {hasClaimOption ? <ClaimBar onAction={onAction} seat={seat} /> : null}

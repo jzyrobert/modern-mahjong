@@ -84,17 +84,17 @@ const DEFAULT_BOT_SKILLS: [BotKind, BotKind, BotKind] = ['heuristic', 'simple', 
  * disconnect plumbing — there's no one else to coordinate with.
  */
 export function createSoloTransport(opts: SoloOptions): Transport & SoloTransportControls {
-  // Solo strips the soft-expiry / hard-fallback windows so the user
-  // gets infinite time to claim. The engine's `declareClaim` checks
-  // `hardDeadlineMs === undefined` to skip the fairness gate, and
-  // resolves on all-submitted regardless of `deadlineMs`.
-  const {
-    claimSoftWindowMs: _omitSoft,
-    claimHardWindowMs: _omitHard,
-    ...soloRules
-  } = DEFAULT_RULES;
+  // Solo strips the soft-expiry / hard-fallback claim windows so the
+  // user gets infinite time to claim, and zeroes the per-turn timer
+  // so the engine never stamps `state.turnDeadlineMs` (the server
+  // alarm path doesn't run in solo, but the client UI gates the
+  // countdown badge on the field too — leaving it set would render a
+  // misleading "Ns left" against an in-process bot loop with no
+  // timeout enforcement).
+  const { claimSoftWindowMs: _omitSoft, claimHardWindowMs: _omitHard, ...rest } = DEFAULT_RULES;
   void _omitSoft;
   void _omitHard;
+  const soloRules = { ...rest, turnTimeoutMs: 0 };
   let state: GameState = opts.seedState ?? emptyState(soloRules);
   const initialSkills = opts.botSkills ?? DEFAULT_BOT_SKILLS;
   const botKinds: Record<1 | 2 | 3, BotKind> = {

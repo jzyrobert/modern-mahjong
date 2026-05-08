@@ -58,6 +58,10 @@ interface DesktopTableProps {
   aboutToDraw?: boolean;
   /** Whole seconds until the hard fallback. Renders next to the cue. */
   drawCountdown?: number | null;
+  /** Whole seconds until `state.turnDeadlineMs` for the active seat —
+   *  rendered as "Ns left" inside `PlayerBadge`. Null when the rule
+   *  is off, in solo, or outside `phase: 'turn'`. */
+  turnCountdown?: number | null;
 }
 
 const COLORS = {
@@ -101,6 +105,7 @@ export function DesktopTable({
   nextDrawerSeat,
   aboutToDraw,
   drawCountdown,
+  turnCountdown,
 }: DesktopTableProps) {
   const feltSkin = useGame((s) => s.settings.felt);
   const felt = FELT_SKINS[feltSkin];
@@ -164,18 +169,20 @@ export function DesktopTable({
 
   const renderOpp = (p: SeatPlacement, orient: 'horizontal' | 'vertical') => {
     const isNextDrawer = aboutToDraw === true && nextDrawerSeat === p.seat;
+    const isActive = turn === p.seat && phase === 'turn';
     return (
       <OpponentArea
         key={p.seat}
         placement={p}
         handCount={hands[p.seat].length}
         melds={melds[p.seat]}
-        isActive={turn === p.seat && phase === 'turn'}
+        isActive={isActive}
         lobby={lobby}
         score={scoreboard[p.seat]}
         orient={orient}
         aboutToDraw={isNextDrawer}
         drawCountdown={isNextDrawer ? (drawCountdown ?? null) : null}
+        turnCountdown={isActive ? (turnCountdown ?? null) : null}
         dims={dims}
       />
     );
@@ -252,6 +259,9 @@ export function DesktopTable({
           aboutToDraw === true && nextDrawerSeat === byPos.bottom.seat
             ? (drawCountdown ?? null)
             : null
+        }
+        turnCountdown={
+          turn === byPos.bottom.seat && phase === 'turn' ? (turnCountdown ?? null) : null
         }
       />
     </View>
@@ -378,6 +388,7 @@ interface OpponentAreaProps {
   orient: 'horizontal' | 'vertical';
   aboutToDraw: boolean;
   drawCountdown: number | null;
+  turnCountdown: number | null;
   dims: DesktopDims;
 }
 
@@ -391,6 +402,7 @@ function OpponentArea({
   orient,
   aboutToDraw,
   drawCountdown,
+  turnCountdown,
   dims,
 }: OpponentAreaProps) {
   return (
@@ -410,6 +422,7 @@ function OpponentArea({
         isActive={isActive}
         aboutToDraw={aboutToDraw}
         drawCountdown={drawCountdown}
+        turnCountdown={turnCountdown}
       />
       <FaceDownStrip count={handCount} orient={orient} dims={dims} />
       {melds.length > 0 ? (
@@ -435,6 +448,7 @@ interface MyAreaProps {
   isActive: boolean;
   aboutToDraw: boolean;
   drawCountdown: number | null;
+  turnCountdown: number | null;
 }
 
 function MyArea({
@@ -451,6 +465,7 @@ function MyArea({
   isActive,
   aboutToDraw,
   drawCountdown,
+  turnCountdown,
 }: MyAreaProps) {
   return (
     <View style={{ alignItems: 'center', gap: 6 }}>
@@ -465,6 +480,7 @@ function MyArea({
           isActive={isActive}
           aboutToDraw={aboutToDraw}
           drawCountdown={drawCountdown}
+          turnCountdown={turnCountdown}
         />
         <SortPicker mode={sortMode} onChange={onSortModeChange} />
       </View>

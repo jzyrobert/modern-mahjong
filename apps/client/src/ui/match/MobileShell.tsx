@@ -40,6 +40,9 @@ interface MobileShellProps {
   aboutToDraw: boolean;
   /** Whole seconds until `hardDeadlineMs` once `softExpiryMs` is crossed. */
   drawCountdown: number | null;
+  /** Whole seconds until `state.turnDeadlineMs` for the active seat —
+   *  `null` when the rule is off, in solo, or outside `phase: 'turn'`. */
+  turnCountdown: number | null;
   latestDiscardId: number | null;
   dealerName: string;
   drawnTileId: number | null;
@@ -106,6 +109,7 @@ export function MobileShell(props: MobileShellProps) {
     nextDrawerSeat,
     aboutToDraw,
     drawCountdown,
+    turnCountdown,
     latestDiscardId,
     dealerName,
     drawnTileId,
@@ -195,6 +199,7 @@ export function MobileShell(props: MobileShellProps) {
                 drawCountdown={
                   aboutToDraw && nextDrawerSeat === byPosition.top.seat ? drawCountdown : null
                 }
+                turnCountdown={turnCountdown}
               />
               <SeatRow
                 placement={byPosition.left}
@@ -204,6 +209,7 @@ export function MobileShell(props: MobileShellProps) {
                 drawCountdown={
                   aboutToDraw && nextDrawerSeat === byPosition.left.seat ? drawCountdown : null
                 }
+                turnCountdown={turnCountdown}
               />
               <SeatRow
                 placement={byPosition.right}
@@ -213,6 +219,7 @@ export function MobileShell(props: MobileShellProps) {
                 drawCountdown={
                   aboutToDraw && nextDrawerSeat === byPosition.right.seat ? drawCountdown : null
                 }
+                turnCountdown={turnCountdown}
               />
             </View>
           ) : null}
@@ -338,9 +345,17 @@ interface SeatRowProps {
   lobby: LobbyState | null;
   aboutToDraw: boolean;
   drawCountdown: number | null;
+  turnCountdown: number | null;
 }
 
-function SeatRow({ placement, state, lobby, aboutToDraw, drawCountdown }: SeatRowProps) {
+function SeatRow({
+  placement,
+  state,
+  lobby,
+  aboutToDraw,
+  drawCountdown,
+  turnCountdown,
+}: SeatRowProps) {
   const isActive = state.turn === placement.seat && state.phase === 'turn';
   return (
     <OppHandStrip
@@ -351,6 +366,7 @@ function SeatRow({ placement, state, lobby, aboutToDraw, drawCountdown }: SeatRo
       isActive={isActive}
       aboutToDraw={aboutToDraw}
       drawCountdown={drawCountdown}
+      turnCountdown={isActive ? turnCountdown : null}
     />
   );
 }
