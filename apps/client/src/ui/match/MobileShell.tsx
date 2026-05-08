@@ -171,6 +171,7 @@ export function MobileShell(props: MobileShellProps) {
               dealerName={dealerName}
               wallCount={state.wall.length}
               isMyTurn={myTurn}
+              turnCountdown={myTurn ? turnCountdown : null}
               onPress={() => setPlayersOpen(true)}
               trailing={
                 <ChromeTrailing

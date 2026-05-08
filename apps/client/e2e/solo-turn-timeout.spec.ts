@@ -22,7 +22,7 @@ import { expect, test } from './_helpers';
 
 const TEST_SEED = 5;
 
-test('solo: turn timeout shows the countdown and auto-discards a tile', async ({ page }) => {
+async function bootstrapSolo(page: import('@playwright/test').Page) {
   // Cut the timer well below the 5s lobby minimum so the test runs
   // in seconds. Bot pace stays at 0 so other seats process instantly.
   await page.addInitScript(() => {
@@ -33,6 +33,10 @@ test('solo: turn timeout shows the countdown and auto-discards a tile', async ({
   await page.addInitScript((seed) => {
     (globalThis as { __MAHJONG_TEST_SEED__?: number }).__MAHJONG_TEST_SEED__ = seed;
   }, TEST_SEED);
+}
+
+test('solo: turn timeout shows the countdown and auto-discards a tile', async ({ page }) => {
+  await bootstrapSolo(page);
 
   await page.goto('/');
   await page.getByRole('button', { name: 'Play vs bots' }).click();
@@ -56,4 +60,28 @@ test('solo: turn timeout shows the countdown and auto-discards a tile', async ({
       message: 'User hand never auto-discarded after the turn timer expired',
     })
     .toBeLessThan(initialTiles);
+});
+
+// On mobile (`MobileShell`) the user has no PlayerBadge — the bottom
+// felt is just `Hand` + sort picker. The only place a self-turn
+// countdown can surface is the top-of-screen `GameStatusBar` pill;
+// verify it actually does on a phone-class viewport.
+test.describe('mobile', () => {
+  test.use({ viewport: { width: 412, height: 906 } });
+
+  test('solo: countdown surfaces in the GameStatusBar when it is the user’s turn', async ({
+    page,
+  }) => {
+    await bootstrapSolo(page);
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Play vs bots' }).click();
+    await page.getByRole('button', { name: 'Start match' }).click();
+    await expect(page.getByTestId('own-hand-tile').nth(13)).toBeVisible({ timeout: 10_000 });
+
+    // The "Ns left" text is rendered inside `GameStatusBar` (the
+    // pill at the top with wind / dealer / wall / your-turn dot).
+    // On mobile no other surface shows the countdown for the user's
+    // own seat, so this is the load-bearing check.
+    await expect(page.getByText(/\d+s left/).first()).toBeVisible({ timeout: 5_000 });
+  });
 });
