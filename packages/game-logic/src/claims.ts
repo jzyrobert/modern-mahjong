@@ -1,4 +1,5 @@
 import type { Meld } from './hand.js';
+import { scoreHand } from './scoring.js';
 import { isWinning } from './shanten.js';
 import type { Claim, ClaimRound, GameState, Seat } from './state.js';
 import { nextSeat } from './state.js';
@@ -98,14 +99,20 @@ export function legalClaimsFor(state: GameState, seat: Seat): Claim['kind'][] {
 
 /**
  * Whether `seat` has any non-trivial action against the given discard:
- * a legal chi/peng/gang, OR a winning hand on `hu`. Mirrors what
- * `Match.hasClaimOption` uses to decide whether to render the
- * `ClaimBar` — exposing it from the engine keeps client + server +
- * engine pre-pass logic in lockstep.
+ * a legal chi/peng/gang, OR a winning hand on `hu` that also meets
+ * `state.rules.faanMin`. Mirrors what `Match.hasClaimOption` uses to
+ * decide whether to render the `ClaimBar` — exposing it from the
+ * engine keeps client + server + engine pre-pass logic in lockstep.
  *
  * Used by the `discard` reducer to pre-fill `submitted` with passes
  * for seats that can't act, so the hand resolves the moment all
  * "interesting" seats have weighed in (often 0–1 in practice).
+ *
+ * The faan-min check matters: `canFinalizeHu` in the actions reducer
+ * silently demotes any hu submission below the configured floor to
+ * a pass, so a shape-wise winning seat with insufficient faan can't
+ * legally claim. Without this guard, those seats would surface a
+ * ClaimBar with PASS as the only enabled button — a forced no-op.
  */
 export function hasMeaningfulClaim(state: GameState, seat: Seat, discard: Tile): boolean {
   if (state.phase !== 'awaitingClaims' || !state.lastDiscard) return false;
@@ -115,19 +122,28 @@ export function hasMeaningfulClaim(state: GameState, seat: Seat, discard: Tile):
   // legalClaimsFor returns just ['pass'] above, so the standard
   // "legal includes a non-pass" branch never fires here.
   if (state.pendingPromotedGang) {
-    return isWinning({
-      hand: [...state.hands[seat], discard],
-      exposedMelds: state.melds[seat].length,
-      allowSpecial,
-    });
+    return canScoredHu(state, seat, discard, allowSpecial);
   }
   const legal = legalClaimsFor(state, seat);
   if (legal.some((k) => k !== 'pass')) return true;
-  return isWinning({
+  return canScoredHu(state, seat, discard, allowSpecial);
+}
+
+function canScoredHu(state: GameState, seat: Seat, discard: Tile, allowSpecial: boolean): boolean {
+  const winnable = isWinning({
     hand: [...state.hands[seat], discard],
     exposedMelds: state.melds[seat].length,
     allowSpecial,
   });
+  if (!winnable) return false;
+  const score = scoreHand({
+    state,
+    winner: seat,
+    winningTile: discard,
+    selfDraw: false,
+    robbingKong: state.pendingPromotedGang !== undefined,
+  });
+  return score.faan >= state.rules.faanMin;
 }
 
 export function canChi(hand: readonly Tile[], discard: Tile): boolean {
