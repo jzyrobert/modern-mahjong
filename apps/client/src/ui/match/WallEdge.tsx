@@ -172,7 +172,15 @@ function SlotCell({
   // identical, only the visible "height" differs. The leftover gap on
   // half-drawn stacks pads against the felt-centre side, so the
   // visible top face stays anchored to the OUTER edge of the wall.
-  const cellExtent = tileH + SIDE_FULL;
+  //
+  // The side face extends the cell along the stack-perpendicular axis:
+  // for `column` stacks (top/bottom walls) that's the cell's HEIGHT
+  // (top face's long axis = `tileH`); for `row` stacks (left/right
+  // walls, top face is rotated 90°) that's the cell's WIDTH (top
+  // face's long axis = `tileW`). Using the wrong axis sized the
+  // vertical-wall cells too narrow, so the side face overflowed past
+  // the cell edge and got hidden under the felt centre square.
+  const cellExtent = (stackDir === 'column' ? tileH : tileW) + SIDE_FULL;
   const containerStyle =
     stackDir === 'column'
       ? { width: tileW, height: cellExtent }
