@@ -139,98 +139,103 @@ export function DesktopShell(props: DesktopShellProps) {
   ) : null;
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.cream }} edges={['top']}>
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{
-          padding: 16,
-          gap: 12,
-          maxWidth: 1320,
-          alignSelf: 'center',
-          width: '100%',
-        }}
-      >
-        <View
-          style={{
-            flexDirection: 'row',
-            flexWrap: 'wrap',
-            alignItems: 'flex-start',
-            justifyContent: 'space-between',
-            gap: 8,
+    // Outer cream View so the background extends past the bottom
+    // safe-area inset (iPad home indicator on tablet-width desktop
+    // shells); same pattern as `MobileShell` and `Lobby`.
+    <View style={{ flex: 1, backgroundColor: COLORS.cream }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.cream }} edges={['top']}>
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{
+            padding: 16,
+            gap: 12,
+            maxWidth: 1320,
+            alignSelf: 'center',
+            width: '100%',
           }}
         >
-          <GameStatusBar
-            prevailing={state.prevailingWind}
-            dealerName={dealerName}
-            wallCount={state.wall.length}
-            isMyTurn={myTurn}
-            onPress={() => setPlayersOpen(true)}
+          <View
+            style={{
+              flexDirection: 'row',
+              flexWrap: 'wrap',
+              alignItems: 'flex-start',
+              justifyContent: 'space-between',
+              gap: 8,
+            }}
+          >
+            <GameStatusBar
+              prevailing={state.prevailingWind}
+              dealerName={dealerName}
+              wallCount={state.wall.length}
+              isMyTurn={myTurn}
+              onPress={() => setPlayersOpen(true)}
+            />
+            <TopBar
+              matchCode={matchCode}
+              viewers={lobby?.viewers ?? null}
+              onOpenMenu={() => setMenuOpen(true)}
+            />
+          </View>
+
+          <Scoreboard />
+
+          <DesktopTable
+            mySeat={seat}
+            dealer={state.dealer}
+            turn={state.turn}
+            phase={state.phase}
+            hands={state.hands}
+            melds={state.melds}
+            discards={state.discards}
+            scoreboard={state.scoreboard}
+            lobby={lobby}
+            ownHandClickable={myTurn && state.hasDrawn ? onTileTap : undefined}
+            sortMode={sortMode}
+            onSortModeChange={onSortModeChange}
+            drawnTileId={drawnTileId}
+            hintTileId={hintTileId}
+            latestDiscardId={latestDiscardId}
+            centerHud={centerHud}
+            liveWallCount={state.wall.length}
+            nextDrawTile={state.wall.length > 0 ? state.wall[state.wall.length - 1]! : null}
+            breakPosition={state.openingRolls?.breakPosition}
+            onDrawNext={needsDraw ? () => onAction({ t: 'draw', seat }) : undefined}
+            nextDrawerSeat={nextDrawerSeat}
+            aboutToDraw={aboutToDraw}
+            drawCountdown={drawCountdown}
+            turnCountdown={turnCountdown}
           />
-          <TopBar
-            matchCode={matchCode}
-            viewers={lobby?.viewers ?? null}
-            onOpenMenu={() => setMenuOpen(true)}
+
+          {hasClaimOption ? <ClaimBar onAction={onAction} seat={seat} /> : null}
+
+          <View style={{ alignItems: 'center', paddingVertical: 4 }}>
+            <ChatBar onSend={onSendChat} />
+          </View>
+
+          {state.lastResult ? (
+            <ResultPanel onAction={onAction} mySeat={seat} isHost={isHost} />
+          ) : null}
+
+          <ChatBubbles seatToPosition={seatToPosition} />
+          <ClaimMissedToast />
+          <MatchModals
+            mySeat={seat}
+            settingsOpen={settingsOpen}
+            setSettingsOpen={setSettingsOpen}
+            logOpen={logOpen}
+            setLogOpen={setLogOpen}
+            referenceOpen={referenceOpen}
+            setReferenceOpen={setReferenceOpen}
+            scoringOpen={scoringOpen}
+            setScoringOpen={setScoringOpen}
+            playersOpen={playersOpen}
+            setPlayersOpen={setPlayersOpen}
+            menuOpen={menuOpen}
+            setMenuOpen={setMenuOpen}
+            onLeave={onLeave}
           />
-        </View>
-
-        <Scoreboard />
-
-        <DesktopTable
-          mySeat={seat}
-          dealer={state.dealer}
-          turn={state.turn}
-          phase={state.phase}
-          hands={state.hands}
-          melds={state.melds}
-          discards={state.discards}
-          scoreboard={state.scoreboard}
-          lobby={lobby}
-          ownHandClickable={myTurn && state.hasDrawn ? onTileTap : undefined}
-          sortMode={sortMode}
-          onSortModeChange={onSortModeChange}
-          drawnTileId={drawnTileId}
-          hintTileId={hintTileId}
-          latestDiscardId={latestDiscardId}
-          centerHud={centerHud}
-          liveWallCount={state.wall.length}
-          nextDrawTile={state.wall.length > 0 ? state.wall[state.wall.length - 1]! : null}
-          breakPosition={state.openingRolls?.breakPosition}
-          onDrawNext={needsDraw ? () => onAction({ t: 'draw', seat }) : undefined}
-          nextDrawerSeat={nextDrawerSeat}
-          aboutToDraw={aboutToDraw}
-          drawCountdown={drawCountdown}
-          turnCountdown={turnCountdown}
-        />
-
-        {hasClaimOption ? <ClaimBar onAction={onAction} seat={seat} /> : null}
-
-        <View style={{ alignItems: 'center', paddingVertical: 4 }}>
-          <ChatBar onSend={onSendChat} />
-        </View>
-
-        {state.lastResult ? (
-          <ResultPanel onAction={onAction} mySeat={seat} isHost={isHost} />
-        ) : null}
-
-        <ChatBubbles seatToPosition={seatToPosition} />
-        <ClaimMissedToast />
-        <MatchModals
-          mySeat={seat}
-          settingsOpen={settingsOpen}
-          setSettingsOpen={setSettingsOpen}
-          logOpen={logOpen}
-          setLogOpen={setLogOpen}
-          referenceOpen={referenceOpen}
-          setReferenceOpen={setReferenceOpen}
-          scoringOpen={scoringOpen}
-          setScoringOpen={setScoringOpen}
-          playersOpen={playersOpen}
-          setPlayersOpen={setPlayersOpen}
-          menuOpen={menuOpen}
-          setMenuOpen={setMenuOpen}
-          onLeave={onLeave}
-        />
-      </ScrollView>
-    </SafeAreaView>
+        </ScrollView>
+      </SafeAreaView>
+    </View>
   );
 }
