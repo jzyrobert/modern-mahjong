@@ -77,6 +77,15 @@ jobs:
       # dashboard with the default `production` branch, deploys would
       # silently land on a *preview* URL and the project root would never
       # update. See docs/DEPLOY.md → "Production URL".
+      #
+      # `--commit-message` pins to the head commit's SHA rather than
+      # letting wrangler auto-detect the message via `git log`. The auto
+      # path intermittently trips Cloudflare's API with `code: 8000111
+      # Invalid commit message, it must be a valid UTF-8 string` even
+      # for messages that ARE valid UTF-8 (em-dashes, etc.). Pinning to
+      # the SHA — guaranteed pure ASCII, always available on push and
+      # workflow_dispatch — sidesteps the detection bug entirely; the
+      # SHA is what the Pages dashboard links back to GitHub with anyway.
       - name: Deploy Pages
         uses: cloudflare/wrangler-action@v3
         with:
@@ -85,7 +94,7 @@ jobs:
           workingDirectory: apps/server
           packageManager: pnpm
           preCommands: pnpm exec wrangler pages project create modern-mahjong --production-branch=main || true
-          command: pages deploy ../client/dist --project-name=modern-mahjong --branch=main --commit-dirty=true
+          command: pages deploy ../client/dist --project-name=modern-mahjong --branch=main --commit-dirty=true --commit-message=${{ github.event.head_commit.id || github.sha }}
 
       - name: Print production URL
         run: |
