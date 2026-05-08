@@ -171,6 +171,69 @@ describe('MatchSession — host gating', () => {
   });
 });
 
+describe('MatchSession — explicit leave', () => {
+  it('host leave with another connected guest promotes the guest to host immediately', () => {
+    const s = new MatchSession();
+    helloAs(s, 'c0', 'p0', 'Host');
+    helloAs(s, 'c1', 'p1', 'Guest');
+    seatPassiveBots(s, [2, 3]);
+    const out = s.applyClientMessage('c0', { t: 'leave' });
+    // Lobby broadcast carries the new host.
+    const lobby = pickBroadcasts(out).find((m) => m.t === 'lobby');
+    expect(lobby?.t === 'lobby' && lobby.host).toBe('p1');
+    // Leaver's connection is closed.
+    expect(out.some((o) => o.kind === 'closeConnection' && o.connectionId === 'c0')).toBe(true);
+    // The promoted host can immediately use a host-only action without a
+    // HOST error (the leaver's seat is freed, so `startHand` would still
+    // hit SEATS — `setRules` is the cleaner host-only check here).
+    const setRules = s.applyClientMessage('c1', {
+      t: 'action',
+      action: { t: 'setRules', rules: { faanMin: 0 } },
+    });
+    expect(pickSends(setRules, 'c1').filter((m) => m.t === 'error')).toHaveLength(0);
+  });
+
+  it('host leave with no other humans dissolves the match (broadcasts HOST_LEFT, closes all)', () => {
+    const s = new MatchSession();
+    helloAs(s, 'c0', 'p0', 'Host');
+    seatPassiveBots(s, [1, 2, 3]);
+    // Add a spectator so we can verify they get kicked too.
+    helloAs(s, 'cSpec', 'pSpec');
+    const out = s.applyClientMessage('c0', { t: 'leave' });
+    const errs = pickBroadcasts(out).filter((m) => m.t === 'error');
+    expect(errs[0]?.t === 'error' && errs[0].code).toBe('HOST_LEFT');
+    // Spectator's connection is closed by the dissolve path.
+    expect(out.some((o) => o.kind === 'closeConnection' && o.connectionId === 'cSpec')).toBe(true);
+    // Leaver's own connection is also closed.
+    expect(out.some((o) => o.kind === 'closeConnection' && o.connectionId === 'c0')).toBe(true);
+  });
+
+  it('guest leave frees their seat fully so a new player can take it without grace', () => {
+    const s = new MatchSession();
+    helloAs(s, 'c0', 'p0', 'Host');
+    helloAs(s, 'c1', 'p1', 'Guest');
+    s.applyClientMessage('c1', { t: 'leave' });
+    // A brand-new player can immediately claim the freed seat (no auto-bot
+    // / disconnectedSinceMs reservation that would push them to spectator).
+    const out = helloAs(s, 'cNew', 'pNew');
+    expect(stateYouFor(out, 'cNew')).toBe(1);
+    // Host is unchanged.
+    const lobby = pickBroadcasts(out).find((m) => m.t === 'lobby');
+    expect(lobby?.t === 'lobby' && lobby.host).toBe('p0');
+  });
+
+  it('spectator leave just closes the connection (no seat / host churn)', () => {
+    const s = new MatchSession();
+    for (let i = 0; i < 4; i++) helloAs(s, `c${i}`, `p${i}`);
+    helloAs(s, 'cSpec', 'pSpec');
+    const out = s.applyClientMessage('cSpec', { t: 'leave' });
+    expect(out.some((o) => o.kind === 'closeConnection' && o.connectionId === 'cSpec')).toBe(true);
+    // No HOST_LEFT broadcast, no host change.
+    const errs = pickBroadcasts(out).filter((m) => m.t === 'error');
+    expect(errs).toHaveLength(0);
+  });
+});
+
 describe('MatchSession — disconnect + reconnect grace', () => {
   it('installs a passive stand-in bot when a seated player disconnects', () => {
     const s = new MatchSession();

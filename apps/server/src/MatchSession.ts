@@ -376,12 +376,68 @@ export class MatchSession {
       case 'chat':
         return this.onChat(connectionId, msg.text);
       case 'leave':
-        return [{ kind: 'closeConnection', connectionId }];
+        return this.onLeave(connectionId);
       case 'seatBot':
         return this.onSeatBot(connectionId, msg.seat, msg.kind);
       case 'unseatBot':
         return this.onUnseatBot(connectionId, msg.seat);
     }
+  }
+
+  /**
+   * Explicit leave from a seated player or spectator. Differs from
+   * `detachConnection` (the dropped-WS path):
+   *   - Frees the seat completely — no auto-bot, no grace window. The
+   *     leaver is intentionally walking away, so a new joiner should be
+   *     able to take their seat immediately rather than waiting 60s for
+   *     the grace timer to evict an absent player.
+   *   - If the leaver was the host, host is reassigned to the next
+   *     connected human right now (instead of after grace expiry, which
+   *     left guests staring at a frozen lobby for a minute).
+   *   - If the leaver was the host AND no other humans remain, the
+   *     match is dissolved: every remaining connection (spectators,
+   *     bot-only seats can't act on their own) gets a `HOST_LEFT` error
+   *     and is closed, matching the user expectation that "host left,
+   *     party's over."
+   */
+  private onLeave(connectionId: string): Outbound[] {
+    const out: Outbound[] = [];
+    let leaverSeat: Seat | null = null;
+    for (const s of SEATS) {
+      if (this.seats[s].connectionId === connectionId) {
+        leaverSeat = s;
+        break;
+      }
+    }
+    if (leaverSeat !== null) {
+      const wasHost = this.seats[leaverSeat].playerId === this.hostPlayerId;
+      this.seats[leaverSeat] = emptySeat();
+      if (wasHost) {
+        const nextHost = this.firstConnectedPlayerId();
+        this.hostPlayerId = nextHost;
+        if (nextHost === null) {
+          // Match dissolved — broadcast the reason then close every
+          // remaining connection. The leaver's connection is closed
+          // separately below; their client already initiated `leave()`
+          // so the inbound HOST_LEFT is harmless noise.
+          out.push({ kind: 'broadcast', msg: { t: 'error', code: 'HOST_LEFT' } });
+          for (const s of SEATS) {
+            const other = this.seats[s].connectionId;
+            if (other !== null && other !== connectionId) {
+              out.push({ kind: 'closeConnection', connectionId: other });
+            }
+          }
+          for (const specConn of this.spectators) {
+            if (specConn !== connectionId) {
+              out.push({ kind: 'closeConnection', connectionId: specConn });
+            }
+          }
+        }
+      }
+      out.push(this.lobbyBroadcast());
+    }
+    out.push({ kind: 'closeConnection', connectionId });
+    return out;
   }
 
   private onHello(
