@@ -50,6 +50,15 @@ interface SoloOptions {
    *  mix `[heuristic, simple, passive]` so callers that haven't
    *  opted into custom skills get the same behaviour as before. */
   botSkills?: [BotKind, BotKind, BotKind];
+  /** Optional pre-built engine state to start the loop from — used
+   *  by the solo reload-survival path (see
+   *  `apps/client/src/state/solo-persist.ts`). When provided, the
+   *  transport starts in whatever phase the snapshot was in
+   *  (`'turn'`, `'awaitingClaims'`, etc.); the bot loop runs once
+   *  on emit so a bot whose turn was in flight at reload time picks
+   *  back up where it left off. Defaults to the empty waiting-room
+   *  state for fresh "Play vs bots" launches. */
+  seedState?: GameState;
 }
 
 /** Surface the live solo transport supports — extends the base
@@ -86,7 +95,7 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
   } = DEFAULT_RULES;
   void _omitSoft;
   void _omitHard;
-  let state: GameState = emptyState(soloRules);
+  let state: GameState = opts.seedState ?? emptyState(soloRules);
   const initialSkills = opts.botSkills ?? DEFAULT_BOT_SKILLS;
   const botKinds: Record<1 | 2 | 3, BotKind> = {
     1: initialSkills[0],
@@ -262,6 +271,11 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
     if (closed) return;
     emit({ t: 'state', state, you: 0 });
     emitLobby();
+    // Resume case: if the seed state says it's already a bot's turn (or
+    // a claim window is open with bots to submit), kick the loop so the
+    // match picks up where it left off. No-op for fresh launches —
+    // `emptyState` parks at `phase: 'waiting'` until `startHand`.
+    runBots();
   }, 0);
 
   return {

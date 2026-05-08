@@ -16,6 +16,7 @@ import { AppState, type AppStateStatus } from 'react-native';
 import { getDisplayName, getPlayerId } from '../identity';
 import { playDiscard } from '../sound';
 import { useGame } from '../state/game';
+import { type SoloSnapshot, clearSoloSnapshot, saveSoloSnapshot } from '../state/solo-persist';
 import { type SoloTransportControls, createSoloTransport } from './solo-transport';
 import {
   type Transport,
@@ -48,6 +49,10 @@ interface TransportContextValue {
   joinOnline: (code: string) => void;
   joinLan: (hostUrl: string, code: string) => void;
   joinSolo: () => void;
+  /** Reload-survival entry point: seed a fresh solo transport with the
+   *  persisted engine snapshot read from `mj.activeMatch.solo.v1`.
+   *  See `apps/client/app/match.tsx`. */
+  joinSoloResume: (snap: SoloSnapshot) => void;
   leave: () => void;
   send: (action: Action) => void;
   sendChat: (text: string) => void;
@@ -164,6 +169,9 @@ export function TransportProvider({ children }: { children: ReactNode }) {
       const info: JoinInfo = { kind: 'online', code };
       reconnectInfoRef.current = info;
       setJoinInfo(info);
+      // Switching transports invalidates any prior solo snapshot — the
+      // engine state about to arrive belongs to a different match.
+      clearSoloSnapshot();
       const host = resolveServerHost();
       setResolvedHost(host);
       swap(
@@ -184,6 +192,7 @@ export function TransportProvider({ children }: { children: ReactNode }) {
       const info: JoinInfo = { kind: 'lan', hostUrl, code };
       reconnectInfoRef.current = info;
       setJoinInfo(info);
+      clearSoloSnapshot();
       swap(
         createLanTransport({
           hostUrl,
@@ -201,6 +210,12 @@ export function TransportProvider({ children }: { children: ReactNode }) {
     const info: JoinInfo = { kind: 'solo' };
     reconnectInfoRef.current = info;
     setJoinInfo(info);
+    // Fresh solo launch wipes any stale snapshot from a previous run —
+    // the new transport will overwrite it on its first `setState` /
+    // `setLobby`, but clearing first guarantees a hard reload between
+    // `joinSolo()` and the first emit lands on the lobby, not the
+    // previous match's mid-hand state.
+    clearSoloSnapshot();
     const skills = useGame.getState().settings.botSkills;
     swap(
       createSoloTransport({
@@ -211,6 +226,32 @@ export function TransportProvider({ children }: { children: ReactNode }) {
       'SOLO',
     );
   }, [swap]);
+
+  const joinSoloResume = useCallback(
+    (snap: SoloSnapshot) => {
+      const info: JoinInfo = { kind: 'solo' };
+      reconnectInfoRef.current = info;
+      setJoinInfo(info);
+      // Hydrate the zustand store BEFORE creating the transport so the
+      // first render after route mount already has the engine + lobby
+      // wired up. Without this, the brief gap between transport creation
+      // and the deferred `setTimeout(() => emit(state), 0)` flashes the
+      // "stranded" recovery screen.
+      useGame.getState().setState(snap.state, snap.you);
+      useGame.getState().setLobby(snap.lobby);
+      const skills = useGame.getState().settings.botSkills;
+      swap(
+        createSoloTransport({
+          playerId: getPlayerId(),
+          displayName: getDisplayName(),
+          botSkills: skills,
+          seedState: snap.state,
+        }),
+        'SOLO',
+      );
+    },
+    [swap],
+  );
 
   const seatBot = useCallback(
     (seat: Seat, kind: BotKind) => {
@@ -244,6 +285,7 @@ export function TransportProvider({ children }: { children: ReactNode }) {
     setStatus('idle');
     reconnectInfoRef.current = null;
     setJoinInfo(null);
+    clearSoloSnapshot();
     reset();
   }, [transport, reset]);
 
@@ -279,6 +321,19 @@ export function TransportProvider({ children }: { children: ReactNode }) {
     });
   }, [transport]);
 
+  // Mirror the live solo engine to localStorage so a reload of
+  // `/match?solo=1` can rebuild the bot loop from the persisted
+  // snapshot — see `apps/client/src/state/solo-persist.ts` and
+  // `apps/client/app/match.tsx`. Online + LAN have their own
+  // server-side rebind (PR #211 + the `joinOnline`/`joinLan`
+  // recovery in `match.tsx`), so they skip this entirely.
+  const persistSoloIfActive = useCallback(() => {
+    if (reconnectInfoRef.current?.kind !== 'solo') return;
+    const { state, lobby, you } = useGame.getState();
+    if (state === null || lobby === null || you === null) return;
+    saveSoloSnapshot({ state, lobby, you });
+  }, []);
+
   // Wire inbound messages into the zustand store + side-effects.
   useEffect(() => {
     if (!transport) return;
@@ -286,6 +341,7 @@ export function TransportProvider({ children }: { children: ReactNode }) {
       switch (m.t) {
         case 'state':
           setState(m.state, m.you);
+          persistSoloIfActive();
           return;
         case 'delta':
           setState(m.state);
@@ -293,9 +349,11 @@ export function TransportProvider({ children }: { children: ReactNode }) {
           for (const event of m.events) {
             if (event.t === 'discarded') playDiscard();
           }
+          persistSoloIfActive();
           return;
         case 'lobby':
           setLobby(m);
+          persistSoloIfActive();
           return;
         case 'error': {
           console.warn('server error:', m.code, m.detail);
@@ -337,7 +395,16 @@ export function TransportProvider({ children }: { children: ReactNode }) {
           return;
       }
     });
-  }, [transport, setState, setLobby, appendEvents, pushChat, flashClaimMissed, reset]);
+  }, [
+    transport,
+    setState,
+    setLobby,
+    appendEvents,
+    pushChat,
+    flashClaimMissed,
+    reset,
+    persistSoloIfActive,
+  ]);
 
   // AppState foreground re-join. We don't proactively close the socket
   // on background — short screen locks shouldn't kick the user off
@@ -373,6 +440,7 @@ export function TransportProvider({ children }: { children: ReactNode }) {
       joinOnline,
       joinLan,
       joinSolo,
+      joinSoloResume,
       leave,
       send,
       sendChat,
@@ -388,6 +456,7 @@ export function TransportProvider({ children }: { children: ReactNode }) {
       joinOnline,
       joinLan,
       joinSolo,
+      joinSoloResume,
       leave,
       send,
       sendChat,
