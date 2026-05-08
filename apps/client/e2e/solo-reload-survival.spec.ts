@@ -89,3 +89,23 @@ test('solo: bot loop resumes after reload — user discard hands turn back off',
     })
     .toBeLessThan(initial);
 });
+
+test('solo: dismissed dice ceremony stays dismissed after reload', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Play vs bots' }).click();
+  await page.getByRole('button', { name: 'Start match' }).click();
+
+  // Dismiss the opening dice ceremony explicitly (tap-to-dismiss).
+  await expect(page.locator('text=Opening rolls').first()).toBeVisible({ timeout: 5_000 });
+  await page.locator('text=Tap anywhere to dismiss').click();
+  await expect(page.locator('text=Opening rolls').first()).toBeHidden({ timeout: 3_000 });
+
+  // Reload the page. The engine snapshot is restored from
+  // localStorage, but the dice ceremony's dismissed-seed must also
+  // round-trip — otherwise the overlay re-pops on every reload.
+  await page.reload();
+  await expect(page.getByTestId('own-hand-tile').first()).toBeVisible({ timeout: 10_000 });
+  // Wait long enough that any racey re-trigger would have rendered.
+  await page.waitForTimeout(800);
+  await expect(page.locator('text=Opening rolls').first()).toBeHidden();
+});

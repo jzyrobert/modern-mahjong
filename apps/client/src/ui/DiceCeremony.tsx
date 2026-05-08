@@ -41,6 +41,36 @@ const PIPS: Record<number, [number, number][]> = {
   ],
 };
 
+// Persist the most recently dismissed `state.seed` so a page reload
+// (in solo, online, or LAN) honours the user's dismissal instead of
+// re-popping the overlay. New hands generate fresh seeds via
+// `randomSeed()`, so a different seed on the next match still
+// triggers the ceremony — only the exact seed the user dismissed is
+// suppressed.
+const DISMISSED_STORAGE_KEY = 'mj.dismissedDiceSeed.v1';
+
+function readDismissedSeed(): number | null {
+  if (typeof localStorage === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(DISMISSED_STORAGE_KEY);
+    if (raw === null) return null;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeDismissedSeed(seed: number): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(DISMISSED_STORAGE_KEY, String(seed));
+  } catch {
+    /* storage full / disabled — silent skip; worst case the overlay
+       reappears on the next reload. */
+  }
+}
+
 /**
  * Opening-rolls overlay. Triggered by a fresh
  * `state.openingRolls`. Auto-dismisses after `DISMISS_MS`; tap anywhere
@@ -55,8 +85,10 @@ export function DiceCeremony() {
   // Key dismissal by `state.seed` rather than a boolean — JSON.parse
   // on every server delta produces a fresh `openingRolls` reference,
   // so a bare `dismissed` boolean reset by `useEffect([rolls])` would
-  // retrigger the ceremony on every action.
-  const [dismissedSeed, setDismissedSeed] = useState<number | null>(null);
+  // retrigger the ceremony on every action. Lazy-init from
+  // localStorage so reloads (solo / online / LAN) honour the
+  // previous dismissal.
+  const [dismissedSeed, setDismissedSeed] = useState<number | null>(() => readDismissedSeed());
   const open = !!rolls && seed !== undefined && seed !== dismissedSeed;
   // `useFadeInOut` honours `useGame.settings.animations` — when the
   // user has reduced-motion on the overlay snaps in / out instead of
@@ -67,7 +99,10 @@ export function DiceCeremony() {
   useEffect(() => {
     if (!open || seed === undefined) return;
     const timer = setTimeout(() => {
-      fadeOut(() => setDismissedSeed(seed));
+      fadeOut(() => {
+        setDismissedSeed(seed);
+        writeDismissedSeed(seed);
+      });
     }, DISMISS_MS);
     return () => clearTimeout(timer);
   }, [open, seed, fadeOut]);
@@ -79,7 +114,10 @@ export function DiceCeremony() {
   return (
     <Pressable
       onPress={() => {
-        fadeOut(() => setDismissedSeed(seed));
+        fadeOut(() => {
+          setDismissedSeed(seed);
+          writeDismissedSeed(seed);
+        });
       }}
       style={{
         position: 'absolute',
