@@ -259,9 +259,32 @@ export function DesktopTable({
 // effective wall length stays the same. With 17 stacks of `WALL_TILE_W`
 // + 16 × 1px gaps, every wall is exactly `SQUARE_SIZE` long, so the
 // inner discard square fits perfectly inside the four walls.
-const WALL_TILE_W = 14;
-const WALL_TILE_H = 20;
+//
+// Bumped from 14×20 → 18×26 to expand the inner felt: the previous
+// 254×254 square stopped fitting four ~18-tile discard piles plus
+// the centre HUD around round 14, with the bottom pile spilling
+// onto the felt border. 18×26 produces a 322×322 inner square,
+// enough headroom for full-length piles + a small HUD column with
+// the same 17-stack wall geometry.
+const WALL_TILE_W = 18;
+const WALL_TILE_H = 26;
 const SQUARE_SIZE = 17 * WALL_TILE_W + 16;
+// Inner content area inside `CenterDiscards` after `padding: 12`
+// gutters on each axis. Used to derive the per-pile max extents
+// below so each pile knows how flat it should wrap.
+const INNER_CONTENT = SQUARE_SIZE - 24;
+// Side-pile cell width. Wider than half-of-`INNER_CONTENT` minus the
+// HUD lane would allow, but the HUD lane is empty 99 % of the time
+// (only renders during a tsumo opportunity), so giving the side
+// piles real breathing room is the better default.
+const SIDE_CELL_WIDTH = 130;
+// Top/bottom horizontal piles wrap into the full inner width.
+const TOP_BOTTOM_PILE_MAX_W = INNER_CONTENT;
+// Left/right vertical piles cap their height so a long run wraps
+// into a flatter shape. 4 stacked tiles ≈ 128 px (32 px per tile-
+// plus-gap), matching the height available between the top + bottom
+// piles in `CenterDiscards`.
+const SIDE_PILE_MAX_H = 4 * 32;
 
 interface FeltFrameProps {
   topWall: ReactNode;
@@ -472,22 +495,29 @@ function CenterDiscards({
       }}
     >
       <View style={{ alignItems: 'center' }}>
-        <SeatDiscardPile tiles={discards[byPos.top.seat]} rotate={180} latestId={latestDiscardId} />
+        <SeatDiscardPile
+          tiles={discards[byPos.top.seat]}
+          rotate={180}
+          latestId={latestDiscardId}
+          maxExtent={TOP_BOTTOM_PILE_MAX_W}
+        />
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <View style={{ width: 110, alignItems: 'center' }}>
+        <View style={{ width: SIDE_CELL_WIDTH, alignItems: 'center' }}>
           <SeatDiscardPile
             tiles={discards[byPos.left.seat]}
             rotate={90}
             latestId={latestDiscardId}
+            maxExtent={SIDE_PILE_MAX_H}
           />
         </View>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>{centerHud}</View>
-        <View style={{ width: 110, alignItems: 'center' }}>
+        <View style={{ width: SIDE_CELL_WIDTH, alignItems: 'center' }}>
           <SeatDiscardPile
             tiles={discards[byPos.right.seat]}
             rotate={-90}
             latestId={latestDiscardId}
+            maxExtent={SIDE_PILE_MAX_H}
           />
         </View>
       </View>
@@ -496,6 +526,7 @@ function CenterDiscards({
           tiles={discards[byPos.bottom.seat]}
           rotate={0}
           latestId={latestDiscardId}
+          maxExtent={TOP_BOTTOM_PILE_MAX_W}
         />
       </View>
     </View>
