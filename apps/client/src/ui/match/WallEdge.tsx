@@ -174,23 +174,46 @@ function SlotCell({
         <StackBack key="outer" width={tileW} height={tileH} doubled={false} stackDir={stackDir} />,
       );
     }
-    tiles.push(
+    // `Tile`'s SVG locks to a 36×50 portrait viewBox with
+    // `preserveAspectRatio="meet"`, so handing it landscape dims (used
+    // by left/right walls, where stackDir==='row') leaves the visual
+    // tile-back portrait-shaped and centred inside a wider box. Render
+    // the Tile + halo at portrait dims and rotate the wrapper 90° so
+    // the visible content fills the landscape slot.
+    const landscape = stackDir === 'row';
+    const tileBody = (
       <Pressable
-        key="inner"
         onPress={onPress}
         testID={enableDrawTestId ? 'wall-draw-next' : undefined}
         style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
       >
-        <PulseHalo width={tileW} height={tileH}>
+        <PulseHalo width={landscape ? tileH : tileW} height={landscape ? tileW : tileH}>
           <Tile
             tile={nextDrawTile}
             flipId={`tile-${tileId(nextDrawTile)}`}
             faceDown
-            width={tileW}
-            height={tileH}
+            width={landscape ? tileH : tileW}
+            height={landscape ? tileW : tileH}
           />
         </PulseHalo>
-      </Pressable>,
+      </Pressable>
+    );
+    tiles.push(
+      landscape ? (
+        <View
+          key="inner"
+          style={{
+            width: tileW,
+            height: tileH,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <View style={{ transform: [{ rotate: '90deg' }] }}>{tileBody}</View>
+        </View>
+      ) : (
+        <View key="inner">{tileBody}</View>
+      ),
     );
     const ordered = innerEdge === 'end' ? tiles : [...tiles].reverse();
     return (
