@@ -104,14 +104,15 @@ const PIN_LAYOUTS: Record<number, ReadonlyArray<readonly [number, number]>> = {
     [10, 14],
   ],
   7: [
-    // 2 (dark, slight diagonal) + 2 (red, mid row) + 3 (red, bottom row)
-    [-7, -17],
-    [7, -11],
-    [-10, 1],
-    [10, 1],
-    [-12, 14],
-    [0, 14],
-    [12, 14],
+    // 3 dark dots in a row across the top, then a 2×2 red cluster
+    // below — the canonical pin-7 split on traditional sets.
+    [-13, -16],
+    [0, -16],
+    [13, -16],
+    [-9, 4],
+    [9, 4],
+    [-9, 17],
+    [9, 17],
   ],
   8: [
     // 2×2 dark cluster over 2×2 red cluster — matches the canonical
@@ -149,7 +150,7 @@ const PIN_COLORS: Record<number, ReadonlyArray<'D' | 'R'>> = {
   4: ['D', 'D', 'D', 'D'],
   5: ['D', 'D', 'R', 'D', 'D'],
   6: ['D', 'D', 'R', 'R', 'R', 'R'],
-  7: ['D', 'D', 'R', 'R', 'R', 'R', 'R'],
+  7: ['D', 'D', 'D', 'R', 'R', 'R', 'R'],
   8: ['D', 'D', 'D', 'D', 'R', 'R', 'R', 'R'],
   9: ['R', 'R', 'R', 'D', 'D', 'D', 'R', 'R', 'R'],
 };
@@ -190,34 +191,39 @@ const SOU_LAYOUTS: Record<number, ReadonlyArray<readonly [number, number]>> = {
     [10, 12],
   ],
   7: [
-    [0, -16],
-    [-11, -2],
-    [0, -2],
-    [11, -2],
-    [-11, 12],
-    [0, 12],
-    [11, 12],
+    // Single red rod sits centered on top — the classic accent —
+    // with a 2-col × 3-row block of dark rods below it.
+    [0, -19],
+    [-9, -7],
+    [9, -7],
+    [-9, 5],
+    [9, 5],
+    [-9, 17],
+    [9, 17],
   ],
   8: [
-    [0, -18],
-    [-11, -6],
-    [0, -6],
-    [11, -6],
-    [-11, 8],
-    [0, 8],
-    [11, 8],
-    [0, 20],
+    // Two columns of four rods stacked vertically. Replaces the prior
+    // 1+3+3+1 silhouette with the symmetric 2×4 grid that physical sets
+    // engrave.
+    [-9, -19],
+    [9, -19],
+    [-9, -7],
+    [9, -7],
+    [-9, 5],
+    [9, 5],
+    [-9, 17],
+    [9, 17],
   ],
   9: [
-    [-12, -14],
-    [0, -14],
-    [12, -14],
+    [-12, -16],
+    [0, -16],
+    [12, -16],
     [-12, 0],
     [0, 0],
     [12, 0],
-    [-12, 14],
-    [0, 14],
-    [12, 14],
+    [-12, 16],
+    [0, 16],
+    [12, 16],
   ],
 };
 
@@ -333,11 +339,17 @@ function SouSvg({ rank }: { rank: number }) {
   const layout = SOU_LAYOUTS[rank] ?? [];
   const baseScale = rank <= 4 ? 0.75 : rank <= 6 ? 0.6 : 0.5;
   const sc = (baseScale * (W / 44)) / 0.75;
-  // Traditional accent: 5-sou's centre rod is red — it's the
-  // "lucky" tile that's been picked out in red on every Hong Kong /
-  // Japanese mahjong set since the early 20th century. Match the
-  // convention so users coming from physical sets recognise it.
-  const accentIdx = rank === 5 ? 2 : -1;
+  // Traditional red-accent rules on physical Hong Kong / Japanese sets:
+  //  · 5-sou — the centre "lucky" rod has been picked out in red since
+  //    the early 20th century.
+  //  · 7-sou — the lone top rod is red, balancing the 6 dark rods below.
+  //  · 9-sou — every rod is red. This is the loudest tile in the set.
+  const isRedRod = (i: number): boolean => {
+    if (rank === 5) return i === 2;
+    if (rank === 7) return i === 0;
+    if (rank === 9) return true;
+    return false;
+  };
   return (
     <G transform={`translate(${CX},${CY}) scale(${sc})`}>
       {layout.map(([x, y], i) => (
@@ -347,7 +359,7 @@ function SouSvg({ rank }: { rank: number }) {
           x={x}
           y={y}
           scale={0.75}
-          accent={i === accentIdx}
+          accent={isRedRod(i)}
         />
       ))}
     </G>
