@@ -549,7 +549,11 @@ function CenterDiscards({
         padding: 12,
         borderColor: 'rgba(255,255,255,0.08)',
         borderWidth: 1,
-        gap: 8,
+        // `space-between` so the three rows hug the top, middle, and
+        // bottom of the inner felt instead of bunching up at the top —
+        // a real-table reading where each seat's discards "build out"
+        // from their own edge of the playing area inward.
+        justifyContent: 'space-between',
       }}
     >
       <View style={{ alignItems: 'center' }}>
