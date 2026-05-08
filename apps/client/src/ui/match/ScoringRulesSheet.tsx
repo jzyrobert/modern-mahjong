@@ -71,7 +71,9 @@ export function ScoringRulesSheet({ open, onClose }: ScoringRulesSheetProps) {
           lobby's faan-min setting is the floor a winning hand must clear.
         </Text>
         {CATEGORY_ORDER.map((cat) => {
-          const rules = SCORING_RULES.filter((r) => r.category === cat);
+          const rules = SCORING_RULES.filter((r) => r.category === cat).sort(
+            (a, b) => b.faan - a.faan,
+          );
           if (rules.length === 0) return null;
           const meta = CATEGORY_LABEL[cat];
           return (
