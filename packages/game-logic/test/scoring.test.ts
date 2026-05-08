@@ -172,6 +172,61 @@ describe('scoring — seven pairs (七對子)', () => {
   });
 });
 
+describe('scoring — all sequences (平和)', () => {
+  it('four sequences + non-yakuhai pair scores 平和', () => {
+    const winningTile = suit('man', 5, 0);
+    // 1m2m3m 4m5m6m 7m8m9m 1p2p3p + 5s5s. All sequences + a non-yakuhai
+    // pair (5s isn't dragon, prevailing-wind, or seat-wind).
+    const hand: Tile[] = [
+      suit('man', 1, 0),
+      suit('man', 2, 0),
+      suit('man', 3, 0),
+      suit('man', 4, 0),
+      suit('man', 6, 0),
+      suit('man', 7, 0),
+      suit('man', 8, 0),
+      suit('man', 9, 0),
+      suit('pin', 1, 0),
+      suit('pin', 2, 0),
+      suit('pin', 3, 0),
+      suit('sou', 5, 0),
+      suit('sou', 5, 1),
+    ];
+    const state = stateWith(hand);
+    const r = scoreHand({ state, winner: 0, winningTile, selfDraw: false });
+    expect(r.breakdown.find((b) => b.name === '平和')?.faan).toBe(1);
+  });
+
+  it('rejects 平和 when the concealed tiles include a non-honor triplet', () => {
+    // Reproduces the user-reported bug: a hand with 9p9p9p (a pung of
+    // 9-dot) was being scored as 平和 because the previous detector
+    // only checked for honors. Concealed: 9p9p9p 1m2m3m 3m4m5m 4m5m6m
+    // + 1s1s pair. The 9p triplet means this is NOT all sequences.
+    const winningTile = suit('man', 4, 0);
+    const hand: Tile[] = [
+      suit('pin', 9, 0),
+      suit('pin', 9, 1),
+      suit('pin', 9, 2),
+      suit('man', 1, 0),
+      suit('man', 2, 0),
+      suit('man', 3, 0),
+      suit('man', 3, 1),
+      suit('man', 5, 0),
+      suit('man', 5, 1),
+      suit('man', 6, 0),
+      suit('sou', 1, 0),
+      suit('sou', 1, 1),
+      suit('man', 4, 1),
+    ];
+    const state = stateWith(hand);
+    const r = scoreHand({ state, winner: 0, winningTile, selfDraw: false });
+    expect(r.breakdown.find((b) => b.name === '平和')).toBeUndefined();
+    // The hand should still score 對對和? No — the 9p triplet alone
+    // isn't enough to flip "all triplets" on. Just verify the bogus
+    // 平和 entry is gone.
+  });
+});
+
 describe('scoring — terminals (清么九 / 混么九)', () => {
   it('only 1s and 9s, no honors → 清么九 (13), no 對對和', () => {
     const winningTile = suit('sou', 9, 0);
