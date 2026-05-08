@@ -9,6 +9,14 @@ interface GameStatusBarProps {
   dealerName: string;
   wallCount: number;
   isMyTurn: boolean;
+  /** Whole seconds remaining until `state.turnDeadlineMs` for the
+   *  user. Rendered alongside the "Your turn" dot as "Ns left" when
+   *  set; null when the rule is off, in solo with timer disabled, or
+   *  outside `phase: 'turn'`. The mobile shell has no PlayerBadge for
+   *  the user's own seat (the felt's bottom is just `Hand` + sort
+   *  picker), so this pill is the only place a self-turn countdown
+   *  can surface on phone widths. */
+  turnCountdown?: number | null;
   /** Optional — when provided, the whole pill becomes a Pressable
    *  that opens the players bottom-sheet on tap. Wired from
    *  `Match.tsx`; surfaces a roster + scores without consuming
@@ -38,6 +46,7 @@ export function GameStatusBar({
   dealerName,
   wallCount,
   isMyTurn,
+  turnCountdown = null,
   onPress,
   trailing,
 }: GameStatusBarProps) {
@@ -121,6 +130,18 @@ export function GameStatusBar({
             boxShadow: `0px 0px 4px ${COLORS.redHot}99`,
           }}
         />
+      ) : null}
+      {isMyTurn && turnCountdown !== null ? (
+        <Text
+          style={{
+            fontSize: 10,
+            fontWeight: '800',
+            color: COLORS.red,
+            letterSpacing: 0.4,
+          }}
+        >
+          {turnCountdown}s left
+        </Text>
       ) : null}
     </Container>
   );
