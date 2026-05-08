@@ -94,6 +94,46 @@ async function readHandSignatures(page: Page): Promise<string[]> {
   return sigs;
 }
 
+// Switching from a sort mode to manual should preserve the
+// currently-displayed order. Pre-fix, `manualOrder` was empty until
+// the first drag, so the hand snapped back to engine order on
+// the SUIT/NUMBER → MANUAL transition. The fix in `Match.tsx`'s
+// `onSortModeChange` seeds `manualOrder` with the active mode's
+// sorted tile-id list before flipping the mode.
+test('switching from SUIT to MANUAL keeps the visible order', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Play vs bots' }).click();
+  await page.getByRole('button', { name: 'Start match' }).click();
+  await dismissOpeningRolls(page);
+  await expect(page.getByText(/\d+ tiles/)).toBeVisible({ timeout: 10_000 });
+
+  // Capture the SUIT-sorted hand. SUIT is the default for users with
+  // autoSort on (the pristine settings default), so no toggle needed.
+  const suitOrder = await readHandSignatures(page);
+  expect(suitOrder.length).toBeGreaterThan(2);
+
+  // Flip to MANUAL — the visible order must match SUIT exactly.
+  await page.getByText('MANUAL', { exact: true }).click();
+  const manualOrder = await readHandSignatures(page);
+  expect(manualOrder).toEqual(suitOrder);
+});
+
+test('switching from NUMBER to MANUAL keeps the visible order', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Play vs bots' }).click();
+  await page.getByRole('button', { name: 'Start match' }).click();
+  await dismissOpeningRolls(page);
+  await expect(page.getByText(/\d+ tiles/)).toBeVisible({ timeout: 10_000 });
+
+  await page.getByText('NUMBER', { exact: true }).click();
+  const numberOrder = await readHandSignatures(page);
+  expect(numberOrder.length).toBeGreaterThan(2);
+
+  await page.getByText('MANUAL', { exact: true }).click();
+  const manualOrder = await readHandSignatures(page);
+  expect(manualOrder).toEqual(numberOrder);
+});
+
 // Desktop variant + outside-the-discard-window regression. The earlier
 // gate folded "can drag" and "can tap-to-discard" into a single
 // `interactive` flag in `Hand.tsx` that required `onTileClick` to be

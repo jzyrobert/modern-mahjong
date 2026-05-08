@@ -21,6 +21,7 @@ import { randomSeed } from '../util';
 import { RulePanel } from './RulePanel';
 import { GhostButton, PrimaryButton } from './buttons';
 import { COLORS } from './colors';
+import { orderHand } from './handSort';
 import { DesktopShell } from './match/DesktopShell';
 import { MobileShell } from './match/MobileShell';
 import type { SortMode } from './match/SortPicker';
@@ -81,6 +82,19 @@ export function Match() {
   const felt = FELT_SKINS[settings.felt];
   const seat = you !== null && you !== 'spectator' ? you : null;
   const isHost = isSeatHost(lobby, seat);
+
+  // Seed `manualOrder` with the currently-displayed hand on the
+  // suit/number → manual transition so the first render after the
+  // mode change preserves whatever the user was just looking at,
+  // instead of snapping back to engine order. Once `manualOrder` is
+  // non-empty, `Hand.tsx`'s drag handler maintains it from there.
+  const onSortModeChange = (next: SortMode) => {
+    if (next === 'manual' && sortMode !== 'manual' && seat !== null && state) {
+      const ordered = orderHand(state.hands[seat], sortMode);
+      useGame.getState().setManualOrder(ordered.map((t) => tileId(t)));
+    }
+    setSortMode(next);
+  };
 
   const onAction = (action: Action) => transport.send(action);
   const onLeave = () => {
@@ -320,7 +334,7 @@ export function Match() {
     drawnTileId,
     hintTileId,
     sortMode,
-    onSortModeChange: setSortMode,
+    onSortModeChange,
     onAction,
     onLeave,
     onSendChat: transport.sendChat,
