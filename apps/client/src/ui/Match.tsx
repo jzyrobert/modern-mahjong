@@ -177,104 +177,117 @@ export function Match() {
     //      surface an explicit recovery screen instead.
     const stranded = transport.status === 'idle' && !transport.hasTransport;
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.cream }} edges={['top']}>
-        <View
-          style={{
-            flex: 1,
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 24,
-            gap: 12,
-          }}
-        >
-          {stranded ? (
-            <>
-              <Text
-                accessibilityRole="header"
-                style={{
-                  fontSize: 22,
-                  fontWeight: '900',
-                  color: COLORS.ink,
-                  textAlign: 'center',
-                }}
-              >
-                No active match
-              </Text>
-              <Text
-                style={{
-                  color: COLORS.ink3,
-                  fontSize: 14,
-                  textAlign: 'center',
-                  maxWidth: 360,
-                }}
-              >
-                This match isn't available anymore — the original session has ended or the link
-                doesn't carry enough info to restore it. Head back to the main menu to start a new
-                one.
-              </Text>
-              <PrimaryButton onPress={() => router.replace('/')}>Back to main menu</PrimaryButton>
-            </>
-          ) : (
-            <Text style={{ color: COLORS.ink3 }}>Waiting for the game to start…</Text>
-          )}
-        </View>
-      </SafeAreaView>
+      // Outer cream View extends the background past the bottom
+      // safe-area inset (Android software nav, iOS home indicator)
+      // so scrolling doesn't reveal the Stack's default content
+      // background as a stripe. Same pattern as `MobileShell`.
+      <View style={{ flex: 1, backgroundColor: COLORS.cream }}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.cream }} edges={['top']}>
+          <View
+            style={{
+              flex: 1,
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 24,
+              gap: 12,
+            }}
+          >
+            {stranded ? (
+              <>
+                <Text
+                  accessibilityRole="header"
+                  style={{
+                    fontSize: 22,
+                    fontWeight: '900',
+                    color: COLORS.ink,
+                    textAlign: 'center',
+                  }}
+                >
+                  No active match
+                </Text>
+                <Text
+                  style={{
+                    color: COLORS.ink3,
+                    fontSize: 14,
+                    textAlign: 'center',
+                    maxWidth: 360,
+                  }}
+                >
+                  This match isn't available anymore — the original session has ended or the link
+                  doesn't carry enough info to restore it. Head back to the main menu to start a new
+                  one.
+                </Text>
+                <PrimaryButton onPress={() => router.replace('/')}>Back to main menu</PrimaryButton>
+              </>
+            ) : (
+              <Text style={{ color: COLORS.ink3 }}>Waiting for the game to start…</Text>
+            )}
+          </View>
+        </SafeAreaView>
+      </View>
     );
   }
 
   if (state.phase === 'waiting') {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.cream }} edges={['top']}>
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={{ padding: 24, maxWidth: 760, alignSelf: 'center', width: '100%' }}
-        >
-          <Text
-            accessibilityRole="header"
-            style={{ fontSize: 28, fontWeight: '900', color: COLORS.ink }}
+      <View style={{ flex: 1, backgroundColor: COLORS.cream }}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.cream }} edges={['top']}>
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={{
+              padding: 24,
+              maxWidth: 760,
+              alignSelf: 'center',
+              width: '100%',
+            }}
           >
-            Lobby
-          </Text>
-          <Text style={{ marginTop: 4, marginBottom: 12, fontSize: 13, color: COLORS.ink3 }}>
-            {isHost
-              ? 'Share the match code with friends. Start when everyone is ready.'
-              : 'Waiting for the host to start the match.'}
-          </Text>
-          {lobby ? <LobbyPreview lobby={lobby} matchCode={transport.matchCode} /> : null}
-          {lobby && isHost && seat !== null ? (
-            <LobbySeatControls
-              players={lobby.players}
-              mySeat={seat}
-              isSolo={transport.matchCode === 'SOLO'}
-              onSeat={transport.seatBot}
-              onUnseat={transport.unseatBot}
-            />
-          ) : null}
-          <RulePanel rules={state.rules} isHost={isHost} onAction={onAction} />
-          <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-            <PrimaryButton
-              // Mirror the server's all-seats-filled gate so the host
-              // gets a disabled button instead of a silent error.
-              disabled={!isHost || !allSeatsFilled(lobby)}
-              // No explicit dealer — engine derives it from the
-              // opening dice roll (highest sum wins; ties go to the
-              // lowest-indexed seat). Subsequent hands rotate via
-              // `nextDealer(state)` from `ResultPanel`'s "Start next
-              // hand" button. Hardcoding `dealer: 0` here was the bug
-              // that made the user always dealer regardless of dice.
-              onPress={() => onAction({ t: 'startHand', seed: randomSeed() })}
+            <Text
+              accessibilityRole="header"
+              style={{ fontSize: 28, fontWeight: '900', color: COLORS.ink }}
             >
-              Start match
-            </PrimaryButton>
-            <GhostButton onPress={onLeave}>Leave</GhostButton>
-          </View>
-          {isHost && !allSeatsFilled(lobby) ? (
-            <Text style={{ marginTop: 6, fontSize: 12, color: COLORS.ink3 }}>
-              Fill every seat with a player or a bot before starting.
+              Lobby
             </Text>
-          ) : null}
-        </ScrollView>
-      </SafeAreaView>
+            <Text style={{ marginTop: 4, marginBottom: 12, fontSize: 13, color: COLORS.ink3 }}>
+              {isHost
+                ? 'Share the match code with friends. Start when everyone is ready.'
+                : 'Waiting for the host to start the match.'}
+            </Text>
+            {lobby ? <LobbyPreview lobby={lobby} matchCode={transport.matchCode} /> : null}
+            {lobby && isHost && seat !== null ? (
+              <LobbySeatControls
+                players={lobby.players}
+                mySeat={seat}
+                isSolo={transport.matchCode === 'SOLO'}
+                onSeat={transport.seatBot}
+                onUnseat={transport.unseatBot}
+              />
+            ) : null}
+            <RulePanel rules={state.rules} isHost={isHost} onAction={onAction} />
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+              <PrimaryButton
+                // Mirror the server's all-seats-filled gate so the host
+                // gets a disabled button instead of a silent error.
+                disabled={!isHost || !allSeatsFilled(lobby)}
+                // No explicit dealer — engine derives it from the
+                // opening dice roll (highest sum wins; ties go to the
+                // lowest-indexed seat). Subsequent hands rotate via
+                // `nextDealer(state)` from `ResultPanel`'s "Start next
+                // hand" button. Hardcoding `dealer: 0` here was the bug
+                // that made the user always dealer regardless of dice.
+                onPress={() => onAction({ t: 'startHand', seed: randomSeed() })}
+              >
+                Start match
+              </PrimaryButton>
+              <GhostButton onPress={onLeave}>Leave</GhostButton>
+            </View>
+            {isHost && !allSeatsFilled(lobby) ? (
+              <Text style={{ marginTop: 6, fontSize: 12, color: COLORS.ink3 }}>
+                Fill every seat with a player or a bot before starting.
+              </Text>
+            ) : null}
+          </ScrollView>
+        </SafeAreaView>
+      </View>
     );
   }
 

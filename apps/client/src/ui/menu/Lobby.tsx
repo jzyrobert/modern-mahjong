@@ -48,121 +48,130 @@ export function Lobby() {
   const canHostLan = Platform.OS !== 'web';
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#f1eadc' }} edges={['top']}>
-      <LobbyWatermark />
-      <ScatteredTiles />
-      <ScrollView
-        style={{ flex: 1, backgroundColor: 'transparent' }}
-        contentContainerStyle={{ paddingBottom: 40 }}
-      >
-        <LobbyHeader
-          name={name}
-          onChangeName={(v) => {
-            setName(v);
-            setDisplayName(v);
+    // Outer cream-coloured View wraps the SafeAreaView so the
+    // background extends beneath the bottom safe-area inset (Android
+    // software nav, iOS home indicator). Without it, scrolling reveals
+    // a dark stripe below the lobby content where the Stack's default
+    // `contentStyle` shows through. Mirrors the same pattern in
+    // `MobileShell.tsx`.
+    <View style={{ flex: 1, backgroundColor: '#f1eadc' }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#f1eadc' }} edges={['top']}>
+        <LobbyWatermark />
+        <ScatteredTiles />
+        <ScrollView
+          style={{ flex: 1, backgroundColor: 'transparent' }}
+          contentContainerStyle={{ paddingBottom: 40 }}
+        >
+          <LobbyHeader
+            name={name}
+            onChangeName={(v) => {
+              setName(v);
+              setDisplayName(v);
+            }}
+          />
+          <ModeGrid>
+            <ModeCard
+              accent
+              title="Online match"
+              subtitle="Play with friends over the internet"
+              icon={<GlobeIcon color="#b14d3a" />}
+            >
+              <TextField
+                label="Match code"
+                value={code}
+                onChangeText={(v) => setCode(v.toUpperCase())}
+                placeholder="ABCDE"
+                mono
+                maxLength={5}
+                autoCapitalize="characters"
+              />
+              <ButtonRow>
+                <PrimaryButton
+                  onPress={() => code && transport.joinOnline(code)}
+                  disabled={code.length !== 5}
+                >
+                  Join match
+                </PrimaryButton>
+                <GhostButton
+                  onPress={() => {
+                    const fresh = generateMatchCode();
+                    setCode(fresh);
+                    transport.joinOnline(fresh);
+                  }}
+                >
+                  Create new match
+                </GhostButton>
+              </ButtonRow>
+              <OnlineConnectionStatus />
+            </ModeCard>
+
+            <ModeCard
+              title="Practice vs bots"
+              subtitle="Single device · no connection"
+              icon={<BotIcon color="#65594c" />}
+            >
+              <Text style={{ fontSize: 12, color: '#918275', lineHeight: 18 }}>
+                Three opponents at varying skill —{' '}
+                <Text style={{ color: '#65594c', fontWeight: '800' }}>{BOT_LABELS.heuristic}</Text>,{' '}
+                <Text style={{ color: '#65594c', fontWeight: '800' }}>{BOT_LABELS.simple}</Text>,
+                and{' '}
+                <Text style={{ color: '#65594c', fontWeight: '800' }}>{BOT_LABELS.passive}</Text>.
+                Runs entirely on this device.
+              </Text>
+              <TagRow tags={[BOT_LABELS.heuristic, BOT_LABELS.simple, BOT_LABELS.passive]} />
+              <ButtonRow>
+                <PrimaryButton onPress={transport.joinSolo}>Play vs bots</PrimaryButton>
+              </ButtonRow>
+            </ModeCard>
+
+            <ModeCard
+              title="LAN / offline"
+              subtitle="Same-Wi-Fi matches"
+              icon={<WifiIcon color="#65594c" />}
+            >
+              <Text style={{ fontSize: 12, color: '#918275', lineHeight: 18 }}>
+                {canHostLan
+                  ? 'Four-player matches over local Wi-Fi. Host shares the URL; guests paste it into any browser on the same network.'
+                  : 'Join an in-progress LAN match by pasting the host’s URL. Hosting needs the native app — install the Android build to host one yourself.'}
+              </Text>
+              <InlineHint icon={<BoxIcon color="#918275" />}>
+                Works offline. No accounts. No data leaves your network.
+              </InlineHint>
+              <ButtonRow>
+                {canHostLan ? (
+                  <PrimaryButton onPress={() => setHostLanOpen(true)}>Host LAN match</PrimaryButton>
+                ) : null}
+                <GhostButton onPress={() => setJoinLanOpen(true)}>Join LAN match</GhostButton>
+              </ButtonRow>
+            </ModeCard>
+          </ModeGrid>
+
+          {lobby ? (
+            <View
+              style={{ maxWidth: 1080, width: '100%', alignSelf: 'center', paddingHorizontal: 28 }}
+            >
+              <LobbyPreview lobby={lobby} matchCode={null} />
+            </View>
+          ) : null}
+        </ScrollView>
+        <HostLanModal
+          open={hostLanOpen}
+          onClose={() => setHostLanOpen(false)}
+          onHosted={(hostUrl, matchCode) => {
+            setHostLanOpen(false);
+            transport.joinLan(hostUrl, matchCode);
           }}
         />
-        <ModeGrid>
-          <ModeCard
-            accent
-            title="Online match"
-            subtitle="Play with friends over the internet"
-            icon={<GlobeIcon color="#b14d3a" />}
-          >
-            <TextField
-              label="Match code"
-              value={code}
-              onChangeText={(v) => setCode(v.toUpperCase())}
-              placeholder="ABCDE"
-              mono
-              maxLength={5}
-              autoCapitalize="characters"
-            />
-            <ButtonRow>
-              <PrimaryButton
-                onPress={() => code && transport.joinOnline(code)}
-                disabled={code.length !== 5}
-              >
-                Join match
-              </PrimaryButton>
-              <GhostButton
-                onPress={() => {
-                  const fresh = generateMatchCode();
-                  setCode(fresh);
-                  transport.joinOnline(fresh);
-                }}
-              >
-                Create new match
-              </GhostButton>
-            </ButtonRow>
-            <OnlineConnectionStatus />
-          </ModeCard>
-
-          <ModeCard
-            title="Practice vs bots"
-            subtitle="Single device · no connection"
-            icon={<BotIcon color="#65594c" />}
-          >
-            <Text style={{ fontSize: 12, color: '#918275', lineHeight: 18 }}>
-              Three opponents at varying skill —{' '}
-              <Text style={{ color: '#65594c', fontWeight: '800' }}>{BOT_LABELS.heuristic}</Text>,{' '}
-              <Text style={{ color: '#65594c', fontWeight: '800' }}>{BOT_LABELS.simple}</Text>, and{' '}
-              <Text style={{ color: '#65594c', fontWeight: '800' }}>{BOT_LABELS.passive}</Text>.
-              Runs entirely on this device.
-            </Text>
-            <TagRow tags={[BOT_LABELS.heuristic, BOT_LABELS.simple, BOT_LABELS.passive]} />
-            <ButtonRow>
-              <PrimaryButton onPress={transport.joinSolo}>Play vs bots</PrimaryButton>
-            </ButtonRow>
-          </ModeCard>
-
-          <ModeCard
-            title="LAN / offline"
-            subtitle="Same-Wi-Fi matches"
-            icon={<WifiIcon color="#65594c" />}
-          >
-            <Text style={{ fontSize: 12, color: '#918275', lineHeight: 18 }}>
-              {canHostLan
-                ? 'Four-player matches over local Wi-Fi. Host shares the URL; guests paste it into any browser on the same network.'
-                : 'Join an in-progress LAN match by pasting the host’s URL. Hosting needs the native app — install the Android build to host one yourself.'}
-            </Text>
-            <InlineHint icon={<BoxIcon color="#918275" />}>
-              Works offline. No accounts. No data leaves your network.
-            </InlineHint>
-            <ButtonRow>
-              {canHostLan ? (
-                <PrimaryButton onPress={() => setHostLanOpen(true)}>Host LAN match</PrimaryButton>
-              ) : null}
-              <GhostButton onPress={() => setJoinLanOpen(true)}>Join LAN match</GhostButton>
-            </ButtonRow>
-          </ModeCard>
-        </ModeGrid>
-
-        {lobby ? (
-          <View
-            style={{ maxWidth: 1080, width: '100%', alignSelf: 'center', paddingHorizontal: 28 }}
-          >
-            <LobbyPreview lobby={lobby} matchCode={null} />
-          </View>
-        ) : null}
-      </ScrollView>
-      <HostLanModal
-        open={hostLanOpen}
-        onClose={() => setHostLanOpen(false)}
-        onHosted={(hostUrl, matchCode) => {
-          setHostLanOpen(false);
-          transport.joinLan(hostUrl, matchCode);
-        }}
-      />
-      <JoinLanModal
-        open={joinLanOpen}
-        onClose={() => setJoinLanOpen(false)}
-        onJoin={(hostUrl, matchCode) => {
-          setJoinLanOpen(false);
-          transport.joinLan(hostUrl, matchCode);
-        }}
-      />
-    </SafeAreaView>
+        <JoinLanModal
+          open={joinLanOpen}
+          onClose={() => setJoinLanOpen(false)}
+          onJoin={(hostUrl, matchCode) => {
+            setJoinLanOpen(false);
+            transport.joinLan(hostUrl, matchCode);
+          }}
+        />
+      </SafeAreaView>
+    </View>
   );
 }
 
