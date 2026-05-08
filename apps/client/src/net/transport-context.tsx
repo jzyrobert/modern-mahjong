@@ -1,6 +1,7 @@
 import type { Action, Seat } from '@mahjong/game-logic';
 import type { BotKind, ServerMessage } from '@mahjong/protocol';
 import Constants from 'expo-constants';
+import { router } from 'expo-router';
 import {
   type ReactNode,
   createContext,
@@ -310,6 +311,23 @@ export function TransportProvider({ children }: { children: ReactNode }) {
               lastMeaningfulClaimRef.current = 0;
             }
           }
+          // Host explicitly left an online/LAN match with no other
+          // humans present, so the server dissolved the room and
+          // closed every remaining socket. Mirror the leaver's tear-
+          // down on the guests' side: drop the transport, clear the
+          // engine state, and bounce back to the lobby instead of
+          // landing on `Match.tsx`'s "No active match" stranded
+          // screen.
+          if (m.code === 'HOST_LEFT') {
+            transport?.close();
+            setTransport(null);
+            setMatchCode(null);
+            setStatus('idle');
+            reconnectInfoRef.current = null;
+            setJoinInfo(null);
+            reset();
+            router.replace('/');
+          }
           return;
         }
         case 'pong':
@@ -319,7 +337,7 @@ export function TransportProvider({ children }: { children: ReactNode }) {
           return;
       }
     });
-  }, [transport, setState, setLobby, appendEvents, pushChat, flashClaimMissed]);
+  }, [transport, setState, setLobby, appendEvents, pushChat, flashClaimMissed, reset]);
 
   // AppState foreground re-join. We don't proactively close the socket
   // on background — short screen locks shouldn't kick the user off
