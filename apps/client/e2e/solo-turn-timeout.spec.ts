@@ -26,9 +26,8 @@ test('solo: turn timeout shows the countdown and auto-discards a tile', async ({
   // Cut the timer well below the 5s lobby minimum so the test runs
   // in seconds. Bot pace stays at 0 so other seats process instantly.
   await page.addInitScript(() => {
-    (
-      globalThis as { __MAHJONG_TEST_TURN_TIMEOUT_MS__?: number }
-    ).__MAHJONG_TEST_TURN_TIMEOUT_MS__ = 800;
+    (globalThis as { __MAHJONG_TEST_TURN_TIMEOUT_MS__?: number }).__MAHJONG_TEST_TURN_TIMEOUT_MS__ =
+      800;
     (globalThis as { __MAHJONG_TEST_BOT_PACE_MS__?: number }).__MAHJONG_TEST_BOT_PACE_MS__ = 0;
   });
   await page.addInitScript((seed) => {
