@@ -402,13 +402,7 @@ export class MatchSession {
    */
   private onLeave(connectionId: string): Outbound[] {
     const out: Outbound[] = [];
-    let leaverSeat: Seat | null = null;
-    for (const s of SEATS) {
-      if (this.seats[s].connectionId === connectionId) {
-        leaverSeat = s;
-        break;
-      }
-    }
+    const leaverSeat = this.seatFor(connectionId);
     if (leaverSeat !== null) {
       const wasHost = this.seats[leaverSeat].playerId === this.hostPlayerId;
       this.seats[leaverSeat] = emptySeat();

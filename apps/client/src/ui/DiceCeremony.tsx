@@ -1,6 +1,6 @@
 import type { OpeningRolls, Seat } from '@mahjong/game-logic';
 import { SEATS } from '@mahjong/game-logic';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Pressable, Text, View } from 'react-native';
 import { nameForSeat, useGame } from '../state/game';
 import { useFadeInOut } from './animations';
@@ -96,16 +96,24 @@ export function DiceCeremony() {
   // the same either way.
   const { fade, fadeOut } = useFadeInOut({ visible: open });
 
+  // Fade out then commit the dismissal both in-memory + to localStorage
+  // so a reload (solo / online / LAN) honours it. Shared between the
+  // auto-dismiss timer and the tap-to-dismiss handler.
+  const dismiss = useCallback(
+    (s: number) => {
+      fadeOut(() => {
+        setDismissedSeed(s);
+        writeDismissedSeed(s);
+      });
+    },
+    [fadeOut],
+  );
+
   useEffect(() => {
     if (!open || seed === undefined) return;
-    const timer = setTimeout(() => {
-      fadeOut(() => {
-        setDismissedSeed(seed);
-        writeDismissedSeed(seed);
-      });
-    }, DISMISS_MS);
+    const timer = setTimeout(() => dismiss(seed), DISMISS_MS);
     return () => clearTimeout(timer);
-  }, [open, seed, fadeOut]);
+  }, [open, seed, dismiss]);
 
   const visible = open && dealer !== undefined;
   if (!visible) return null;
@@ -113,12 +121,7 @@ export function DiceCeremony() {
 
   return (
     <Pressable
-      onPress={() => {
-        fadeOut(() => {
-          setDismissedSeed(seed);
-          writeDismissedSeed(seed);
-        });
-      }}
+      onPress={() => dismiss(seed)}
       style={{
         position: 'absolute',
         left: 0,
