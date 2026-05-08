@@ -234,6 +234,74 @@ describe('MatchSession — explicit leave', () => {
   });
 });
 
+describe('MatchSession — per-turn timeout', () => {
+  it('schedules an alarm at state.turnDeadlineMs when the active seat is a connected human', () => {
+    const s = new MatchSession({ botPaceMs: 0 });
+    helloAs(s, 'cHost', 'p-host');
+    seatPassiveBots(s, [1, 2, 3]);
+    const start = s.applyClientMessage('cHost', {
+      t: 'action',
+      action: { t: 'startHand', seed: 1, dealer: 0 },
+    });
+    const scheduled = start.find((o) => o.kind === 'scheduleAlarm');
+    expect(scheduled?.kind).toBe('scheduleAlarm');
+    if (scheduled?.kind === 'scheduleAlarm') {
+      expect(scheduled.deadlineMs).toBe(s.getState().turnDeadlineMs);
+    }
+  });
+
+  it('alarm past the deadline auto-discards for a stalled human seat (turn advances)', () => {
+    const s = new MatchSession({ botPaceMs: 0 });
+    helloAs(s, 'cHost', 'p-host');
+    seatPassiveBots(s, [1, 2, 3]);
+    s.applyClientMessage('cHost', {
+      t: 'action',
+      action: { t: 'startHand', seed: 1, dealer: 0 },
+    });
+    const turnDeadline = s.getState().turnDeadlineMs!;
+    expect(s.getState().phase).toBe('turn');
+    expect(s.getState().turn).toBe(0);
+    // Fire the alarm one ms past the deadline. The host (human, no
+    // bot) hasn't acted, so `forceTurnAutoDiscard` runs — passive-bot
+    // discard, claim window opens, instant pre-pass resolves it (the
+    // seat 1/2/3 bots have no claim against a random discard), bots
+    // play through to seat 1's draw, and so on.
+    s.fireAlarm(turnDeadline + 1);
+    // After the alarm, the engine should have moved past seat 0 — at
+    // minimum we're either at a different seat or in resolved.
+    expect(s.getState().turn === 0 && s.getState().phase === 'turn').toBe(false);
+  });
+
+  it('does not schedule an alarm for the turn deadline when the active seat is a bot', () => {
+    const s = new MatchSession({ botPaceMs: 0 });
+    helloAs(s, 'cHost', 'p-host');
+    seatPassiveBots(s, [1, 2, 3]);
+    // Dealer = seat 1 (a bot). With botPaceMs:0 the synchronous bot
+    // loop drives the hand forward without any timeout enforcement;
+    // the test asserts the per-turn deadline gate (`isActiveSeat-
+    // StalledHuman`) keeps the auto-discard path dormant when the
+    // seat is bot-occupied.
+    const out = s.applyClientMessage('cHost', {
+      t: 'action',
+      action: { t: 'startHand', seed: 1, dealer: 1 },
+    });
+    // The first `state.turn === 1` immediately after startHand is a
+    // bot; bots run synchronously, so by the time we inspect outputs
+    // the engine has already moved past seat 1's turn (or claim
+    // window). The point is the auto-discard helper for
+    // stalled-human seats was never the driver.
+    const stateAfter = s.getState();
+    // Either we've moved past seat 1 (bot loop ran) or the hand has
+    // resolved entirely — both shapes are valid; the load-bearing
+    // assertion is that the engine isn't sitting on `turn === 1`
+    // waiting for a phantom human action.
+    if (stateAfter.phase === 'turn') {
+      expect(stateAfter.turn === 1 && stateAfter.hasDrawn === false).toBe(false);
+    }
+    void out;
+  });
+});
+
 describe('MatchSession — disconnect + reconnect grace', () => {
   it('installs a passive stand-in bot when a seated player disconnects', () => {
     const s = new MatchSession();

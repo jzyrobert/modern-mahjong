@@ -30,6 +30,10 @@ interface OppHandStripProps {
   /** Whole seconds until the hard fallback once `softExpiryMs` is
    *  crossed. Renders next to the name as "drawing in Ns" when set. */
   drawCountdown?: number | null;
+  /** Whole seconds until `state.turnDeadlineMs` for this seat —
+   *  rendered as "Ns left" when this seat is the active turn. Null
+   *  when the rule is off, in solo, or this seat isn't active. */
+  turnCountdown?: number | null;
 }
 
 const COLORS = {
@@ -60,6 +64,7 @@ export function OppHandStrip({
   isActive,
   aboutToDraw = false,
   drawCountdown = null,
+  turnCountdown = null,
 }: OppHandStripProps) {
   const player = lobby?.players.find((p) => p.seat === seat);
   const name = player?.displayName ?? `Seat ${seat}`;
@@ -129,6 +134,18 @@ export function OppHandStrip({
         {cueBorder && drawCountdown !== null ? (
           <Text style={{ fontSize: 8, fontWeight: '800', color: COLORS.red }} numberOfLines={1}>
             drawing in {drawCountdown}s
+          </Text>
+        ) : null}
+        {isActive && turnCountdown !== null ? (
+          <Text
+            style={{
+              fontSize: 8,
+              fontWeight: '800',
+              color: isActive ? 'white' : COLORS.red,
+            }}
+            numberOfLines={1}
+          >
+            {turnCountdown}s left
           </Text>
         ) : null}
       </View>

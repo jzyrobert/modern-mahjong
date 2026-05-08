@@ -292,7 +292,45 @@ export class MatchSession {
         console.error('alarm bot-pace error', e);
       }
     }
+    // Per-turn timeout — see `isActiveSeatStalledHuman`. The auto-
+    // discard uses `passiveBot.pickDiscard` so the choice mirrors the
+    // disconnect path (same default behaviour for a stalled seat,
+    // whether they timed out or dropped); `runBots` won't fire on
+    // its own since the seat is human, not bot-occupied.
+    if (
+      this.state.phase === 'turn' &&
+      this.state.turnDeadlineMs !== undefined &&
+      nowMs >= this.state.turnDeadlineMs &&
+      this.isActiveSeatStalledHuman()
+    ) {
+      try {
+        out.push(...this.forceTurnAutoDiscard(nowMs));
+      } catch (e) {
+        console.error('alarm turn-timeout error', e);
+      }
+    }
     out.push(...this.maybeScheduleAlarm());
+    return out;
+  }
+
+  /** Apply a passive auto-discard for the current `turn` seat. If the
+   *  seat hasn't drawn yet, draw first; if the draw resolves the hand
+   *  (wall-empty) skip the discard. After the discard runs, kick the
+   *  bot loop so any bot seats waiting on this human's action proceed
+   *  through the next turn(s). */
+  private forceTurnAutoDiscard(nowMs: number): Outbound[] {
+    const out: Outbound[] = [];
+    const seat = this.state.turn;
+    if (!this.state.hasDrawn) {
+      out.push(this.apply({ t: 'draw', seat }));
+      if (this.state.phase !== 'turn') {
+        out.push(...this.runBots(nowMs));
+        return out;
+      }
+    }
+    const tile = passiveBot.pickDiscard({ state: this.state, seat });
+    out.push(this.apply({ t: 'discard', seat, tile }));
+    out.push(...this.runBots(nowMs));
     return out;
   }
 
@@ -642,6 +680,20 @@ export class MatchSession {
         soonest = pending.hardDeadlineMs ?? pending.deadlineMs;
       }
     }
+    // Per-turn timeout — only when the active seat is a connected
+    // human (bots run synchronously through `runBots`; disconnected
+    // humans fall through to the auto-bot installed in
+    // `detachConnection`). The engine sets `turnDeadlineMs` when
+    // `rules.turnTimeoutMs > 0`; solo strips the rule so the field
+    // stays undefined and this branch is inert there.
+    if (
+      this.state.phase === 'turn' &&
+      this.state.turnDeadlineMs !== undefined &&
+      this.isActiveSeatStalledHuman()
+    ) {
+      const deadline = this.state.turnDeadlineMs;
+      if (soonest === null || deadline < soonest) soonest = deadline;
+    }
     if (this.botActionDeadline !== null) {
       if (soonest === null || this.botActionDeadline < soonest) {
         soonest = this.botActionDeadline;
@@ -656,6 +708,14 @@ export class MatchSession {
     if (soonest === this.lastEmittedDeadline) return [];
     this.lastEmittedDeadline = soonest;
     return soonest !== null ? [{ kind: 'scheduleAlarm', deadlineMs: soonest }] : [];
+  }
+
+  /** True iff phase is `turn` and the seat owes an action — connected
+   *  human player, no auto-bot stand-in, the deadline applies. */
+  private isActiveSeatStalledHuman(): boolean {
+    if (this.state.phase !== 'turn') return false;
+    const slot = this.seats[this.state.turn];
+    return slot.bot === null && slot.connectionId !== null;
   }
 
   /**

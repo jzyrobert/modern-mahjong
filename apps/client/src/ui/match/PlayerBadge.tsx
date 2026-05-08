@@ -28,6 +28,10 @@ interface PlayerBadgeProps {
    *  crossed. When non-null, renders next to the badge name as
    *  "drawing in Ns". Null before windup or in solo. */
   drawCountdown?: number | null;
+  /** Whole seconds until `state.turnDeadlineMs`. When this seat is
+   *  active and the rule is on, renders below the name as "Ns left".
+   *  Null when the rule is off, in solo, or this seat isn't active. */
+  turnCountdown?: number | null;
 }
 
 const COLORS = {
@@ -57,6 +61,7 @@ export function PlayerBadge({
   isActive,
   aboutToDraw = false,
   drawCountdown = null,
+  turnCountdown = null,
 }: PlayerBadgeProps) {
   const name = nameForSeat(lobby, seat);
   const initials = computeInitials(name);
@@ -137,7 +142,11 @@ export function PlayerBadge({
             color: isActive ? 'rgba(255,255,255,0.85)' : 'rgba(58,51,40,0.7)',
           }}
         >
-          {drawCountdown !== null && cueBorder ? `drawing in ${drawCountdown}s` : `${score} pt`}
+          {drawCountdown !== null && cueBorder
+            ? `drawing in ${drawCountdown}s`
+            : isActive && turnCountdown !== null
+              ? `${turnCountdown}s left`
+              : `${score} pt`}
         </Text>
       </View>
     </Animated.View>

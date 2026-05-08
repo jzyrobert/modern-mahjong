@@ -159,6 +159,11 @@ export function Match() {
   const aboutToDraw = useDeadlineCrossed(claimDeadline);
   const inWindup = useDeadlineCrossed(claimSoftExpiry);
   const drawCountdown = useSecondsUntil(inWindup ? claimHardDeadline : null);
+  // Per-turn countdown — gated on `phase === 'turn'` AND the engine
+  // actually setting `turnDeadlineMs` (turn timer disabled / solo
+  // both leave it undefined).
+  const turnDeadline = state?.phase === 'turn' ? (state.turnDeadlineMs ?? null) : null;
+  const turnCountdown = useSecondsUntil(turnDeadline);
 
   if (!state || seat === null) {
     // Two reasons we can land here without a usable game:
@@ -329,6 +334,7 @@ export function Match() {
     nextDrawerSeat,
     aboutToDraw,
     drawCountdown,
+    turnCountdown,
     latestDiscardId,
     dealerName,
     drawnTileId,

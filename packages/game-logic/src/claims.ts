@@ -2,7 +2,7 @@ import type { Meld } from './hand.js';
 import { scoreHand } from './scoring.js';
 import { isWinning } from './shanten.js';
 import type { Claim, ClaimRound, GameState, Seat } from './state.js';
-import { nextSeat } from './state.js';
+import { computeTurnDeadline, nextSeat } from './state.js';
 import { sameFace } from './tiles.js';
 import type { Tile } from './tiles.js';
 
@@ -216,6 +216,9 @@ export function applyClaim(
       phase: 'turn',
       pendingClaims: undefined,
       turn: seat,
+      // declareWin chains immediately; this turn deadline is
+      // transient. Set it anyway so the field stays consistent.
+      turnDeadlineMs: computeTurnDeadline(state.rules),
     };
   }
 
@@ -287,6 +290,7 @@ export function applyClaim(
     // The previous seat's gang chain (if any) was broken by their
     // discard; the new turn-holder starts with a fresh 0 count.
     gangReplacementCount: 0,
+    turnDeadlineMs: computeTurnDeadline(state.rules),
   };
 }
 

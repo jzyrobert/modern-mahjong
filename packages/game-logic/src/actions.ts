@@ -14,7 +14,7 @@ import type {
   RuleConfig,
   Seat,
 } from './state.js';
-import { DEFAULT_RULES, SEATS, emptyState, nextSeat } from './state.js';
+import { DEFAULT_RULES, SEATS, computeTurnDeadline, emptyState, nextSeat } from './state.js';
 import { sameFace, sameTile } from './tiles.js';
 import type { Tile } from './tiles.js';
 import { buildWall } from './tiles.js';
@@ -179,6 +179,7 @@ function startHand(
     scoreboard: prev.scoreboard,
     prevailingWind: prev.prevailingWind,
     openingRolls,
+    turnDeadlineMs: computeTurnDeadline(prev.rules),
   };
   return {
     state,
@@ -255,6 +256,10 @@ function discard(state: GameState, seat: Seat, tile: Tile): { state: GameState; 
     // 槓上開花 / 槓上槓 scoring conditions are no longer satisfied
     // for whoever's turn comes next.
     gangReplacementCount: 0,
+    // Phase leaves `turn` — drop the now-stale turn deadline. The
+    // next phase=turn entry (claim resolution, gang-replacement
+    // finalize, etc.) re-arms it.
+    turnDeadlineMs: undefined,
   };
   const submitted: Partial<Record<Seat, Claim>> = {};
   for (const s of SEATS) {
@@ -400,6 +405,11 @@ function resolveAndApply(state: GameState, nowMs: number): { state: GameState; e
       pendingClaims: undefined,
       turn: resolution.seat,
       hasDrawn: false,
+      // declareWin chains immediately and clears phase to 'resolved',
+      // so this deadline is transient — set it anyway so the field
+      // stays consistent for any caller that observes the
+      // intermediate state.
+      turnDeadlineMs: computeTurnDeadline(state.rules, nowMs),
     };
     const finalized = declareWin(stateAfterRob, resolution.seat, false);
     return { state: finalized.state, events: [...events, ...finalized.events] };
@@ -415,6 +425,7 @@ function resolveAndApply(state: GameState, nowMs: number): { state: GameState; e
         pendingClaims: undefined,
         turn: next,
         hasDrawn: false,
+        turnDeadlineMs: computeTurnDeadline(state.rules, nowMs),
       },
       events,
     };
@@ -621,6 +632,7 @@ function finalizePromotion(state: GameState, seat: Seat, tile: Tile, meldIdx: nu
     pendingClaims: undefined,
     pendingPromotedGang: undefined,
     lastDiscard: undefined,
+    turnDeadlineMs: computeTurnDeadline(state.rules),
   };
 }
 

@@ -130,6 +130,21 @@ export interface GameState {
    * doesn't have to re-find it.
    */
   pendingPromotedGang?: { seat: Seat; tile: Tile; meldIdx: number } | undefined;
+  /**
+   * Server-clock deadline for the current `turn` seat to act (draw +
+   * discard). Set when phase enters `turn` from a transition that
+   * `rules.turnTimeoutMs > 0` covers; left undefined when the rule is
+   * disabled (`turnTimeoutMs === 0`) or in solo, where the user gets
+   * infinite time. Cleared whenever the phase leaves `turn` (claim
+   * window opens, hand resolves, etc.) so a stale value doesn't ride
+   * back into a future turn.
+   *
+   * The DO alarm consumes this on the server to auto-discard a
+   * stalled human seat (`MatchSession.fireAlarm`); the client uses it
+   * to surface the "Ns left" countdown next to the active seat's
+   * badge.
+   */
+  turnDeadlineMs?: number | undefined;
   /** Cumulative scores across hands in the same lobby session. */
   scoreboard: Record<Seat, number>;
   /** Result of the most recent hand, if any. */
@@ -192,6 +207,24 @@ export function emptyState(rules: RuleConfig = DEFAULT_RULES): GameState {
     scoreboard: { 0: 0, 1: 0, 2: 0, 3: 0 },
     gangReplacementCount: 0,
   };
+}
+
+/**
+ * Server-clock deadline at which the current turn should auto-discard
+ * if the seated human hasn't acted. Returns undefined when the rule
+ * is disabled (`turnTimeoutMs === 0`) — solo strips the field via
+ * its destructured rules so the field is always undefined there.
+ *
+ * The DO alarm consumes this in `MatchSession.fireAlarm`; the client
+ * uses it to render the "Ns left" countdown next to the active
+ * seat's badge.
+ */
+export function computeTurnDeadline(
+  rules: RuleConfig,
+  now: number = Date.now(),
+): number | undefined {
+  if (rules.turnTimeoutMs <= 0) return undefined;
+  return now + rules.turnTimeoutMs;
 }
 
 /** Counter-clockwise turn order: E → S → W → N → E. */

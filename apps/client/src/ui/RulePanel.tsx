@@ -115,15 +115,6 @@ export function RulePanel({ rules, isHost, onAction }: RulePanelProps) {
         max={120}
         onCommit={(ms) => set({ turnTimeoutMs: ms })}
       />
-      <SecondsInput
-        key={rules.claimWindowMs}
-        label="Claim window"
-        disabled={disabled}
-        ms={rules.claimWindowMs}
-        min={1}
-        max={15}
-        onCommit={(ms) => set({ claimWindowMs: ms })}
-      />
 
       {!isHost && (
         <Text style={{ fontSize: 11, color: COLORS.ink3, opacity: 0.6, marginTop: 4 }}>
