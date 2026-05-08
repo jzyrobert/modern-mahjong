@@ -1,4 +1,4 @@
-import { type Bot, type BotKind, bots as botRegistry } from '@mahjong/bots';
+import { type Bot, type BotKind, bots as botRegistry, passiveBot } from '@mahjong/bots';
 import {
   type Action,
   type Claim,
@@ -41,6 +41,12 @@ declare global {
    *  seconds instead of minutes. */
   // eslint-disable-next-line no-var
   var __MAHJONG_TEST_BOT_PACE_MS__: number | undefined;
+  /** Override the solo per-turn timeout. The lobby's RulePanel input
+   *  is clamped to a 5s minimum which is too long for a fast e2e
+   *  cycle; tests set this to a few hundred ms instead so the
+   *  auto-discard fires inside the test's wall-clock budget. */
+  // eslint-disable-next-line no-var
+  var __MAHJONG_TEST_TURN_TIMEOUT_MS__: number | undefined;
 }
 
 interface SoloOptions {
@@ -85,16 +91,21 @@ const DEFAULT_BOT_SKILLS: [BotKind, BotKind, BotKind] = ['heuristic', 'simple', 
  */
 export function createSoloTransport(opts: SoloOptions): Transport & SoloTransportControls {
   // Solo strips the soft-expiry / hard-fallback claim windows so the
-  // user gets infinite time to claim, and zeroes the per-turn timer
-  // so the engine never stamps `state.turnDeadlineMs` (the server
-  // alarm path doesn't run in solo, but the client UI gates the
-  // countdown badge on the field too — leaving it set would render a
-  // misleading "Ns left" against an in-process bot loop with no
-  // timeout enforcement).
+  // user gets infinite time to claim. The per-turn timer (when the
+  // rule isn't `0` / "∞") is honoured client-side: the engine stamps
+  // `state.turnDeadlineMs`, the UI surfaces "Ns left", and the
+  // transport schedules an in-process auto-discard via
+  // `passiveBot.pickDiscard` when the deadline elapses on the user's
+  // turn — mirroring the server's `forceTurnAutoDiscard` so a stalled
+  // solo seat behaves the same as a stalled online seat.
   const { claimSoftWindowMs: _omitSoft, claimHardWindowMs: _omitHard, ...rest } = DEFAULT_RULES;
   void _omitSoft;
   void _omitHard;
-  const soloRules = { ...rest, turnTimeoutMs: 0 };
+  const turnOverride = globalThis.__MAHJONG_TEST_TURN_TIMEOUT_MS__;
+  const soloRules = {
+    ...rest,
+    ...(typeof turnOverride === 'number' ? { turnTimeoutMs: turnOverride } : {}),
+  };
   let state: GameState = opts.seedState ?? emptyState(soloRules);
   const initialSkills = opts.botSkills ?? DEFAULT_BOT_SKILLS;
   const botKinds: Record<1 | 2 | 3, BotKind> = {
@@ -113,6 +124,11 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
   let _status: TransportStatus = 'open';
   let closed = false;
   let pacingHandle: ReturnType<typeof setTimeout> | null = null;
+  /** setTimeout for auto-discarding the user's turn when
+   *  `state.turnDeadlineMs` elapses with no input. Solo's
+   *  client-side equivalent of the server's
+   *  `MatchSession.forceTurnAutoDiscard`. */
+  let turnTimeoutHandle: ReturnType<typeof setTimeout> | null = null;
 
   const DEFAULT_BOT_PACE_MS = 3_000;
 
@@ -124,6 +140,7 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
     const { state: next, events } = reduce(state, action);
     state = next;
     emit({ t: 'delta', events, state });
+    rescheduleTurnTimeout();
   }
 
   // Solo intentionally has **no claim-window alarm**. The user gets
@@ -145,6 +162,53 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
       clearTimeout(pacingHandle);
       pacingHandle = null;
     }
+  }
+
+  function clearTurnTimeout() {
+    if (turnTimeoutHandle !== null) {
+      clearTimeout(turnTimeoutHandle);
+      turnTimeoutHandle = null;
+    }
+  }
+
+  /** Re-arm the user's turn-timeout timer based on the current
+   *  `state.turnDeadlineMs`. Called after every applyAction; clears
+   *  any stale timer first so re-entries (e.g. user discards mid-
+   *  turn) don't leak. No-op when the rule is off, the hand is over,
+   *  or it isn't seat 0's turn. */
+  function rescheduleTurnTimeout() {
+    clearTurnTimeout();
+    if (closed) return;
+    if (state.phase !== 'turn' || state.turn !== 0) return;
+    const deadline = state.turnDeadlineMs;
+    if (deadline === undefined) return;
+    const delay = Math.max(0, deadline - Date.now());
+    turnTimeoutHandle = setTimeout(() => {
+      turnTimeoutHandle = null;
+      if (closed) return;
+      if (state.phase !== 'turn' || state.turn !== 0) return;
+      // Mirror the server's behaviour: ensure the user has drawn,
+      // then discard via passiveBot. The user could legitimately
+      // win on the auto-discarded tile, but `passiveBot.pickDiscard`
+      // never picks a winning tile (passive isn't strategy-aware
+      // beyond "discard a safe-looking tile"), so the engine would
+      // throw FAAN/SHAPE if we tried `declareWin` first — match the
+      // server's plain discard path instead.
+      try {
+        if (!state.hasDrawn) {
+          applyAction({ t: 'draw', seat: 0 });
+          if (state.phase !== 'turn') {
+            runBots();
+            return;
+          }
+        }
+        const tile = passiveBot.pickDiscard({ state, seat: 0 });
+        applyAction({ t: 'discard', seat: 0, tile });
+        runBots();
+      } catch (e) {
+        if (!(e instanceof IllegalActionError)) throw e;
+      }
+    }, delay);
   }
 
   function botPaceMs(): number {
@@ -276,6 +340,10 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
     // match picks up where it left off. No-op for fresh launches —
     // `emptyState` parks at `phase: 'waiting'` until `startHand`.
     runBots();
+    // Resume case: if the snapshot landed mid-turn for the user, the
+    // turn-timeout timer needs to re-arm against the persisted
+    // deadline. No-op for fresh-`emptyState` launches.
+    rescheduleTurnTimeout();
   }, 0);
 
   return {
@@ -318,6 +386,7 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
     close() {
       closed = true;
       clearPacing();
+      clearTurnTimeout();
       _status = 'closed';
       for (const cb of statusListeners) cb(_status);
     },
