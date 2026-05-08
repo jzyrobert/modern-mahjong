@@ -163,6 +163,7 @@ function SlotCell({
   onPress,
   enableDrawTestId,
 }: SlotCellProps) {
+  const isEmpty = slot.tiles === 0;
   const isFull = slot.tiles === 2;
   const sideExtent = isFull ? SIDE_FULL : SIDE_HALF;
 
@@ -176,6 +177,15 @@ function SlotCell({
     stackDir === 'column'
       ? { width: tileW, height: cellExtent }
       : { width: cellExtent, height: tileH };
+
+  // Drawn / dead-wall slots render as a fixed-size transparent
+  // placeholder so the still-visible stacks keep their original
+  // positions on the felt — the wall doesn't shrink and recenter as
+  // tiles get pulled, matching the physical reality that drawn tiles
+  // leave behind a vacant slot rather than scooting the row inward.
+  if (isEmpty) {
+    return <View style={containerStyle} />;
+  }
 
   // Element order is always [top face, side face]; flexDirection flips
   // when the inner edge is at the START of the cell so the side face

@@ -33,8 +33,10 @@ export const LIVE_WALL_TILES =
   STACKS_PER_WALL * 4 * TILES_PER_STACK - DEAD_WALL_STACKS * TILES_PER_STACK;
 
 export interface WallSlot {
-  /** Tiles still physically in this stack. 1 = half-drawn, 2 = full. */
-  tiles: 1 | 2;
+  /** Tiles still physically in this stack. 0 = drawn or dead-wall (renders
+   *  as a transparent placeholder so the rest of the row keeps its
+   *  original positions); 1 = half-drawn; 2 = full. */
+  tiles: 0 | 1 | 2;
   /** True for the single next-to-draw slot. */
   isNextDraw: boolean;
 }
@@ -132,13 +134,16 @@ export function computeWallLayout(opts: ComputeOpts): WallLayout {
     }
   }
 
-  // Compress truths into per-seat visible stack lists.
+  // Always emit STACKS_PER_WALL slots per seat, including 0-tile entries
+  // for drawn or dead-wall positions. The renderer turns those into
+  // transparent placeholders so the still-visible stacks keep their
+  // original positions on the felt as draws happen — the wall doesn't
+  // shrink and recenter as tiles get pulled.
   const slots: Record<Seat, WallSlot[]> = { 0: [], 1: [], 2: [], 3: [] };
   for (const s of [0, 1, 2, 3] as const) {
     const t = truths[s];
     for (let i = 0; i < STACKS_PER_WALL; i++) {
-      const tile = t?.[i];
-      if (tile === undefined || tile === 0) continue;
+      const tile = (t?.[i] ?? 0) as 0 | 1 | 2;
       const isNextDraw = allowDraw && nextDrawSeat === s && nextDrawIdx === i;
       slots[s].push({ tiles: tile, isNextDraw });
     }
