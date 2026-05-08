@@ -1,5 +1,4 @@
 import { type Tile as MTile, type Seat, tileId } from '@mahjong/game-logic';
-import type { ReactNode } from 'react';
 import { Animated, Pressable, Text, View } from 'react-native';
 import { Tile } from '../Tile';
 import { PULSE_TEMPO, usePulse } from '../animations';
@@ -19,10 +18,10 @@ import type { WallSlot } from './wallLayout';
  *   - Half stack (`tiles: 1`)  → tile-back at one-tile depth, pinned
  *     to the inner edge (closer to the felt centre) — so the wall
  *     visibly recedes as the outer tiles get drawn.
- *   - Next-to-draw (`isNextDraw`) — the inner-half slot renders the
- *     engine's real next `Tile` (face-down) so the wall→hand FLIP
- *     via `FlipBag` has a real tile object to track. A pulse halo
- *     signals "your draw."
+ *   - Next-to-draw (`isNextDraw`) — same single-rectangle StackBack
+ *     as the static stacks, wrapped in a pulse halo to signal "your
+ *     draw". An invisible FlipBag-tracked `Tile` sits on the inner
+ *     half so the wall→hand FLIP origin lands at the right place.
  *
  * The dead wall is not rendered separately — it's part of the
  * engine's state but never visible at a real table.
@@ -156,76 +155,69 @@ function SlotCell({
       ? { width: tileW, height: tileH * 2 + 1 }
       : { width: tileW * 2 + 1, height: tileH };
   const justifyContent = innerEdge === 'end' ? ('flex-end' as const) : ('flex-start' as const);
-  // Stack rectangle's perpendicular extent — full cell for a 2-tile
-  // stack (the side of two physical tiles), half for a half-drawn one.
-  const stackPerp = slot.tiles === 2 ? tileH * 2 + 1 : tileH;
+  // Per-tile depth on the wall's perpendicular axis. h walls measure
+  // depth on the long face axis (`tileH=20`); v walls do it on the
+  // long axis after the per-seat 90° rotation (`tileW=20`). Both
+  // resolve to 20 px, so a 2-tile stack is `20+1+20 = 41` regardless
+  // of orientation, and a 1-tile residue is 20.
+  const perpUnit = stackDir === 'column' ? tileH : tileW;
+  const stackPerp = slot.tiles === 2 ? perpUnit * 2 + 1 : perpUnit;
   const stackBackW = stackDir === 'column' ? tileW : stackPerp;
   const stackBackH = stackDir === 'column' ? stackPerp : tileH;
 
   if (slot.isNextDraw && nextDrawTile) {
-    // Two children for the next-draw cell: a static outer-half back
-    // (only when the stack is full) and the FlipBag-tracked Tile +
-    // pulse halo at the inner half. The Tile must stay at one-tile
-    // dimensions so the wall→hand FLIP animation lands at the right
-    // hand-tile size.
-    const tiles: ReactNode[] = [];
-    if (slot.tiles === 2) {
-      tiles.push(
-        <StackBack key="outer" width={tileW} height={tileH} doubled={false} stackDir={stackDir} />,
-      );
-    }
-    // `Tile`'s SVG locks to a 36×50 portrait viewBox with
-    // `preserveAspectRatio="meet"`, so handing it landscape dims (used
-    // by left/right walls, where stackDir==='row') leaves the visual
-    // tile-back portrait-shaped and centred inside a wider box. Render
-    // the Tile + halo at portrait dims and rotate the wrapper 90° so
-    // the visible content fills the landscape slot.
+    // Inner-half offset within the StackBack — anchors the invisible
+    // FLIP-source `<Tile>` so the wall→hand spring originates at the
+    // half closer to the felt centre. For 1-tile stacks the whole
+    // StackBack IS the inner half, so the offset collapses to (0,0).
+    const innerHalfOffset =
+      slot.tiles === 2
+        ? stackDir === 'column'
+          ? { left: 0, top: innerEdge === 'end' ? perpUnit + 1 : 0 }
+          : { left: innerEdge === 'end' ? perpUnit + 1 : 0, top: 0 }
+        : { left: 0, top: 0 };
+    // `Tile`'s SVG locks to a 36×50 portrait viewBox; on v walls the
+    // landscape slot needs the rendered Tile rotated 90° so the FLIP
+    // source rect aligns with the visible block.
     const landscape = stackDir === 'row';
-    const tileBody = (
-      <Pressable
-        onPress={onPress}
-        testID={enableDrawTestId ? 'wall-draw-next' : undefined}
-        style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
-      >
-        <PulseHalo width={landscape ? tileH : tileW} height={landscape ? tileW : tileH}>
-          <Tile
-            tile={nextDrawTile}
-            flipId={`tile-${tileId(nextDrawTile)}`}
-            faceDown
-            width={landscape ? tileH : tileW}
-            height={landscape ? tileW : tileH}
-          />
-        </PulseHalo>
-      </Pressable>
-    );
-    tiles.push(
-      landscape ? (
-        <View
-          key="inner"
-          style={{
-            width: tileW,
-            height: tileH,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <View style={{ transform: [{ rotate: '90deg' }] }}>{tileBody}</View>
-        </View>
-      ) : (
-        <View key="inner">{tileBody}</View>
-      ),
-    );
-    const ordered = innerEdge === 'end' ? tiles : [...tiles].reverse();
     return (
-      <View
-        style={{
-          ...containerStyle,
-          flexDirection: stackDir,
-          justifyContent,
-          gap: 1,
-        }}
-      >
-        {ordered}
+      <View style={{ ...containerStyle, flexDirection: stackDir, justifyContent }}>
+        <Pressable
+          onPress={onPress}
+          testID={enableDrawTestId ? 'wall-draw-next' : undefined}
+          style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
+        >
+          <PulseHalo width={stackBackW} height={stackBackH}>
+            <StackBack
+              width={stackBackW}
+              height={stackBackH}
+              doubled={slot.tiles === 2}
+              stackDir={stackDir}
+            />
+            <View
+              style={{
+                position: 'absolute',
+                ...innerHalfOffset,
+                width: tileW,
+                height: tileH,
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: 0,
+                pointerEvents: 'none',
+              }}
+            >
+              <View style={landscape ? { transform: [{ rotate: '90deg' }] } : undefined}>
+                <Tile
+                  tile={nextDrawTile}
+                  flipId={`tile-${tileId(nextDrawTile)}`}
+                  faceDown
+                  width={landscape ? tileH : tileW}
+                  height={landscape ? tileW : tileH}
+                />
+              </View>
+            </View>
+          </PulseHalo>
+        </Pressable>
       </View>
     );
   }
@@ -257,7 +249,11 @@ function SlotCell({
  * opacity loop using RN core `Animated`. Replaces the framer-motion
  * `motion.span animate={PULSE_HALO_ANIMATE}` from the legacy build.
  * Compositor-only properties (transform + opacity), `useNativeDriver`
- * so the JS thread stays free during animation.
+ * so the JS thread stays free during animation. Border + fill are
+ * both absolute-positioned so the halo doesn't add to the wrapper's
+ * layout box — the wall cell is fixed-size, and an outward border
+ * would otherwise overflow into adjacent cells when the StackBack
+ * fills the cell (2-tile stacks).
  */
 function PulseHalo({
   width,
@@ -268,13 +264,20 @@ function PulseHalo({
   const scale = t.interpolate({ inputRange: [0, 1], outputRange: [1, 1.18] });
   const opacity = t.interpolate({ inputRange: [0, 1], outputRange: [0.6, 0] });
   return (
-    <View
-      style={{
-        borderRadius: 4,
-        borderWidth: 1.5,
-        borderColor: COLORS.drawHalo,
-      }}
-    >
+    <View>
+      <View
+        style={{
+          position: 'absolute',
+          top: -1.5,
+          left: -1.5,
+          right: -1.5,
+          bottom: -1.5,
+          borderRadius: 4,
+          borderWidth: 1.5,
+          borderColor: COLORS.drawHalo,
+          pointerEvents: 'none',
+        }}
+      />
       <Animated.View
         style={{
           position: 'absolute',
