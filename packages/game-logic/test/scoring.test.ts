@@ -672,4 +672,282 @@ describe('scoring — small/large dragons', () => {
     expect(dragons?.tiles.filter((t) => t.kind === 'honor' && t.honor === 'F')).toHaveLength(3);
     expect(dragons?.tiles.filter((t) => t.kind === 'honor' && t.honor === 'B')).toHaveLength(3);
   });
+
+  it('two dragon triplets + dragon pair = 小三元, not 大三元', () => {
+    const winningTile = suit('man', 5, 0);
+    // Z Z Z (中), F F F (發), B B (白 pair) + 5m5m5m + 1p2p3p. 二
+    // dragon triplets + a third dragon as a pair = 小三元.
+    const hand: Tile[] = [
+      honor('Z', 0),
+      honor('Z', 1),
+      honor('Z', 2),
+      honor('F', 0),
+      honor('F', 1),
+      honor('F', 2),
+      honor('B', 0),
+      honor('B', 1),
+      suit('man', 5, 1),
+      suit('man', 5, 2),
+      suit('pin', 1, 0),
+      suit('pin', 2, 0),
+      suit('pin', 3, 0),
+    ];
+    const state = stateWith(hand);
+    const r = scoreHand({ state, winner: 0, winningTile, selfDraw: false });
+    expect(r.breakdown.find((b) => b.name === '小三元')?.faan).toBe(5);
+    expect(r.breakdown.find((b) => b.name === '大三元')).toBeUndefined();
+  });
+
+  it('one dragon triplet + dragon pair scores neither 大三元 nor 小三元', () => {
+    const winningTile = suit('man', 5, 0);
+    // Z Z Z (中) + B B (白 pair) — only one dragon triplet, so 小三元
+    // (which requires two) shouldn't fire either.
+    const hand: Tile[] = [
+      honor('Z', 0),
+      honor('Z', 1),
+      honor('Z', 2),
+      honor('B', 0),
+      honor('B', 1),
+      suit('man', 5, 1),
+      suit('man', 5, 2),
+      suit('man', 6, 0),
+      suit('man', 7, 0),
+      suit('man', 8, 0),
+      suit('pin', 1, 0),
+      suit('pin', 2, 0),
+      suit('pin', 3, 0),
+    ];
+    const state = stateWith(hand);
+    const r = scoreHand({ state, winner: 0, winningTile, selfDraw: false });
+    expect(r.breakdown.find((b) => b.name === '大三元')).toBeUndefined();
+    expect(r.breakdown.find((b) => b.name === '小三元')).toBeUndefined();
+  });
+});
+
+/**
+ * Negative coverage. Catalog tests in `scoring-catalog.test.ts` already
+ * confirm every rule's example hand triggers the rule it claims to —
+ * positive coverage is exhaustive. The cases below pin down the
+ * detector boundaries: hands that look like they should score
+ * something but mustn't, and hands where one rule has to suppress
+ * another. The 9p-pung 平和 bug (`describe('scoring — all
+ * sequences')` above) was the canonical example — caught only after
+ * shipping; the goal here is to lock the rest of the boundary cases
+ * before the next regression.
+ */
+describe('scoring — boundary negatives', () => {
+  it('清一色 only fires for pure single-suit; honors make it 混一色 instead', () => {
+    const winningTile = suit('man', 5, 0);
+    // All-man + East pair — exactly one honor face means single-suit
+    // detection has to cede to 混一色 (half flush) and skip 清一色.
+    const hand: Tile[] = [
+      suit('man', 1, 0),
+      suit('man', 2, 0),
+      suit('man', 3, 0),
+      suit('man', 4, 0),
+      suit('man', 5, 1),
+      suit('man', 6, 0),
+      suit('man', 7, 0),
+      suit('man', 8, 0),
+      suit('man', 9, 0),
+      suit('man', 9, 1),
+      suit('man', 9, 2),
+      honor('E', 0),
+      honor('E', 1),
+    ];
+    const state = stateWith(hand);
+    const r = scoreHand({ state, winner: 0, winningTile, selfDraw: false });
+    expect(r.breakdown.find((b) => b.name === '混一色')?.faan).toBe(3);
+    expect(r.breakdown.find((b) => b.name === '清一色')).toBeUndefined();
+  });
+
+  it('清一色 does not fire for a multi-suit hand', () => {
+    const winningTile = suit('man', 5, 0);
+    // Mixed suits, no honors — neither flush should fire.
+    const hand: Tile[] = [
+      suit('man', 1, 0),
+      suit('man', 2, 0),
+      suit('man', 3, 0),
+      suit('man', 4, 0),
+      suit('man', 5, 1),
+      suit('pin', 4, 0),
+      suit('pin', 5, 0),
+      suit('pin', 6, 0),
+      suit('sou', 7, 0),
+      suit('sou', 8, 0),
+      suit('sou', 9, 0),
+      suit('sou', 1, 0),
+      suit('sou', 1, 1),
+    ];
+    const state = stateWith(hand);
+    const r = scoreHand({ state, winner: 0, winningTile, selfDraw: false });
+    expect(r.breakdown.find((b) => b.name === '清一色')).toBeUndefined();
+    expect(r.breakdown.find((b) => b.name === '混一色')).toBeUndefined();
+    expect(r.breakdown.find((b) => b.name === '九蓮寶燈')).toBeUndefined();
+  });
+
+  it('混一色 does not fire when the hand has no suited tiles (字一色 path)', () => {
+    const winningTile = honor('B', 0);
+    // All-honors hand. 字一色 wins; 混一色 (which still allows
+    // honors) must not piggyback.
+    const hand: Tile[] = [
+      honor('E', 0),
+      honor('E', 1),
+      honor('E', 2),
+      honor('S', 0),
+      honor('S', 1),
+      honor('S', 2),
+      honor('W', 0),
+      honor('W', 1),
+      honor('W', 2),
+      honor('N', 0),
+      honor('N', 1),
+      honor('N', 2),
+      honor('B', 1),
+    ];
+    const state = stateWith(hand);
+    const r = scoreHand({ state, winner: 0, winningTile, selfDraw: false });
+    expect(r.breakdown.find((b) => b.name === '字一色')?.faan).toBe(10);
+    expect(r.breakdown.find((b) => b.name === '混一色')).toBeUndefined();
+  });
+
+  it('字一色 does not fire when even one suited tile is present', () => {
+    const winningTile = honor('B', 0);
+    // 11 honors + a single 1m suited pair — 字一色 cannot fire.
+    const hand: Tile[] = [
+      honor('E', 0),
+      honor('E', 1),
+      honor('E', 2),
+      honor('S', 0),
+      honor('S', 1),
+      honor('S', 2),
+      honor('W', 0),
+      honor('W', 1),
+      honor('W', 2),
+      honor('B', 1),
+      honor('B', 2),
+      suit('man', 1, 0),
+      suit('man', 1, 1),
+    ];
+    const state = stateWith(hand);
+    const r = scoreHand({ state, winner: 0, winningTile, selfDraw: false });
+    expect(r.breakdown.find((b) => b.name === '字一色')).toBeUndefined();
+    // The suited pair makes it 混一色 (single suit + honors) instead.
+    expect(r.breakdown.find((b) => b.name === '混一色')?.faan).toBe(3);
+  });
+
+  it('對對和 does not fire when an exposed chi is in play', () => {
+    const winningTile = suit('man', 5, 0);
+    // 4m5m6m chi exposed + 1m1m1m + 9p9p9p + E E E + 5m5m. Three
+    // concealed triplets + an exposed chi blocks 對對和.
+    const chi = {
+      kind: 'chi' as const,
+      tiles: [suit('man', 4, 0), suit('man', 5, 1), suit('man', 6, 0)],
+      from: 3 as const,
+    };
+    const hand: Tile[] = [
+      suit('man', 1, 0),
+      suit('man', 1, 1),
+      suit('man', 1, 2),
+      suit('pin', 9, 0),
+      suit('pin', 9, 1),
+      suit('pin', 9, 2),
+      honor('E', 0),
+      honor('E', 1),
+      honor('E', 2),
+      suit('man', 5, 2),
+    ];
+    const state: GameState = {
+      ...emptyState(DEFAULT_RULES),
+      hands: { 0: hand, 1: [], 2: [], 3: [] },
+      melds: { 0: [chi], 1: [], 2: [], 3: [] },
+    };
+    const r = scoreHand({ state, winner: 0, winningTile, selfDraw: false });
+    expect(r.breakdown.find((b) => b.name === '對對和')).toBeUndefined();
+  });
+
+  it('七對子 does not fire when any meld is exposed (must be fully concealed)', () => {
+    const winningTile = suit('sou', 7, 0);
+    // Concealed half is six pairs (12 tiles); seat already exposed a
+    // peng (3 tiles). Standard hand with one exposed peng — must not
+    // surface as 七對子, and it should fail to win at all on this
+    // shape (no fourth set), so the seven-pairs detector being off is
+    // the load-bearing check here.
+    const peng = {
+      kind: 'peng' as const,
+      tiles: [honor('E', 0), honor('E', 1), honor('E', 2)],
+      from: 1 as const,
+    };
+    const hand: Tile[] = [
+      suit('man', 2, 0),
+      suit('man', 2, 1),
+      suit('man', 5, 0),
+      suit('man', 5, 1),
+      suit('pin', 3, 0),
+      suit('pin', 3, 1),
+      suit('pin', 6, 0),
+      suit('pin', 6, 1),
+      suit('sou', 4, 0),
+      suit('sou', 4, 1),
+      suit('sou', 7, 1),
+    ];
+    const state: GameState = {
+      ...emptyState(DEFAULT_RULES),
+      hands: { 0: hand, 1: [], 2: [], 3: [] },
+      melds: { 0: [peng], 1: [], 2: [], 3: [] },
+    };
+    const r = scoreHand({ state, winner: 0, winningTile, selfDraw: false });
+    expect(r.breakdown.find((b) => b.name === '七對子')).toBeUndefined();
+  });
+
+  it('十三幺 does not fire when one terminal/honor is missing', () => {
+    const winningTile = honor('B', 1);
+    // Same as the canonical 十三幺 example but with 1s replaced by
+    // a duplicate 9s — 12 distinct kinds + a doubled face = the
+    // detector's `counts.size !== 13` short-circuit fires.
+    const hand: Tile[] = [
+      suit('man', 1, 0),
+      suit('man', 9, 0),
+      suit('pin', 1, 0),
+      suit('pin', 9, 0),
+      suit('sou', 9, 0),
+      suit('sou', 9, 1),
+      honor('E', 0),
+      honor('S', 0),
+      honor('W', 0),
+      honor('N', 0),
+      honor('Z', 0),
+      honor('F', 0),
+      honor('B', 0),
+    ];
+    const state = stateWith(hand);
+    const r = scoreHand({ state, winner: 0, winningTile, selfDraw: false });
+    expect(r.breakdown.find((b) => b.name === '十三幺')).toBeUndefined();
+  });
+
+  it('平和 is suppressed when the pair is a yakuhai (dragon)', () => {
+    const winningTile = suit('man', 5, 0);
+    // Four chi + a 中 (dragon) pair. All-runs shape but the pair is
+    // a yakuhai, so 平和 must skip — otherwise the user double-dips
+    // (the dragon pair already implies 役牌 if completed, and the
+    // canonical 平和 rule excludes yakuhai pairs).
+    const hand: Tile[] = [
+      suit('man', 1, 0),
+      suit('man', 2, 0),
+      suit('man', 3, 0),
+      suit('man', 4, 0),
+      suit('man', 6, 0),
+      suit('man', 7, 0),
+      suit('man', 8, 0),
+      suit('man', 9, 0),
+      suit('pin', 1, 0),
+      suit('pin', 2, 0),
+      suit('pin', 3, 0),
+      honor('Z', 0),
+      honor('Z', 1),
+    ];
+    const state = stateWith(hand);
+    const r = scoreHand({ state, winner: 0, winningTile, selfDraw: false });
+    expect(r.breakdown.find((b) => b.name === '平和')).toBeUndefined();
+  });
 });
