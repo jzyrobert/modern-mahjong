@@ -1,6 +1,6 @@
 import type { Tile as MTile, Meld, Phase, Seat } from '@mahjong/game-logic';
 import type { ReactNode } from 'react';
-import { View } from 'react-native';
+import { View, useWindowDimensions } from 'react-native';
 import type { LobbyState } from '../../state/game';
 import { useGame } from '../../state/game';
 import { Hand } from '../Hand';
@@ -104,6 +104,8 @@ export function DesktopTable({
 }: DesktopTableProps) {
   const feltSkin = useGame((s) => s.settings.felt);
   const felt = FELT_SKINS[feltSkin];
+  const { width: viewportWidth } = useWindowDimensions();
+  const dims = dimsForViewport(viewportWidth);
   const placements = layoutFor(mySeat, dealer);
   const byPos: Record<Position, SeatPlacement> = {
     bottom: placements[0]!,
@@ -141,8 +143,8 @@ export function DesktopTable({
     // Vertical walls (left/right seats) render their tiles on their
     // side so the wall length matches the horizontal walls — see
     // FRAME constants below for the math.
-    const tileW = orient === 'row' ? WALL_TILE_W : WALL_TILE_H;
-    const tileH = orient === 'row' ? WALL_TILE_H : WALL_TILE_W;
+    const tileW = orient === 'row' ? dims.wallTileW : dims.wallTileH;
+    const tileH = orient === 'row' ? dims.wallTileH : dims.wallTileW;
     return (
       <WallEdge
         seatKey={seat}
@@ -174,6 +176,7 @@ export function DesktopTable({
         orient={orient}
         aboutToDraw={isNextDrawer}
         drawCountdown={isNextDrawer ? (drawCountdown ?? null) : null}
+        dims={dims}
       />
     );
   };
@@ -205,7 +208,7 @@ export function DesktopTable({
           gap: 12,
         }}
       >
-        <View style={{ width: 140, justifyContent: 'center', gap: 6 }}>
+        <View style={{ width: dims.oppOuterWidth, justifyContent: 'center', gap: 6 }}>
           {renderOpp(byPos.left, 'vertical')}
         </View>
 
@@ -214,6 +217,7 @@ export function DesktopTable({
           bottomWall={renderWall(byPos.bottom.seat, 'bottom', 'row', false, true)}
           leftWall={renderWall(byPos.left.seat, 'left', 'column', false, false)}
           rightWall={renderWall(byPos.right.seat, 'right', 'column', true, false)}
+          squareSize={dims.squareSize}
         >
           <CenterDiscards
             byPos={byPos}
@@ -221,10 +225,11 @@ export function DesktopTable({
             latestDiscardId={latestDiscardId}
             centerHud={centerHud}
             bgColor={felt.bottom}
+            dims={dims}
           />
         </FeltFrame>
 
-        <View style={{ width: 140, justifyContent: 'center', gap: 6 }}>
+        <View style={{ width: dims.oppOuterWidth, justifyContent: 'center', gap: 6 }}>
           {renderOpp(byPos.right, 'vertical')}
         </View>
       </View>
@@ -253,61 +258,108 @@ export function DesktopTable({
   );
 }
 
-// Wall + square geometry. `WALL_TILE_W` × `WALL_TILE_H` are the
-// per-tile dimensions for a horizontal wall (top/bottom). Vertical
-// walls (left/right) swap them so the tile is on its side, and the
-// effective wall length stays the same. With 17 stacks of `WALL_TILE_W`
-// + 16 × 1px gaps, every wall is exactly `SQUARE_SIZE` long, so the
-// inner discard square fits perfectly inside the four walls.
-//
-// Bumped from 14×20 → 18×26 to expand the inner felt: the previous
-// 254×254 square stopped fitting four ~18-tile discard piles plus
-// the centre HUD around round 14, with the bottom pile spilling
-// onto the felt border. 18×26 produces a 322×322 inner square,
-// enough headroom for full-length piles + a small HUD column with
-// the same 17-stack wall geometry.
-const WALL_TILE_W = 18;
-const WALL_TILE_H = 26;
-const SQUARE_SIZE = 17 * WALL_TILE_W + 16;
-// Inner content area inside `CenterDiscards` after `padding: 12`
-// gutters on each axis. Used to derive the per-pile max extents
-// below so each pile knows how flat it should wrap.
-const INNER_CONTENT = SQUARE_SIZE - 24;
-// Side-pile cell width. Wider than half-of-`INNER_CONTENT` minus the
-// HUD lane would allow, but the HUD lane is empty 99 % of the time
-// (only renders during a tsumo opportunity), so giving the side
-// piles real breathing room is the better default.
-const SIDE_CELL_WIDTH = 130;
-// Top/bottom horizontal piles wrap into the full inner width.
-const TOP_BOTTOM_PILE_MAX_W = INNER_CONTENT;
-// Left/right vertical piles cap their height so a long run wraps
-// into a flatter shape. 4 stacked tiles ≈ 128 px (32 px per tile-
-// plus-gap), matching the height available between the top + bottom
-// piles in `CenterDiscards`.
-const SIDE_PILE_MAX_H = 4 * 32;
+/**
+ * Geometry for the desktop felt at a given viewport scale. The
+ * baseline (`scale = 1`) is the previous fixed-pixel layout — 18×26
+ * wall tiles, a 322×322 felt, 130 px side cells. Scale eases up
+ * with the viewport so larger windows render proportionally larger
+ * tiles + walls + discards, instead of leaving the felt as a small
+ * island in a sea of cream gutter on a 4K monitor.
+ */
+interface DesktopDims {
+  scale: number;
+  wallTileW: number;
+  wallTileH: number;
+  squareSize: number;
+  innerContent: number;
+  /** Width reserved for each side-pile column (left + right). */
+  sideCellWidth: number;
+  /** Max width for top/bottom horizontal piles before they wrap. */
+  topBottomPileMaxW: number;
+  /** Max height for left/right vertical piles before they wrap. */
+  sidePileMaxH: number;
+  /** Per-tile width for discard piles. Step = `discardTileW + 2`. */
+  discardTileW: number;
+  /** Per-tile height for discard piles. Step = `discardTileH + 2`. */
+  discardTileH: number;
+  /** Face-down opponent strip per-tile dims, by orient. Horizontal
+   *  (top seat) tiles render upright; vertical (left/right) tiles
+   *  render rotated, so the W/H swap. */
+  oppFaceDownH: { w: number; h: number };
+  oppFaceDownV: { w: number; h: number };
+  /** MeldStrip per-tile dims, opponent vs. self. */
+  oppMeldTileW: number;
+  oppMeldTileH: number;
+  /** Outer width reserved for each side opponent column (the box
+   *  containing PlayerBadge + face-down strip + meld strip). */
+  oppOuterWidth: number;
+}
+
+function dimsForViewport(viewportWidth: number): DesktopDims {
+  // Linear ramp from 1.0 at 1280 px wide (Playwright + standard
+  // Desktop Chrome's default viewport — keeps the existing baseline
+  // exactly) up to 1.6 at 2400 px wide. Clamped at both ends so
+  // narrow desktops (768–1280) and ultra-wide monitors (>2400)
+  // both stay sensible.
+  const scale = Math.min(1.6, Math.max(1, 1 + ((viewportWidth - 1280) / (2400 - 1280)) * 0.6));
+  const wallTileW = Math.round(18 * scale);
+  const wallTileH = Math.round(26 * scale);
+  const squareSize = 17 * wallTileW + 16;
+  const innerContent = squareSize - 24;
+  const sideCellWidth = Math.round(130 * scale);
+  const discardTileW = Math.round(22 * scale);
+  const discardTileH = Math.round(30 * scale);
+  return {
+    scale,
+    wallTileW,
+    wallTileH,
+    squareSize,
+    innerContent,
+    sideCellWidth,
+    topBottomPileMaxW: innerContent,
+    sidePileMaxH: Math.round(4 * (discardTileH + 2)),
+    discardTileW,
+    discardTileH,
+    oppFaceDownH: { w: Math.round(14 * scale), h: Math.round(20 * scale) },
+    oppFaceDownV: { w: Math.round(16 * scale), h: Math.round(14 * scale) },
+    oppMeldTileW: Math.round(14 * scale),
+    oppMeldTileH: Math.round(20 * scale),
+    oppOuterWidth: Math.round(140 * scale),
+  };
+}
 
 interface FeltFrameProps {
   topWall: ReactNode;
   bottomWall: ReactNode;
   leftWall: ReactNode;
   rightWall: ReactNode;
-  /** The square inner content (typically `<CenterDiscards>`). Forced to
-   *  `SQUARE_SIZE × SQUARE_SIZE` so the four walls visually frame it. */
+  /** Inner felt edge length — driven by the per-viewport scale so
+   *  larger windows render a proportionally larger frame. */
+  squareSize: number;
+  /** The square inner content (typically `<CenterDiscards>`). Forced
+   *  to `squareSize × squareSize` so the four walls visually frame it. */
   children: ReactNode;
 }
 
 /**
- * Square felt frame — the four walls hug a `SQUARE_SIZE × SQUARE_SIZE`
+ * Square felt frame — the four walls hug a `squareSize × squareSize`
  * inner block of discards / centre HUD, mimicking the physical layout
  * where the walls form a ring around the playing area.
  */
-function FeltFrame({ topWall, bottomWall, leftWall, rightWall, children }: FeltFrameProps) {
+function FeltFrame({
+  topWall,
+  bottomWall,
+  leftWall,
+  rightWall,
+  squareSize,
+  children,
+}: FeltFrameProps) {
   return (
     <View style={{ alignItems: 'center', gap: 4 }}>
       <View style={{ alignItems: 'center' }}>{topWall}</View>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
         {leftWall}
-        <View style={{ width: SQUARE_SIZE, height: SQUARE_SIZE }}>{children}</View>
+        <View style={{ width: squareSize, height: squareSize }}>{children}</View>
         {rightWall}
       </View>
       <View style={{ alignItems: 'center' }}>{bottomWall}</View>
@@ -326,6 +378,7 @@ interface OpponentAreaProps {
   orient: 'horizontal' | 'vertical';
   aboutToDraw: boolean;
   drawCountdown: number | null;
+  dims: DesktopDims;
 }
 
 function OpponentArea({
@@ -338,6 +391,7 @@ function OpponentArea({
   orient,
   aboutToDraw,
   drawCountdown,
+  dims,
 }: OpponentAreaProps) {
   return (
     <View
@@ -357,10 +411,10 @@ function OpponentArea({
         aboutToDraw={aboutToDraw}
         drawCountdown={drawCountdown}
       />
-      <FaceDownStrip count={handCount} orient={orient} />
+      <FaceDownStrip count={handCount} orient={orient} dims={dims} />
       {melds.length > 0 ? (
         <View style={{ alignSelf: 'center' }}>
-          <MeldStrip melds={melds} tileWidth={14} tileHeight={20} />
+          <MeldStrip melds={melds} tileWidth={dims.oppMeldTileW} tileHeight={dims.oppMeldTileH} />
         </View>
       ) : null}
     </View>
@@ -428,11 +482,12 @@ function MyArea({
 interface FaceDownStripProps {
   count: number;
   orient: 'horizontal' | 'vertical';
+  dims: DesktopDims;
 }
 
-function FaceDownStrip({ count, orient }: FaceDownStripProps) {
-  const W = orient === 'horizontal' ? 14 : 16;
-  const H = orient === 'horizontal' ? 20 : 14;
+function FaceDownStrip({ count, orient, dims }: FaceDownStripProps) {
+  const W = orient === 'horizontal' ? dims.oppFaceDownH.w : dims.oppFaceDownV.w;
+  const H = orient === 'horizontal' ? dims.oppFaceDownH.h : dims.oppFaceDownV.h;
   return (
     <View
       style={{
@@ -468,6 +523,7 @@ interface CenterDiscardsProps {
   /** Inner well background — the felt skin's darker `bottom` stop, so
    *  the centre area reads as recessed from the surrounding felt. */
   bgColor: string;
+  dims: DesktopDims;
 }
 
 /**
@@ -481,7 +537,9 @@ function CenterDiscards({
   latestDiscardId,
   centerHud,
   bgColor,
+  dims,
 }: CenterDiscardsProps) {
+  const tileProps = { tileW: dims.discardTileW, tileH: dims.discardTileH } as const;
   return (
     <View
       style={{
@@ -499,25 +557,28 @@ function CenterDiscards({
           tiles={discards[byPos.top.seat]}
           rotate={180}
           latestId={latestDiscardId}
-          maxExtent={TOP_BOTTOM_PILE_MAX_W}
+          maxExtent={dims.topBottomPileMaxW}
+          {...tileProps}
         />
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <View style={{ width: SIDE_CELL_WIDTH, alignItems: 'center' }}>
+        <View style={{ width: dims.sideCellWidth, alignItems: 'center' }}>
           <SeatDiscardPile
             tiles={discards[byPos.left.seat]}
             rotate={90}
             latestId={latestDiscardId}
-            maxExtent={SIDE_PILE_MAX_H}
+            maxExtent={dims.sidePileMaxH}
+            {...tileProps}
           />
         </View>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>{centerHud}</View>
-        <View style={{ width: SIDE_CELL_WIDTH, alignItems: 'center' }}>
+        <View style={{ width: dims.sideCellWidth, alignItems: 'center' }}>
           <SeatDiscardPile
             tiles={discards[byPos.right.seat]}
             rotate={-90}
             latestId={latestDiscardId}
-            maxExtent={SIDE_PILE_MAX_H}
+            maxExtent={dims.sidePileMaxH}
+            {...tileProps}
           />
         </View>
       </View>
@@ -526,7 +587,8 @@ function CenterDiscards({
           tiles={discards[byPos.bottom.seat]}
           rotate={0}
           latestId={latestDiscardId}
-          maxExtent={TOP_BOTTOM_PILE_MAX_W}
+          maxExtent={dims.topBottomPileMaxW}
+          {...tileProps}
         />
       </View>
     </View>
