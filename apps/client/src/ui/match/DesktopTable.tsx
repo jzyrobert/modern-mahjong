@@ -219,8 +219,17 @@ export function DesktopTable({
           {renderOpp(byPos.left, 'vertical')}
         </View>
 
+        {/* `reverse` flips slot order so slot 16 of every wall lands at
+            its seat's player-perspective right end (= the dice-counted
+            "right end" in `wallLayout.ts`). With each player facing the
+            felt centre, that's RIGHT-of-screen for East (bottom), TOP for
+            South (right), LEFT for West (top), BOTTOM for North (left).
+            The two walls whose slot-0/16 axis runs opposite to the
+            screen-natural flow (top + right) get `reverse=true`; the
+            other two stay false. Keeps both the dead-wall extent and
+            the live-draw cursor continuous around all four corners. */}
         <FeltFrame
-          topWall={renderWall(byPos.top.seat, 'top', 'row', false, false)}
+          topWall={renderWall(byPos.top.seat, 'top', 'row', true, false)}
           bottomWall={renderWall(byPos.bottom.seat, 'bottom', 'row', false, true)}
           leftWall={renderWall(byPos.left.seat, 'left', 'column', false, false)}
           rightWall={renderWall(byPos.right.seat, 'right', 'column', true, false)}
