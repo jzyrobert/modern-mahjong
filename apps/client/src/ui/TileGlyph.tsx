@@ -1,6 +1,7 @@
-import type { Tile as MTile } from '@mahjong/game-logic';
+import type { Honor, Tile as MTile } from '@mahjong/game-logic';
 import { Text, View } from 'react-native';
 import Svg, { Circle, Ellipse, G, Line, Path, Rect } from 'react-native-svg';
+import { WIND_GLYPH } from './winds';
 
 /**
  * Mahjong tile face — classical Hong Kong physical-set styling. SVG
@@ -79,6 +80,10 @@ function renderTextOverlay(t: MTile, scale: number) {
 // Coordinates are in a 44-wide × 60-tall reference space (handoff
 // convention). The outer `scale(W/44)` brings them into the 36×50
 // viewBox without per-rank arithmetic.
+//
+// Sou-8 is the only entry that uses the third tuple element: outer
+// four rods stay vertical (rot=0), inner pair tilts ±32° so the top
+// forms an inverted W (`\/\/`) and the bottom an M (`/\/\`).
 
 type SouLayout = ReadonlyArray<readonly [number, number] | readonly [number, number, number]>;
 
@@ -113,9 +118,6 @@ const SOU_LAYOUTS: Record<number, SouLayout> = {
     [0, 14],
     [9, 14],
   ],
-  // Single rod centred on top, then two rows of three. Lots of vertical
-  // breathing room — physical sets keep the top stick well clear of the
-  // bottom block.
   7: [
     [0, -18],
     [-9, -3],
@@ -125,9 +127,6 @@ const SOU_LAYOUTS: Record<number, SouLayout> = {
     [0, 16],
     [9, 16],
   ],
-  // The set's signature tile: outer four rods stay vertical, inner pair
-  // tilts ±32° so the top forms an inverted W (`\/\/`) and the bottom
-  // forms an M (`/\/\`). Every classical Hong Kong set engraves this.
   8: [
     [-11, -13, 0],
     [-5, -13, 32],
@@ -151,9 +150,9 @@ const SOU_LAYOUTS: Record<number, SouLayout> = {
   ],
 };
 
-// Indices in the layout list that get the red ink. The 5-sou's
-// centre rod, the 7-sou's top rod, and the 9-sou's middle column
-// match traditional engraving conventions.
+// Indices in the layout list that take the red ink — the 5-sou's
+// centre rod, the 7-sou's top rod, and the 9-sou's middle column,
+// matching traditional engraving conventions.
 const SOU_RED: Record<number, ReadonlyArray<number>> = {
   5: [2],
   7: [0],
@@ -183,7 +182,6 @@ const PIN_LAYOUTS: Record<number, ReadonlyArray<readonly [number, number]>> = {
     [-10, 12],
     [10, 12],
   ],
-  // Top pair sits well above a 2×2 cluster — the canonical pin-6 split.
   6: [
     [-10, -16],
     [10, -16],
@@ -192,7 +190,6 @@ const PIN_LAYOUTS: Record<number, ReadonlyArray<readonly [number, number]>> = {
     [-10, 14],
     [10, 14],
   ],
-  // Diagonal of three across the top, then a 2×2 block below.
   7: [
     [-12, -16],
     [0, -12],
@@ -202,8 +199,6 @@ const PIN_LAYOUTS: Record<number, ReadonlyArray<readonly [number, number]>> = {
     [-8, 16],
     [8, 16],
   ],
-  // Two columns of four — matches the 2×4 silhouette physical sets
-  // engrave for pin-8.
   8: [
     [-10, -16.5],
     [10, -16.5],
@@ -227,9 +222,8 @@ const PIN_LAYOUTS: Record<number, ReadonlyArray<readonly [number, number]>> = {
   ],
 };
 
-// Per-rank colour patterns. Pin-8 is rendered all-black via a special
-// case in `PinSvg`; the rest fall back to green when neither `red` nor
-// `black` claims the index.
+// Per-rank ink indices into the layout list. Anything not claimed
+// by `PIN_RED` or `PIN_BLACK` falls through to the green default.
 const PIN_RED: Record<number, ReadonlyArray<number>> = {
   3: [1],
   5: [2],
@@ -238,14 +232,17 @@ const PIN_RED: Record<number, ReadonlyArray<number>> = {
   9: [3, 4, 5],
 };
 const PIN_BLACK: Record<number, ReadonlyArray<number>> = {
+  // Pin-8 is rendered all-black; expressing it as a black-index list
+  // (rather than a special case in `PinSvg`) keeps the colour
+  // dispatch uniform across ranks.
+  8: [0, 1, 2, 3, 4, 5, 6, 7],
   9: [6, 7, 8],
 };
 
-// ─── Bamboo stick ──────────────────────────────────────────────────
 // Three hourglass-pinch segments stacked edge-to-edge so the stick
-// reads as one continuous piece of bamboo. Total height is ~18 units
-// (the 44×60 reference space). Pinch highlights at y = -6, 0, +6
-// articulate the joints.
+// reads as one continuous piece of bamboo, plus three pinch highlights
+// to articulate the joints. Total height is ~18 units in the 44×60
+// reference space.
 const BAMBOO_PATH =
   'M -2.4 -9 Q 0 -8.4 2.4 -9 Q 0.9 -6 2.4 -3 Q 0 -2.4 -2.4 -3 Q -0.9 -6 -2.4 -9 Z ' +
   'M -2.4 -3 Q 0 -2.4 2.4 -3 Q 0.9 0 2.4 3 Q 0 2.4 -2.4 3 Q -0.9 0 -2.4 -3 Z ' +
@@ -270,10 +267,9 @@ function BambooStick({ x, y, scale = 1, rot = 0, color = INK_GREEN }: BambooStic
   );
 }
 
-// ─── Pin dot ───────────────────────────────────────────────────────
-// Concentric ring with a cream-coloured eye and an ink core. The ratio
-// (0.55 inner, 0.25 core) holds together at 22×30 (SeatDiscardPile)
-// without the inner ring collapsing into the outer fill.
+// Concentric ring + cream-coloured eye + ink core. The 0.55 / 0.25
+// inner ratio holds together at the 22×30 SeatDiscardPile size without
+// the rings collapsing into the outer fill.
 function PinDot({ x, y, r, color }: { x: number; y: number; r: number; color: string }) {
   return (
     <G transform={`translate(${x},${y})`}>
@@ -351,14 +347,7 @@ function PinSvg({ rank }: { rank: number }) {
   return (
     <G transform={`translate(${CX},${CY}) scale(${SC})`}>
       {layout.map(([x, y], i) => {
-        const color =
-          rank === 8
-            ? INK_BLACK
-            : blacks.includes(i)
-              ? INK_BLACK
-              : reds.includes(i)
-                ? INK_RED
-                : INK_GREEN;
+        const color = blacks.includes(i) ? INK_BLACK : reds.includes(i) ? INK_RED : INK_GREEN;
         return (
           // biome-ignore lint/suspicious/noArrayIndexKey: layout is fixed per rank
           <PinDot key={i} x={x} y={y} r={r} color={color} />
@@ -393,19 +382,21 @@ function SouSvg({ rank }: { rank: number }) {
 }
 
 // ─── White dragon — empty frame ────────────────────────────────────
+const WHITE_DRAGON_W = W * 0.56;
+const WHITE_DRAGON_H = H * 0.62;
+const WHITE_DRAGON_BORDER = W * 0.04;
+
 function WhiteDragonFrame() {
-  const rectW = W * 0.56;
-  const rectH = H * 0.62;
   return (
     <Rect
-      x={(W - rectW) / 2}
-      y={(H - rectH) / 2}
-      width={rectW}
-      height={rectH}
-      rx={W * 0.04}
+      x={(W - WHITE_DRAGON_W) / 2}
+      y={(H - WHITE_DRAGON_H) / 2}
+      width={WHITE_DRAGON_W}
+      height={WHITE_DRAGON_H}
+      rx={WHITE_DRAGON_BORDER}
       fill="none"
       stroke={INK_BLACK}
-      strokeWidth={W * 0.04}
+      strokeWidth={WHITE_DRAGON_BORDER}
     />
   );
 }
@@ -463,30 +454,19 @@ function ManText({ rank, scale }: { rank: number; scale: number }) {
 }
 
 // ─── Wind / red+green dragon glyph ─────────────────────────────────
-const WIND_GLYPHS: Record<string, string> = {
-  E: '東',
-  S: '南',
-  W: '西',
-  N: '北',
-};
-
-const DRAGONS: Record<string, { glyph: string; color: string }> = {
+// 'B' (white dragon) is rendered by `WhiteDragonFrame` as an SVG
+// rect — intentionally absent from this table.
+const HONOR_GLYPH_INK: Record<Exclude<Honor, 'B'>, { glyph: string; color: string }> = {
+  E: { glyph: WIND_GLYPH.E, color: INK_BLACK },
+  S: { glyph: WIND_GLYPH.S, color: INK_BLACK },
+  W: { glyph: WIND_GLYPH.W, color: INK_BLACK },
+  N: { glyph: WIND_GLYPH.N, color: INK_BLACK },
   Z: { glyph: '中', color: INK_RED },
   F: { glyph: '發', color: INK_GREEN },
 };
 
-function HonorText({ honor, scale }: { honor: string; scale: number }) {
-  let glyph: string | undefined;
-  let color: string | undefined;
-  if (honor in WIND_GLYPHS) {
-    glyph = WIND_GLYPHS[honor];
-    color = INK_BLACK;
-  } else if (honor in DRAGONS) {
-    const d = DRAGONS[honor]!;
-    glyph = d.glyph;
-    color = d.color;
-  }
-  if (!glyph || !color) return null;
+function HonorText({ honor, scale }: { honor: Exclude<Honor, 'B'>; scale: number }) {
+  const { glyph, color } = HONOR_GLYPH_INK[honor];
   return (
     <View
       style={{
