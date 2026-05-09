@@ -8,7 +8,9 @@ The web build runs at <https://modern-mahjong.pages.dev>. See the design plan in
 
 ```
 packages/
-  game-logic/   # Pure TS engine: tiles, state, reducer, shanten, scoring, claims
+  game-logic/   # Pure TS engine: tiles, state, shanten, scoring, claims.
+                # The reducer is an XState v5 state machine driven via the
+                # stateless `transition()` API — see `docs/state-diagram.md`.
   protocol/     # Shared client ↔ server message types + zod schemas
   bots/         # AI strategies (simple / heuristic / passive)
 apps/
@@ -92,12 +94,15 @@ Notes for anyone running this for the first time:
 - **Deterministic seeds for e2e**: specs that need a specific dice outcome (e.g. forcing the user to be dealer) inject a seed via `globalThis.__MAHJONG_TEST_SEED__` in a `page.addInitScript`. See `e2e/solo-match.spec.ts` and `e2e/discard-hint.spec.ts` for the pattern.
 - **Engine state hatch**: `globalThis.__MAHJONG_TEST_GET_STATE__()` returns the live zustand store. Useful in specs when threading a `data-testid` through the component tree would be heavier than just reading the engine state.
 - **Load-bearing test IDs**: `data-testid="own-hand-tile"`, `wall-draw-next`, and `hand-tile-recommended` are exercised by the e2e suite. Refactors to `Hand`, `Wall`, or `HandTile` need to keep these on the live click target — see `CLAUDE.md` for the full list.
+- **Property tests**: `packages/game-logic/test/property.test.ts` and `invariants.test.ts` run random-action fast-check sequences against the XState reducer to guard against regressions. `fuzz-campaign.test.ts` is the long-running variant (`MAHJONG_FUZZ=1` env opt-in; defaults to 30 min split across three properties).
 
 To build a real Android APK locally see [`docs/DEPLOY.md`](./docs/DEPLOY.md#android-apk); CI also produces development + production APKs on every push to `main` as the `app-builds` workflow artifact (`react-native-cicd.yml`).
 
 ## Architecture
 
 The same `@mahjong/game-logic` package is the single source of truth on both server and client. Clients send `Action` messages over a thin `Transport` interface; the server runs them through the engine and broadcasts the resulting state. All claim races (`chi`/`peng`/`gang`/`hu`) are resolved server-authoritatively in the room actor's single-threaded event loop.
+
+The engine itself is an XState v5 state machine (`packages/game-logic/src/machine.ts`) — `waiting` / `turn` / `awaitingClaims.{normal,robWindow}` / `resolved` — invoked via the stateless `transition()` API so `reduce(state, action) → {state, events}` stays pure and JSON-serializable. The committed Mermaid diagram in [`docs/state-diagram.md`](./docs/state-diagram.md) is auto-generated from the machine and CI fails if it drifts from the source.
 
 There are three transport flavours, sharing a `createWsTransport` core:
 
