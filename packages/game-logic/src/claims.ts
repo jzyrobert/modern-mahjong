@@ -224,6 +224,8 @@ export function applyClaim(
 
   let meld: Meld;
   let newHand = [...state.hands[seat]];
+  let newDeadWall = state.deadWall;
+  let gangChained = false;
   if (claim.kind === 'peng') {
     const used: Tile[] = [];
     for (let i = 0; i < newHand.length && used.length < 2; i++) {
@@ -244,6 +246,15 @@ export function applyClaim(
       }
     }
     meld = { kind: 'gang-exposed', tiles: [tile, ...used], from };
+    // An exposed gang from a discard is still a gang — the claimer
+    // pulls a replacement from the dead wall (so they have the usual
+    // 13+1 tile count when they discard) and starts a 槓上開花 chain.
+    // Mirrors `declareGangConcealed` / `finalizePromotion`.
+    const dw = [...state.deadWall];
+    const replacement = dw.shift();
+    if (replacement) newHand.push(replacement);
+    newDeadWall = dw;
+    gangChained = true;
   } else {
     // chi — sort tiles by rank so the meld renders 4-5-6 even when
     // the discard came in as the middle or high tile. Without this,
@@ -284,12 +295,14 @@ export function applyClaim(
     hasDrawn: true, // claimed seat must discard next, no draw
     hands: newHands,
     melds: newMelds,
+    deadWall: newDeadWall,
     discards: newDiscards,
     discardOrder: newDiscardOrder,
     lastDiscard: undefined,
     // The previous seat's gang chain (if any) was broken by their
-    // discard; the new turn-holder starts with a fresh 0 count.
-    gangReplacementCount: 0,
+    // discard. An exposed gang on this discard restarts the chain at
+    // 1 (the replacement draw); chi/peng start fresh at 0.
+    gangReplacementCount: gangChained ? 1 : 0,
     turnDeadlineMs: computeTurnDeadline(state.rules),
   };
 }

@@ -114,6 +114,92 @@ describe('engine — concealed gang flow', () => {
   });
 });
 
+describe('engine — exposed gang (claimed from discard) flow', () => {
+  it('pulls a replacement from the dead wall and bumps gangReplacementCount', () => {
+    // Seat 1 holds three 5m; seat 0 will discard 5m. After seat 1
+    // claims the gang, their hand should be 13 - 3 + 1 (replacement)
+    // = 11 concealed tiles, with the gang-exposed meld plus
+    // gangReplacementCount=1 so 槓上開花 scores on a self-draw win
+    // off the replacement.
+    const pool = new TilePool();
+    const seat1Hand = pool.takeMany([
+      suit('man', 5),
+      suit('man', 5),
+      suit('man', 5),
+      // 10 filler tiles to round seat 1 out to 13.
+      suit('pin', 1),
+      suit('pin', 2),
+      suit('pin', 3),
+      suit('pin', 4),
+      suit('pin', 6),
+      suit('pin', 7),
+      suit('pin', 8),
+      suit('pin', 9),
+      honor('S'),
+      honor('W'),
+    ]);
+    // Seat 0 will discard a 5m. They start with 14 (just-drawn).
+    const seat0Hand = [pool.takeFace(suit('man', 5)), ...pool.takeAny(13)];
+    const seat2 = pool.takeAny(13);
+    const seat3 = pool.takeAny(13);
+    const remainder = pool.remaining();
+    const deadWall = remainder.splice(remainder.length - 14, 14);
+    const wall = remainder;
+
+    // Drop the fairness gate so the auto-resolve fires the moment
+    // seat 1 (the only non-discarder with a meaningful claim) submits.
+    const { claimSoftWindowMs: _omitSoft, claimHardWindowMs: _omitHard, ...rules } = DEFAULT_RULES;
+    void _omitSoft;
+    void _omitHard;
+
+    const state: GameState = {
+      ...emptyState({ ...rules, faanMin: 0 }),
+      phase: 'turn',
+      turn: 0,
+      hasDrawn: true,
+      hands: { 0: seat0Hand, 1: seat1Hand, 2: seat2, 3: seat3 },
+      wall,
+      deadWall,
+    };
+    assertTileConservation(state);
+
+    const startDeadWall = state.deadWall.length;
+
+    // Seat 0 discards 5m, opening the claim window.
+    let s = reduce(state, { t: 'discard', seat: 0, tile: seat0Hand[0]! }).state;
+    expect(s.phase).toBe('awaitingClaims');
+
+    // Pre-pass seats 2 and 3 explicitly. The discard reducer's
+    // pre-pass uses `hasMeaningfulClaim` (which considers hu via
+    // shanten), and a randomly-drawn hand can occasionally land on a
+    // shape that qualifies — making the test non-deterministic
+    // unless we submit passes ourselves.
+    s = reduce(s, { t: 'declareClaim', seat: 2, claim: { kind: 'pass' } }).state;
+    s = reduce(s, { t: 'declareClaim', seat: 3, claim: { kind: 'pass' } }).state;
+
+    // Seat 1 claims the gang. With the fairness gate dropped and all
+    // other seats in, this auto-resolves into the new turn.
+    const afterClaim = reduce(s, {
+      t: 'declareClaim',
+      seat: 1,
+      claim: { kind: 'gang' },
+    }).state;
+
+    expect(afterClaim.phase).toBe('turn');
+    expect(afterClaim.turn).toBe(1);
+    expect(afterClaim.hasDrawn).toBe(true); // discards next, doesn't draw again
+    expect(afterClaim.melds[1]).toHaveLength(1);
+    expect(afterClaim.melds[1][0]?.kind).toBe('gang-exposed');
+    // Replacement drawn from dead wall: 13 - 3 + 1 = 11 concealed.
+    expect(afterClaim.hands[1].length).toBe(11);
+    expect(afterClaim.deadWall.length).toBe(startDeadWall - 1);
+    // 槓上開花 chain starts at 1 — a self-draw win off the very next
+    // turn-end would score the kong-replacement bonus.
+    expect(afterClaim.gangReplacementCount).toBe(1);
+    assertTileConservation(afterClaim);
+  });
+});
+
 describe('engine — win-on-discard flow', () => {
   it("claims hu after another seat's discard and resolves into a winning state", () => {
     // Seat 1 hand (13 tiles) is one E away from a standard win:
