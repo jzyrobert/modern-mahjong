@@ -61,16 +61,24 @@ export class IllegalActionError extends Error {
 }
 
 /**
- * Pure reducer: takes a state and an action, returns a new state plus a list
- * of events to broadcast. Throws IllegalActionError on invalid input — the
- * server is expected to catch this and emit a typed error response.
+ * Per-action dispatcher: takes a state and an action, returns a new
+ * state plus a list of events to broadcast. Throws IllegalActionError on
+ * invalid input — the server catches and emits a typed error response.
+ *
+ * This is no longer the public engine entry point — the XState-backed
+ * wrapper in `./reduce.ts` is, surfaced as `reduce` from
+ * `packages/game-logic/src/index.ts`. The wrapper drives the machine
+ * in `./machine.ts` and the machine's `dispatch` action delegates back
+ * here (via `applyAction` below). Keeping a single transition body
+ * during the in-flight migration prevents behaviour drift between the
+ * two entry points.
  *
  * The trickiest action here is `declareClaim` and the `awaitingClaims`
  * window it feeds into; for an end-to-end map of the discard / pre-pass /
  * declareClaim / canFinalizeHu / resolveClaims / applyClaim / declareWin
  * chain, see `docs/CLAIM_FLOW.md` in the repo root.
  */
-export function reduce(state: GameState, action: Action): { state: GameState; events: Event[] } {
+function legacyReduce(state: GameState, action: Action): { state: GameState; events: Event[] } {
   switch (action.t) {
     case 'startHand':
       return startHand(state, action.seed, action.dealer);
@@ -93,7 +101,14 @@ export function reduce(state: GameState, action: Action): { state: GameState; ev
   }
 }
 
-function setRules(
+/** Public per-action dispatcher used by the XState machine in
+ *  `./machine.ts`. Same body as the legacy reducer — kept as the single
+ *  source of transition logic during the migration so behaviour can't
+ *  drift between the two entry points. The XState-backed `reduce()` in
+ *  `./reduce.ts` is the user-facing wrapper. */
+export const applyAction = legacyReduce;
+
+export function setRules(
   state: GameState,
   patch: Partial<RuleConfig>,
 ): { state: GameState; events: Event[] } {
@@ -122,7 +137,7 @@ function rulesEqual(a: RuleConfig, b: RuleConfig): boolean {
   );
 }
 
-function startHand(
+export function startHand(
   prev: GameState,
   seed: number,
   dealerInput: Seat | undefined,
@@ -205,7 +220,7 @@ function computeOpeningRolls(prev: GameState, seed: number): OpeningRolls {
   return { dice, breakPosition: breakRoll[0] + breakRoll[1], fullRoll };
 }
 
-function drawTile(state: GameState, seat: Seat): { state: GameState; events: Event[] } {
+export function drawTile(state: GameState, seat: Seat): { state: GameState; events: Event[] } {
   if (state.phase !== 'turn') throw new IllegalActionError('PHASE', 'draw outside turn phase');
   if (state.turn !== seat) throw new IllegalActionError('SEAT', 'not your turn');
   if (state.hasDrawn) throw new IllegalActionError('STATE', 'already drew this turn');
@@ -224,7 +239,11 @@ function drawTile(state: GameState, seat: Seat): { state: GameState; events: Eve
   };
 }
 
-function discard(state: GameState, seat: Seat, tile: Tile): { state: GameState; events: Event[] } {
+export function discard(
+  state: GameState,
+  seat: Seat,
+  tile: Tile,
+): { state: GameState; events: Event[] } {
   if (state.phase !== 'turn') throw new IllegalActionError('PHASE', 'discard outside turn phase');
   if (state.turn !== seat) throw new IllegalActionError('SEAT', 'not your turn');
   if (!state.hasDrawn) throw new IllegalActionError('STATE', 'must draw before discard');
@@ -298,7 +317,7 @@ function discard(state: GameState, seat: Seat, tile: Tile): { state: GameState; 
   return { state: baseState, events };
 }
 
-function declareClaim(
+export function declareClaim(
   state: GameState,
   seat: Seat,
   claim: Claim,
@@ -347,7 +366,10 @@ function declareClaim(
   return { state: newState, events: [] };
 }
 
-function resolveAndApply(state: GameState, nowMs: number): { state: GameState; events: Event[] } {
+export function resolveAndApply(
+  state: GameState,
+  nowMs: number,
+): { state: GameState; events: Event[] } {
   if (state.phase !== 'awaitingClaims' || !state.pendingClaims) {
     return { state, events: [] }; // idempotent no-op
   }
@@ -463,7 +485,7 @@ function canFinalizeHu(state: GameState, seat: Seat): boolean {
   }
 }
 
-function declareGangConcealed(
+export function declareGangConcealed(
   state: GameState,
   seat: Seat,
   tile: Tile,
@@ -492,7 +514,7 @@ function declareGangConcealed(
   };
 }
 
-function declareGangPromoted(
+export function declareGangPromoted(
   state: GameState,
   seat: Seat,
   tile: Tile,
@@ -636,7 +658,7 @@ function finalizePromotion(state: GameState, seat: Seat, tile: Tile, meldIdx: nu
   };
 }
 
-function declareWin(
+export function declareWin(
   state: GameState,
   seat: Seat,
   selfDraw: boolean,

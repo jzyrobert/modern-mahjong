@@ -32,6 +32,18 @@ config.resolver.nodeModulesPaths = [
   path.resolve(workspaceRoot, 'node_modules'),
 ];
 config.resolver.disableHierarchicalLookup = false;
+// xstate v5 ships its public API via `package.json#exports` with two
+// shims: a `.cjs.mjs` ESM bridge that re-exports from a `.cjs.js` CJS
+// bundle. With Metro's default condition order ("import" → the bridge),
+// the resulting CJS↔ESM interop creates an infinite getter chain at
+// runtime (`RangeError: Maximum call stack size exceeded` at
+// `Object.get [as createMachine]`).
+//
+// Enabling Package Exports + restricting conditions to `module` (xstate
+// maps that key to the pure ESM bundle `dist/xstate.esm.js`) bypasses
+// the bridge so Metro reads the ESM directly.
+config.resolver.unstable_enablePackageExports = true;
+config.resolver.unstable_conditionNames = ['module', 'browser', 'require'];
 
 const defaultResolver = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, moduleName, platform) => {
