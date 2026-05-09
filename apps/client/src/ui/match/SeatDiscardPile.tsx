@@ -71,9 +71,9 @@ export function SeatDiscardPile({
       {tiles.map((t, i) => {
         const id = tileId(t);
         const isLatest = latestId === id;
-        // The wrapper carries the seat orientation so the halo box
-        // stays axis-aligned with the tile under it; `<Tile>`'s own
-        // `rotate` prop is left unset to avoid double-rotating.
+        // The seat-orientation rotation lives on this wrapper (rather
+        // than on `<Tile>`) so the latest-discard halo border carries
+        // the same rotation as the tile underneath it.
         return (
           <View
             // biome-ignore lint/suspicious/noArrayIndexKey: discard order is append-only and stable; tiles can repeat (multiple of the same face) so we composite with i
