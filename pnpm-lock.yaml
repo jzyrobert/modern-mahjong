@@ -160,6 +160,10 @@ importers:
         version: 2.1.8(@types/node@22.10.1)(lightningcss@1.30.1)(terser@5.46.2)
 
   packages/game-logic:
+    dependencies:
+      xstate:
+        specifier: ^5.31.0
+        version: 5.31.0
     devDependencies:
       '@types/node':
         specifier: 22.10.1
@@ -5025,6 +5029,9 @@ packages:
   xmlbuilder@15.1.1:
     resolution: {integrity: sha512-yMqGBqtXyeN1e3TGYvgNgDVZ3j84W4cwkOXQswghol6APgZWaff9lnbvN7MHYJOiXsvGPXtjTYJEiC9J2wv9Eg==}
     engines: {node: '>=8.0'}
+
+  xstate@5.31.0:
+    resolution: {integrity: sha512-5B+0DqC0uNUrcLUEY3pn3iNy+swvK2E0ZpYp5gnV3oxMX5y87vzXkU5YXv9CAtyG5c5FOJ1SzvTWHrwE8fMZNQ==}
 
   xxhash-wasm@1.1.0:
     resolution: {integrity: sha512-147y/6YNh+tlp6nd/2pWq38i9h6mz/EuQ6njIrmW8D1BS5nCqs0P6DG+m6zTGnNz5I+uhZ0SHxBs9BsPrwcKDA==}
@@ -10781,6 +10788,8 @@ snapshots:
   xmlbuilder@11.0.1: {}
 
   xmlbuilder@15.1.1: {}
+
+  xstate@5.31.0: {}
 
   xxhash-wasm@1.1.0: {}
 

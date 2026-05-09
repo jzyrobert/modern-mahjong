@@ -61,9 +61,14 @@ export class IllegalActionError extends Error {
 }
 
 /**
- * Pure reducer: takes a state and an action, returns a new state plus a list
- * of events to broadcast. Throws IllegalActionError on invalid input — the
- * server is expected to catch this and emit a typed error response.
+ * Pure reducer: takes a state and an action, returns a new state plus a
+ * list of events to broadcast. Throws IllegalActionError on invalid
+ * input — the server catches and emits a typed error response.
+ *
+ * This stays the public entry point until the parallel XState wrapper
+ * in `./reduce.ts` + `./machine.ts` is wired up (Metro currently has
+ * trouble bundling xstate's package.json#exports chain — Day-2 work
+ * on the `claude/xstate-migration` branch).
  *
  * The trickiest action here is `declareClaim` and the `awaitingClaims`
  * window it feeds into; for an end-to-end map of the discard / pre-pass /
@@ -92,6 +97,12 @@ export function reduce(state: GameState, action: Action): { state: GameState; ev
       return declareWin(state, action.seat, action.selfDraw);
   }
 }
+
+/** Alias used by the in-progress XState machine in `./machine.ts` to
+ *  delegate per-action work back to the same reducer. Stays an alias —
+ *  not a separate implementation — so behaviour can't drift between the
+ *  two entry points while the migration is in flight. */
+export const applyAction = reduce;
 
 function setRules(
   state: GameState,
