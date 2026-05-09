@@ -108,7 +108,7 @@ function legacyReduce(state: GameState, action: Action): { state: GameState; eve
  *  `./reduce.ts` is the user-facing wrapper. */
 export const applyAction = legacyReduce;
 
-function setRules(
+export function setRules(
   state: GameState,
   patch: Partial<RuleConfig>,
 ): { state: GameState; events: Event[] } {
@@ -137,7 +137,7 @@ function rulesEqual(a: RuleConfig, b: RuleConfig): boolean {
   );
 }
 
-function startHand(
+export function startHand(
   prev: GameState,
   seed: number,
   dealerInput: Seat | undefined,
@@ -220,7 +220,7 @@ function computeOpeningRolls(prev: GameState, seed: number): OpeningRolls {
   return { dice, breakPosition: breakRoll[0] + breakRoll[1], fullRoll };
 }
 
-function drawTile(state: GameState, seat: Seat): { state: GameState; events: Event[] } {
+export function drawTile(state: GameState, seat: Seat): { state: GameState; events: Event[] } {
   if (state.phase !== 'turn') throw new IllegalActionError('PHASE', 'draw outside turn phase');
   if (state.turn !== seat) throw new IllegalActionError('SEAT', 'not your turn');
   if (state.hasDrawn) throw new IllegalActionError('STATE', 'already drew this turn');
@@ -239,7 +239,11 @@ function drawTile(state: GameState, seat: Seat): { state: GameState; events: Eve
   };
 }
 
-function discard(state: GameState, seat: Seat, tile: Tile): { state: GameState; events: Event[] } {
+export function discard(
+  state: GameState,
+  seat: Seat,
+  tile: Tile,
+): { state: GameState; events: Event[] } {
   if (state.phase !== 'turn') throw new IllegalActionError('PHASE', 'discard outside turn phase');
   if (state.turn !== seat) throw new IllegalActionError('SEAT', 'not your turn');
   if (!state.hasDrawn) throw new IllegalActionError('STATE', 'must draw before discard');
@@ -313,7 +317,7 @@ function discard(state: GameState, seat: Seat, tile: Tile): { state: GameState; 
   return { state: baseState, events };
 }
 
-function declareClaim(
+export function declareClaim(
   state: GameState,
   seat: Seat,
   claim: Claim,
@@ -362,7 +366,10 @@ function declareClaim(
   return { state: newState, events: [] };
 }
 
-function resolveAndApply(state: GameState, nowMs: number): { state: GameState; events: Event[] } {
+export function resolveAndApply(
+  state: GameState,
+  nowMs: number,
+): { state: GameState; events: Event[] } {
   if (state.phase !== 'awaitingClaims' || !state.pendingClaims) {
     return { state, events: [] }; // idempotent no-op
   }
@@ -478,7 +485,7 @@ function canFinalizeHu(state: GameState, seat: Seat): boolean {
   }
 }
 
-function declareGangConcealed(
+export function declareGangConcealed(
   state: GameState,
   seat: Seat,
   tile: Tile,
@@ -507,7 +514,7 @@ function declareGangConcealed(
   };
 }
 
-function declareGangPromoted(
+export function declareGangPromoted(
   state: GameState,
   seat: Seat,
   tile: Tile,
@@ -651,7 +658,7 @@ function finalizePromotion(state: GameState, seat: Seat, tile: Tile, meldIdx: nu
   };
 }
 
-function declareWin(
+export function declareWin(
   state: GameState,
   seat: Seat,
   selfDraw: boolean,
