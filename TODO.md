@@ -19,17 +19,25 @@ Live tracker for queued and out-of-scope work. The full design lives in [`docs/P
 - LAN: `expo-lan-server` Expo Module — embedded NanoHTTPD HTTP+WS server, mDNS host advertise / discover via `NsdManager`, static-asset HTTP route serving the bundled web export, autolinked into every native build. Auto-populates the host URL + lists nearby hosts in the lobby modals.
 - CI: typecheck + tests + lint + web build + e2e + Lighthouse (performance ≥ 0.9, median of 3 runs) on every PR; `react-native-cicd.yml` produces development + production APKs on every push to `main`.
 - Solo-match e2e claim flow: scriptable solo-transport bots drive deterministic chi / peng / gang claim opportunities via the `__MAHJONG_TEST_BOT_SCRIPTS__` test hook in `solo-transport.ts` (#116).
+- Replay system: in-match `Save this match` row records the wire-stream into a localStorage-backed library, `/replays` lists saved matches, `/replays/[id]` plays them back with a scrubber + bookmark pips (hand-start / gang / 搶槓 / win / draw) + per-seat POV toggle (all visible vs. POV-restricted) + JSON export to clipboard + paste-import. Auto-record toggle defaults off so users opt in per match.
 
 ## Open
 
 ### Future (post-MVP)
 
 - Maestro / UIAutomator UI driving so the Android lifecycle smoke can drive a match into mid-hand, background it, and assert the snapshot really did restore (the current smoke only catches crash-on-resume, not state loss).
+- Replay-system follow-ups (deferred from the v1 PR):
+  - Cloud share-links (requires a server endpoint that stores replays and a recipient-side fetch path; v1 is local-only via clipboard).
+  - "What would you have done?" diff mode — pause at a frame, let the user pick a discard, then reveal what was actually played.
+  - Search / filter the library by player name, faan score, hand length.
+  - Heatmap of dangerous tiles overlaid on opponents' discards during playback.
+  - Spectate-from-current-frame: jump into a live match and rewind a few moments.
+  - Vitest unit tests for the recorder / storage / bookmarks modules — currently exercised end-to-end only (`apps/client/e2e/replay.spec.ts`); a vitest setup for `apps/client` would let us pin the synthetic-stream and quota-prune behaviours directly.
+  - Compress saved frames — currently every delta's full state is stored as JSON. A typical 4-hand match lands at ~2–8 MB; gzip would 5–10× that. v1 uses localStorage with a 50-replay quota cap to keep the budget bounded.
 
 ## Out of scope until a maintainer decides
 
 - **iOS build.** No iOS shell or build profile is currently planned; the project ships web + Android only. The Swift `LanServer` skeleton at `apps/client/modules/expo-lan-server/ios/LanServerModule.swift` exists so `expo prebuild` produces a valid `ios/` tree, not because a Swift implementation is being worked on. If a maintainer ever does want iOS, the Android Kotlin module is the reference: drop in Telegraph (or Swifter / GCDWebServer + a WS layer) for the HTTP+WS server, `NetService` / `NWBrowser` for mDNS, `getifaddrs` for `lanAddresses()`. Macos runner + signing certs would also need to be added to CI.
 - Account system / cross-device identity sync.
-- Match history / replays beyond the in-memory seed-based determinism.
 - Spectator mode for live matches (server tracks the count; UI doesn't surface a watcher view).
 - Internationalisation (currently English + traditional-character mahjong terms only).
