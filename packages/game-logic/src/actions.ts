@@ -61,21 +61,24 @@ export class IllegalActionError extends Error {
 }
 
 /**
- * Pure reducer: takes a state and an action, returns a new state plus a
- * list of events to broadcast. Throws IllegalActionError on invalid
- * input — the server catches and emits a typed error response.
+ * Per-action dispatcher: takes a state and an action, returns a new
+ * state plus a list of events to broadcast. Throws IllegalActionError on
+ * invalid input — the server catches and emits a typed error response.
  *
- * This stays the public entry point until the parallel XState wrapper
- * in `./reduce.ts` + `./machine.ts` is wired up (Metro currently has
- * trouble bundling xstate's package.json#exports chain — Day-2 work
- * on the `claude/xstate-migration` branch).
+ * This is no longer the public engine entry point — the XState-backed
+ * wrapper in `./reduce.ts` is, surfaced as `reduce` from
+ * `packages/game-logic/src/index.ts`. The wrapper drives the machine
+ * in `./machine.ts` and the machine's `dispatch` action delegates back
+ * here (via `applyAction` below). Keeping a single transition body
+ * during the in-flight migration prevents behaviour drift between the
+ * two entry points.
  *
  * The trickiest action here is `declareClaim` and the `awaitingClaims`
  * window it feeds into; for an end-to-end map of the discard / pre-pass /
  * declareClaim / canFinalizeHu / resolveClaims / applyClaim / declareWin
  * chain, see `docs/CLAIM_FLOW.md` in the repo root.
  */
-export function reduce(state: GameState, action: Action): { state: GameState; events: Event[] } {
+function legacyReduce(state: GameState, action: Action): { state: GameState; events: Event[] } {
   switch (action.t) {
     case 'startHand':
       return startHand(state, action.seed, action.dealer);
@@ -98,11 +101,12 @@ export function reduce(state: GameState, action: Action): { state: GameState; ev
   }
 }
 
-/** Alias used by the in-progress XState machine in `./machine.ts` to
- *  delegate per-action work back to the same reducer. Stays an alias —
- *  not a separate implementation — so behaviour can't drift between the
- *  two entry points while the migration is in flight. */
-export const applyAction = reduce;
+/** Public per-action dispatcher used by the XState machine in
+ *  `./machine.ts`. Same body as the legacy reducer — kept as the single
+ *  source of transition logic during the migration so behaviour can't
+ *  drift between the two entry points. The XState-backed `reduce()` in
+ *  `./reduce.ts` is the user-facing wrapper. */
+export const applyAction = legacyReduce;
 
 function setRules(
   state: GameState,

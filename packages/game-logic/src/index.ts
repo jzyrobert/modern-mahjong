@@ -6,10 +6,11 @@ export * from './shanten.js';
 export * from './scoring.js';
 export * from './scoring-catalog.js';
 export * from './claims.js';
+// `./reduce.js` exports `reduce` (the XState-backed wrapper) — re-exported
+// last so it shadows the legacy implementation in `./actions.js`. Metro's
+// `unstable_enablePackageExports` + `module`-first conditions pin xstate
+// to its pure ESM bundle so the multi-shim CJS↔ESM interop chain
+// doesn't recurse at runtime.
 export * from './actions.js';
-// `./reduce.js` and `./machine.js` exist but are not yet on the client's
-// bundle path — XState's `package.json#exports` chain currently
-// recurses infinitely under Metro/Expo, so the public `reduce` export
-// stays on `applyAction` (`./actions.js`) until the bundling issue is
-// solved (see plan: claude/xstate-migration branch).
+export * from './reduce.js';
 export * from './heuristic.js';
