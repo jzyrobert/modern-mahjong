@@ -4,7 +4,7 @@
     "slug": "modern-mahjong",
     "version": "0.0.0",
     "scheme": "modernmahjong",
-    "orientation": "landscape",
+    "orientation": "default",
     "newArchEnabled": true,
     "userInterfaceStyle": "light",
     "icon": "./assets/icon.png",
