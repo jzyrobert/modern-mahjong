@@ -65,13 +65,12 @@ export class IllegalActionError extends Error {
  * state plus a list of events to broadcast. Throws IllegalActionError on
  * invalid input — the server catches and emits a typed error response.
  *
- * This is no longer the public engine entry point — the XState-backed
- * wrapper in `./reduce.ts` is, surfaced as `reduce` from
- * `packages/game-logic/src/index.ts`. The wrapper drives the machine
- * in `./machine.ts` and the machine's `dispatch` action delegates back
- * here (via `applyAction` below). Keeping a single transition body
- * during the in-flight migration prevents behaviour drift between the
- * two entry points.
+ * The public engine entry point is the XState-backed `reduce` in
+ * `./reduce.ts`. This stays as the canonical source of per-action
+ * logic; the machine's `assign` actions in `./machine.ts` call into the
+ * individual helpers below, and `reduce.ts`'s parity test compares the
+ * XState path against `applyAction` (the alias that points here) on
+ * random sequences to guard against drift.
  *
  * The trickiest action here is `declareClaim` and the `awaitingClaims`
  * window it feeds into; for an end-to-end map of the discard / pre-pass /
@@ -101,11 +100,10 @@ function legacyReduce(state: GameState, action: Action): { state: GameState; eve
   }
 }
 
-/** Public per-action dispatcher used by the XState machine in
- *  `./machine.ts`. Same body as the legacy reducer — kept as the single
- *  source of transition logic during the migration so behaviour can't
- *  drift between the two entry points. The XState-backed `reduce()` in
- *  `./reduce.ts` is the user-facing wrapper. */
+/** Anchor name for the per-action dispatcher above. The XState-backed
+ *  `reduce()` in `./reduce.ts` is the user-facing wrapper; this alias is
+ *  what the parity test compares against to guard against drift between
+ *  the two entry points. */
 export const applyAction = legacyReduce;
 
 export function setRules(

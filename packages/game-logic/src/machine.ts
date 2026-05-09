@@ -12,59 +12,70 @@ import {
   setRules,
   startHand,
 } from './actions.js';
-import type { Claim, GameState, Phase, RuleConfig, Seat } from './state.js';
-import type { Tile } from './tiles.js';
+import type { GameState } from './state.js';
 
 /**
  * XState v5 machine for the engine. Built with the canonical
  * `setup({...}).createMachine(...)` pattern; driven via the stateless
- * `transition()` function in `./reduce.ts` so the engine stays a pure
- * reducer.
+ * `transition()` function in `./reduce.ts`.
  *
  * Each event has its own `assign` action that calls the matching helper
- * in `./actions.ts` — no opaque `dispatch` indirection. The machine
- * diagram is a faithful map of "which event runs which helper".
+ * in `./actions.ts`. Per-state `always` rules re-route the machine value
+ * to whatever phase the helper landed on (e.g. `discard()` may
+ * auto-resolve to `turn` in solo, and `declareClaim` with a hu chains
+ * straight to `resolved` via `resolveAndApply`).
  *
- * Per-state `always` rules re-route the machine value to whatever phase
- * the helper landed on (e.g. `discard()` may auto-resolve to `turn` in
- * solo, and `declareClaim` with a hu chains straight to `resolved` via
- * `resolveAndApply`). `awaitingClaims` is a parent state with two
- * children — `normal` (chi/peng/gang/hu/pass) and `robWindow` (hu/pass
- * only, 搶槓) — picked by `pendingPromotedGang` on context.
- *
- * `Action` (the wire payload) uses `t:` as its discriminator; XState
- * needs `type:`. The wrapper in `./reduce.ts` rebadges actions to
- * MachineEvent at the boundary so the wire format stays unchanged.
+ * `awaitingClaims` is a compound state with two children — `normal`
+ * (chi/peng/gang/hu/pass) and `robWindow` (hu/pass only, 搶槓) —
+ * picked by `pendingPromotedGang` on context.
  */
+
 interface MachineContext {
   state: GameState;
   pendingEvents: Event[];
 }
 
-type MachineEvent =
-  | { type: 'startHand'; seed: number; dealer?: Seat }
-  | { type: 'setRules'; rules: Partial<RuleConfig> }
-  | { type: 'draw'; seat: Seat }
-  | { type: 'discard'; seat: Seat; tile: Tile }
-  | { type: 'declareClaim'; seat: Seat; claim: Claim }
-  | { type: 'resolveClaims'; nowMs: number }
-  | { type: 'declareGangConcealed'; seat: Seat; tile: Tile }
-  | { type: 'declareGangPromoted'; seat: Seat; tile: Tile }
-  | { type: 'declareWin'; seat: Seat; selfDraw: boolean };
+/** Mirror of `Action` with `t:` rebadged as XState's `type:`. Derived
+ *  via mapped type so the two unions can't drift; the wire payload
+ *  keeps `t:` (unchanged), the machine sees `type:`. */
+type MachineEvent = {
+  [A in Action as A['t']]: Omit<A, 't'> & { type: A['t'] };
+}[Action['t']];
 
-/** State-node names mirror `Phase` minus the unused `dealing` value. */
-type MachineState = Exclude<Phase, 'dealing'>;
+type EventOf<K extends MachineEvent['type']> = Extract<MachineEvent, { type: K }>;
 
-/** Fold a per-helper `{state, events}` result into the machine context.
- *  All per-event `assign` actions below pass their helper's return
- *  value through this so the bookkeeping (replace state, append events
- *  to `pendingEvents`) stays in one place. */
-function fold(
+/** Body shared by every per-event `assign` below. Runs the matching
+ *  helper, narrows `event` to its `EventOf<K>` shape via the cast, and
+ *  returns the new context. `pendingEvents` is a per-call accumulator
+ *  drained by `./reduce.ts` — always `[]` on entry, so the helper's
+ *  events become the events list directly with no spread. */
+function applyOn<K extends MachineEvent['type']>(
   context: MachineContext,
-  result: { state: GameState; events: Event[] },
+  event: MachineEvent,
+  fn: (state: GameState, event: EventOf<K>) => { state: GameState; events: Event[] },
 ): MachineContext {
-  return { state: result.state, pendingEvents: [...context.pendingEvents, ...result.events] };
+  const r = fn(context.state, event as EventOf<K>);
+  return { state: r.state, pendingEvents: r.events };
 }
+
+const PHASE_ROUTES = {
+  waiting: {
+    guard: ({ context }: { context: MachineContext }) => context.state.phase === 'waiting',
+    target: 'waiting',
+  },
+  turn: {
+    guard: ({ context }: { context: MachineContext }) => context.state.phase === 'turn',
+    target: 'turn',
+  },
+  awaitingClaims: {
+    guard: ({ context }: { context: MachineContext }) => context.state.phase === 'awaitingClaims',
+    target: 'awaitingClaims',
+  },
+  resolved: {
+    guard: ({ context }: { context: MachineContext }) => context.state.phase === 'resolved',
+    target: 'resolved',
+  },
+} as const;
 
 export const mahjongMachine = setup({
   types: {
@@ -73,42 +84,37 @@ export const mahjongMachine = setup({
     input: {} as { state: GameState },
   },
   actions: {
-    setRules: assign(({ context, event }) => {
-      const e = event as Extract<MachineEvent, { type: 'setRules' }>;
-      return fold(context, setRules(context.state, e.rules));
-    }),
-    startHand: assign(({ context, event }) => {
-      const e = event as Extract<MachineEvent, { type: 'startHand' }>;
-      return fold(context, startHand(context.state, e.seed, e.dealer));
-    }),
-    draw: assign(({ context, event }) => {
-      const e = event as Extract<MachineEvent, { type: 'draw' }>;
-      return fold(context, drawTile(context.state, e.seat));
-    }),
-    discard: assign(({ context, event }) => {
-      const e = event as Extract<MachineEvent, { type: 'discard' }>;
-      return fold(context, discard(context.state, e.seat, e.tile));
-    }),
-    declareClaim: assign(({ context, event }) => {
-      const e = event as Extract<MachineEvent, { type: 'declareClaim' }>;
-      return fold(context, declareClaim(context.state, e.seat, e.claim));
-    }),
-    resolveClaims: assign(({ context, event }) => {
-      const e = event as Extract<MachineEvent, { type: 'resolveClaims' }>;
-      return fold(context, resolveAndApply(context.state, e.nowMs));
-    }),
-    declareGangConcealed: assign(({ context, event }) => {
-      const e = event as Extract<MachineEvent, { type: 'declareGangConcealed' }>;
-      return fold(context, declareGangConcealed(context.state, e.seat, e.tile));
-    }),
-    declareGangPromoted: assign(({ context, event }) => {
-      const e = event as Extract<MachineEvent, { type: 'declareGangPromoted' }>;
-      return fold(context, declareGangPromoted(context.state, e.seat, e.tile));
-    }),
-    declareWin: assign(({ context, event }) => {
-      const e = event as Extract<MachineEvent, { type: 'declareWin' }>;
-      return fold(context, declareWin(context.state, e.seat, e.selfDraw));
-    }),
+    setRules: assign(({ context, event }) =>
+      applyOn<'setRules'>(context, event, (s, e) => setRules(s, e.rules)),
+    ),
+    startHand: assign(({ context, event }) =>
+      applyOn<'startHand'>(context, event, (s, e) => startHand(s, e.seed, e.dealer)),
+    ),
+    draw: assign(({ context, event }) =>
+      applyOn<'draw'>(context, event, (s, e) => drawTile(s, e.seat)),
+    ),
+    discard: assign(({ context, event }) =>
+      applyOn<'discard'>(context, event, (s, e) => discard(s, e.seat, e.tile)),
+    ),
+    declareClaim: assign(({ context, event }) =>
+      applyOn<'declareClaim'>(context, event, (s, e) => declareClaim(s, e.seat, e.claim)),
+    ),
+    resolveClaims: assign(({ context, event }) =>
+      applyOn<'resolveClaims'>(context, event, (s, e) => resolveAndApply(s, e.nowMs)),
+    ),
+    declareGangConcealed: assign(({ context, event }) =>
+      applyOn<'declareGangConcealed'>(context, event, (s, e) =>
+        declareGangConcealed(s, e.seat, e.tile),
+      ),
+    ),
+    declareGangPromoted: assign(({ context, event }) =>
+      applyOn<'declareGangPromoted'>(context, event, (s, e) =>
+        declareGangPromoted(s, e.seat, e.tile),
+      ),
+    ),
+    declareWin: assign(({ context, event }) =>
+      applyOn<'declareWin'>(context, event, (s, e) => declareWin(s, e.seat, e.selfDraw)),
+    ),
   },
 }).createMachine({
   id: 'mahjong',
@@ -131,35 +137,16 @@ export const mahjongMachine = setup({
   },
   states: {
     waiting: {
-      always: [
-        { guard: ({ context }) => context.state.phase === 'turn', target: 'turn' },
-        {
-          guard: ({ context }) => context.state.phase === 'awaitingClaims',
-          target: 'awaitingClaims',
-        },
-        { guard: ({ context }) => context.state.phase === 'resolved', target: 'resolved' },
-      ],
+      always: [PHASE_ROUTES.turn, PHASE_ROUTES.awaitingClaims, PHASE_ROUTES.resolved],
     },
     turn: {
-      always: [
-        { guard: ({ context }) => context.state.phase === 'waiting', target: 'waiting' },
-        {
-          guard: ({ context }) => context.state.phase === 'awaitingClaims',
-          target: 'awaitingClaims',
-        },
-        { guard: ({ context }) => context.state.phase === 'resolved', target: 'resolved' },
-      ],
+      always: [PHASE_ROUTES.waiting, PHASE_ROUTES.awaitingClaims, PHASE_ROUTES.resolved],
     },
     awaitingClaims: {
       initial: 'normal',
-      always: [
-        { guard: ({ context }) => context.state.phase === 'waiting', target: 'waiting' },
-        { guard: ({ context }) => context.state.phase === 'turn', target: 'turn' },
-        { guard: ({ context }) => context.state.phase === 'resolved', target: 'resolved' },
-      ],
+      always: [PHASE_ROUTES.waiting, PHASE_ROUTES.turn, PHASE_ROUTES.resolved],
       states: {
-        // The standard claim window — chi / peng / gang / hu / pass are
-        // all on the table for non-discarder seats.
+        // Standard claim window — chi / peng / gang / hu / pass.
         normal: {
           always: [
             {
@@ -168,12 +155,10 @@ export const mahjongMachine = setup({
             },
           ],
         },
-        // 搶槓 (Robbing the Kong): a non-gang seat with a winning shape
-        // on the promotion tile may declare hu before the gang completes.
-        // Only `pass` and `hu` are legal here — `legalClaimsFor` still
-        // reads `pendingPromotedGang` to project this narrowing for
-        // consumers (UI, bots) that don't have access to the machine
-        // value.
+        // 搶槓: a non-gang seat with a winning shape on the promotion
+        // tile may declare hu before the gang completes. `legalClaimsFor`
+        // (`./claims.ts`) reads `pendingPromotedGang` to project the
+        // hu/pass-only narrowing for consumers without the machine value.
         robWindow: {
           always: [
             {
@@ -185,20 +170,13 @@ export const mahjongMachine = setup({
       },
     },
     resolved: {
-      always: [
-        { guard: ({ context }) => context.state.phase === 'waiting', target: 'waiting' },
-        { guard: ({ context }) => context.state.phase === 'turn', target: 'turn' },
-        {
-          guard: ({ context }) => context.state.phase === 'awaitingClaims',
-          target: 'awaitingClaims',
-        },
-      ],
+      always: [PHASE_ROUTES.waiting, PHASE_ROUTES.turn, PHASE_ROUTES.awaitingClaims],
     },
   },
 });
 
-void ({} as MachineState); // keep the type alive for documentation; not used at runtime
-
+/** Convert a wire `Action` (`t:`) into a `MachineEvent` (`type:`).
+ *  Internal — only `./reduce.ts` uses it. */
 export function machineEventFor(action: Action): MachineEvent {
   const { t, ...rest } = action;
   return { type: t, ...rest } as MachineEvent;
