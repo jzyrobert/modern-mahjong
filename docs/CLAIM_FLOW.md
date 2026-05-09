@@ -1,5 +1,15 @@
 # Claim flow — the engine's state machine for discards and claims
 
+> **Note:** the engine is now driven by an XState v5 machine
+> (`packages/game-logic/src/machine.ts`). The auto-generated state
+> diagram at [`state-diagram.md`](state-diagram.md) is regenerated
+> from the machine itself via `pnpm --filter @mahjong/game-logic
+> diagram` and reflects the current shape (including the
+> `awaitingClaims.normal` ↔ `awaitingClaims.robWindow` nested
+> states). Use this document for the prose-level walkthrough of
+> *why* the claim window resolves the way it does — the diagram for
+> the *what*.
+
 The single most subtle part of the engine is the `awaitingClaims` window:
 the period between one seat's discard and the next seat's draw, during which
 any non-discarder seat can interrupt with chi / peng / gang / hu. Several
