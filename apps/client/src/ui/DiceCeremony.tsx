@@ -3,6 +3,7 @@ import { SEATS } from '@mahjong/game-logic';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Pressable, Text, View } from 'react-native';
 import { nameForSeat, useGame } from '../state/game';
+import { LESSONS, useTutorial } from '../state/tutorial';
 import { useFadeInOut } from './animations';
 import { COLORS } from './colors';
 import { DISMISS_MS } from './timing';
@@ -89,7 +90,16 @@ export function DiceCeremony() {
   // localStorage so reloads (solo / online / LAN) honour the
   // previous dismissal.
   const [dismissedSeed, setDismissedSeed] = useState<number | null>(() => readDismissedSeed());
-  const open = !!rolls && seed !== undefined && seed !== dismissedSeed;
+  // Suppress the ceremony for any tutorial that doesn't opt into
+  // it via `lesson.showOpeningRolls`. Most lessons render a
+  // welcome caption immediately on entry; without this gate the
+  // dice modal would stack underneath the caption and read as
+  // visual noise. The basics lesson opts in (it introduces the
+  // dice as part of the core flow), the rest don't.
+  const tutorialActive = useTutorial((s) => s.active);
+  const tutorialAllowsDice =
+    !tutorialActive || (LESSONS[tutorialActive.lessonId]?.showOpeningRolls ?? false);
+  const open = !!rolls && seed !== undefined && seed !== dismissedSeed && tutorialAllowsDice;
   // `useFadeInOut` honours `useGame.settings.animations` — when the
   // user has reduced-motion on the overlay snaps in / out instead of
   // fading. The dismiss timer is unchanged so on-screen duration is

@@ -17,6 +17,7 @@ import type { Lesson } from '../types';
 export const safetyLesson: Lesson = {
   id: 'safety',
   title: 'Reading the table',
+  blurb: 'Defensive play: what the discard pile tells you about your opponents.',
   // Same seed as basics so the dealt hand is familiar; a player
   // running the lessons in sequence sees their tiles where they
   // expect.

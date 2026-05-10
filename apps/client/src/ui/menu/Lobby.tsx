@@ -2,17 +2,16 @@ import { useTransport } from '@/src/net/transport-context';
 import { BOT_LABELS, generateMatchCode } from '@mahjong/protocol';
 import { useRouter } from 'expo-router';
 import { type ReactNode, useEffect, useState } from 'react';
-import { Platform, ScrollView, Text, View } from 'react-native';
+import { Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getDisplayName, setDisplayName } from '../../identity';
 import { listHeaders } from '../../replay/storage';
 import { useGame } from '../../state/game';
-import { LESSON_ORDER, nextLesson } from '../../state/tutorial';
+import { LESSONS, LESSON_ORDER } from '../../state/tutorial';
 import { HostLanModal } from '../HostLanModal';
 import { JoinLanModal } from '../JoinLanModal';
 import { GhostButton, PrimaryButton, TextField } from '../buttons';
 import { COLORS } from '../colors';
-import { basicsLesson } from '../tutorial/lessons/basics';
 import { LobbyHeader } from './LobbyHeader';
 import { LobbyPreview } from './LobbyPreview';
 import { LobbyWatermark } from './LobbyWatermark';
@@ -37,14 +36,14 @@ export function Lobby() {
   const transport = useTransport();
   const lobby = useGame((s) => s.lobby);
   const tutorialsCompleted = useGame((s) => s.settings.tutorialsCompleted);
-  // The lobby card walks through `LESSON_ORDER`. While there's a
-  // next incomplete lesson, the card prompts the user to start /
-  // continue with that one; once every lesson is done it flips to a
-  // "replay" affordance pointing back at basics.
-  const next = nextLesson(tutorialsCompleted);
-  const allLessonsDone = next === null;
-  const targetLesson = next ?? basicsLesson;
-  const isFirstLesson = targetLesson.id === LESSON_ORDER[0];
+  // The lobby Tutorial card lists every lesson in `LESSON_ORDER`,
+  // each row tappable. Completed lessons render with a checkmark;
+  // any lesson can be (re-)launched at any time. Tracking the
+  // count here drives the card's progress subtitle.
+  const completedCount = LESSON_ORDER.reduce(
+    (acc, id) => acc + (tutorialsCompleted.includes(id) ? 1 : 0),
+    0,
+  );
   // Lazy initialiser — `getDisplayName()` reads from preferences, so we
   // only want to run it on first mount, not on every render.
   const [name, setName] = useState(() => getDisplayName());
@@ -148,30 +147,30 @@ export function Lobby() {
             <ModeCard
               title="Tutorial"
               subtitle={
-                allLessonsDone
-                  ? `All ${LESSON_ORDER.length} lessons complete`
-                  : isFirstLesson
-                    ? 'New here? Learn the basics in one hand'
-                    : `${tutorialsCompleted.length}/${LESSON_ORDER.length} lessons done`
+                completedCount === 0
+                  ? 'New here? Pick any lesson to begin'
+                  : completedCount === LESSON_ORDER.length
+                    ? `All ${LESSON_ORDER.length} lessons complete`
+                    : `${completedCount}/${LESSON_ORDER.length} lessons done`
               }
               icon={<TutorialIcon color="#65594c" />}
             >
-              <Text style={{ fontSize: 12, color: '#918275', lineHeight: 18 }}>
-                {allLessonsDone
-                  ? 'You’ve finished every lesson. Tap to replay the basics whenever.'
-                  : isFirstLesson
-                    ? 'A quick guided hand walks you through drawing, discarding, and how a round resolves. Three passive bots play the other seats.'
-                    : `Up next: ${targetLesson.title}.`}
-              </Text>
-              <ButtonRow>
-                <PrimaryButton onPress={() => transport.joinSoloTutorial(targetLesson.id)}>
-                  {allLessonsDone
-                    ? 'Replay basics'
-                    : isFirstLesson
-                      ? 'Start tutorial'
-                      : `Continue: ${targetLesson.title}`}
-                </PrimaryButton>
-              </ButtonRow>
+              <View style={{ gap: 6 }}>
+                {LESSON_ORDER.map((id) => {
+                  const lesson = LESSONS[id];
+                  if (!lesson) return null;
+                  const done = tutorialsCompleted.includes(id);
+                  return (
+                    <LessonRow
+                      key={id}
+                      title={lesson.title}
+                      blurb={lesson.blurb}
+                      done={done}
+                      onPress={() => transport.joinSoloTutorial(id)}
+                    />
+                  );
+                })}
+              </View>
             </ModeCard>
 
             <ModeCard
@@ -242,6 +241,59 @@ export function Lobby() {
 
 function ButtonRow({ children }: { children: ReactNode }) {
   return <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{children}</View>;
+}
+
+interface LessonRowProps {
+  title: string;
+  blurb: string;
+  done: boolean;
+  onPress: () => void;
+}
+
+/**
+ * Single tappable row inside the lobby's Tutorial card. Shows a
+ * checkmark when the lesson is in `tutorialsCompleted`. Tapping
+ * always launches the lesson — completed lessons can be replayed
+ * any time, fresh ones can be started in any order.
+ */
+function LessonRow({ title, blurb, done, onPress }: LessonRowProps) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${done ? 'Replay' : 'Start'} ${title}`}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        paddingVertical: 8,
+        paddingHorizontal: 10,
+        borderRadius: 8,
+        backgroundColor: pressed ? COLORS.creamLow : COLORS.cream,
+        borderWidth: 1,
+        borderColor: COLORS.hairline,
+      })}
+    >
+      <View
+        style={{
+          width: 22,
+          height: 22,
+          borderRadius: 11,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: done ? COLORS.green : 'transparent',
+          borderWidth: done ? 0 : 1,
+          borderColor: COLORS.hairline,
+        }}
+      >
+        {done ? <Text style={{ fontSize: 12, fontWeight: '900', color: '#fff' }}>✓</Text> : null}
+      </View>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={{ fontSize: 13, fontWeight: '800', color: COLORS.ink }}>{title}</Text>
+        <Text style={{ fontSize: 11, color: COLORS.ink3, marginTop: 1 }}>{blurb}</Text>
+      </View>
+    </Pressable>
+  );
 }
 
 function TagRow({ tags }: { tags: readonly string[] }) {

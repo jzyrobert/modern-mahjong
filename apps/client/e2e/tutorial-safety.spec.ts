@@ -39,9 +39,10 @@ test.describe('tutorial: safety', () => {
     await page.goto('/');
     await expect(page.getByRole('heading', { name: 'Modern Mahjong' })).toBeVisible();
 
-    // Lobby card now reads "Continue: Reading the table" because
-    // basics is already done.
-    await page.getByRole('button', { name: /Continue: Reading the table/ }).click();
+    // Lobby Tutorial card lists every lesson as a row; basics is
+    // pre-marked complete so its row shows the ✓, and "Reading the
+    // table" remains tappable as "Start …".
+    await page.getByLabel('Start Reading the table').click();
 
     // Step 1 — intro (centered, no target).
     await expect(page.getByText('Reading the table').first()).toBeVisible();
@@ -79,7 +80,7 @@ test.describe('tutorial: safety', () => {
 
   test('skip mid-lesson does not mark complete', async ({ page }) => {
     await page.goto('/');
-    await page.getByRole('button', { name: /Continue: Reading the table/ }).click();
+    await page.getByLabel('Start Reading the table').click();
     await expect(page.getByText('Reading the table').first()).toBeVisible();
 
     await page.getByRole('button', { name: 'Skip lesson' }).click();

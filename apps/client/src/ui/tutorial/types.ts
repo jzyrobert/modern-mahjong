@@ -54,6 +54,9 @@ export interface LessonStep {
 export interface Lesson {
   id: string;
   title: string;
+  /** One-line copy for the lobby's lesson picker — should fit on a
+   *  single row on a phone-width viewport. */
+  blurb: string;
   /** Deterministic seed fed to `startHand(state, seed, dealer)`. The
    *  same seed reproduces the same wall every run, which makes lesson
    *  scripts reliable. */
@@ -62,6 +65,12 @@ export interface Lesson {
   /** Per-seat bot scripts. The user is always seat 0; bots play
    *  seats 1-3. */
   botScripts: LessonBotScripts;
+  /** When true, the opening dice ceremony is allowed to render
+   *  during this lesson. Defaults to false — most lessons want a
+   *  clean intro without the dice modal stacking on top of the
+   *  welcome caption. The basics lesson sets it true since it
+   *  introduces the dice as part of the core flow.  */
+  showOpeningRolls?: boolean;
   steps: LessonStep[];
 }
 

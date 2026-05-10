@@ -35,7 +35,7 @@ test.describe('tutorial: hidden-gang', () => {
     await page.goto('/');
     await expect(page.getByRole('heading', { name: 'Modern Mahjong' })).toBeVisible();
 
-    await page.getByRole('button', { name: /Continue: Concealed kong/ }).click();
+    await page.getByLabel('Start Concealed kong').click();
 
     // Step 1 — intro.
     await expect(page.getByText('Concealed kong').first()).toBeVisible();

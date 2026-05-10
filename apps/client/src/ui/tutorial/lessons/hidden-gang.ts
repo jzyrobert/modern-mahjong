@@ -22,6 +22,7 @@ import type { Lesson } from '../types';
 export const hiddenGangLesson: Lesson = {
   id: 'hidden-gang',
   title: 'Concealed kong',
+  blurb: 'Lock four-of-a-kind from your hand into a meld and draw a replacement.',
   seed: 63,
   dealer: 0,
   botScripts: {},

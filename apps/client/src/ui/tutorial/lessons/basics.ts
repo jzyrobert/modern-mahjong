@@ -17,12 +17,26 @@ import type { Lesson } from '../types';
 export const basicsLesson: Lesson = {
   id: 'basics',
   title: 'Basics: a guided hand',
+  blurb: 'The core loop: see your hand, discard, watch the round play out.',
   seed: 5,
   dealer: 0,
+  // Basics is the only lesson that surfaces the opening dice
+  // ceremony — it's part of teaching what a hand actually starts
+  // with. Other lessons suppress the modal so it doesn't stack on
+  // top of the welcome caption.
+  showOpeningRolls: true,
   // Bots are forced to `passive` by the solo transport when a
   // tutorial is active, so per-seat scripts aren't needed here.
   botScripts: {},
   steps: [
+    {
+      id: 'dice',
+      caption: {
+        title: 'Opening dice',
+        body: "Each hand starts with a roll: East player rolls three dice, and the result picks who deals this round. You'll see those dice now — they pick a seat to receive 14 tiles instead of 13.",
+      },
+      ctaLabel: 'Got it',
+    },
     {
       id: 'welcome',
       caption: {
