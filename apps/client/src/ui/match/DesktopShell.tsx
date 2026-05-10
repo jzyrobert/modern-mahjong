@@ -134,9 +134,11 @@ export function DesktopShell(props: DesktopShellProps) {
   // `DrawCue` here too would surface a second `wall-draw-next`
   // element and break Playwright's strict locator.
   const centerHud: ReactNode = canTsumo ? (
-    <PrimaryButton onPress={() => onAction({ t: 'declareWin', seat, selfDraw: true })}>
-      Declare win (tsumo)
-    </PrimaryButton>
+    <TutorialTarget id="tsumo-button">
+      <PrimaryButton onPress={() => onAction({ t: 'declareWin', seat, selfDraw: true })}>
+        Declare win (tsumo)
+      </PrimaryButton>
+    </TutorialTarget>
   ) : null;
 
   return (

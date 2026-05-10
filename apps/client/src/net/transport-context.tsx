@@ -262,7 +262,15 @@ export function TransportProvider({ children }: { children: ReactNode }) {
       // zero `turnTimeoutMs` for the lesson — a confused new player
       // shouldn't get yanked off their tile pick after 20 s while
       // they read the caption.
-      const tutorialRules = { ...soloRulesFrom(), turnTimeoutMs: 0 };
+      // Tutorials run with `faanMin: 0` so basic winning shapes
+      // qualify — lessons are pedagogical, not balanced ruleset
+      // play. The default rule (3 faan) would reject most simple
+      // winning hands the lesson scripts can produce.
+      const tutorialRules = {
+        ...soloRulesFrom(),
+        turnTimeoutMs: 0,
+        faanMin: 0 as const,
+      };
       const tutorialState = startHand(emptyState(tutorialRules), lesson.seed, lesson.dealer).state;
       // Force every bot to `passive` for the duration of the lesson —
       // a heuristic bot might claim or self-draw mid-walkthrough,

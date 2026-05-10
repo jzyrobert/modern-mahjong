@@ -3,6 +3,7 @@ import { stubLesson } from '../ui/tutorial/lessons/_stub';
 import { basicsLesson } from '../ui/tutorial/lessons/basics';
 import { claimsLesson } from '../ui/tutorial/lessons/claims';
 import { safetyLesson } from '../ui/tutorial/lessons/safety';
+import { winLesson } from '../ui/tutorial/lessons/win';
 import type { Lesson } from '../ui/tutorial/types';
 import { useGame } from './game';
 
@@ -18,6 +19,7 @@ export const LESSONS: Record<string, Lesson> = {
   [basicsLesson.id]: basicsLesson,
   [safetyLesson.id]: safetyLesson,
   [claimsLesson.id]: claimsLesson,
+  [winLesson.id]: winLesson,
   [stubLesson.id]: stubLesson,
 };
 
@@ -30,7 +32,12 @@ export const LESSONS: Record<string, Lesson> = {
  * `_stub` is omitted on purpose — it exists only as a framework
  * smoke test, not as user-facing content.
  */
-export const LESSON_ORDER: readonly string[] = [basicsLesson.id, safetyLesson.id, claimsLesson.id];
+export const LESSON_ORDER: readonly string[] = [
+  basicsLesson.id,
+  safetyLesson.id,
+  claimsLesson.id,
+  winLesson.id,
+];
 
 /**
  * Pick the next lesson the user hasn't finished yet, or `null` when

@@ -303,11 +303,13 @@ export function MobileShell(props: MobileShellProps) {
           </View>
 
           {canTsumo ? (
-            <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-              <PrimaryButton onPress={() => onAction({ t: 'declareWin', seat, selfDraw: true })}>
-                Declare win (tsumo)
-              </PrimaryButton>
-            </View>
+            <TutorialTarget id="tsumo-button">
+              <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                <PrimaryButton onPress={() => onAction({ t: 'declareWin', seat, selfDraw: true })}>
+                  Declare win (tsumo)
+                </PrimaryButton>
+              </View>
+            </TutorialTarget>
           ) : null}
 
           {hasClaimOption ? (
