@@ -32,15 +32,27 @@ export function useTutorialController(): void {
   // after step entry) — we want to advance exactly once and then move
   // on to the next step.
   const advancedForStepRef = useRef<string | null>(null);
+  // Previous discard count for seat 0 — used to detect the 0→1
+  // transition that fires `setupAfterFirstDiscard`. A monotonic
+  // ref rather than a "has-fired" flag so a lesson restart (which
+  // resets engine state to a fresh hand) naturally re-arms the
+  // hook without needing to know the lesson session boundary.
+  const prevSelfDiscardsRef = useRef(0);
 
   useEffect(() => {
     if (!active || !state) return;
     const stepKey = `${active.lesson.id}::${active.step.id}::${active.stepIndex}`;
-    if (advancedForStepRef.current === stepKey) return;
-    if (!active.step.completedWhen) return;
-    if (active.step.completedWhen(state)) {
-      advancedForStepRef.current = stepKey;
-      advance();
+    if (active.step.completedWhen && advancedForStepRef.current !== stepKey) {
+      if (active.step.completedWhen(state)) {
+        advancedForStepRef.current = stepKey;
+        advance();
+      }
     }
+    const setup = active.lesson.setupAfterFirstDiscard;
+    const cur = state.discards[0]?.length ?? 0;
+    if (setup && prevSelfDiscardsRef.current === 0 && cur >= 1) {
+      setup(state);
+    }
+    prevSelfDiscardsRef.current = cur;
   }, [active, state, advance]);
 }

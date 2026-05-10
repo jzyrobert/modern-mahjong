@@ -33,7 +33,7 @@ interface MobileShellProps {
   needsDraw: boolean;
   canTsumo: boolean;
   /** When set, the user's concealed hand has 4 copies of this face;
-   *  shows a "Declare kong (concealed)" button next to the tsumo
+   *  shows a "Declare gang (concealed)" button next to the tsumo
    *  affordance. */
   concealedGangTile: MTile | null;
   hasClaimOption: boolean;
@@ -323,7 +323,7 @@ export function MobileShell(props: MobileShellProps) {
                       onAction({ t: 'declareGangConcealed', seat, tile: concealedGangTile })
                     }
                   >
-                    Declare kong
+                    Declare gang
                   </PrimaryButton>
                 ) : null}
               </View>

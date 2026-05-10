@@ -2,8 +2,8 @@ import { expect, test } from './_helpers';
 
 /**
  * End-to-end coverage for the `hidden-gang` lesson — the user is
- * dealt four 5-sou tiles at seed=63 and declares a concealed kong
- * on their first action. The "Declare kong" button is rendered by
+ * dealt four 5-sou tiles at seed=63 and declares a concealed gang
+ * on their first action. The "Declare gang" button is rendered by
  * `Match.tsx`'s `concealedGangTile` prop whenever the user holds
  * 4 copies of any face.
  */
@@ -31,20 +31,20 @@ test.beforeEach(async ({ page }) => {
 });
 
 test.describe('tutorial: hidden-gang', () => {
-  test('happy path: continue → declare kong → completion persists', async ({ page }) => {
+  test('happy path: continue → declare gang → completion persists', async ({ page }) => {
     await page.goto('/');
     await expect(page.getByRole('heading', { name: 'Modern Mahjong' })).toBeVisible();
 
-    await page.getByLabel('Start Concealed kong').click();
+    await page.getByLabel('Start Concealed gang').click();
 
     // Step 1 — intro.
-    await expect(page.getByText('Concealed kong').first()).toBeVisible();
+    await expect(page.getByText('Concealed gang').first()).toBeVisible();
     await page.getByRole('button', { name: 'Got it' }).click();
 
-    // Step 2 — declare the kong. The user's 4×5-sou deal makes the
-    // "Declare kong" button visible from the first render.
+    // Step 2 — declare the gang. The user's 4×5-sou deal makes the
+    // "Declare gang" button visible from the first render.
     await expect(page.getByText("You've got four 5-bamboos!")).toBeVisible();
-    await page.getByRole('button', { name: 'Declare kong' }).click();
+    await page.getByRole('button', { name: 'Declare gang' }).click();
 
     // Step 3 — final.
     await expect(page.getByText('Lesson complete!')).toBeVisible({ timeout: 10_000 });

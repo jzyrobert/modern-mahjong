@@ -148,7 +148,7 @@ export function DesktopShell(props: DesktopShellProps) {
             <PrimaryButton
               onPress={() => onAction({ t: 'declareGangConcealed', seat, tile: concealedGangTile })}
             >
-              Declare kong
+              Declare gang
             </PrimaryButton>
           ) : null}
         </View>

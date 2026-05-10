@@ -65,7 +65,7 @@ export function deriveBookmarks(
             bookmarks.push({
               seq: i,
               kind: 'robbed-gang',
-              label: `${nameFor(event.seat, players)} robs the kong off ${nameFor(prevState.pendingPromotedGang!.seat, players)} for ${event.faan} faan (搶槓)`,
+              label: `${nameFor(event.seat, players)} robs the gang off ${nameFor(prevState.pendingPromotedGang!.seat, players)} for ${event.faan} faan (搶槓)`,
             });
           } else {
             bookmarks.push({
