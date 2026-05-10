@@ -15,6 +15,7 @@ import type { Lesson } from '../types';
 export const stubLesson: Lesson = {
   id: '_stub',
   title: 'Framework smoke test',
+  blurb: 'Internal-only stub for framework e2e coverage.',
   // Arbitrary fixed seed — picking a real number for determinism so
   // any future smoke test can rely on the wall being identical.
   seed: 12345,

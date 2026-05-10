@@ -20,6 +20,7 @@ import type { Lesson } from '../types';
 export const winLesson: Lesson = {
   id: 'win',
   title: 'Winning a hand',
+  blurb: 'Declare tsumo on a pre-built winning deal.',
   seed: 174502,
   dealer: 0,
   // No bot scripts needed — the user wins on their first action

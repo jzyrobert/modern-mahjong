@@ -23,6 +23,7 @@ import type { Lesson } from '../types';
 export const claimsLesson: Lesson = {
   id: 'claims',
   title: 'Claiming a chi',
+  blurb: 'Grab an opponent’s discard to complete a sequence in your hand.',
   seed: 5,
   dealer: 0,
   botScripts: {

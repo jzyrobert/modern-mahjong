@@ -38,7 +38,7 @@ test.describe('tutorial: claims', () => {
     await page.goto('/');
     await expect(page.getByRole('heading', { name: 'Modern Mahjong' })).toBeVisible();
 
-    await page.getByRole('button', { name: /Continue: Claiming a chi/ }).click();
+    await page.getByLabel('Start Claiming a chi').click();
 
     // Step 1 — intro.
     await expect(page.getByText('Claiming a tile')).toBeVisible();

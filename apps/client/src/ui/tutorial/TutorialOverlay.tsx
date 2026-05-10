@@ -56,20 +56,27 @@ export function TutorialOverlay() {
       }
     : null;
 
-  // Caption placement: prefer below the target (mobile thumbs sit
-  // below the relevant element); fall back to above if there's not
-  // enough room. Without a target, center vertically.
+  // Caption placement: anchor to a screen edge rather than to the
+  // halo. An earlier draft positioned the caption right below the
+  // halo, which broke for the watch-the-discards step on mobile —
+  // as the discard pool grows with each bot turn the halo expands
+  // downward and the caption ends up overlapping (or being pushed
+  // off-screen by) new tiles. Anchoring to a fixed edge keeps the
+  // caption stable regardless of how the targeted element resizes.
+  // Heuristic: if the halo's *centre* is in the bottom half of the
+  // viewport, dock the caption near the top; otherwise dock near
+  // the bottom. Without a target, centre vertically.
   const CAPTION_HEIGHT = 160;
-  const CAPTION_GAP = 18;
+  const EDGE_GAP = 60;
   let captionTop: number;
   if (!halo) {
     captionTop = Math.max(40, window.height / 2 - CAPTION_HEIGHT / 2);
   } else {
-    const belowTop = halo.top + halo.height + CAPTION_GAP;
-    const wouldOverflowBottom = belowTop + CAPTION_HEIGHT > window.height - 40;
-    captionTop = wouldOverflowBottom
-      ? Math.max(40, halo.top - CAPTION_GAP - CAPTION_HEIGHT)
-      : belowTop;
+    const haloCentre = halo.top + halo.height / 2;
+    const haloInBottomHalf = haloCentre > window.height / 2;
+    captionTop = haloInBottomHalf
+      ? EDGE_GAP
+      : Math.max(EDGE_GAP, window.height - EDGE_GAP - CAPTION_HEIGHT);
   }
 
   // Cancel-the-cutout: four rectangles around the halo. When no

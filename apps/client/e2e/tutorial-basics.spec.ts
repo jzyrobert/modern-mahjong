@@ -14,37 +14,37 @@ import { expect, test } from './_helpers';
  */
 
 test.describe('tutorial: basics', () => {
-  test('happy path: lobby card → 5 steps → completion persists', async ({ page }) => {
+  test('happy path: lobby card → 6 steps → completion persists', async ({ page }) => {
     await page.goto('/');
     await expect(page.getByRole('heading', { name: 'Modern Mahjong' })).toBeVisible();
 
-    // Lobby card pre-completion shows "Start tutorial".
-    await expect(page.getByRole('button', { name: 'Start tutorial' })).toBeVisible();
-    await page.getByRole('button', { name: 'Start tutorial' }).click();
+    // Lobby Tutorial card lists every lesson; "Basics: a guided
+    // hand" is the first row. Pre-completion the row shows "Start"
+    // (vs "Replay"); same accessibility label drives both.
+    await expect(page.getByLabel('Start Basics: a guided hand')).toBeVisible();
+    await page.getByLabel('Start Basics: a guided hand').click();
 
-    // Step 1 — welcome (centered, no target).
+    // Step 1 — opening dice intro. Basics is the only lesson that
+    // surfaces the dice ceremony; subsequent lessons suppress it.
+    await expect(page.getByText('Opening dice')).toBeVisible();
+    await page.getByRole('button', { name: 'Got it' }).click();
+
+    // Step 2 — welcome.
     await expect(page.getByText('Welcome to mahjong')).toBeVisible();
     await page.getByRole('button', { name: 'Got it' }).click();
 
-    // Step 2 — your hand (target=own-hand, info-only). Match shell
-    // has rendered at this point so the registered target resolves.
+    // Step 3 — your hand.
     await expect(page.getByText('These are your 14 tiles')).toBeVisible();
     await page.getByRole('button', { name: 'Got it' }).click();
 
-    // Step 3 — first discard. Tapping any hand tile auto-advances
-    // (predicate: discards[0].length >= 1).
+    // Step 4 — first discard.
     await expect(page.getByText('Pick a tile to discard')).toBeVisible();
     await page.getByTestId('own-hand-tile').first().click();
 
-    // Step 4 ("Now watch the bots") and step 5 ("Lesson complete!").
-    // With bot pace = 0 (set by `_helpers`) the bot cycle completes
-    // in a few milliseconds, so step 4's caption typically flashes by
-    // before Playwright's poll catches it. Skip the intermediate
-    // assertion and wait directly for step 5.
+    // Steps 5 ("Now watch the bots") flashes by quickly with bot
+    // pace = 0; assert directly on step 6 ("Lesson complete!").
     await expect(page.getByText('Lesson complete!')).toBeVisible({ timeout: 30_000 });
 
-    // Step 5 — final. "Done" CTA marks the lesson complete in
-    // settings.
     await page.getByRole('button', { name: 'Done' }).click();
 
     // Overlay tears down.
@@ -67,10 +67,13 @@ test.describe('tutorial: basics', () => {
   test('skip mid-lesson does not mark complete', async ({ page }) => {
     await page.goto('/');
     await expect(page.getByRole('heading', { name: 'Modern Mahjong' })).toBeVisible();
-    await page.getByRole('button', { name: 'Start tutorial' }).click();
+    await page.getByLabel('Start Basics: a guided hand').click();
 
+    // Step through dice → welcome → your-hand, then skip.
+    await expect(page.getByText('Opening dice')).toBeVisible();
+    await page.getByRole('button', { name: 'Got it' }).click();
     await expect(page.getByText('Welcome to mahjong')).toBeVisible();
-    await page.getByRole('button', { name: 'Got it' }).click(); // step 1 → 2
+    await page.getByRole('button', { name: 'Got it' }).click();
     await expect(page.getByText('These are your 14 tiles')).toBeVisible();
 
     // Skip from step 2.
@@ -117,14 +120,13 @@ test.describe('tutorial: basics', () => {
     await page.goto('/');
     await expect(page.getByRole('heading', { name: 'Modern Mahjong' })).toBeVisible();
 
-    // The card now points at the next lesson (Reading the table).
-    await expect(page.getByRole('button', { name: /Continue: Reading the table/ })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Start tutorial' })).toBeHidden();
+    // Both rows render; basics shows ✓ via its accessibilityLabel
+    // ("Replay …"), and "Reading the table" stays "Start …".
+    await expect(page.getByLabel('Replay Basics: a guided hand')).toBeVisible();
+    await expect(page.getByLabel('Start Reading the table')).toBeVisible();
   });
 
-  test('once every lesson is complete, the lobby card flips to "Replay basics"', async ({
-    page,
-  }) => {
+  test('once every lesson is complete, every row shows the Replay label', async ({ page }) => {
     await page.addInitScript(() => {
       localStorage.setItem(
         'mj.settings.v1',
@@ -144,7 +146,11 @@ test.describe('tutorial: basics', () => {
     });
 
     await page.goto('/');
-    await expect(page.getByRole('button', { name: 'Replay basics' })).toBeVisible();
+    await expect(page.getByLabel('Replay Basics: a guided hand')).toBeVisible();
+    await expect(page.getByLabel('Replay Reading the table')).toBeVisible();
+    await expect(page.getByLabel('Replay Claiming a chi')).toBeVisible();
+    await expect(page.getByLabel('Replay Winning a hand')).toBeVisible();
+    await expect(page.getByLabel('Replay Concealed kong')).toBeVisible();
   });
 
   test('"Tutorial" row appears in the in-match menu once basics is complete', async ({ page }) => {
