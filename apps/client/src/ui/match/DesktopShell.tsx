@@ -30,6 +30,7 @@ interface DesktopShellProps {
   myTurn: boolean;
   needsDraw: boolean;
   canTsumo: boolean;
+  concealedGangTile: MTile | null;
   hasClaimOption: boolean;
   /** Seat that would draw next once claims resolve. Populated only
    *  during `awaitingClaims`. Drives the "next about to draw" gold
@@ -97,6 +98,7 @@ export function DesktopShell(props: DesktopShellProps) {
     myTurn,
     needsDraw,
     canTsumo,
+    concealedGangTile,
     hasClaimOption,
     nextDrawerSeat,
     aboutToDraw,
@@ -133,13 +135,25 @@ export function DesktopShell(props: DesktopShellProps) {
   // + the `wall-draw-next` testID + the click handler; rendering
   // `DrawCue` here too would surface a second `wall-draw-next`
   // element and break Playwright's strict locator.
-  const centerHud: ReactNode = canTsumo ? (
-    <TutorialTarget id="tsumo-button">
-      <PrimaryButton onPress={() => onAction({ t: 'declareWin', seat, selfDraw: true })}>
-        Declare win (tsumo)
-      </PrimaryButton>
-    </TutorialTarget>
-  ) : null;
+  const centerHud: ReactNode =
+    canTsumo || concealedGangTile ? (
+      <TutorialTarget id="tsumo-button">
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          {canTsumo ? (
+            <PrimaryButton onPress={() => onAction({ t: 'declareWin', seat, selfDraw: true })}>
+              Declare win (tsumo)
+            </PrimaryButton>
+          ) : null}
+          {concealedGangTile ? (
+            <PrimaryButton
+              onPress={() => onAction({ t: 'declareGangConcealed', seat, tile: concealedGangTile })}
+            >
+              Declare kong
+            </PrimaryButton>
+          ) : null}
+        </View>
+      </TutorialTarget>
+    ) : null;
 
   return (
     // Outer cream View so the background extends past the bottom
