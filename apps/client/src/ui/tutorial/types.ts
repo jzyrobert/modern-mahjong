@@ -81,4 +81,5 @@ export type TutorialTargetId =
   | 'claim-bar'
   | 'menu-pill'
   | 'turn-countdown'
-  | 'shared-discards';
+  | 'shared-discards'
+  | 'tsumo-button';

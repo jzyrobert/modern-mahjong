@@ -138,7 +138,7 @@ test.describe('tutorial: basics', () => {
           botSkills: ['heuristic', 'simple', 'passive'],
           autoRecordReplays: false,
           replayQuota: 50,
-          tutorialsCompleted: ['basics', 'safety', 'claims'],
+          tutorialsCompleted: ['basics', 'safety', 'claims', 'win'],
         }),
       );
     });
