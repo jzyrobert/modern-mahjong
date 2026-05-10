@@ -93,9 +93,9 @@ test.describe('tutorial: basics', () => {
     expect(completed ?? []).not.toContain('basics');
   });
 
-  test('after completion the lobby card collapses to "Replay tutorial"', async ({ page }) => {
-    // Pre-mark completion via localStorage so we can assert the
-    // post-completion lobby UI without re-running the full lesson.
+  test('after basics completion, lobby card advances to the next lesson', async ({ page }) => {
+    // Pre-mark only basics complete so the next lesson in
+    // `LESSON_ORDER` (safety) becomes the card's CTA.
     await page.addInitScript(() => {
       localStorage.setItem(
         'mj.settings.v1',
@@ -117,19 +117,37 @@ test.describe('tutorial: basics', () => {
     await page.goto('/');
     await expect(page.getByRole('heading', { name: 'Modern Mahjong' })).toBeVisible();
 
-    // Card now exposes the Replay CTA instead of Start.
-    await expect(page.getByRole('button', { name: 'Replay tutorial' })).toBeVisible();
+    // The card now points at the next lesson (Reading the table).
+    await expect(page.getByRole('button', { name: /Continue: Reading the table/ })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Start tutorial' })).toBeHidden();
   });
 
-  test('"Replay tutorial" appears in the in-match menu once basics is complete', async ({
+  test('once every lesson is complete, the lobby card flips to "Replay basics"', async ({
     page,
   }) => {
-    // Pre-mark basics complete so the menu row appears. The lobby
-    // and the in-match menu both gate on
-    // `settings.tutorialsCompleted.includes('basics')`. Also pin the
-    // seed so the lobby's dice ceremony lands deterministically (the
-    // existing solo-match.spec.ts uses the same seed).
+    await page.addInitScript(() => {
+      localStorage.setItem(
+        'mj.settings.v1',
+        JSON.stringify({
+          felt: 'sage',
+          tileBack: 'cream',
+          autoSort: true,
+          animations: true,
+          sound: false,
+          discardHint: false,
+          botSkills: ['heuristic', 'simple', 'passive'],
+          autoRecordReplays: false,
+          replayQuota: 50,
+          tutorialsCompleted: ['basics', 'safety'],
+        }),
+      );
+    });
+
+    await page.goto('/');
+    await expect(page.getByRole('button', { name: 'Replay basics' })).toBeVisible();
+  });
+
+  test('"Tutorial" row appears in the in-match menu once basics is complete', async ({ page }) => {
     await page.addInitScript(() => {
       const w = globalThis as { __MAHJONG_TEST_SEED__?: number };
       w.__MAHJONG_TEST_SEED__ = 5;
@@ -151,27 +169,16 @@ test.describe('tutorial: basics', () => {
     });
 
     await page.goto('/');
-    // Join a regular practice match (NOT the tutorial card). The
-    // "Replay tutorial" row should still appear because basics has
-    // been completed before. Lobby waiting room → Start match →
-    // match shell with menu pill reachable.
     await page.getByRole('button', { name: 'Play vs bots' }).click();
     await page.getByRole('button', { name: 'Start match' }).click();
-
-    // Wait for the match shell to render.
     await page.getByTestId('own-hand-tile').first().waitFor();
 
-    // Open ☰ menu and verify the "Replay tutorial" row is present.
-    // Multiple buttons map to "Open menu" via `accessibilityLabel`
-    // (DesktopShell's TopBar pill + the menu sheet's close button
-    // also routed through the modal); pick the first match — that's
-    // the chrome-row pill in both shells.
+    // Menu now shows "Tutorial: <next lesson>" (Safety, since
+    // basics is already complete).
     await page.getByLabel('Open menu').first().click();
-    await expect(page.getByLabel('Replay tutorial')).toBeVisible();
+    await expect(page.getByLabel('Tutorial: Reading the table')).toBeVisible();
 
-    // Tapping it kicks off a fresh tutorial run, dropping the
-    // welcome overlay over whatever was on screen.
-    await page.getByLabel('Replay tutorial').click();
-    await expect(page.getByText('Welcome to mahjong')).toBeVisible();
+    await page.getByLabel('Tutorial: Reading the table').click();
+    await expect(page.getByText('Reading the table')).toBeVisible();
   });
 });
