@@ -1,4 +1,5 @@
 import * as Clipboard from 'expo-clipboard';
+import { newRandomId } from '../identity';
 import { saveRecord } from './storage';
 import type { ReplayEnvelope, ReplayRecord } from './types';
 
@@ -50,18 +51,10 @@ export function tryImportRecord(text: string, quota: number): ImportResult {
   // Re-id so an imported replay never collides with an existing one.
   const fresh: ReplayRecord = {
     ...rec,
-    header: { ...rec.header, id: newReplayId() },
+    header: { ...rec.header, id: newRandomId() },
   };
   if (!saveRecord(fresh, quota)) {
     return { kind: 'error', error: 'Storage full — clear old replays first' };
   }
   return { kind: 'ok', record: fresh };
-}
-
-function newReplayId(): string {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === 'x' ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
 }

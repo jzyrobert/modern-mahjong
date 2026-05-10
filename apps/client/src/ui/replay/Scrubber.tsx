@@ -12,14 +12,6 @@ const PIP_COLOR: Record<ReplayBookmarkKind, string> = {
   draw: COLORS.green,
 };
 
-const PIP_GLYPH: Record<ReplayBookmarkKind, string> = {
-  'hand-start': '◆',
-  gang: '槓',
-  'robbed-gang': '搶',
-  win: '★',
-  draw: '◇',
-};
-
 /**
  * Scrubber strip — a horizontal track + play/pause + step controls +
  * speed picker + POV picker. Drives the `usePlayback` context. Tap a
@@ -363,7 +355,3 @@ function PovPicker({
     </View>
   );
 }
-
-/** Map from kind → glyph for the legend / tooltip — exported in case
- *  the library list wants to show a bookmark count breakdown. */
-export const REPLAY_BOOKMARK_GLYPH = PIP_GLYPH;

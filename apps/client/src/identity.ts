@@ -22,20 +22,24 @@ export function getPlayerId(): string {
 }
 
 /**
- * Generate a UUID-v4-shaped ID. We don't need cryptographic strength
- * (this just identifies one device's player handle within a match
- * room), so a `Math.random`-based generator is fine. RN's Hermes
- * runtime doesn't expose `globalThis.crypto.randomUUID`, so the
- * legacy `crypto.randomUUID()` call from the web build doesn't work
- * here.
+ * Generate a UUID-v4-shaped ID. RN's Hermes runtime doesn't expose
+ * `globalThis.crypto.randomUUID`, so the legacy `crypto.randomUUID()`
+ * call from the web build doesn't work here. `Math.random` is fine
+ * since we don't need cryptographic strength (these IDs identify
+ * matches / players locally).
+ *
+ * Exported so other modules that need a local-only id (e.g. the
+ * replay recorder) don't have to copy-paste the regex.
  */
-function newPlayerId(): string {
+export function newRandomId(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
     const r = (Math.random() * 16) | 0;
     const v = c === 'x' ? r : (r & 0x3) | 0x8;
     return v.toString(16);
   });
 }
+
+const newPlayerId = newRandomId;
 
 export function getDisplayName(): string {
   return localStorage.getItem(NAME_KEY) ?? randomName();

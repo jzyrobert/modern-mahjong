@@ -6,7 +6,6 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from 'react';
 import type { ReplayBookmark, ReplayHeader, ReplayRecord } from './types';
@@ -63,7 +62,6 @@ export function PlaybackProvider({ record, children }: PlaybackProviderProps) {
   const [speed, setSpeed] = useState<0.5 | 1 | 2 | 4>(1);
   const [pov, setPov] = useState<PlaybackPov>('all');
   const totalFrames = record.frames.length;
-  const playTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const goto = useCallback(
     (idx: number) => {
@@ -111,22 +109,22 @@ export function PlaybackProvider({ record, children }: PlaybackProviderProps) {
   }, [cursor, totalFrames]);
 
   // Auto-advance loop. Schedules a single timer per cursor advance so a
-  // pause / seek cleanly cancels.
+  // pause / seek cleanly cancels. `record.frames` is stable for the
+  // lifetime of a `<PlaybackProvider>` mount — listing it in deps would
+  // be dead weight.
+  const frames = record.frames;
   useEffect(() => {
     if (!isPlaying) return;
     if (cursor >= totalFrames - 1) return;
-    const cur = record.frames[cursor];
-    const next = record.frames[cursor + 1];
+    const cur = frames[cursor];
+    const next = frames[cursor + 1];
     if (!cur || !next) return;
     const realGap = Math.max(0, next.ts - cur.ts);
     const cappedGap = Math.min(realGap, MAX_FRAME_GAP_MS);
     const wait = Math.max(50, Math.round(cappedGap / speed));
-    playTimer.current = setTimeout(() => setCursor((c) => c + 1), wait);
-    return () => {
-      if (playTimer.current) clearTimeout(playTimer.current);
-      playTimer.current = null;
-    };
-  }, [cursor, isPlaying, speed, totalFrames, record.frames]);
+    const timer = setTimeout(() => setCursor((c) => c + 1), wait);
+    return () => clearTimeout(timer);
+  }, [cursor, isPlaying, speed, totalFrames, frames]);
 
   const value = useMemo<PlaybackContextValue>(() => {
     const frame = record.frames[cursor]!;

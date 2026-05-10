@@ -37,72 +37,54 @@ test('replay: save from menu → library lists row → player opens with hands v
   page,
 }) => {
   await page.setViewportSize({ width: 412, height: 906 });
-
-  // 1. Start a solo match.
   await page.goto('/');
   await page.getByRole('button', { name: 'Play vs bots' }).click();
   await page.getByRole('button', { name: 'Start match' }).click();
 
-  // 2. Discard a tile so we have ≥ 1 delta in the recording (otherwise
-  // it'd be a single frame which is technically valid but trivial).
+  // Discard a tile so the draft contains > 1 frame; let bots take a
+  // turn so the frame list grows.
   await page.getByTestId('own-hand-tile').first().click();
-  // Let the bots take a turn so the frame list grows.
   await page.waitForTimeout(2_000);
 
-  // 3. Open the in-match menu and tap "Save this match".
   await page.getByLabel('Open menu').click();
   await expect(page.getByText('Menu', { exact: true })).toBeVisible();
   const saveRow = page.getByRole('button', { name: /^Save this match$/ });
   await expect(saveRow).toBeVisible();
   await saveRow.click();
-
   // The label flips to "Saved · tap to discard" without closing the
-  // menu (so the user can confirm the save took).
+  // sheet so the user can confirm the save took.
   await expect(page.getByRole('button', { name: /^Saved · tap to discard$/ })).toBeVisible();
 
-  // 4. Leave the match.
   await page.getByRole('button', { name: 'Leave match' }).click();
-  // Lobby visible again.
   await expect(page.getByRole('heading', { name: 'Modern Mahjong' })).toBeVisible({
     timeout: 10_000,
   });
 
-  // 5. Open the replays library via the new lobby card.
   await page.getByRole('button', { name: 'Open library' }).click();
   await expect(page.getByRole('heading', { name: 'Replays' })).toBeVisible();
 
-  // 6. The most-recent row should render — find it via the SOLO badge
-  // it stamps (unambiguous to the library layout).
+  // The freshly-saved row carries a SOLO join-kind badge — unambiguous
+  // to the library layout.
   const soloBadge = page.getByText('SOLO', { exact: true }).first();
   await expect(soloBadge).toBeVisible();
   await soloBadge.click();
-
-  // 7. Player renders. The "Replay timeline" track is the load-bearing
-  // testid for the scrubber being mounted.
   await expect(page.getByLabel('Replay timeline')).toBeVisible();
 
-  // 8. POV defaults to "All" — every seat's hand is face-up. The
-  // scrubber footer renders the cursor as "<n>/<total>" — pick the
-  // last `\d+/\d+` element on the page, which is the scrubber's
-  // count (the player Header also shows "Frame 1/10" in a stat row,
-  // so the scrubber-anchored locator is the unambiguous one).
+  // The scrubber footer renders "<cursor>/<total>"; the player Header
+  // also shows "Frame 1/N" in a stat row, so anchor on the last match.
   const cursorIndicator = page.getByText(/^\d+\/\d+$/).last();
   await expect(cursorIndicator).toBeVisible();
-  const initialIndicator = await cursorIndicator.innerText();
-  expect(initialIndicator).toMatch(/^1\//);
+  const initial = await cursorIndicator.innerText();
+  expect(initial).toMatch(/^1\//);
 
-  // 9. Step forward one frame.
   await page.getByLabel('Step forward').click();
-  await expect(cursorIndicator).not.toHaveText(initialIndicator);
+  await expect(cursorIndicator).not.toHaveText(initial);
 
-  // 10. Toggle POV to seat 0 (East = local player). The toggle row
-  // should switch the active state without errors.
+  // POV toggle smoke — face-down vs face-up tile rendering can't be
+  // reliably inspected via locators, so we assert the click doesn't
+  // throw and the page stays alive.
   await page.getByLabel('POV E').click();
-  // No exception means the POV toggle works; the visible-hand
-  // assertion is structural rather than visual since face-down vs
-  // face-up tile rendering can't be reliably inspected via locators.
 
-  // 11. Back to library.
   await page.getByRole('button', { name: '← Library' }).click();
   await expect(page.getByRole('heading', { name: 'Replays' })).toBeVisible();
 });

@@ -1,7 +1,7 @@
 import type { Event as EngineEvent, GameState, Seat } from '@mahjong/game-logic';
 import type { ServerMessage } from '@mahjong/protocol';
 import { create } from 'zustand';
-import { getDisplayName, getPlayerId } from '../identity';
+import { getDisplayName, getPlayerId, newRandomId } from '../identity';
 import { deriveBookmarks } from './bookmarks';
 import { ENGINE_VERSION } from './engineVersion';
 import { saveRecord } from './storage';
@@ -20,18 +20,22 @@ import type {
  * the transport layer's message handler tee) but the UI flag changes
  * need to drive re-renders.
  *
- * The draft buffers frames in memory regardless of `autoRecord`. Two
- * persistence triggers:
+ * Persistence model:
  *
- *  1. User hits "Save this match" → `saveExplicit()` flips
- *     `savedThisMatch` and writes immediately; subsequent deltas
- *     rewrite the on-disk record so the saved replay always reflects
- *     the latest state.
- *  2. `autoRecord` setting → `finalizeMatch()` writes on tear-down
- *     even if the user never hit save.
+ *  - `saveExplicit()` writes a snapshot at the moment of press. The
+ *    on-disk record reflects state at save time, plus everything that
+ *    arrives between save and teardown.
+ *  - `finalizeMatch()` (auto-record OR savedThisMatch) writes one
+ *    last time on tear-down so the library always has the final
+ *    scoreboard.
  *
- * If neither fires, the draft is discarded on tear-down — no disk
- * usage from a session the user didn't ask to keep.
+ * We deliberately don't rewrite the on-disk record on every delta —
+ * a 4-hand match produces ~300 deltas, each one would re-stringify
+ * the entire growing frame list (multi-MB after a few hands), which
+ * adds up to seconds of jank on the WebSocket message hot path.
+ *
+ * If neither trigger fires, the draft is discarded on tear-down — no
+ * disk usage from a session the user didn't ask to keep.
  */
 
 interface ActiveDraft {
@@ -39,13 +43,11 @@ interface ActiveDraft {
   frames: ReplayFrame[];
   /** Wall-clock at frame[0]; `frame.ts` is offset from this. */
   startWallClock: number;
-  /** True after the user explicitly pressed "Save this match" in this match. */
-  savedThisMatch: boolean;
 }
 
 interface RecorderStore {
   draft: ActiveDraft | null;
-  /** Mirrors `draft.savedThisMatch` so the UI can subscribe without a deep selector. */
+  /** True after the user pressed "Save this match" in this match. */
   savedThisMatch: boolean;
 
   /** Begin a new draft from the first `state` message of a match. */
@@ -85,7 +87,7 @@ function emptyHeader(init: {
 }): ReplayHeader {
   const now = Date.now();
   return {
-    id: newReplayId(),
+    id: newRandomId(),
     matchCode: init.matchCode,
     joinKind: init.joinKind,
     startedAt: now,
@@ -100,15 +102,6 @@ function emptyHeader(init: {
     engineVersion: ENGINE_VERSION,
     rules: init.rules,
   };
-}
-
-/** Same UUID-ish shape as identity.ts's playerId — fine for ids. */
-function newReplayId(): string {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === 'x' ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
 }
 
 function finalize(draft: ActiveDraft): ReplayRecord {
@@ -145,12 +138,7 @@ export const useRecorder = create<RecorderStore>((set, get) => ({
       events: [],
     };
     set({
-      draft: {
-        header,
-        frames: [frame0],
-        startWallClock,
-        savedThisMatch: false,
-      },
+      draft: { header, frames: [frame0], startWallClock },
       savedThisMatch: false,
     });
   },
@@ -165,24 +153,18 @@ export const useRecorder = create<RecorderStore>((set, get) => ({
       state,
       events,
     };
-    cur.frames.push(frame);
-    // If the user already pressed "Save this match", keep rewriting the
-    // on-disk record so it always reflects the latest state.
-    if (cur.savedThisMatch) {
-      saveRecord(finalize(cur), QUOTA_HINT);
-    }
-    set({ draft: cur });
+    // Immutable append + new draft object so zustand's Object.is
+    // comparison fires for any future selector reading frame data.
+    set({ draft: { ...cur, frames: [...cur.frames, frame] } });
   },
 
   onState: (state) => {
     const cur = get().draft;
     if (!cur || cur.frames.length === 0) return;
     const last = cur.frames[cur.frames.length - 1]!;
-    last.state = state;
-    if (cur.savedThisMatch) {
-      saveRecord(finalize(cur), QUOTA_HINT);
-    }
-    set({ draft: cur });
+    const replaced: ReplayFrame = { ...last, state };
+    const frames = [...cur.frames.slice(0, -1), replaced];
+    set({ draft: { ...cur, frames } });
   },
 
   onLobby: (lobby) => {
@@ -197,51 +179,29 @@ export const useRecorder = create<RecorderStore>((set, get) => ({
         isBot: p.isBot,
       };
     }
-    cur.header.players = seats;
-    if (cur.savedThisMatch) {
-      saveRecord(finalize(cur), QUOTA_HINT);
-    }
-    set({ draft: cur });
+    set({ draft: { ...cur, header: { ...cur.header, players: seats } } });
   },
 
   saveExplicit: (quota) => {
     const cur = get().draft;
     if (!cur) return false;
-    cur.savedThisMatch = true;
     const ok = saveRecord(finalize(cur), quota);
-    set({ draft: cur, savedThisMatch: ok });
+    set({ savedThisMatch: ok });
     return ok;
   },
 
   discardThisMatch: () => {
-    const cur = get().draft;
-    if (!cur) return;
-    cur.savedThisMatch = false;
-    // Note: we don't delete the on-disk record here — the user can still
-    // reach it from the library. "Discard" just clears the in-match
-    // toggle so a subsequent delta won't keep rewriting it.
-    set({ draft: cur, savedThisMatch: false });
+    // The on-disk record stays in the library — the user can still
+    // reach it from /replays. "Discard" just flips the in-match flag
+    // so finalizeMatch won't auto-rewrite on teardown.
+    set({ savedThisMatch: false });
   },
 
   finalizeMatch: (autoRecord, quota) => {
     const cur = get().draft;
-    if (!cur) {
-      set({ savedThisMatch: false });
-      return;
-    }
-    if (autoRecord || cur.savedThisMatch) {
+    if (cur && (autoRecord || get().savedThisMatch)) {
       saveRecord(finalize(cur), quota);
     }
     set({ draft: null, savedThisMatch: false });
   },
 }));
-
-/**
- * Default quota used by the recorder's eager rewrites mid-match. The
- * settings UI flips `useGame.settings.replayQuota`; the explicit
- * `saveExplicit` and `finalizeMatch` calls thread the live value
- * through. This constant is the conservative fallback for the eager
- * rewrites, which fire on every delta after the user pressed save —
- * we'd rather over-prune than under-cap.
- */
-const QUOTA_HINT = 50;
