@@ -50,6 +50,14 @@ test.describe('tutorial: basics', () => {
     // Overlay tears down.
     await expect(page.getByText('Lesson complete!')).toBeHidden();
 
+    // Regression: once the lesson is over the dice modal must not
+    // come back. The tutorial dismissal used to be keyed only by
+    // lesson id; after the controller cleared, the open check fell
+    // through to the seed gate (which had never been pinned) and the
+    // modal re-popped on top of the empty board.
+    await expect(page.getByText('Opening rolls')).toBeHidden();
+    await expect(page.getByText('Dealer rolls')).toBeHidden();
+
     // Settings round-trip: tutorialsCompleted now lists 'basics'.
     const completed = await page.evaluate(() => {
       const raw = localStorage.getItem('mj.settings.v1');
