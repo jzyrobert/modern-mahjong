@@ -72,6 +72,45 @@ test.describe('tutorial: basics', () => {
     expect(completed).toContain('basics');
   });
 
+  test('replay after completion re-opens the dice modal', async ({ page }) => {
+    // Bug regression: the in-lesson dice dismissal pinned an
+    // in-memory `dismissedSeed` to suppress the modal re-popping
+    // post-lesson. That pin survived `begin('basics')` on replay
+    // because the reset ran in a `useEffect` that fires after commit
+    // — too late for the first render's `open` predicate, so the
+    // modal stayed hidden on the second run.
+    await page.goto('/');
+    await page.getByLabel('Start Basics: a guided hand').click();
+
+    // Walk through the full lesson once.
+    await expect(page.getByText('Opening dice')).toBeVisible();
+    await page.getByRole('button', { name: 'Got it' }).click();
+    await expect(page.getByText('Welcome to mahjong')).toBeVisible();
+    await page.getByRole('button', { name: 'Got it' }).click();
+    await expect(page.getByText('These are your 14 tiles')).toBeVisible();
+    await page.getByRole('button', { name: 'Got it' }).click();
+    await expect(page.getByText('Pick a tile to discard')).toBeVisible();
+    await page.getByTestId('own-hand-tile').first().click();
+    await expect(page.getByText('Lesson complete!')).toBeVisible({ timeout: 30_000 });
+    await page.getByRole('button', { name: 'Done' }).click();
+
+    // Return to the lobby via the in-match menu (NOT page.goto — a
+    // hard reload would reset DiceCeremony's local component state
+    // and mask the regression). The bug only manifests when the
+    // user soft-navigates back to the lobby with the component
+    // still mounted, then re-enters the same lesson.
+    await page.getByLabel('Open menu').first().click();
+    await page.getByText('Leave match').click();
+    await expect(page.getByLabel('Replay Basics: a guided hand')).toBeVisible();
+    await page.getByLabel('Replay Basics: a guided hand').click();
+
+    // The dice modal must re-open on replay. Pre-fix, the stale
+    // in-memory `dismissedSeed` (5, pinned during the first run)
+    // matched the lesson seed and gated the modal closed.
+    await expect(page.getByText('Opening rolls')).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText('Opening dice')).toBeVisible();
+  });
+
   test('skip mid-lesson does not mark complete', async ({ page }) => {
     await page.goto('/');
     await expect(page.getByRole('heading', { name: 'Modern Mahjong' })).toBeVisible();

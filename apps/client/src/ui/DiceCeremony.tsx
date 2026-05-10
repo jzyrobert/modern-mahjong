@@ -105,7 +105,7 @@ export function DiceCeremony() {
   // the localStorage `dismissedSeed` memo would suppress the dice
   // modal forever after the first run. Track dismissal by the
   // currently-active lesson id instead: dismiss → store the lesson
-  // id; replay → a `null → lessonId` transition (effect below) clears
+  // id; replay → a `null → lessonId` transition (handled below) clears
   // the stored id, so the modal shows again. Outside tutorials this
   // value stays null and the localStorage gate alone applies.
   const [tutorialDismissedFor, setTutorialDismissedFor] = useState<string | null>(null);
@@ -114,17 +114,25 @@ export function DiceCeremony() {
   // into a replay of the same lesson and silently suppress the modal;
   // and the in-memory `dismissedSeed` pinned by the tutorial dismissal
   // (see `dismiss` below) would stay set across sessions.
-  const prevLessonIdRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (tutorialLessonId !== prevLessonIdRef.current) {
-      const justBegan = tutorialLessonId !== null;
-      prevLessonIdRef.current = tutorialLessonId;
-      if (justBegan) {
-        setTutorialDismissedFor(null);
-        setDismissedSeed(readDismissedSeed());
-      }
+  //
+  // Done at render time via the tracked-prev-state pattern (React's
+  // "Adjusting state based on props" idiom) rather than in a
+  // `useEffect`. An effect runs *after* commit, so on the first
+  // render following `begin(lessonId)` the `open` predicate below
+  // would still see the stale dismissal values and the modal would
+  // never appear — the previous run's pinned `dismissedSeed === 5`
+  // matched the lesson's fixed seed and gated `open` to false.
+  // Setting state during render triggers an immediate re-render
+  // with the cleared values; the equality check above the setters
+  // keeps it from looping.
+  const [prevLessonId, setPrevLessonId] = useState<string | null>(null);
+  if (tutorialLessonId !== prevLessonId) {
+    setPrevLessonId(tutorialLessonId);
+    if (tutorialLessonId !== null) {
+      setTutorialDismissedFor(null);
+      setDismissedSeed(readDismissedSeed());
     }
-  }, [tutorialLessonId]);
+  }
   const open =
     !!rolls &&
     seed !== undefined &&
