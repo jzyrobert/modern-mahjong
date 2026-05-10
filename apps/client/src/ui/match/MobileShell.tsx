@@ -32,6 +32,10 @@ interface MobileShellProps {
   myTurn: boolean;
   needsDraw: boolean;
   canTsumo: boolean;
+  /** When set, the user's concealed hand has 4 copies of this face;
+   *  shows a "Declare kong (concealed)" button next to the tsumo
+   *  affordance. */
+  concealedGangTile: MTile | null;
   hasClaimOption: boolean;
   /** Seat that would draw next once claims resolve. Drives the
    *  "next about to draw" gold halo on the next-seat's `OppHandStrip`
@@ -106,6 +110,7 @@ export function MobileShell(props: MobileShellProps) {
     myTurn,
     needsDraw,
     canTsumo,
+    concealedGangTile,
     hasClaimOption,
     nextDrawerSeat,
     aboutToDraw,
@@ -302,12 +307,25 @@ export function MobileShell(props: MobileShellProps) {
             </TutorialTarget>
           </View>
 
-          {canTsumo ? (
+          {canTsumo || concealedGangTile ? (
             <TutorialTarget id="tsumo-button">
               <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-                <PrimaryButton onPress={() => onAction({ t: 'declareWin', seat, selfDraw: true })}>
-                  Declare win (tsumo)
-                </PrimaryButton>
+                {canTsumo ? (
+                  <PrimaryButton
+                    onPress={() => onAction({ t: 'declareWin', seat, selfDraw: true })}
+                  >
+                    Declare win (tsumo)
+                  </PrimaryButton>
+                ) : null}
+                {concealedGangTile ? (
+                  <PrimaryButton
+                    onPress={() =>
+                      onAction({ t: 'declareGangConcealed', seat, tile: concealedGangTile })
+                    }
+                  >
+                    Declare kong
+                  </PrimaryButton>
+                ) : null}
               </View>
             </TutorialTarget>
           ) : null}
