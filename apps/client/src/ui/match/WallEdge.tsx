@@ -299,6 +299,7 @@ function SlotCell({
                 </View>
               </View>
             </View>
+            {innerPadStyle ? <View style={innerPadStyle} /> : null}
             <SideFace
               stackDir={stackDir}
               extent={sideExtent}
@@ -306,7 +307,6 @@ function SlotCell({
               isFull={isFull}
               lidEdge={lidEdge}
             />
-            {innerPadStyle ? <View style={innerPadStyle} /> : null}
           </View>
         </PulseHalo>
       </Pressable>
@@ -316,6 +316,7 @@ function SlotCell({
   return (
     <View style={{ ...containerStyle, flexDirection }}>
       <TopFace width={tileW} height={tileH} feltEdge={feltEdge} />
+      {innerPadStyle ? <View style={innerPadStyle} /> : null}
       <SideFace
         stackDir={stackDir}
         extent={sideExtent}
@@ -323,7 +324,6 @@ function SlotCell({
         isFull={isFull}
         lidEdge={lidEdge}
       />
-      {innerPadStyle ? <View style={innerPadStyle} /> : null}
     </View>
   );
 }
