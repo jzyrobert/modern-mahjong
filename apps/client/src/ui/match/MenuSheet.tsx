@@ -1,4 +1,4 @@
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useTransport } from '../../net/transport-context';
 import { useRecorder } from '../../replay/recorder';
 import { useGame } from '../../state/game';
@@ -94,7 +94,15 @@ export function MenuSheet({
 
   return (
     <Modal open={open} title="Menu" onClose={onClose} placement="bottom" maxWidth={520}>
-      <View style={{ padding: 14, gap: 8 }}>
+      {/* `ScrollView` so short viewports (iPhone SE in landscape, or
+          mobile portrait once Tutorial / Save-match / Auto-record rows
+          stack above Leave) can still reach every row. The Modal's
+          90% maxHeight already caps the sheet; the ScrollView just
+          lets content beyond that height scroll instead of clipping
+          Leave off the bottom. `flexGrow: 0` keeps the ScrollView
+          from stealing extra height — it still hugs its content
+          when everything fits. */}
+      <ScrollView style={{ flexGrow: 0 }} contentContainerStyle={{ padding: 14, gap: 8 }}>
         {onSendChat ? <EmoteRow onSendChat={handleEmote} /> : null}
         <MenuRow
           icon="⚙"
@@ -161,7 +169,7 @@ export function MenuSheet({
           onPress={handle(onLeave)}
           destructive
         />
-      </View>
+      </ScrollView>
     </Modal>
   );
 }
