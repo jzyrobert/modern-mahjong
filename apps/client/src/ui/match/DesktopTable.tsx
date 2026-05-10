@@ -4,6 +4,7 @@ import { View, useWindowDimensions } from 'react-native';
 import type { LobbyState } from '../../state/game';
 import { useGame } from '../../state/game';
 import { Hand } from '../Hand';
+import { TutorialTarget } from '../tutorial/TargetRegistry';
 import { MeldStrip } from './MeldStrip';
 import { PlayerBadge } from './PlayerBadge';
 import { SeatDiscardPile } from './SeatDiscardPile';
@@ -493,13 +494,15 @@ function MyArea({
         />
         <SortPicker mode={sortMode} onChange={onSortModeChange} />
       </View>
-      <Hand
-        tiles={hand}
-        onTileClick={ownHandClickable}
-        sortMode={sortMode}
-        drawnTileId={drawnTileId}
-        hintTileId={hintTileId}
-      />
+      <TutorialTarget id="own-hand">
+        <Hand
+          tiles={hand}
+          onTileClick={ownHandClickable}
+          sortMode={sortMode}
+          drawnTileId={drawnTileId}
+          hintTileId={hintTileId}
+        />
+      </TutorialTarget>
     </View>
   );
 }

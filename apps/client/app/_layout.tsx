@@ -5,6 +5,8 @@ import { DiceCeremony } from '@/src/ui/DiceCeremony';
 import { FlipBagProvider } from '@/src/ui/FlipBag';
 import { ShuffleOverlay } from '@/src/ui/ShuffleOverlay';
 import { WinCelebration } from '@/src/ui/WinCelebration';
+import { TargetRegistryProvider } from '@/src/ui/tutorial/TargetRegistry';
+import { TutorialOverlay } from '@/src/ui/tutorial/TutorialOverlay';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { View } from 'react-native';
@@ -34,16 +36,19 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <TransportProvider>
           <FlipBagProvider>
-            <StatusBar style="dark" backgroundColor="#f1eadc" />
-            <Stack
-              screenOptions={{
-                headerShown: false,
-                contentStyle: { backgroundColor: '#f1eadc' },
-              }}
-            />
-            <ShuffleOverlay />
-            <DiceCeremony />
-            <WinCelebration />
+            <TargetRegistryProvider>
+              <StatusBar style="dark" backgroundColor="#f1eadc" />
+              <Stack
+                screenOptions={{
+                  headerShown: false,
+                  contentStyle: { backgroundColor: '#f1eadc' },
+                }}
+              />
+              <ShuffleOverlay />
+              <DiceCeremony />
+              <WinCelebration />
+              <TutorialOverlay />
+            </TargetRegistryProvider>
           </FlipBagProvider>
         </TransportProvider>
       </SafeAreaProvider>

@@ -9,6 +9,7 @@ import { ResultPanel } from '../ResultPanel';
 import { Scoreboard } from '../Scoreboard';
 import { PrimaryButton } from '../buttons';
 import { COLORS } from '../colors';
+import { TutorialTarget } from '../tutorial/TargetRegistry';
 import { ChatBubbles } from './ChatBubbles';
 import { ClaimMissedToast } from './ClaimMissedToast';
 import { GameStatusBar } from './GameStatusBar';
@@ -280,21 +281,23 @@ export function MobileShell(props: MobileShellProps) {
             <View style={{ alignSelf: 'flex-end' }}>
               <SortPicker mode={sortMode} onChange={onSortModeChange} />
             </View>
-            <Hand
-              tiles={state.hands[seat]}
-              onTileClick={myTurn && state.hasDrawn ? onTileTap : undefined}
-              sortMode={sortMode}
-              drawnTileId={drawnTileId}
-              hintTileId={hintTileId}
-              drawCue={
-                needsDraw && state.wall.length > 0
-                  ? {
-                      tile: state.wall[state.wall.length - 1]!,
-                      onPress: () => onAction({ t: 'draw', seat }),
-                    }
-                  : undefined
-              }
-            />
+            <TutorialTarget id="own-hand">
+              <Hand
+                tiles={state.hands[seat]}
+                onTileClick={myTurn && state.hasDrawn ? onTileTap : undefined}
+                sortMode={sortMode}
+                drawnTileId={drawnTileId}
+                hintTileId={hintTileId}
+                drawCue={
+                  needsDraw && state.wall.length > 0
+                    ? {
+                        tile: state.wall[state.wall.length - 1]!,
+                        onPress: () => onAction({ t: 'draw', seat }),
+                      }
+                    : undefined
+                }
+              />
+            </TutorialTarget>
           </View>
 
           {canTsumo ? (
@@ -305,7 +308,11 @@ export function MobileShell(props: MobileShellProps) {
             </View>
           ) : null}
 
-          {hasClaimOption ? <ClaimBar onAction={onAction} seat={seat} /> : null}
+          {hasClaimOption ? (
+            <TutorialTarget id="claim-bar">
+              <ClaimBar onAction={onAction} seat={seat} />
+            </TutorialTarget>
+          ) : null}
 
           {state.lastResult ? (
             <ResultPanel onAction={onAction} mySeat={seat} isHost={isHost} />

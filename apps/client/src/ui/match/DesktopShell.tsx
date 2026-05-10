@@ -9,6 +9,7 @@ import { ResultPanel } from '../ResultPanel';
 import { Scoreboard } from '../Scoreboard';
 import { PrimaryButton } from '../buttons';
 import { COLORS } from '../colors';
+import { TutorialTarget } from '../tutorial/TargetRegistry';
 import { ChatBar } from './ChatBar';
 import { ChatBubbles } from './ChatBubbles';
 import { ClaimMissedToast } from './ClaimMissedToast';
@@ -206,7 +207,11 @@ export function DesktopShell(props: DesktopShellProps) {
             turnCountdown={turnCountdown}
           />
 
-          {hasClaimOption ? <ClaimBar onAction={onAction} seat={seat} /> : null}
+          {hasClaimOption ? (
+            <TutorialTarget id="claim-bar">
+              <ClaimBar onAction={onAction} seat={seat} />
+            </TutorialTarget>
+          ) : null}
 
           <View style={{ alignItems: 'center', paddingVertical: 4 }}>
             <ChatBar onSend={onSendChat} />

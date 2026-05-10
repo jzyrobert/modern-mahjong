@@ -1,0 +1,264 @@
+import { Pressable, Modal as RNModal, Text, View, useWindowDimensions } from 'react-native';
+import { useActiveTutorialStep, useTutorial } from '../../state/tutorial';
+import { COLORS } from '../colors';
+import { type TargetRect, useTutorialTargetRect } from './TargetRegistry';
+import { useTutorialController } from './useTutorialController';
+
+/**
+ * Full-screen tutorial overlay. Mounted under both `MobileShell` and
+ * `DesktopShell` and gated on `useActiveTutorialStep()` — when no
+ * lesson is active, it renders nothing.
+ *
+ * Layout pieces:
+ *   - **Scrim** — four absolutely-positioned rectangles surrounding
+ *     the active target's rect, dimming everything *except* the
+ *     target. When no target is registered for the active step, the
+ *     scrim covers the whole screen.
+ *   - **Halo** — a 4px translucent gold ring around the target rect.
+ *     Provides the "this is what you're meant to interact with"
+ *     affordance.
+ *   - **Caption card** — title + body + Skip / Next buttons.
+ *     Positioned below the target if there's room, above otherwise;
+ *     centered when there's no target. Tap-to-pass-through, so the
+ *     user can still hit the highlighted element.
+ *
+ * Cross-platform note: arbitrary clip-path cutouts aren't portable
+ * without `react-native-svg`. Using four rectangles around the target
+ * gives the same visual effect on both web and native with pure
+ * `View` primitives.
+ */
+export function TutorialOverlay() {
+  // Drive the controller while the overlay is mounted. Mounting
+  // happens at every shell render, but the controller's effect is
+  // gated on `active`, so this is a no-op when no lesson is in flight.
+  useTutorialController();
+
+  const active = useActiveTutorialStep();
+  const dismiss = useTutorial((s) => s.dismiss);
+  const advance = useTutorial((s) => s.advance);
+  const window = useWindowDimensions();
+  const targetRect = useTutorialTargetRect(active?.step.targetId ?? null);
+
+  if (!active) return null;
+  const { step } = active;
+
+  // Pad the highlight so the halo doesn't crowd the target's edges.
+  const PAD = 8;
+  const HALO_BORDER = 3;
+  const SCRIM_COLOR = 'rgba(20,15,10,0.55)';
+
+  const hasTarget = targetRect !== null;
+  const halo =
+    hasTarget && targetRect
+      ? {
+          left: Math.max(0, targetRect.x - PAD),
+          top: Math.max(0, targetRect.y - PAD),
+          width: targetRect.w + PAD * 2,
+          height: targetRect.h + PAD * 2,
+        }
+      : null;
+
+  // Caption placement: prefer below the target (mobile thumbs sit
+  // below the relevant element); fall back to above if there's not
+  // enough room. Without a target, center vertically.
+  const CAPTION_HEIGHT = 160;
+  const CAPTION_GAP = 18;
+  let captionTop: number;
+  if (!halo) {
+    captionTop = Math.max(40, window.height / 2 - CAPTION_HEIGHT / 2);
+  } else {
+    const belowTop = halo.top + halo.height + CAPTION_GAP;
+    const wouldOverflowBottom = belowTop + CAPTION_HEIGHT > window.height - 40;
+    captionTop = wouldOverflowBottom
+      ? Math.max(40, halo.top - CAPTION_GAP - CAPTION_HEIGHT)
+      : belowTop;
+  }
+
+  // Cancel-the-cutout: four rectangles around the halo. When no
+  // target exists, render a single full-screen scrim instead. Each
+  // panel carries a stable `key` so React doesn't churn the four
+  // edges' identity when the halo position shifts.
+  const scrimPanels: ReadonlyArray<Panel & { key: string }> = halo
+    ? scrimAround(halo, window.width, window.height)
+    : [{ key: 'full', left: 0, top: 0, width: window.width, height: window.height }];
+
+  return (
+    <RNModal visible transparent animationType="fade" onRequestClose={dismiss} statusBarTranslucent>
+      <View
+        style={{
+          position: 'absolute',
+          left: 0,
+          top: 0,
+          right: 0,
+          bottom: 0,
+        }}
+        // The scrim panels eat touches outside the cut-out; the halo
+        // window is `pointerEvents="box-none"` so the underlying
+        // tile/button keeps receiving taps. The user can interact
+        // with the highlighted element even though the rest of the
+        // screen is dimmed.
+        pointerEvents="box-none"
+      >
+        {scrimPanels.map((panel) => (
+          <View
+            key={panel.key}
+            style={{
+              position: 'absolute',
+              left: panel.left,
+              top: panel.top,
+              width: panel.width,
+              height: panel.height,
+              backgroundColor: SCRIM_COLOR,
+            }}
+          />
+        ))}
+        {halo ? (
+          <View
+            style={{
+              position: 'absolute',
+              left: halo.left,
+              top: halo.top,
+              width: halo.width,
+              height: halo.height,
+              borderWidth: HALO_BORDER,
+              borderColor: COLORS.gold,
+              borderRadius: 12,
+            }}
+            pointerEvents="none"
+          />
+        ) : null}
+        <View
+          style={{
+            position: 'absolute',
+            left: 20,
+            right: 20,
+            top: captionTop,
+            alignItems: 'center',
+          }}
+          pointerEvents="box-none"
+        >
+          <View
+            // Tap-eater so taps on the card don't fall through to the
+            // scrim and pass to whatever sits underneath.
+            pointerEvents="auto"
+            style={{
+              maxWidth: 460,
+              width: '100%',
+              backgroundColor: COLORS.paperHi,
+              borderRadius: 14,
+              borderWidth: 1,
+              borderColor: COLORS.hairline,
+              padding: 18,
+              gap: 10,
+              boxShadow: '0px 8px 24px rgba(0,0,0,0.18)',
+            }}
+          >
+            <Text
+              accessibilityRole="header"
+              accessibilityLabel={`Tutorial step: ${step.caption.title}`}
+              style={{
+                fontSize: 16,
+                fontWeight: '900',
+                color: COLORS.ink,
+              }}
+            >
+              {step.caption.title}
+            </Text>
+            <Text style={{ fontSize: 13, color: COLORS.ink2, lineHeight: 19 }}>
+              {step.caption.body}
+            </Text>
+            <View
+              style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginTop: 4,
+              }}
+            >
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Skip lesson"
+                onPress={dismiss}
+                style={({ pressed }) => ({
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                  borderRadius: 8,
+                  backgroundColor: pressed ? COLORS.creamLow : 'transparent',
+                })}
+              >
+                <Text style={{ fontSize: 12, fontWeight: '700', color: COLORS.ink3 }}>
+                  Skip lesson
+                </Text>
+              </Pressable>
+              {step.completedWhen ? null : (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={step.ctaLabel ?? 'Got it'}
+                  onPress={advance}
+                  style={({ pressed }) => ({
+                    paddingHorizontal: 16,
+                    paddingVertical: 9,
+                    borderRadius: 9,
+                    backgroundColor: pressed ? COLORS.creamPressed : COLORS.accentSalmonSwatch,
+                    borderWidth: 1,
+                    borderColor: COLORS.accentSalmonEdge,
+                  })}
+                >
+                  <Text style={{ fontSize: 13, fontWeight: '900', color: COLORS.red }}>
+                    {step.ctaLabel ?? 'Got it'}
+                  </Text>
+                </Pressable>
+              )}
+            </View>
+          </View>
+        </View>
+      </View>
+    </RNModal>
+  );
+}
+
+interface Panel {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+/** Compute the four scrim rectangles surrounding a halo cut-out. The
+ *  halo region itself is left transparent; the rest of the viewport
+ *  is dimmed. Rectangles can degenerate to zero width/height when the
+ *  halo touches a viewport edge — that's fine, RN draws no pixels. */
+function scrimAround(halo: Panel, vw: number, vh: number): Array<Panel & { key: string }> {
+  return [
+    // Top strip — full width, from y=0 to halo.top
+    { key: 'top', left: 0, top: 0, width: vw, height: halo.top },
+    // Bottom strip — from halo bottom to viewport bottom
+    {
+      key: 'bottom',
+      left: 0,
+      top: halo.top + halo.height,
+      width: vw,
+      height: Math.max(0, vh - (halo.top + halo.height)),
+    },
+    // Left strip — from x=0 to halo.left, between halo top + bottom
+    {
+      key: 'left',
+      left: 0,
+      top: halo.top,
+      width: halo.left,
+      height: halo.height,
+    },
+    // Right strip — from halo right edge to viewport right edge
+    {
+      key: 'right',
+      left: halo.left + halo.width,
+      top: halo.top,
+      width: Math.max(0, vw - (halo.left + halo.width)),
+      height: halo.height,
+    },
+  ];
+}
+
+// Re-export the rect type for components that want to type their
+// `<TutorialTarget>` measurements without reaching into TargetRegistry.
+export type { TargetRect };
