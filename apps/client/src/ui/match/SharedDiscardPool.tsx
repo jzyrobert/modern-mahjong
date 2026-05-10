@@ -19,6 +19,13 @@ const TILE_H = 32;
  * Centre-of-table discard pool. Tiles in true turn order, each with a
  * colour underline keying the discarder's visual position. The live
  * claim-window tile gets a static gold-tinted border.
+ *
+ * Layout uses `justifyContent: 'flex-start'` so tiles pack into a
+ * fixed left-aligned grid — newly-discarded tiles append to the next
+ * empty slot instead of pushing the existing tiles around to keep
+ * the row centered. Without this, every discard nudged every prior
+ * tile by half a column, which made it impossible to track which
+ * tile was the live claim target.
  */
 export function SharedDiscardPool({
   discardOrder,
@@ -38,7 +45,7 @@ export function SharedDiscardPool({
         flexDirection: 'row',
         flexWrap: 'wrap',
         gap: 4,
-        justifyContent: 'center',
+        justifyContent: 'flex-start',
         padding: 8,
         backgroundColor: 'rgba(0,0,0,0.05)',
         borderRadius: 12,
