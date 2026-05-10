@@ -59,10 +59,31 @@ export const claimsLesson: Lesson = {
       completedWhen: (state) => (state.discards[0]?.length ?? 0) >= 1,
     },
     {
+      id: 'watch',
+      caption: {
+        title: 'Watch the bots play',
+        body: "The other seats take their turns. Chi can only be called on the seat just before yours — when seat 3 (the one on your left) discards, we'll prompt you if they throw a tile you can claim.",
+      },
+      // Anchor on the discard pool so the caption docks at the top
+      // and the user can see tiles landing while the bots play. The
+      // `claim-bar` target isn't registered yet — it only mounts when
+      // an actual claim option exists — so previously the 'claim'
+      // step rendered with no halo and the caption sat dead-centre
+      // before bot 3 had even drawn, which let the user dismiss the
+      // popup before the chi button ever appeared.
+      targetId: 'shared-discards',
+      // Advance only when the engine actually parks at seat 3's
+      // discard awaiting a claim. Intermediate `awaitingClaims`
+      // states from bots 1 and 2 don't qualify (`lastDiscard.from`
+      // discriminates) and they pass through immediately anyway
+      // since the lesson forces passive bots.
+      completedWhen: (state) => state.phase === 'awaitingClaims' && state.lastDiscard?.from === 3,
+    },
+    {
       id: 'claim',
       caption: {
         title: 'Claim the chi!',
-        body: 'A bot just discarded a tile that completes a sequence in your hand. Tap "Chi" to take it.',
+        body: 'Seat 3 just discarded a tile that completes a sequence in your hand. Tap "Chi" to take it.',
       },
       targetId: 'claim-bar',
       // Auto-advance once the user actually claims — `melds[0]`

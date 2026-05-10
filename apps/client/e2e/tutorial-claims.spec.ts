@@ -34,7 +34,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test.describe('tutorial: claims', () => {
-  test('happy path: continue → 4 steps → completion persists', async ({ page }) => {
+  test('happy path: continue → 5 steps → completion persists', async ({ page }) => {
     await page.goto('/');
     await expect(page.getByRole('heading', { name: 'Modern Mahjong' })).toBeVisible();
 
@@ -48,7 +48,16 @@ test.describe('tutorial: claims', () => {
     await expect(page.getByText('Take your first turn')).toBeVisible();
     await page.getByTestId('own-hand-tile').first().click();
 
-    // Step 3 — claim bar shows after bot 3's scripted 5-pin discard.
+    // Step 3 — watch the bots play. Between the user's discard and
+    // seat 3's scripted 5-pin discard, the lesson sits on the
+    // 'Watch the bots play' caption so 'Claim the chi!' can't pop
+    // before the chi button exists. At pace=0 (the suite default)
+    // the caption flashes too fast to assert via Playwright polling
+    // — the chi click below would intercept-fail if the claim
+    // caption landed before the claim-bar registered its target,
+    // which is the regression this step covers.
+    //
+    // Step 4 — claim bar shows after bot 3's scripted 5-pin discard.
     // Tap the chi button. `<CallButton>` is a Pressable rendering a
     // Chinese-character + English-label pair without an explicit
     // accessibilityRole, so target the English label text. Note
@@ -57,7 +66,7 @@ test.describe('tutorial: claims', () => {
     await expect(page.getByText('Claim the chi!')).toBeVisible({ timeout: 10_000 });
     await page.getByText('Chi', { exact: true }).click();
 
-    // Step 4 — final.
+    // Step 5 — final.
     await expect(page.getByText('Lesson complete!')).toBeVisible();
     await page.getByRole('button', { name: 'Done' }).click();
 
