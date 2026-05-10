@@ -98,15 +98,17 @@ jobs:
         if: github.event.inputs.buildType == 'all' || github.event.inputs.buildType == 'dev' || github.event.inputs.buildType == 'prod-apk' || github.event_name == 'push'
         run: pnpm --filter @mahjong/client export-web
 
-      - name: 📱 Build Development APK
-        if: github.event.inputs.buildType == 'all' || github.event.inputs.buildType == 'dev' || github.event_name == 'push'
-        working-directory: apps/client
-        run: |
-          # Build with increased memory limit
-          export NODE_OPTIONS="--openssl-legacy-provider --max_old_space_size=4096"
-          eas build --platform android --profile development --local --non-interactive --output=./app-dev.apk
-        env:
-          NODE_ENV: development
+      # Development APK build temporarily disabled — only the production
+      # APK is built for now. Re-enable by uncommenting this step.
+      # - name: 📱 Build Development APK
+      #   if: github.event.inputs.buildType == 'all' || github.event.inputs.buildType == 'dev' || github.event_name == 'push'
+      #   working-directory: apps/client
+      #   run: |
+      #     # Build with increased memory limit
+      #     export NODE_OPTIONS="--openssl-legacy-provider --max_old_space_size=4096"
+      #     eas build --platform android --profile development --local --non-interactive --output=./app-dev.apk
+      #   env:
+      #     NODE_ENV: development
 
       - name: 📱 Build Production APK
         if: github.event.inputs.buildType == 'all' || github.event.inputs.buildType == 'prod-apk' || github.event_name == 'push'
@@ -121,8 +123,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: app-builds
+          # Dev APK temporarily disabled (see commented Build Development
+          # APK step above). Re-add `apps/client/app-dev.apk` to the path
+          # list when re-enabling.
           path: |
-            apps/client/app-dev.apk
             apps/client/app-prod.apk
           retention-days: 7
           if-no-files-found: ignore

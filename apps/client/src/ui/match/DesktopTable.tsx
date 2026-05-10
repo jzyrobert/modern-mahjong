@@ -67,9 +67,53 @@ interface DesktopTableProps {
 
 const COLORS = {
   feltEdge: 'rgba(216,168,90,0.45)',
+  // Mahjong-back blue for the visible top of an opponent's hand tile —
+  // same hex as `WallEdge`'s TopFace so the felt reads as one cohesive
+  // top-down view with consistent surface tone across walls + hands.
   back1: '#7fa9c1',
   back2: '#5a8cb0',
+  backEdge: 'rgba(50,80,100,0.6)',
+  // Cream/bone side face — the strip pinned to the player-facing edge
+  // of each opp hand tile, suggesting the tile's vertical depth in
+  // the same way `WallEdge` uses it for wall stacks.
+  sideFace: '#d6c290',
+  sideEdge: '#8a6e3c',
+  // Pinned bevel bands — the rounded lid edge catching reflected light
+  // from above and the opposite edge sitting in shadow. Same NE-light
+  // direction as the wall + the in-hand `Tile.tsx`, so all three
+  // surfaces compose under one committed light model.
+  backLid: 'rgba(255,255,255,0.20)',
+  backFar: 'rgba(0,0,0,0.18)',
+  sideTop: 'rgba(255,255,255,0.16)',
+  sideBottom: 'rgba(0,0,0,0.20)',
 };
+
+/** Thickness of the cream side strip pinned to each opp tile's player-
+ *  facing edge. Smaller than the wall's `SIDE_FULL = 10` because opp
+ *  hand tiles are individual pieces (no stacked second tile to
+ *  account for), and the strip should read as a thin lip rather than
+ *  a full half-tile height. */
+const OPP_TILE_SIDE_THICK = 3;
+
+function oppositePosition(p: Position): Position {
+  return p === 'top' ? 'bottom' : p === 'bottom' ? 'top' : p === 'left' ? 'right' : 'left';
+}
+
+/** Absolute-positioned 1 px strip pinned to one edge of a parent View.
+ *  Powers the lid / far-edge bevels on `FaceDownTile`'s top + side
+ *  faces. Mirrors the same helper in `WallEdge.tsx`; kept local here
+ *  rather than shared to keep this module self-contained. */
+function edgeBandStyle(edge: Position, thickness: number, color: string) {
+  const base = {
+    position: 'absolute' as const,
+    backgroundColor: color,
+    pointerEvents: 'none' as const,
+  };
+  if (edge === 'top') return { ...base, top: 0, left: 0, right: 0, height: thickness };
+  if (edge === 'bottom') return { ...base, bottom: 0, left: 0, right: 0, height: thickness };
+  if (edge === 'left') return { ...base, top: 0, bottom: 0, left: 0, width: thickness };
+  return { ...base, top: 0, bottom: 0, right: 0, width: thickness };
+}
 
 /**
  * Desktop-shell table layout. Used when the viewport is wider than a
@@ -450,7 +494,7 @@ function OpponentArea({
         drawCountdown={drawCountdown}
         turnCountdown={turnCountdown}
       />
-      <FaceDownStrip count={handCount} orient={orient} dims={dims} />
+      <FaceDownStrip count={handCount} orient={orient} dims={dims} position={placement.position} />
       {melds.length > 0 ? (
         <View style={{ alignSelf: 'center' }}>
           <MeldStrip melds={melds} tileWidth={dims.oppMeldTileW} tileHeight={dims.oppMeldTileH} />
@@ -527,11 +571,27 @@ interface FaceDownStripProps {
   count: number;
   orient: 'horizontal' | 'vertical';
   dims: DesktopDims;
+  /** Seat position of the opponent — drives which edge of each tile
+   *  the side strip pins to so the cream face always sits between the
+   *  tile's top face and the player at the bottom seat. */
+  position: Position;
 }
 
-function FaceDownStrip({ count, orient, dims }: FaceDownStripProps) {
+function FaceDownStrip({ count, orient, dims, position }: FaceDownStripProps) {
   const W = orient === 'horizontal' ? dims.oppFaceDownH.w : dims.oppFaceDownV.w;
   const H = orient === 'horizontal' ? dims.oppFaceDownH.h : dims.oppFaceDownV.h;
+  // Each opp tile sits on its short edge in the strip, back facing the
+  // player. The cream side strip pins to whichever cell edge points
+  // toward the player at the bottom seat, mirroring `WallEdge`'s
+  // "felt-centre-facing strip" trick so the row reads as upright pieces
+  // rather than flat painted rectangles.
+  //
+  //   top opp    (north)  → strip on the BOTTOM edge of the cell
+  //   left opp   (west)   → strip on the RIGHT edge of the cell
+  //   right opp  (east)   → strip on the LEFT edge of the cell
+  //   (bottom is the user; never reaches this strip)
+  const playerFacingEdge: Position =
+    position === 'top' ? 'bottom' : position === 'left' ? 'right' : 'left';
   return (
     <View
       style={{
@@ -539,22 +599,100 @@ function FaceDownStrip({ count, orient, dims }: FaceDownStripProps) {
         gap: 2,
         flexWrap: 'wrap',
         justifyContent: 'center',
+        // Wrapper drop-shadow so the whole strip reads as sitting on
+        // the felt — same one-shadow-for-the-row trick `WallEdge`
+        // uses for its 17-stack row (per-tile shadows would compound
+        // visually and over-darken the felt under a 13-tile hand).
+        boxShadow: '0px 3px 6px rgba(0,0,0,0.22)',
       }}
     >
       {Array.from({ length: count }, (_, i) => (
-        <View
+        <FaceDownTile
           // biome-ignore lint/suspicious/noArrayIndexKey: count-bound, position-stable
           key={i}
-          style={{
-            width: W,
-            height: H,
-            borderRadius: 2,
-            backgroundColor: COLORS.back1,
-            borderColor: COLORS.back2,
-            borderWidth: 1,
-          }}
+          width={W}
+          height={H}
+          playerFacingEdge={playerFacingEdge}
+          orient={orient}
         />
       ))}
+    </View>
+  );
+}
+
+interface FaceDownTileProps {
+  width: number;
+  height: number;
+  playerFacingEdge: Position;
+  orient: 'horizontal' | 'vertical';
+}
+
+/**
+ * One face-down opponent tile, rendered as a `WallEdge`-style top face
+ * + side strip composition. The top face is the blue tile-back as seen
+ * from above; the cream side strip pins to the player-facing edge to
+ * suggest the tile has vertical depth (it's standing on its short
+ * edge in the opp's hand, not laying flat). Two pinned bevel bands on
+ * each face sell the rounded edge under the same NE-light direction
+ * the wall + in-hand `Tile.tsx` already commit to.
+ */
+function FaceDownTile({ width, height, playerFacingEdge, orient }: FaceDownTileProps) {
+  const SIDE = OPP_TILE_SIDE_THICK;
+  const isHorizontal = orient === 'horizontal';
+  // Cell extent: top face + side strip stacked along the player-facing
+  // axis. Horizontal strips (top opp) grow the cell's HEIGHT; vertical
+  // strips (left / right opps) grow the cell's WIDTH.
+  const cellW = isHorizontal ? width : width + SIDE;
+  const cellH = isHorizontal ? height + SIDE : height;
+  // Cell composition: [topFace, sideFace] under a flex direction that
+  // lands the side strip on the player-facing edge regardless of seat.
+  // For the top opp the strip belongs BELOW the top face → `column`.
+  // For the left opp the strip belongs to the RIGHT → `row` (so the
+  // top face is on the left, abutting the opp's badge). For the right
+  // opp the strip belongs to the LEFT → `row-reverse` (top face on
+  // the right, strip facing the felt centre).
+  const flexDirection: 'row' | 'row-reverse' | 'column' | 'column-reverse' = isHorizontal
+    ? playerFacingEdge === 'bottom'
+      ? 'column'
+      : 'column-reverse'
+    : playerFacingEdge === 'right'
+      ? 'row'
+      : 'row-reverse';
+  return (
+    <View style={{ width: cellW, height: cellH, flexDirection }}>
+      <View
+        style={{
+          width,
+          height,
+          borderRadius: 2,
+          backgroundColor: COLORS.back1,
+          borderColor: COLORS.backEdge,
+          borderWidth: 0.5,
+          overflow: 'hidden',
+        }}
+      >
+        {/* Lid catching light on the player-facing edge (rounded lid
+            edge nearest the camera at the player seat) + darker band
+            on the opposite edge (lid's far side, in shadow). */}
+        <View style={edgeBandStyle(playerFacingEdge, 1, COLORS.backLid)} />
+        <View style={edgeBandStyle(oppositePosition(playerFacingEdge), 0.75, COLORS.backFar)} />
+      </View>
+      <View
+        style={{
+          width: isHorizontal ? width : SIDE,
+          height: isHorizontal ? SIDE : height,
+          backgroundColor: COLORS.sideFace,
+          borderColor: COLORS.sideEdge,
+          borderWidth: 0.5,
+          overflow: 'hidden',
+        }}
+      >
+        {/* Lid-edge of the strip (the edge touching the top face above)
+            catches reflected light; the player-facing edge sits in
+            shadow on the felt. */}
+        <View style={edgeBandStyle(oppositePosition(playerFacingEdge), 0.75, COLORS.sideTop)} />
+        <View style={edgeBandStyle(playerFacingEdge, 0.75, COLORS.sideBottom)} />
+      </View>
     </View>
   );
 }

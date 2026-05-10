@@ -47,8 +47,22 @@ test.describe('tutorial: basics', () => {
 
     await page.getByRole('button', { name: 'Done' }).click();
 
-    // Overlay tears down.
+    // Lesson's "Lesson complete!" caption tears down — the post-
+    // completion prompt that takes its place uses "Nice work!" as
+    // its title (see CompletionPrompt in TutorialOverlay.tsx).
     await expect(page.getByText('Lesson complete!')).toBeHidden();
+    await expect(page.getByText('Nice work!')).toBeVisible();
+    // With only basics complete, the prompt offers the *next*
+    // curriculum entry ("Reading the table") plus the always-on
+    // "Continue playing" / "Back to lobby" affordances.
+    await expect(page.getByLabel('Start next lesson: Reading the table')).toBeVisible();
+    await expect(page.getByLabel('Continue playing')).toBeVisible();
+    await expect(page.getByLabel('Back to lobby')).toBeVisible();
+
+    // Dismiss the prompt — "Continue playing" leaves the user in
+    // the just-finished tutorial's match without starting a new one.
+    await page.getByLabel('Continue playing').click();
+    await expect(page.getByText('Nice work!')).toBeHidden();
 
     // Regression: once the lesson is over the dice modal must not
     // come back. The tutorial dismissal used to be keyed only by
@@ -70,6 +84,51 @@ test.describe('tutorial: basics', () => {
       }
     });
     expect(completed).toContain('basics');
+  });
+
+  test('post-completion prompt: "Next lesson" launches the following lesson', async ({ page }) => {
+    // Pre-mark basics complete so we can run safety end-to-end and
+    // confirm the prompt's "Next lesson" CTA jumps to claims (the
+    // entry after safety in LESSON_ORDER).
+    await page.addInitScript(() => {
+      localStorage.setItem(
+        'mj.settings.v1',
+        JSON.stringify({
+          felt: 'sage',
+          tileBack: 'cream',
+          autoSort: true,
+          animations: true,
+          sound: false,
+          discardHint: false,
+          botSkills: ['heuristic', 'simple', 'passive'],
+          autoRecordReplays: false,
+          replayQuota: 50,
+          tutorialsCompleted: ['basics'],
+        }),
+      );
+    });
+
+    await page.goto('/');
+    await page.getByLabel('Start Reading the table').click();
+
+    // Walk through safety to the final step. The flow matches
+    // tutorial-safety.spec.ts — kept inline here so this test
+    // exercises the lobby → lesson → prompt → next-lesson loop
+    // without coupling to that file.
+    await page.getByRole('button', { name: 'Got it' }).click();
+    await expect(page.getByText('Take a turn')).toBeVisible();
+    await page.getByTestId('own-hand-tile').first().click();
+    await expect(page.getByText('Tip: enable the discard hint')).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('button', { name: 'Got it' }).click();
+    await expect(page.getByText('Lesson complete!')).toBeVisible();
+    await page.getByRole('button', { name: 'Done' }).click();
+
+    // Prompt offers "claims" (Claiming a chi) as the next lesson.
+    await expect(page.getByLabel('Start next lesson: Claiming a chi')).toBeVisible();
+    await page.getByLabel('Start next lesson: Claiming a chi').click();
+
+    // Claims lesson begins — its intro step renders.
+    await expect(page.getByText('Claiming a tile')).toBeVisible();
   });
 
   test('replay after completion re-opens the dice modal', async ({ page }) => {
@@ -94,13 +153,14 @@ test.describe('tutorial: basics', () => {
     await expect(page.getByText('Lesson complete!')).toBeVisible({ timeout: 30_000 });
     await page.getByRole('button', { name: 'Done' }).click();
 
-    // Return to the lobby via the in-match menu (NOT page.goto — a
-    // hard reload would reset DiceCeremony's local component state
-    // and mask the regression). The bug only manifests when the
-    // user soft-navigates back to the lobby with the component
-    // still mounted, then re-enters the same lesson.
-    await page.getByLabel('Open menu').first().click();
-    await page.getByText('Leave match').click();
+    // Return to the lobby via the post-completion prompt's "Back to
+    // lobby" affordance (a soft `router.replace('/')` — see
+    // `CompletionPrompt.onLeaveToLobby` in TutorialOverlay.tsx).
+    // Crucially NOT `page.goto('/')`: a hard reload would unmount
+    // DiceCeremony (root layout) and wipe the stale local state the
+    // regression depends on.
+    await expect(page.getByLabel('Back to lobby')).toBeVisible();
+    await page.getByLabel('Back to lobby').click();
     await expect(page.getByLabel('Replay Basics: a guided hand')).toBeVisible();
     await page.getByLabel('Replay Basics: a guided hand').click();
 
