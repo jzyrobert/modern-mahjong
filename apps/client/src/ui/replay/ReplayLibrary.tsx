@@ -1,8 +1,8 @@
 import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { listHeaders } from '../../replay/storage';
+import { deleteRecord, listHeaders } from '../../replay/storage';
 import type { ReplayHeader } from '../../replay/types';
 import { useGame } from '../../state/game';
 import { GhostButton, PrimaryButton } from '../buttons';
@@ -24,12 +24,7 @@ const JOIN_COLOR: Record<ReplayHeader['joinKind'], string> = {
 /**
  * Replay library — list of saved replays, most-recent-first. Tap a row
  * to open the player. Header has back-to-lobby + import-from-JSON.
- *
- * `headers` reads from localStorage on mount and after import; the
- * recorder's mid-match `saveExplicit` writes to the same keys, so an
- * already-mounted library re-fetches via `refresh()` from the
- * `useGame.settings` change side-channel (auto-record toggle is the
- * usual reason a user returns to the library).
+ * `refresh()` re-reads after a delete or import.
  */
 export function ReplayLibrary() {
   const router = useRouter();
@@ -39,10 +34,6 @@ export function ReplayLibrary() {
   const setSettings = useGame((s) => s.setSettings);
 
   const refresh = useCallback(() => setHeaders(listHeaders()), []);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
 
   const onOpenReplay = (id: string) => {
     router.push(`/replays/${id}`);
@@ -178,7 +169,8 @@ function ReplayRow({
     if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
       if (!window.confirm('Delete this replay?')) return;
     }
-    void doDelete(header.id, onDeleted);
+    deleteRecord(header.id);
+    onDeleted();
   };
   const dateLabel = new Date(header.startedAt).toLocaleString();
   const durationLabel = formatDuration(header.durationMs);
@@ -244,12 +236,6 @@ function ReplayRow({
       </Pressable>
     </Pressable>
   );
-}
-
-async function doDelete(id: string, onDeleted: () => void) {
-  const { deleteRecord } = await import('../../replay/storage');
-  deleteRecord(id);
-  onDeleted();
 }
 
 function describeOpponents(header: ReplayHeader): string {
