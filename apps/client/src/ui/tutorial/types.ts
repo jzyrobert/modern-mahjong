@@ -100,4 +100,5 @@ export type TutorialTargetId =
   | 'menu-pill'
   | 'turn-countdown'
   | 'shared-discards'
-  | 'tsumo-button';
+  | 'tsumo-button'
+  | 'dice-ceremony';
