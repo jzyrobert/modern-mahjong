@@ -35,6 +35,11 @@ export const basicsLesson: Lesson = {
         title: 'Opening dice',
         body: "Each hand starts with a roll: East player rolls three dice, and the result picks who deals this round. You'll see those dice now — they pick a seat to receive 14 tiles instead of 13.",
       },
+      // Anchor on the dice modal so the user can see the rolls
+      // through the scrim cutout. The DiceCeremony also suppresses
+      // its own auto-dismiss timer while this step is active so the
+      // modal sticks around as long as the caption does.
+      targetId: 'dice-ceremony',
       ctaLabel: 'Got it',
     },
     {

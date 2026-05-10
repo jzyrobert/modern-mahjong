@@ -3,10 +3,11 @@ import { SEATS } from '@mahjong/game-logic';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Pressable, Text, View } from 'react-native';
 import { nameForSeat, useGame } from '../state/game';
-import { LESSONS, useTutorial } from '../state/tutorial';
+import { LESSONS, useActiveTutorialStep, useTutorial } from '../state/tutorial';
 import { useFadeInOut } from './animations';
 import { COLORS } from './colors';
 import { DISMISS_MS } from './timing';
+import { useTargetRegistry } from './tutorial/TargetRegistry';
 
 const PIPS: Record<number, [number, number][]> = {
   1: [[2, 2]],
@@ -138,11 +139,44 @@ export function DiceCeremony() {
     [fadeOut, tutorialLessonId],
   );
 
+  // While a lesson step targets the dice ceremony, suspend the
+  // auto-dismiss timer — the user is reading the tutorial caption
+  // alongside the dice and shouldn't have the modal vanish out from
+  // under them on the usual short timeout. Once the step advances
+  // past the dice (`dice-ceremony` is no longer the active target)
+  // we retire the modal so it doesn't stack with the next caption.
+  const activeStep = useActiveTutorialStep();
+  const tutorialTargetsDice = activeStep?.step.targetId === 'dice-ceremony';
   useEffect(() => {
-    if (!open || seed === undefined) return;
+    if (!open || seed === undefined || tutorialTargetsDice) return;
     const timer = setTimeout(() => dismiss(seed), DISMISS_MS);
     return () => clearTimeout(timer);
-  }, [open, seed, dismiss]);
+  }, [open, seed, dismiss, tutorialTargetsDice]);
+  // Auto-retire the modal when a tutorial that surfaced it advances
+  // past the dice step. Without this the dice card would linger
+  // under the welcome caption on the next step.
+  const wasTargetingRef = useRef(tutorialTargetsDice);
+  useEffect(() => {
+    if (wasTargetingRef.current && !tutorialTargetsDice && open && seed !== undefined) {
+      dismiss(seed);
+    }
+    wasTargetingRef.current = tutorialTargetsDice;
+  }, [tutorialTargetsDice, open, seed, dismiss]);
+
+  // Register the dice card's screen rect with the tutorial target
+  // registry so the basics dice step can halo it. Refreshed on
+  // every layout pass — the modal animates in via `useFadeInOut`,
+  // so the rect lands once the card mounts and stays stable until
+  // dismiss.
+  const registry = useTargetRegistry();
+  const cardRef = useRef<{
+    measureInWindow: (cb: (x: number, y: number, w: number, h: number) => void) => void;
+  } | null>(null);
+  useEffect(() => {
+    return () => {
+      registry.set('dice-ceremony', null);
+    };
+  }, [registry]);
 
   const visible = open && dealer !== undefined;
   if (!visible) return null;
@@ -150,7 +184,16 @@ export function DiceCeremony() {
 
   return (
     <Pressable
-      onPress={() => dismiss(seed)}
+      onPress={() => {
+        // While a tutorial step is highlighting the dice, the
+        // overlay's scrim catches taps on the rest of the screen
+        // and only the halo cutout reveals the dice card. A tap
+        // there should advance the tutorial rather than dismiss
+        // the modal out of sequence; ignore the press and let the
+        // user drive the lesson via the caption's CTA instead.
+        if (tutorialTargetsDice) return;
+        dismiss(seed);
+      }}
       style={{
         position: 'absolute',
         left: 0,
@@ -168,6 +211,14 @@ export function DiceCeremony() {
       }}
     >
       <Animated.View
+        ref={(node) => {
+          cardRef.current = node as unknown as typeof cardRef.current;
+        }}
+        onLayout={() => {
+          cardRef.current?.measureInWindow((x, y, w, h) => {
+            registry.set('dice-ceremony', { x, y, w, h });
+          });
+        }}
         style={{
           opacity: fade,
           backgroundColor: COLORS.paperHi,
