@@ -49,6 +49,11 @@ export interface UserSettings {
   /** Maximum number of replays kept on disk. Oldest entries prune on
    *  insert past this cap. */
   replayQuota: number;
+  /** Lesson ids the user has finished. Drives the lobby Tutorial
+   *  card's "completed" affordance and the ☰-menu "Restart tutorial"
+   *  row. Lessons are append-only; ids never get removed once they
+   *  land here. */
+  tutorialsCompleted: string[];
 }
 
 const DEFAULT_SETTINGS: UserSettings = {
@@ -61,6 +66,7 @@ const DEFAULT_SETTINGS: UserSettings = {
   botSkills: ['heuristic', 'simple', 'passive'],
   autoRecordReplays: false,
   replayQuota: 50,
+  tutorialsCompleted: [],
 };
 
 const SETTINGS_STORAGE_KEY = 'mj.settings.v1';
