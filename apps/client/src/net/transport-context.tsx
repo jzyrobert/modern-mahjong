@@ -269,6 +269,17 @@ export function TransportProvider({ children }: { children: ReactNode }) {
       // which would invalidate the script's predicates. The user's
       // `settings.botSkills` is left untouched so leaving the tutorial
       // returns them to their preferred mix.
+      //
+      // Layer per-seat scripted moves on top via the existing
+      // `__MAHJONG_TEST_BOT_SCRIPTS__` global, which `solo-transport`
+      // already consumes inside `withTestScript`. Lessons define
+      // these to engineer specific scenarios (e.g. bot 3 discards
+      // a specific face so the user gets a chi opportunity); empty
+      // scripts make the global a no-op. The teardown path clears
+      // the global so a regular post-lesson solo match doesn't
+      // inherit the tutorial's scripts.
+      const w = globalThis as { __MAHJONG_TEST_BOT_SCRIPTS__?: unknown };
+      w.__MAHJONG_TEST_BOT_SCRIPTS__ = lesson.botScripts;
       swap(
         createSoloTransport({
           playerId: getPlayerId(),
@@ -344,6 +355,14 @@ export function TransportProvider({ children }: { children: ReactNode }) {
     // Tear down any in-flight tutorial too — leaving the match
     // mid-lesson should drop the lesson, same as the Skip button.
     useTutorial.getState().dismiss();
+    // Clear any lesson-installed bot scripts unconditionally on
+    // match teardown, so a follow-up regular solo match doesn't
+    // inherit them (e.g. bot 3 stuck pre-discarding a specific
+    // tile). Existing e2e specs that set scripts via page.evaluate
+    // do so per-test and never trigger teardown mid-test, so this
+    // is safe to wipe.
+    const w = globalThis as { __MAHJONG_TEST_BOT_SCRIPTS__?: unknown };
+    w.__MAHJONG_TEST_BOT_SCRIPTS__ = undefined;
     setTransport(null);
     setMatchCode(null);
     setStatus('idle');
