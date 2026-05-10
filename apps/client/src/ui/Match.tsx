@@ -322,7 +322,7 @@ export function Match() {
       allowSpecial,
     });
 
-  // Concealed-kong candidate: any face the user has 4 copies of in
+  // Concealed-gang candidate: any face the user has 4 copies of in
   // their concealed hand. The engine accepts `declareGangConcealed`
   // only on the user's turn after a draw — gate the button on the
   // same precondition. If multiple quads exist (rare), pick the

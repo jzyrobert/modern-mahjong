@@ -68,8 +68,14 @@ export const basicsLesson: Lesson = {
       id: 'watch-bots',
       caption: {
         title: 'Now watch the bots',
-        body: 'The other three seats take their turns in order, drawing and discarding just like you did. The lesson advances once each bot has played their first turn.',
+        body: 'The other three seats take their turns in order, drawing and discarding just like you did. Their discards land in this pool — watch it fill up as the round goes round.',
       },
+      // Anchor on the shared discard pool so the caption docks at
+      // the top of the screen and the user can actually see tiles
+      // landing in the highlighted area. Without a target the
+      // caption centres mid-screen and covers the very thing the
+      // step is asking the user to look at.
+      targetId: 'shared-discards',
       // Wait for each bot seat (1, 2, 3) to have discarded at least
       // once. We don't run all the way to `phase === 'resolved'`
       // because once the user's second turn comes around the engine

@@ -31,7 +31,7 @@ export const winLesson: Lesson = {
       id: 'intro',
       caption: {
         title: 'Winning a hand',
-        body: "You win mahjong by completing 4 sets and a pair, totalling 14 tiles. A 'set' is either three of a kind (pong) or three consecutive numbers in the same suit (chi).",
+        body: "You win mahjong by completing 4 sets and a pair, totalling 14 tiles. A 'set' is either three of a kind (peng) or three consecutive numbers in the same suit (chi).",
       },
       ctaLabel: 'Got it',
     },

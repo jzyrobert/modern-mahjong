@@ -97,26 +97,45 @@ export function DiceCeremony() {
   // visual noise. The basics lesson opts in (it introduces the
   // dice as part of the core flow), the rest don't.
   const tutorialActive = useTutorial((s) => s.active);
+  const tutorialLessonId = tutorialActive?.lessonId ?? null;
   const tutorialAllowsDice =
     !tutorialActive || (LESSONS[tutorialActive.lessonId]?.showOpeningRolls ?? false);
-  const open = !!rolls && seed !== undefined && seed !== dismissedSeed && tutorialAllowsDice;
+  // Per-tutorial-session dismissal. Tutorials run on fixed seeds, so
+  // the localStorage `dismissedSeed` memo would suppress the dice
+  // modal forever after the first run. Track dismissal by the
+  // currently-active lesson id instead: dismiss → store the lesson
+  // id; replay → new session, the stored id no longer matches the
+  // active one, so the modal shows again. Outside tutorials this
+  // value stays null and the localStorage gate alone applies.
+  const [tutorialDismissedFor, setTutorialDismissedFor] = useState<string | null>(null);
+  const open =
+    !!rolls &&
+    seed !== undefined &&
+    tutorialAllowsDice &&
+    (tutorialLessonId ? tutorialDismissedFor !== tutorialLessonId : seed !== dismissedSeed);
   // `useFadeInOut` honours `useGame.settings.animations` — when the
   // user has reduced-motion on the overlay snaps in / out instead of
   // fading. The dismiss timer is unchanged so on-screen duration is
   // the same either way.
   const { fade, fadeOut } = useFadeInOut({ visible: open });
 
-  // Fade out then commit the dismissal both in-memory + to localStorage
-  // so a reload (solo / online / LAN) honours it. Shared between the
+  // Fade out then commit the dismissal. In a tutorial session the
+  // dismissal is keyed by lesson id (cleared on the next replay);
+  // outside tutorials it persists to localStorage so a reload
+  // (solo / online / LAN) honours it. Shared between the
   // auto-dismiss timer and the tap-to-dismiss handler.
   const dismiss = useCallback(
     (s: number) => {
       fadeOut(() => {
-        setDismissedSeed(s);
-        writeDismissedSeed(s);
+        if (tutorialLessonId) {
+          setTutorialDismissedFor(tutorialLessonId);
+        } else {
+          setDismissedSeed(s);
+          writeDismissedSeed(s);
+        }
       });
     },
-    [fadeOut],
+    [fadeOut, tutorialLessonId],
   );
 
   useEffect(() => {

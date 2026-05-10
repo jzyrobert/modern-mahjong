@@ -150,7 +150,7 @@ test.describe('tutorial: basics', () => {
     await expect(page.getByLabel('Replay Reading the table')).toBeVisible();
     await expect(page.getByLabel('Replay Claiming a chi')).toBeVisible();
     await expect(page.getByLabel('Replay Winning a hand')).toBeVisible();
-    await expect(page.getByLabel('Replay Concealed kong')).toBeVisible();
+    await expect(page.getByLabel('Replay Concealed gang')).toBeVisible();
   });
 
   test('"Tutorial" row appears in the in-match menu once basics is complete', async ({ page }) => {

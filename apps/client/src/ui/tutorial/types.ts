@@ -71,6 +71,15 @@ export interface Lesson {
    *  welcome caption. The basics lesson sets it true since it
    *  introduces the dice as part of the core flow.  */
   showOpeningRolls?: boolean;
+  /** Hook fired exactly once, after the engine first observes a
+   *  discard from seat 0. Lets a lesson rewrite its bot scripts
+   *  based on the user's remaining hand — useful when the chi /
+   *  peng / gang opportunity the lesson sets up depends on which
+   *  tile the user kept. Implementations typically mutate
+   *  `globalThis.__MAHJONG_TEST_BOT_SCRIPTS__` directly; the solo
+   *  transport reads it on every bot turn so updates land on the
+   *  next pick. */
+  setupAfterFirstDiscard?: (state: GameState) => void;
   steps: LessonStep[];
 }
 
