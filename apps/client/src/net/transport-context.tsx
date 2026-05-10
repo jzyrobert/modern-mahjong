@@ -257,14 +257,13 @@ export function TransportProvider({ children }: { children: ReactNode }) {
       // ceremony + lobby waiting room — without it the user would
       // have to tap "Start match" themselves before the welcome
       // overlay made any sense. `soloRulesFrom()` strips the claim
-      // fairness windows (same shape `createSoloTransport` builds
-      // internally) so user discards don't park awaiting a soft
-      // floor that no other human is waiting on.
-      const tutorialState = startHand(
-        emptyState(soloRulesFrom()),
-        lesson.seed,
-        lesson.dealer,
-      ).state;
+      // fairness windows so user discards don't park awaiting a
+      // soft floor that no other human is waiting on. We additionally
+      // zero `turnTimeoutMs` for the lesson — a confused new player
+      // shouldn't get yanked off their tile pick after 20 s while
+      // they read the caption.
+      const tutorialRules = { ...soloRulesFrom(), turnTimeoutMs: 0 };
+      const tutorialState = startHand(emptyState(tutorialRules), lesson.seed, lesson.dealer).state;
       // Force every bot to `passive` for the duration of the lesson —
       // a heuristic bot might claim or self-draw mid-walkthrough,
       // which would invalidate the script's predicates. The user's
