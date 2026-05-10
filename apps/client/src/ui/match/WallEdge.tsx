@@ -1,5 +1,6 @@
 import { type Tile as MTile, type Seat, tileId } from '@mahjong/game-logic';
-import { Animated, Pressable, Text, View } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { Animated, Easing, Pressable, Text, View } from 'react-native';
 import { Tile } from '../Tile';
 import { PULSE_TEMPO, usePulse } from '../animations';
 import type { WallSlot } from './wallLayout';
@@ -192,13 +193,41 @@ function SlotCell({
 }: SlotCellProps) {
   const isEmpty = slot.tiles === 0;
   const isFull = slot.tiles === 2;
-  const sideExtent = isFull ? SIDE_FULL : SIDE_HALF;
+
+  // Animated "halfness": 0 = full 2-tile stack, 1 = half 1-tile stack.
+  // Drives three things in lockstep when the engine reports the top
+  // tile as drawn:
+  //   - `outerPad` grows from 0 → (SIDE_FULL - SIDE_HALF), pushing the
+  //     lid inward so it sits at the z=1 projection (matches a real
+  //     shorter stack).
+  //   - `SideFace` extent shrinks from SIDE_FULL → SIDE_HALF, so the
+  //     visible front face represents only the bottom tile.
+  //   - The midpoint seam fades out (no longer a join between two
+  //     stacked tiles when only one remains).
+  // Initial value mirrors current state so a freshly-mounted half
+  // stack (e.g. after a page reload mid-hand) skips the entrance
+  // animation.
+  const halfProgress = useRef(new Animated.Value(isFull ? 0 : 1)).current;
+  useEffect(() => {
+    if (isEmpty) return;
+    Animated.timing(halfProgress, {
+      toValue: isFull ? 0 : 1,
+      duration: 280,
+      easing: Easing.out(Easing.cubic),
+      // Animating layout (width/height) so we can't run on the native
+      // driver. One stack at a time is animating in practice — the
+      // next-to-draw stack as a tile is pulled — so the JS-thread cost
+      // is negligible.
+      useNativeDriver: false,
+    }).start();
+  }, [isFull, isEmpty, halfProgress]);
 
   // Cell reserves the FULL side-face thickness so 1- and 2-tile stacks
   // share an outer baseline — their footprints on the felt are
   // identical, only the visible "height" differs. The leftover gap on
-  // half-drawn stacks pads against the felt-centre side, so the
-  // visible top face stays anchored to the OUTER edge of the wall.
+  // half-drawn stacks pads against the OUTER side of the wall (the
+  // physical "missing top tile" position), so the lid drops inward to
+  // the z=1 projection as the top tile is drawn.
   //
   // The side face extends the cell along the stack-perpendicular axis:
   // for `column` stacks (top/bottom walls) that's the cell's HEIGHT
@@ -222,9 +251,9 @@ function SlotCell({
     return <View style={containerStyle} />;
   }
 
-  // Element order is always [top face, side face]; flexDirection flips
-  // when the inner edge is at the START of the cell so the side face
-  // still ends up on the felt-facing side.
+  // Element order is always [outer pad, top face, side face];
+  // flexDirection flips when the inner edge is at the START of the
+  // cell so the side face still ends up on the felt-facing side.
   const flexDirection: 'row' | 'row-reverse' | 'column' | 'column-reverse' =
     stackDir === 'column'
       ? innerEdge === 'end'
@@ -234,15 +263,27 @@ function SlotCell({
         ? 'row'
         : 'row-reverse';
 
-  // Half-stack: pad the leftover space on the inner side so the top
-  // face stays at the outer edge.
-  const innerPad = SIDE_FULL - sideExtent;
-  const innerPadStyle =
-    innerPad > 0
-      ? stackDir === 'column'
-        ? { width: tileW, height: innerPad }
-        : { width: innerPad, height: tileH }
-      : null;
+  // outerPad grows from 0 (full) to (SIDE_FULL - SIDE_HALF) (half) so
+  // the lid drops inward as the stack depletes.
+  const outerPadExtent = halfProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, SIDE_FULL - SIDE_HALF],
+  });
+  // SideFace extent shrinks from SIDE_FULL → SIDE_HALF.
+  const sideExtentAnim = halfProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [SIDE_FULL, SIDE_HALF],
+  });
+  // Midpoint seam fades out — no join between tiles once only one is
+  // left.
+  const seamOpacity = halfProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 0],
+  });
+  const outerPadStyle =
+    stackDir === 'column'
+      ? { width: tileW, height: outerPadExtent }
+      : { width: outerPadExtent, height: tileH };
 
   // `Tile`'s SVG locks to a 36×50 portrait viewBox; on row-stack walls
   // (left/right seats) the landscape top face needs the FLIP-source
@@ -273,6 +314,7 @@ function SlotCell({
       >
         <PulseHalo width={containerStyle.width} height={containerStyle.height}>
           <View style={{ ...containerStyle, flexDirection }}>
+            <Animated.View style={outerPadStyle} />
             <View style={{ width: tileW, height: tileH }}>
               <TopFace width={tileW} height={tileH} feltEdge={feltEdge} />
               <View
@@ -301,12 +343,11 @@ function SlotCell({
             </View>
             <SideFace
               stackDir={stackDir}
-              extent={sideExtent}
+              extent={sideExtentAnim}
               long={tileLong(stackDir, tileW, tileH)}
-              isFull={isFull}
+              seamOpacity={seamOpacity}
               lidEdge={lidEdge}
             />
-            {innerPadStyle ? <View style={innerPadStyle} /> : null}
           </View>
         </PulseHalo>
       </Pressable>
@@ -315,15 +356,15 @@ function SlotCell({
 
   return (
     <View style={{ ...containerStyle, flexDirection }}>
+      <Animated.View style={outerPadStyle} />
       <TopFace width={tileW} height={tileH} feltEdge={feltEdge} />
       <SideFace
         stackDir={stackDir}
-        extent={sideExtent}
+        extent={sideExtentAnim}
         long={tileLong(stackDir, tileW, tileH)}
-        isFull={isFull}
+        seamOpacity={seamOpacity}
         lidEdge={lidEdge}
       />
-      {innerPadStyle ? <View style={innerPadStyle} /> : null}
     </View>
   );
 }
@@ -427,15 +468,16 @@ interface SideFaceProps {
    *  below (top/bottom walls); 'row' = top face left, side face right
    *  (left/right walls). */
   stackDir: 'row' | 'column';
-  /** Strip thickness along the stack-perpendicular axis — encodes how
-   *  tall the stack still is (full vs half). */
-  extent: number;
+  /** Strip thickness along the stack-perpendicular axis — animated by
+   *  the parent's `halfProgress` so the strip shrinks smoothly when
+   *  the top tile is drawn. */
+  extent: Animated.AnimatedInterpolation<number>;
   /** Strip length along the stack-perpendicular axis (tile width for
-   *  column stacks, tile height for row stacks). */
+   *  column stacks, tile height for row stacks). Constant per cell. */
   long: number;
-  /** True for full 2-tile stacks — adds a hairline at the strip's
-   *  midpoint suggesting the join between the two stacked tiles. */
-  isFull: boolean;
+  /** Midpoint seam opacity — fades from 1 (full stack: visible join
+   *  between two tiles) to 0 (half stack: no join, only one tile). */
+  seamOpacity: Animated.AnimatedInterpolation<number>;
   /** Which edge of the strip touches the lid (TopFace). The lighter
    *  band pins to this edge — the cream side-face catches reflected
    *  light from the lid above. The opposite edge (touching the felt)
@@ -446,12 +488,13 @@ interface SideFaceProps {
 /**
  * Side face — the cream/bone strip pinned to the felt-facing edge of
  * the stack, suggesting the stack's vertical height as seen from a
- * slightly-tilted top-down camera. For full 2-tile stacks, a midpoint
- * seam reads as the join between the two physically-stacked tiles.
+ * slightly-tilted top-down camera. The strip extent + the seam fade
+ * animate from the parent so transitions between full and half states
+ * read as the top tile being lifted off rather than a hard pop.
  * Lid-side and felt-side bands sell the strip as a real recessed
  * plane under indirect light from above.
  */
-function SideFace({ stackDir, extent, long, isFull, lidEdge }: SideFaceProps) {
+function SideFace({ stackDir, extent, long, seamOpacity, lidEdge }: SideFaceProps) {
   const width = stackDir === 'column' ? long : extent;
   const height = stackDir === 'column' ? extent : long;
   const seamStyle =
@@ -459,7 +502,7 @@ function SideFace({ stackDir, extent, long, isFull, lidEdge }: SideFaceProps) {
       ? ({ position: 'absolute', left: 0, right: 0, top: '50%', height: 0.5 } as const)
       : ({ position: 'absolute', top: 0, bottom: 0, left: '50%', width: 0.5 } as const);
   return (
-    <View
+    <Animated.View
       style={{
         width,
         height,
@@ -471,7 +514,9 @@ function SideFace({ stackDir, extent, long, isFull, lidEdge }: SideFaceProps) {
     >
       <View style={edgeBandStyle(lidEdge, 1, COLORS.sideTop)} />
       <View style={edgeBandStyle(oppositeOf(lidEdge), 1, COLORS.sideBottom)} />
-      {isFull ? <View style={{ ...seamStyle, backgroundColor: COLORS.sideSeam }} /> : null}
-    </View>
+      <Animated.View
+        style={{ ...seamStyle, backgroundColor: COLORS.sideSeam, opacity: seamOpacity }}
+      />
+    </Animated.View>
   );
 }
