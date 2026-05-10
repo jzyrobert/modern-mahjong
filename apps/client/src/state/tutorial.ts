@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { stubLesson } from '../ui/tutorial/lessons/_stub';
 import { basicsLesson } from '../ui/tutorial/lessons/basics';
+import { safetyLesson } from '../ui/tutorial/lessons/safety';
 import type { Lesson } from '../ui/tutorial/types';
 import { useGame } from './game';
 
@@ -8,12 +9,40 @@ import { useGame } from './game';
  * Lesson registry. Keyed by `lesson.id`; the controller looks up the
  * active lesson here when the user (or a test) calls `begin(id)`.
  * Adding a new lesson means dropping a `Lesson` definition into
- * `apps/client/src/ui/tutorial/lessons/` and registering it here.
+ * `apps/client/src/ui/tutorial/lessons/`, registering it here, and
+ * appending its id to `LESSON_ORDER` if it should slot into the
+ * lobby card's sequential progression.
  */
 export const LESSONS: Record<string, Lesson> = {
   [basicsLesson.id]: basicsLesson,
+  [safetyLesson.id]: safetyLesson,
   [stubLesson.id]: stubLesson,
 };
+
+/**
+ * Curriculum order, walked by the lobby card and the in-match menu
+ * row. The first incomplete entry is the next lesson the user
+ * should run; once every entry is in `settings.tutorialsCompleted`
+ * the UI flips to a "replay" affordance.
+ *
+ * `_stub` is omitted on purpose — it exists only as a framework
+ * smoke test, not as user-facing content.
+ */
+export const LESSON_ORDER: readonly string[] = [basicsLesson.id, safetyLesson.id];
+
+/**
+ * Pick the next lesson the user hasn't finished yet, or `null` when
+ * they've completed every entry in `LESSON_ORDER`. The lobby card +
+ * the menu row both call this to decide their CTA copy / target.
+ */
+export function nextLesson(completed: readonly string[]): Lesson | null {
+  for (const id of LESSON_ORDER) {
+    if (!completed.includes(id)) {
+      return LESSONS[id] ?? null;
+    }
+  }
+  return null;
+}
 
 interface TutorialState {
   active: { lessonId: string; stepIndex: number } | null;

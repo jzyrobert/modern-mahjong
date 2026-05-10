@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { getDisplayName, setDisplayName } from '../../identity';
 import { listHeaders } from '../../replay/storage';
 import { useGame } from '../../state/game';
+import { LESSON_ORDER, nextLesson } from '../../state/tutorial';
 import { HostLanModal } from '../HostLanModal';
 import { JoinLanModal } from '../JoinLanModal';
 import { GhostButton, PrimaryButton, TextField } from '../buttons';
@@ -36,7 +37,14 @@ export function Lobby() {
   const transport = useTransport();
   const lobby = useGame((s) => s.lobby);
   const tutorialsCompleted = useGame((s) => s.settings.tutorialsCompleted);
-  const basicsDone = tutorialsCompleted.includes(basicsLesson.id);
+  // The lobby card walks through `LESSON_ORDER`. While there's a
+  // next incomplete lesson, the card prompts the user to start /
+  // continue with that one; once every lesson is done it flips to a
+  // "replay" affordance pointing back at basics.
+  const next = nextLesson(tutorialsCompleted);
+  const allLessonsDone = next === null;
+  const targetLesson = next ?? basicsLesson;
+  const isFirstLesson = targetLesson.id === LESSON_ORDER[0];
   // Lazy initialiser — `getDisplayName()` reads from preferences, so we
   // only want to run it on first mount, not on every render.
   const [name, setName] = useState(() => getDisplayName());
@@ -140,18 +148,28 @@ export function Lobby() {
             <ModeCard
               title="Tutorial"
               subtitle={
-                basicsDone ? 'Replay the guided hand' : 'New here? Learn the basics in one hand'
+                allLessonsDone
+                  ? `All ${LESSON_ORDER.length} lessons complete`
+                  : isFirstLesson
+                    ? 'New here? Learn the basics in one hand'
+                    : `${tutorialsCompleted.length}/${LESSON_ORDER.length} lessons done`
               }
               icon={<TutorialIcon color="#65594c" />}
             >
               <Text style={{ fontSize: 12, color: '#918275', lineHeight: 18 }}>
-                {basicsDone
-                  ? 'You’ve finished the basics lesson. Tap to play through it again.'
-                  : 'A quick guided hand walks you through drawing, discarding, and how a round resolves. Three passive bots play the other seats.'}
+                {allLessonsDone
+                  ? 'You’ve finished every lesson. Tap to replay the basics whenever.'
+                  : isFirstLesson
+                    ? 'A quick guided hand walks you through drawing, discarding, and how a round resolves. Three passive bots play the other seats.'
+                    : `Up next: ${targetLesson.title}.`}
               </Text>
               <ButtonRow>
-                <PrimaryButton onPress={() => transport.joinSoloTutorial(basicsLesson.id)}>
-                  {basicsDone ? 'Replay tutorial' : 'Start tutorial'}
+                <PrimaryButton onPress={() => transport.joinSoloTutorial(targetLesson.id)}>
+                  {allLessonsDone
+                    ? 'Replay basics'
+                    : isFirstLesson
+                      ? 'Start tutorial'
+                      : `Continue: ${targetLesson.title}`}
                 </PrimaryButton>
               </ButtonRow>
             </ModeCard>

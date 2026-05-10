@@ -615,13 +615,15 @@ function CenterDiscards({
         </View>
       </View>
       <View style={{ alignItems: 'center' }}>
-        <SeatDiscardPile
-          tiles={discards[byPos.bottom.seat]}
-          rotate={0}
-          latestId={latestDiscardId}
-          maxExtent={dims.topBottomPileMaxW}
-          {...tileProps}
-        />
+        <TutorialTarget id="shared-discards">
+          <SeatDiscardPile
+            tiles={discards[byPos.bottom.seat]}
+            rotate={0}
+            latestId={latestDiscardId}
+            maxExtent={dims.topBottomPileMaxW}
+            {...tileProps}
+          />
+        </TutorialTarget>
       </View>
     </View>
   );

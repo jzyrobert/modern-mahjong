@@ -247,11 +247,13 @@ export function MobileShell(props: MobileShellProps) {
               >
                 DISCARDS
               </Text>
-              <SharedDiscardPool
-                discardOrder={state.discardOrder}
-                seatToPosition={seatToPosition}
-                latestId={latestDiscardId}
-              />
+              <TutorialTarget id="shared-discards">
+                <SharedDiscardPool
+                  discardOrder={state.discardOrder}
+                  seatToPosition={seatToPosition}
+                  latestId={latestDiscardId}
+                />
+              </TutorialTarget>
             </View>
           ) : null}
 

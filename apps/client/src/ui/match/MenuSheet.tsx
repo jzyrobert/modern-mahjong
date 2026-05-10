@@ -2,7 +2,7 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useTransport } from '../../net/transport-context';
 import { useRecorder } from '../../replay/recorder';
 import { useGame } from '../../state/game';
-import { useTutorial } from '../../state/tutorial';
+import { nextLesson, useTutorial } from '../../state/tutorial';
 import { Modal } from '../Modal';
 import { COLORS } from '../colors';
 import { basicsLesson } from '../tutorial/lessons/basics';
@@ -75,8 +75,10 @@ export function MenuSheet({
   const transport = useTransport();
   // First-time players see the row only via the lobby card so the
   // in-match menu stays uncluttered; once they're in a lesson or
-  // have completed it, the row gives them an in-match restart hatch.
-  const showTutorialRow = tutorialActive || tutorialsCompleted.includes(basicsLesson.id);
+  // have completed at least one, the row gives them an in-match
+  // restart hatch into the next-up lesson.
+  const showTutorialRow = tutorialActive || tutorialsCompleted.length > 0;
+  const tutorialTarget = nextLesson(tutorialsCompleted) ?? basicsLesson;
 
   const onSaveMatch = () => {
     if (savedThisMatch) {
@@ -89,7 +91,7 @@ export function MenuSheet({
     setSettings({ autoRecordReplays: !autoRecord });
   };
   const onRestartTutorial = () => {
-    transport.joinSoloTutorial(basicsLesson.id);
+    transport.joinSoloTutorial(tutorialTarget.id);
   };
 
   return (
@@ -131,11 +133,11 @@ export function MenuSheet({
         {showTutorialRow ? (
           <MenuRow
             icon="🎓"
-            title={tutorialActive ? 'Restart tutorial' : 'Replay tutorial'}
+            title={tutorialActive ? 'Restart tutorial' : `Tutorial: ${tutorialTarget.title}`}
             hint={
               tutorialActive
                 ? 'Reset the lesson back to the welcome step.'
-                : 'Run through the basics lesson again.'
+                : `Open the "${tutorialTarget.title}" lesson.`
             }
             onPress={handle(onRestartTutorial)}
           />

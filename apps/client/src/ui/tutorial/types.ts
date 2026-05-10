@@ -80,4 +80,5 @@ export type TutorialTargetId =
   | 'wall-draw'
   | 'claim-bar'
   | 'menu-pill'
-  | 'turn-countdown';
+  | 'turn-countdown'
+  | 'shared-discards';
