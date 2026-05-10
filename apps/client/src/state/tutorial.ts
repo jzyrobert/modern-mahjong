@@ -62,9 +62,20 @@ interface TutorialState {
    *  in tests and to drive the "Hmm, that's not quite right" toast
    *  in a follow-up. The framework PR only reads it from tests. */
   lastNudge: { stepId: string; seq: number } | null;
+  /** Id of the lesson the user just finished — drives the post-
+   *  completion prompt rendered by `<TutorialOverlay>` with the
+   *  "next lesson / continue playing / back to lobby" choice. Cleared
+   *  when the user picks one of those options (or `dismiss()` is
+   *  called). Set only for user-facing lessons; the internal `_stub`
+   *  smoke-test lesson skips it. */
+  justCompleted: string | null;
   begin(lessonId: string): void;
   advance(): void;
   dismiss(): void;
+  /** Clear the completion prompt without changing anything else.
+   *  Used by the "Continue playing" / "Back to lobby" / "Next lesson"
+   *  CTAs in the post-completion card. */
+  dismissCompletion(): void;
   /** Bump the nudge counter for the active step — UI subscribes to
    *  this and surfaces a transient toast when it changes. */
   nudge(): void;
@@ -73,11 +84,17 @@ interface TutorialState {
 export const useTutorial = create<TutorialState>((set, get) => ({
   active: null,
   lastNudge: null,
+  justCompleted: null,
   begin: (lessonId) => {
     if (!LESSONS[lessonId]) {
       throw new Error(`Unknown tutorial lesson: ${lessonId}`);
     }
-    set({ active: { lessonId, stepIndex: 0 }, lastNudge: null });
+    // Starting a new lesson always clears any leftover completion
+    // prompt — even when the user picks "Next lesson" from the
+    // prompt itself, the begin() that follows wipes the just-
+    // completed marker so the new lesson's first step renders
+    // cleanly.
+    set({ active: { lessonId, stepIndex: 0 }, lastNudge: null, justCompleted: null });
   },
   advance: () => {
     const { active } = get();
@@ -88,21 +105,29 @@ export const useTutorial = create<TutorialState>((set, get) => ({
     if (nextIndex >= lesson.steps.length) {
       // Last step advanced — mark the lesson complete in user
       // settings (the lobby card collapses to a checkmark on next
-      // render) and tear the overlay down. Cross-store reach into
-      // `useGame` is the simplest way to coordinate; both stores
-      // live in the same browser context.
+      // render). Cross-store reach into `useGame` is the simplest way
+      // to coordinate; both stores live in the same browser context.
       const { settings, setSettings } = useGame.getState();
       if (!settings.tutorialsCompleted.includes(active.lessonId)) {
         setSettings({
           tutorialsCompleted: [...settings.tutorialsCompleted, active.lessonId],
         });
       }
-      set({ active: null, lastNudge: null });
+      // Tear the active step down so the highlight + caption are gone.
+      // For user-facing lessons we also stamp `justCompleted` so the
+      // overlay flips to the post-completion prompt (next lesson /
+      // continue / back to lobby). The internal `_stub` lesson skips
+      // the prompt — it has no user-facing "complete" wrap-up step
+      // and the framework spec asserts the overlay tears down
+      // entirely once stub's last predicate fires.
+      const justCompleted = active.lessonId === '_stub' ? null : active.lessonId;
+      set({ active: null, lastNudge: null, justCompleted });
       return;
     }
     set({ active: { lessonId: active.lessonId, stepIndex: nextIndex } });
   },
-  dismiss: () => set({ active: null, lastNudge: null }),
+  dismiss: () => set({ active: null, lastNudge: null, justCompleted: null }),
+  dismissCompletion: () => set({ justCompleted: null }),
   nudge: () => {
     const { active, lastNudge } = get();
     if (!active) return;

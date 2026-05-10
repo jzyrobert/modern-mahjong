@@ -1,5 +1,8 @@
+import { useRouter } from 'expo-router';
 import { Pressable, Text, View, useWindowDimensions } from 'react-native';
-import { useActiveTutorialStep, useTutorial } from '../../state/tutorial';
+import { useTransport } from '../../net/transport-context';
+import { useGame } from '../../state/game';
+import { LESSONS, nextLesson, useActiveTutorialStep, useTutorial } from '../../state/tutorial';
 import { COLORS } from '../colors';
 import { type TargetRect, useTutorialTargetRect } from './TargetRegistry';
 import { useTutorialController } from './useTutorialController';
@@ -10,22 +13,29 @@ import { useTutorialController } from './useTutorialController';
  * lesson is active, it renders nothing.
  *
  * Layout pieces:
- *   - **Scrim** — four absolutely-positioned rectangles surrounding
- *     the active target's rect, dimming everything *except* the
- *     target. When no target is registered for the active step, the
- *     scrim covers the whole screen.
- *   - **Halo** — a 4px translucent gold ring around the target rect.
- *     Provides the "this is what you're meant to interact with"
- *     affordance.
+ *   - **Halo** — a 4px translucent gold ring around the target rect
+ *     with `borderRadius: 12`. Provides the "this is what you're
+ *     meant to interact with" affordance. The dimming around it is
+ *     painted by a huge-spread `boxShadow` on the same View so the
+ *     dimmed area's inner edge follows the rounded corners exactly.
+ *     Without that, sharp cutout corners would leave undimmed
+ *     "L"-fragments at the four halo corners.
+ *   - **Scrim panels** — four transparent, absolutely-positioned
+ *     rectangles surrounding the halo bounding rect. They absorb
+ *     taps outside the highlighted region but contribute no pixels
+ *     of their own — the halo's `boxShadow` does the actual
+ *     painting. When no target is registered for the active step,
+ *     these collapse to a single full-screen panel that *does* paint
+ *     the scrim color (no halo means no rounded cutout to respect).
  *   - **Caption card** — title + body + Skip / Next buttons.
  *     Positioned below the target if there's room, above otherwise;
  *     centered when there's no target. Tap-to-pass-through, so the
  *     user can still hit the highlighted element.
  *
- * Cross-platform note: arbitrary clip-path cutouts aren't portable
- * without `react-native-svg`. Using four rectangles around the target
- * gives the same visual effect on both web and native with pure
- * `View` primitives.
+ * After the lesson's last step is advanced, the overlay flips to a
+ * `<CompletionPrompt>` modal (drained by `useTutorial.justCompleted`)
+ * that offers the next curriculum lesson, "continue playing", or
+ * "back to lobby". See the component docstring below.
  */
 export function TutorialOverlay() {
   // Drive the controller while the overlay is mounted. Mounting
@@ -34,11 +44,18 @@ export function TutorialOverlay() {
   useTutorialController();
 
   const active = useActiveTutorialStep();
+  const justCompleted = useTutorial((s) => s.justCompleted);
   const dismiss = useTutorial((s) => s.dismiss);
   const advance = useTutorial((s) => s.advance);
   const window = useWindowDimensions();
   const targetRect = useTutorialTargetRect(active?.step.targetId ?? null);
 
+  // Post-completion prompt takes precedence — the active step is
+  // already cleared by `advance()` when the lesson finished, and
+  // we want the prompt mounted instead of the regular caption.
+  if (!active && justCompleted) {
+    return <CompletionPrompt lessonId={justCompleted} />;
+  }
   if (!active) return null;
   const { step } = active;
 
@@ -90,6 +107,16 @@ export function TutorialOverlay() {
   // target exists, render a single full-screen scrim instead. Each
   // panel carries a stable `key` so React doesn't churn the four
   // edges' identity when the halo position shifts.
+  //
+  // When a halo is mounted, these four panels are kept *transparent*
+  // and only serve to absorb taps outside the highlighted region —
+  // the actual dimming comes from the halo's `boxShadow` with a huge
+  // spread, which naturally respects the halo's `borderRadius` so
+  // the dimmed area's inner edge follows the rounded corners
+  // exactly. Without that, the four panels' inner edges would meet
+  // at sharp corners while the halo border curved away, leaving four
+  // tiny un-dimmed corners around any rounded highlight (visible on
+  // the desktop discard-tile lessons).
   const scrimPanels: ReadonlyArray<Panel & { key: string }> = halo
     ? scrimAround(halo, window.width, window.height)
     : [{ key: 'full', left: 0, top: 0, width: window.width, height: window.height }];
@@ -128,7 +155,12 @@ export function TutorialOverlay() {
             top: panel.top,
             width: panel.width,
             height: panel.height,
-            backgroundColor: SCRIM_COLOR,
+            // Transparent when a halo is mounted — the dimming is
+            // painted by the halo's huge-spread `boxShadow` below
+            // so the cutout matches the rounded corners. Without a
+            // halo there's nothing to paint the shadow, so the
+            // single full-screen panel falls back to a solid scrim.
+            backgroundColor: halo ? 'transparent' : SCRIM_COLOR,
           }}
         />
       ))}
@@ -143,6 +175,13 @@ export function TutorialOverlay() {
             borderWidth: HALO_BORDER,
             borderColor: COLORS.gold,
             borderRadius: 12,
+            // A huge-spread shadow with zero offset/blur paints the
+            // scrim color around the halo while respecting its
+            // `borderRadius` — the only portable way (without
+            // `react-native-svg`) to get an inverse rounded-rect
+            // cutout that matches the gold border exactly. RN 0.76+
+            // supports `boxShadow` natively on web/iOS/Android.
+            boxShadow: `0 0 0 9999px ${SCRIM_COLOR}`,
           }}
           pointerEvents="none"
         />
@@ -276,6 +315,167 @@ function scrimAround(halo: Panel, vw: number, vh: number): Array<Panel & { key: 
       height: halo.height,
     },
   ];
+}
+
+/**
+ * Centered modal-style card shown after the last step of a user-
+ * facing lesson finishes. Offers three follow-ups:
+ *   - "Next lesson: <title>" (only when another lesson is still
+ *     unfinished in `LESSON_ORDER`) starts the next curriculum
+ *     entry via `transport.joinSoloTutorial`. The active match is
+ *     replaced by a fresh tutorial seed, same as launching from the
+ *     lobby card.
+ *   - "Continue playing" tears the prompt down and leaves the user
+ *     in the just-finished tutorial's match — the engine's still
+ *     mid-hand with passive bots, fine to keep poking around.
+ *   - "Back to lobby" leaves the match and routes to `/`. Matches
+ *     the in-match `Leave` flow.
+ *
+ * Lives outside `useActiveTutorialStep`'s gate because the active
+ * step is already cleared by `advance()` when the lesson finishes —
+ * the overlay's primary `if (!active)` short-circuit forwards to
+ * this prompt instead of returning null when `justCompleted` is set.
+ */
+function CompletionPrompt({ lessonId }: { lessonId: string }) {
+  const router = useRouter();
+  const transport = useTransport();
+  const dismissCompletion = useTutorial((s) => s.dismissCompletion);
+  const tutorialsCompleted = useGame((s) => s.settings.tutorialsCompleted);
+  const window = useWindowDimensions();
+
+  // `LESSONS` always has the entry — `advance()` only flips
+  // `justCompleted` after the lesson it actually ran resolved, and
+  // lessons aren't deleted at runtime. Fall back gracefully just in
+  // case (skips the title interpolation rather than crashing).
+  const lesson = LESSONS[lessonId];
+  // Pick the next incomplete lesson after the freshly-finished one.
+  // `nextLesson()` walks LESSON_ORDER and returns the first entry
+  // not in `tutorialsCompleted` — by the time we render this prompt
+  // `tutorialsCompleted` already includes `lessonId`, so the next
+  // call returns the *following* curriculum entry (or null when the
+  // user just finished the last one).
+  const next = nextLesson(tutorialsCompleted);
+
+  const SCRIM_COLOR = 'rgba(20,15,10,0.55)';
+  const CARD_MAX_WIDTH = 460;
+
+  const onContinue = () => {
+    dismissCompletion();
+  };
+  const onNextLesson = () => {
+    if (!next) return;
+    // `joinSoloTutorial` calls `useTutorial.begin(nextId)` which
+    // resets `justCompleted: null` on its own — no need to
+    // dismissCompletion() first.
+    transport.joinSoloTutorial(next.id);
+  };
+  const onLeaveToLobby = () => {
+    dismissCompletion();
+    transport.leave();
+    router.replace('/');
+  };
+
+  return (
+    <View
+      style={{
+        position: 'absolute',
+        left: 0,
+        top: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 1000,
+        backgroundColor: SCRIM_COLOR,
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 20,
+      }}
+      // The prompt is modal — every tap outside the card should
+      // hit the scrim (no pass-through). Default `pointerEvents` on
+      // the wrapper does exactly that since the scrim covers the
+      // whole screen.
+    >
+      <View
+        style={{
+          width: Math.min(CARD_MAX_WIDTH, window.width - 40),
+          backgroundColor: COLORS.paperHi,
+          borderRadius: 14,
+          borderWidth: 1,
+          borderColor: COLORS.hairline,
+          padding: 20,
+          gap: 14,
+          boxShadow: '0px 12px 32px rgba(0,0,0,0.22)',
+        }}
+      >
+        <Text
+          accessibilityRole="header"
+          style={{ fontSize: 17, fontWeight: '900', color: COLORS.ink }}
+        >
+          Nice work!
+        </Text>
+        <Text style={{ fontSize: 13, color: COLORS.ink2, lineHeight: 19 }}>
+          {next
+            ? `You finished "${lesson?.title ?? 'the lesson'}". Want to keep going with the next lesson, or keep playing this hand?`
+            : `That's every lesson done. Keep playing this hand, or head back to the lobby for a real match.`}
+        </Text>
+        <View style={{ gap: 8 }}>
+          {next ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Start next lesson: ${next.title}`}
+              onPress={onNextLesson}
+              style={({ pressed }) => ({
+                paddingHorizontal: 16,
+                paddingVertical: 11,
+                borderRadius: 9,
+                backgroundColor: pressed ? COLORS.creamPressed : COLORS.accentSalmonSwatch,
+                borderWidth: 1,
+                borderColor: COLORS.accentSalmonEdge,
+                alignItems: 'center',
+              })}
+            >
+              <Text style={{ fontSize: 13, fontWeight: '900', color: COLORS.red }}>
+                Next lesson: {next.title}
+              </Text>
+            </Pressable>
+          ) : null}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Continue playing"
+            onPress={onContinue}
+            style={({ pressed }) => ({
+              paddingHorizontal: 16,
+              paddingVertical: 11,
+              borderRadius: 9,
+              backgroundColor: pressed ? COLORS.creamLow : COLORS.cream,
+              borderWidth: 1,
+              borderColor: COLORS.hairline,
+              alignItems: 'center',
+            })}
+          >
+            <Text style={{ fontSize: 13, fontWeight: '800', color: COLORS.ink }}>
+              Continue playing
+            </Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Back to lobby"
+            onPress={onLeaveToLobby}
+            style={({ pressed }) => ({
+              paddingHorizontal: 12,
+              paddingVertical: 9,
+              borderRadius: 8,
+              backgroundColor: pressed ? COLORS.creamLow : 'transparent',
+              alignItems: 'center',
+            })}
+          >
+            <Text style={{ fontSize: 12, fontWeight: '700', color: COLORS.ink3 }}>
+              Back to lobby
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+    </View>
+  );
 }
 
 // Re-export the rect type for components that want to type their
