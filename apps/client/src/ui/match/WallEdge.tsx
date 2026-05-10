@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react';
 import { Animated, Easing, Pressable, Text, View } from 'react-native';
 import { Tile } from '../Tile';
 import { PULSE_TEMPO, usePulse } from '../animations';
+import type { Position } from './seatColor';
 import type { WallSlot } from './wallLayout';
 
 /**
@@ -89,17 +90,15 @@ const COLORS = {
   sideBottom: 'rgba(0,0,0,0.20)',
 };
 
-/** Side-face strip thickness for a full 2-tile stack. Bumped from 6 px
- *  so the towers visibly read as two tiles tall instead of a thin seam
- *  on an otherwise-flat lid. */
+/** Side-face strip thickness for a full 2-tile stack — sized so the
+ *  towers read as two tiles tall, not as a thin seam on an
+ *  otherwise-flat lid. */
 const SIDE_FULL = 10;
 /** Side-face strip thickness for a half-drawn 1-tile stack — half the
  *  full thickness so half-drawn stacks are clearly shorter. */
 const SIDE_HALF = 5;
 
-type Side = 'top' | 'bottom' | 'left' | 'right';
-
-function oppositeOf(s: Side): Side {
+function oppositeOf(s: Position): Position {
   return s === 'top' ? 'bottom' : s === 'bottom' ? 'top' : s === 'left' ? 'right' : 'left';
 }
 
@@ -204,22 +203,24 @@ function SlotCell({
   //     visible front face represents only the bottom tile.
   //   - The midpoint seam fades out (no longer a join between two
   //     stacked tiles when only one remains).
-  // Initial value mirrors current state so a freshly-mounted half
-  // stack (e.g. after a page reload mid-hand) skips the entrance
-  // animation.
+  // Initial value mirrors current state so a slot mounting straight
+  // into a half-drawn position (e.g. mid-hand reload) doesn't fire a
+  // visible entrance animation.
   const halfProgress = useRef(new Animated.Value(isFull ? 0 : 1)).current;
   useEffect(() => {
     if (isEmpty) return;
-    Animated.timing(halfProgress, {
+    // Layout properties (width/height) can't run on the native driver,
+    // so the timing runs on JS. Only one stack animates at a time in
+    // practice (the next-to-draw stack as a tile is pulled), so the
+    // JS-thread cost is negligible.
+    const anim = Animated.timing(halfProgress, {
       toValue: isFull ? 0 : 1,
       duration: 280,
       easing: Easing.out(Easing.cubic),
-      // Animating layout (width/height) so we can't run on the native
-      // driver. One stack at a time is animating in practice — the
-      // next-to-draw stack as a tile is pulled — so the JS-thread cost
-      // is negligible.
       useNativeDriver: false,
-    }).start();
+    });
+    anim.start();
+    return () => anim.stop();
   }, [isFull, isEmpty, halfProgress]);
 
   // Cell reserves the FULL side-face thickness so 1- and 2-tile stacks
@@ -269,13 +270,10 @@ function SlotCell({
     inputRange: [0, 1],
     outputRange: [0, SIDE_FULL - SIDE_HALF],
   });
-  // SideFace extent shrinks from SIDE_FULL → SIDE_HALF.
   const sideExtentAnim = halfProgress.interpolate({
     inputRange: [0, 1],
     outputRange: [SIDE_FULL, SIDE_HALF],
   });
-  // Midpoint seam fades out — no join between tiles once only one is
-  // left.
   const seamOpacity = halfProgress.interpolate({
     inputRange: [0, 1],
     outputRange: [1, 0],
@@ -295,7 +293,7 @@ function SlotCell({
   // both `TopFace` (lighter band on this edge — the rounded lid
   // catching light from the camera at centre) and `SideFace` (dark
   // band on this edge — the strip's bottom, sitting on the felt).
-  const feltEdge: Side =
+  const feltEdge: Position =
     stackDir === 'column'
       ? innerEdge === 'end'
         ? 'bottom'
@@ -303,7 +301,7 @@ function SlotCell({
       : innerEdge === 'end'
         ? 'right'
         : 'left';
-  const lidEdge: Side = oppositeOf(feltEdge);
+  const lidEdge: Position = oppositeOf(feltEdge);
 
   if (slot.isNextDraw && nextDrawTile) {
     return (
@@ -432,7 +430,11 @@ function PulseHalo({
  * light from the imaginary camera at the felt centre) and a 1px
  * darker band on the opposite edge (the lid's far side in shadow).
  */
-function TopFace({ width, height, feltEdge }: { width: number; height: number; feltEdge: Side }) {
+function TopFace({
+  width,
+  height,
+  feltEdge,
+}: { width: number; height: number; feltEdge: Position }) {
   return (
     <View
       style={{
@@ -455,7 +457,7 @@ function TopFace({ width, height, feltEdge }: { width: number; height: number; f
  *  for the lid + far-edge bands on `TopFace` and the lid + felt bands
  *  on `SideFace`. The parent View is `overflow: hidden` so the band
  *  doesn't leak past the rounded corners. */
-function edgeBandStyle(edge: Side, thickness: number, color: string) {
+function edgeBandStyle(edge: Position, thickness: number, color: string) {
   const base = { position: 'absolute', backgroundColor: color, pointerEvents: 'none' } as const;
   if (edge === 'top') return { ...base, top: 0, left: 0, right: 0, height: thickness };
   if (edge === 'bottom') return { ...base, bottom: 0, left: 0, right: 0, height: thickness };
@@ -482,7 +484,7 @@ interface SideFaceProps {
    *  band pins to this edge — the cream side-face catches reflected
    *  light from the lid above. The opposite edge (touching the felt)
    *  gets the darker band. */
-  lidEdge: Side;
+  lidEdge: Position;
 }
 
 /**
