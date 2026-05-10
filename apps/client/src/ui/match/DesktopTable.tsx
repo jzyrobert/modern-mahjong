@@ -211,6 +211,12 @@ export function DesktopTable({
         borderColor: COLORS.feltEdge,
         boxShadow: '0px 12px 32px rgba(0,0,0,0.18)',
         gap: 8,
+        // Subtle forward tilt so the top wall recedes and the bottom
+        // hand reads as closer — amplifies the bevel + stack depth
+        // already baked into `Tile.tsx` and `WallEdge.tsx`. Stable for
+        // the lifetime of the table mount, so `FlipBag`'s cached
+        // screen rects stay valid.
+        transform: [{ perspective: 2000 }, { rotateX: '6deg' }],
       }}
     >
       {/* Top opponent row */}
