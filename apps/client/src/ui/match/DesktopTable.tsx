@@ -127,14 +127,24 @@ export function DesktopTable({
     allowDraw: onDrawNext !== undefined,
   });
 
-  // `innerEdge` tells `WallEdge` which side of each stack faces the
-  // felt centre. Half-drawn stacks collapse against this edge so the
-  // wall reads as receding inward, matching a physical 2-tile-high
-  // row where "the top one is gone" = the tile farther from the
-  // table centre is missing first.
+  // `innerEdge` tells `WallEdge` which side of each stack the visible
+  // SideFace strip pins to. The strip is the "rising up off the felt"
+  // depth cue, so it should land on the side of the wall the local
+  // player can plausibly see — i.e. between the lid and the player's
+  // own seat. For the top, left, and right walls that's the
+  // felt-centre-facing side (which is also the player-facing side
+  // from the south seat's POV). For the BOTTOM wall, felt-centre is
+  // *away* from the player, so we anchor the lid at the felt-centre
+  // edge and put the side strip on the player-facing side instead.
+  // Without this, the bottom wall reads "inverted" from the others
+  // — lid close to the player, side strip on the far side — which is
+  // the back of the wall, not the front.
+  //
+  // Half-drawn stacks always collapse against the strip side so the
+  // lid stays anchored against the OUTER edge.
   const innerEdgeFor = (position: Position): 'start' | 'end' => {
     if (position === 'top') return 'end'; // inner = bottom of column
-    if (position === 'bottom') return 'start'; // inner = top of column
+    if (position === 'bottom') return 'end'; // inner = bottom of column (player-facing)
     if (position === 'left') return 'end'; // inner = right of row
     return 'start'; // right wall: inner = left of row
   };
