@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { stubLesson } from '../ui/tutorial/lessons/_stub';
+import { basicsLesson } from '../ui/tutorial/lessons/basics';
 import type { Lesson } from '../ui/tutorial/types';
+import { useGame } from './game';
 
 /**
  * Lesson registry. Keyed by `lesson.id`; the controller looks up the
@@ -9,6 +11,7 @@ import type { Lesson } from '../ui/tutorial/types';
  * `apps/client/src/ui/tutorial/lessons/` and registering it here.
  */
 export const LESSONS: Record<string, Lesson> = {
+  [basicsLesson.id]: basicsLesson,
   [stubLesson.id]: stubLesson,
 };
 
@@ -42,6 +45,17 @@ export const useTutorial = create<TutorialState>((set, get) => ({
     if (!lesson) return;
     const nextIndex = active.stepIndex + 1;
     if (nextIndex >= lesson.steps.length) {
+      // Last step advanced — mark the lesson complete in user
+      // settings (the lobby card collapses to a checkmark on next
+      // render) and tear the overlay down. Cross-store reach into
+      // `useGame` is the simplest way to coordinate; both stores
+      // live in the same browser context.
+      const { settings, setSettings } = useGame.getState();
+      if (!settings.tutorialsCompleted.includes(active.lessonId)) {
+        setSettings({
+          tutorialsCompleted: [...settings.tutorialsCompleted, active.lessonId],
+        });
+      }
       set({ active: null, lastNudge: null });
       return;
     }

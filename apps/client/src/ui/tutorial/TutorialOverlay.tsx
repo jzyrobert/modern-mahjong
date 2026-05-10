@@ -1,4 +1,4 @@
-import { Pressable, Modal as RNModal, Text, View, useWindowDimensions } from 'react-native';
+import { Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { useActiveTutorialStep, useTutorial } from '../../state/tutorial';
 import { COLORS } from '../colors';
 import { type TargetRect, useTutorialTargetRect } from './TargetRegistry';
@@ -47,16 +47,14 @@ export function TutorialOverlay() {
   const HALO_BORDER = 3;
   const SCRIM_COLOR = 'rgba(20,15,10,0.55)';
 
-  const hasTarget = targetRect !== null;
-  const halo =
-    hasTarget && targetRect
-      ? {
-          left: Math.max(0, targetRect.x - PAD),
-          top: Math.max(0, targetRect.y - PAD),
-          width: targetRect.w + PAD * 2,
-          height: targetRect.h + PAD * 2,
-        }
-      : null;
+  const halo = targetRect
+    ? {
+        left: Math.max(0, targetRect.x - PAD),
+        top: Math.max(0, targetRect.y - PAD),
+        width: targetRect.w + PAD * 2,
+        height: targetRect.h + PAD * 2,
+      }
+    : null;
 
   // Caption placement: prefer below the target (mobile thumbs sit
   // below the relevant element); fall back to above if there's not
@@ -83,137 +81,144 @@ export function TutorialOverlay() {
     : [{ key: 'full', left: 0, top: 0, width: window.width, height: window.height }];
 
   return (
-    <RNModal visible transparent animationType="fade" onRequestClose={dismiss} statusBarTranslucent>
-      <View
-        style={{
-          position: 'absolute',
-          left: 0,
-          top: 0,
-          right: 0,
-          bottom: 0,
-        }}
-        // The scrim panels eat touches outside the cut-out; the halo
-        // window is `pointerEvents="box-none"` so the underlying
-        // tile/button keeps receiving taps. The user can interact
-        // with the highlighted element even though the rest of the
-        // screen is dimmed.
-        pointerEvents="box-none"
-      >
-        {scrimPanels.map((panel) => (
-          <View
-            key={panel.key}
-            style={{
-              position: 'absolute',
-              left: panel.left,
-              top: panel.top,
-              width: panel.width,
-              height: panel.height,
-              backgroundColor: SCRIM_COLOR,
-            }}
-          />
-        ))}
-        {halo ? (
-          <View
-            style={{
-              position: 'absolute',
-              left: halo.left,
-              top: halo.top,
-              width: halo.width,
-              height: halo.height,
-              borderWidth: HALO_BORDER,
-              borderColor: COLORS.gold,
-              borderRadius: 12,
-            }}
-            pointerEvents="none"
-          />
-        ) : null}
+    // Plain absolute-positioned overlay rather than `RNModal`:
+    // react-native-web's `Modal` wraps children in a focus-trap
+    // backdrop that absorbs every click that isn't on a Pressable
+    // child, which would defeat the whole point of letting the user
+    // tap the highlighted element. We get the same z-stacking via a
+    // top-level mount in `app/_layout.tsx` (the overlay sits after
+    // every other root-level child).
+    <View
+      style={{
+        position: 'absolute',
+        left: 0,
+        top: 0,
+        right: 0,
+        bottom: 0,
+        // Stack above any sibling we don't statically know about.
+        // Web maps `elevation` to z-index; the scrim's specific
+        // panels rely on their absolute position instead.
+        zIndex: 1000,
+      }}
+      // `box-none` so the wrapper itself never absorbs touches; only
+      // the scrim panels (which want to block) and the caption card
+      // (which wants to handle taps) do.
+      pointerEvents="box-none"
+    >
+      {scrimPanels.map((panel) => (
+        <View
+          key={panel.key}
+          style={{
+            position: 'absolute',
+            left: panel.left,
+            top: panel.top,
+            width: panel.width,
+            height: panel.height,
+            backgroundColor: SCRIM_COLOR,
+          }}
+        />
+      ))}
+      {halo ? (
         <View
           style={{
             position: 'absolute',
-            left: 20,
-            right: 20,
-            top: captionTop,
-            alignItems: 'center',
+            left: halo.left,
+            top: halo.top,
+            width: halo.width,
+            height: halo.height,
+            borderWidth: HALO_BORDER,
+            borderColor: COLORS.gold,
+            borderRadius: 12,
           }}
-          pointerEvents="box-none"
+          pointerEvents="none"
+        />
+      ) : null}
+      <View
+        style={{
+          position: 'absolute',
+          left: 20,
+          right: 20,
+          top: captionTop,
+          alignItems: 'center',
+        }}
+        pointerEvents="box-none"
+      >
+        <View
+          // Tap-eater so taps on the card don't fall through to the
+          // scrim and pass to whatever sits underneath.
+          pointerEvents="auto"
+          style={{
+            maxWidth: 460,
+            width: '100%',
+            backgroundColor: COLORS.paperHi,
+            borderRadius: 14,
+            borderWidth: 1,
+            borderColor: COLORS.hairline,
+            padding: 18,
+            gap: 10,
+            boxShadow: '0px 8px 24px rgba(0,0,0,0.18)',
+          }}
         >
-          <View
-            // Tap-eater so taps on the card don't fall through to the
-            // scrim and pass to whatever sits underneath.
-            pointerEvents="auto"
+          <Text
+            accessibilityRole="header"
+            accessibilityLabel={`Tutorial step: ${step.caption.title}`}
             style={{
-              maxWidth: 460,
-              width: '100%',
-              backgroundColor: COLORS.paperHi,
-              borderRadius: 14,
-              borderWidth: 1,
-              borderColor: COLORS.hairline,
-              padding: 18,
-              gap: 10,
-              boxShadow: '0px 8px 24px rgba(0,0,0,0.18)',
+              fontSize: 16,
+              fontWeight: '900',
+              color: COLORS.ink,
             }}
           >
-            <Text
-              accessibilityRole="header"
-              accessibilityLabel={`Tutorial step: ${step.caption.title}`}
-              style={{
-                fontSize: 16,
-                fontWeight: '900',
-                color: COLORS.ink,
-              }}
+            {step.caption.title}
+          </Text>
+          <Text style={{ fontSize: 13, color: COLORS.ink2, lineHeight: 19 }}>
+            {step.caption.body}
+          </Text>
+          <View
+            style={{
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginTop: 4,
+            }}
+          >
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Skip lesson"
+              onPress={dismiss}
+              style={({ pressed }) => ({
+                paddingHorizontal: 12,
+                paddingVertical: 8,
+                borderRadius: 8,
+                backgroundColor: pressed ? COLORS.creamLow : 'transparent',
+              })}
             >
-              {step.caption.title}
-            </Text>
-            <Text style={{ fontSize: 13, color: COLORS.ink2, lineHeight: 19 }}>
-              {step.caption.body}
-            </Text>
-            <View
-              style={{
-                flexDirection: 'row',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginTop: 4,
-              }}
-            >
+              <Text style={{ fontSize: 12, fontWeight: '700', color: COLORS.ink3 }}>
+                Skip lesson
+              </Text>
+            </Pressable>
+            {step.completedWhen ? null : (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Skip lesson"
-                onPress={dismiss}
+                accessibilityLabel={step.ctaLabel ?? 'Got it'}
+                onPress={advance}
                 style={({ pressed }) => ({
-                  paddingHorizontal: 12,
-                  paddingVertical: 8,
-                  borderRadius: 8,
-                  backgroundColor: pressed ? COLORS.creamLow : 'transparent',
+                  paddingHorizontal: 16,
+                  paddingVertical: 9,
+                  borderRadius: 9,
+                  backgroundColor: pressed ? COLORS.creamPressed : COLORS.accentSalmonSwatch,
+                  borderWidth: 1,
+                  borderColor: COLORS.accentSalmonEdge,
                 })}
               >
-                <Text style={{ fontSize: 12, fontWeight: '700', color: COLORS.ink3 }}>
-                  Skip lesson
+                <Text style={{ fontSize: 13, fontWeight: '900', color: COLORS.red }}>
+                  {step.ctaLabel ?? 'Got it'}
                 </Text>
               </Pressable>
-              {step.completedWhen ? null : (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={step.ctaLabel ?? 'Got it'}
-                  onPress={advance}
-                  style={({ pressed }) => ({
-                    paddingHorizontal: 16,
-                    paddingVertical: 9,
-                    borderRadius: 9,
-                    backgroundColor: pressed ? COLORS.creamPressed : COLORS.accentSalmonSwatch,
-                    borderWidth: 1,
-                    borderColor: COLORS.accentSalmonEdge,
-                  })}
-                >
-                  <Text style={{ fontSize: 13, fontWeight: '900', color: COLORS.red }}>
-                    {step.ctaLabel ?? 'Got it'}
-                  </Text>
-                </Pressable>
-              )}
-            </View>
+            )}
           </View>
         </View>
       </View>
-    </RNModal>
+    </View>
   );
 }
 

@@ -2,7 +2,6 @@ import { type Bot, type BotKind, bots as botRegistry, passiveBot } from '@mahjon
 import {
   type Action,
   type Claim,
-  DEFAULT_RULES,
   type GameState,
   IllegalActionError,
   SEATS,
@@ -11,6 +10,7 @@ import {
   emptyState,
   reduce,
   sameFace,
+  soloRulesFrom,
 } from '@mahjong/game-logic';
 import { type ServerMessage, botDisplayName } from '@mahjong/protocol';
 import type { Transport, TransportStatus } from './transport';
@@ -98,12 +98,9 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
   // `passiveBot.pickDiscard` when the deadline elapses on the user's
   // turn — mirroring the server's `forceTurnAutoDiscard` so a stalled
   // solo seat behaves the same as a stalled online seat.
-  const { claimSoftWindowMs: _omitSoft, claimHardWindowMs: _omitHard, ...rest } = DEFAULT_RULES;
-  void _omitSoft;
-  void _omitHard;
   const turnOverride = globalThis.__MAHJONG_TEST_TURN_TIMEOUT_MS__;
   const soloRules = {
-    ...rest,
+    ...soloRulesFrom(),
     ...(typeof turnOverride === 'number' ? { turnTimeoutMs: turnOverride } : {}),
   };
   let state: GameState = opts.seedState ?? emptyState(soloRules);
