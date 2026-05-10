@@ -78,12 +78,29 @@ const COLORS = {
   drawHalo: '#dc9f4f',
   countBg: 'rgba(0,0,0,0.35)',
   countFg: 'rgba(255,255,255,0.85)',
+  // Bevel bands — pinned 1–1.5 px strips that sell the rounded lid
+  // edge catching light + the recessed far edge in shadow. Same idea
+  // as the NE-light bevel on the in-hand tiles (`Tile.tsx`), so the
+  // wall composes with a single committed light direction.
+  backLid: 'rgba(255,255,255,0.20)',
+  backFar: 'rgba(0,0,0,0.18)',
+  sideTop: 'rgba(255,255,255,0.16)',
+  sideBottom: 'rgba(0,0,0,0.20)',
 };
 
-/** Side-face strip thickness for a full 2-tile stack. */
-const SIDE_FULL = 6;
-/** Side-face strip thickness for a half-drawn 1-tile stack. */
-const SIDE_HALF = 3;
+/** Side-face strip thickness for a full 2-tile stack. Bumped from 6 px
+ *  so the towers visibly read as two tiles tall instead of a thin seam
+ *  on an otherwise-flat lid. */
+const SIDE_FULL = 10;
+/** Side-face strip thickness for a half-drawn 1-tile stack — half the
+ *  full thickness so half-drawn stacks are clearly shorter. */
+const SIDE_HALF = 5;
+
+type Side = 'top' | 'bottom' | 'left' | 'right';
+
+function oppositeOf(s: Side): Side {
+  return s === 'top' ? 'bottom' : s === 'bottom' ? 'top' : s === 'left' ? 'right' : 'left';
+}
 
 export function WallEdge({
   slots,
@@ -102,7 +119,17 @@ export function WallEdge({
   const stackDir = orient === 'row' ? 'column' : 'row';
   return (
     <View style={{ alignItems: 'center', gap: 4 }}>
-      <View style={{ flexDirection: orient, gap: 1 }}>
+      <View
+        style={{
+          flexDirection: orient,
+          gap: 1,
+          // Soft drop-shadow under the whole wall so it reads as
+          // sitting on the felt, not painted into it. Per-stack shadow
+          // would compound across 17 cells; one wrapper shadow is
+          // cheaper and visually equivalent.
+          boxShadow: '0px 3px 6px rgba(0,0,0,0.22)',
+        }}
+      >
         {ordered.map((slot, i) => (
           <SlotCell
             // biome-ignore lint/suspicious/noArrayIndexKey: order-stable per seat
@@ -222,6 +249,21 @@ function SlotCell({
   // Tile rotated 90° so its rect matches the visible top of the stack.
   const landscape = stackDir === 'row';
 
+  // Direction toward the felt centre, expressed as the cell-relative
+  // edge that the SideFace pins to. Drives bevel band placement on
+  // both `TopFace` (lighter band on this edge — the rounded lid
+  // catching light from the camera at centre) and `SideFace` (dark
+  // band on this edge — the strip's bottom, sitting on the felt).
+  const feltEdge: Side =
+    stackDir === 'column'
+      ? innerEdge === 'end'
+        ? 'bottom'
+        : 'top'
+      : innerEdge === 'end'
+        ? 'right'
+        : 'left';
+  const lidEdge: Side = oppositeOf(feltEdge);
+
   if (slot.isNextDraw && nextDrawTile) {
     return (
       <Pressable
@@ -232,7 +274,7 @@ function SlotCell({
         <PulseHalo width={containerStyle.width} height={containerStyle.height}>
           <View style={{ ...containerStyle, flexDirection }}>
             <View style={{ width: tileW, height: tileH }}>
-              <TopFace width={tileW} height={tileH} />
+              <TopFace width={tileW} height={tileH} feltEdge={feltEdge} />
               <View
                 style={{
                   position: 'absolute',
@@ -262,6 +304,7 @@ function SlotCell({
               extent={sideExtent}
               long={tileLong(stackDir, tileW, tileH)}
               isFull={isFull}
+              lidEdge={lidEdge}
             />
             {innerPadStyle ? <View style={innerPadStyle} /> : null}
           </View>
@@ -272,12 +315,13 @@ function SlotCell({
 
   return (
     <View style={{ ...containerStyle, flexDirection }}>
-      <TopFace width={tileW} height={tileH} />
+      <TopFace width={tileW} height={tileH} feltEdge={feltEdge} />
       <SideFace
         stackDir={stackDir}
         extent={sideExtent}
         long={tileLong(stackDir, tileW, tileH)}
         isFull={isFull}
+        lidEdge={lidEdge}
       />
       {innerPadStyle ? <View style={innerPadStyle} /> : null}
     </View>
@@ -342,9 +386,12 @@ function PulseHalo({
 
 /**
  * Top face — the blue mahjong-back rectangle, the visible "lid" of
- * the stack as seen from above.
+ * the stack as seen from above. Two thin pinned-edge bands sell the
+ * rounded edge: a 1.5px lighter band on the felt-facing edge (catches
+ * light from the imaginary camera at the felt centre) and a 1px
+ * darker band on the opposite edge (the lid's far side in shadow).
  */
-function TopFace({ width, height }: { width: number; height: number }) {
+function TopFace({ width, height, feltEdge }: { width: number; height: number; feltEdge: Side }) {
   return (
     <View
       style={{
@@ -354,9 +401,25 @@ function TopFace({ width, height }: { width: number; height: number }) {
         backgroundColor: COLORS.back1,
         borderColor: COLORS.backEdge,
         borderWidth: 0.5,
+        overflow: 'hidden',
       }}
-    />
+    >
+      <View style={edgeBandStyle(feltEdge, 1.5, COLORS.backLid)} />
+      <View style={edgeBandStyle(oppositeOf(feltEdge), 1, COLORS.backFar)} />
+    </View>
   );
+}
+
+/** Absolute-positioned strip pinned to one edge of a parent View. Used
+ *  for the lid + far-edge bands on `TopFace` and the lid + felt bands
+ *  on `SideFace`. The parent View is `overflow: hidden` so the band
+ *  doesn't leak past the rounded corners. */
+function edgeBandStyle(edge: Side, thickness: number, color: string) {
+  const base = { position: 'absolute', backgroundColor: color, pointerEvents: 'none' } as const;
+  if (edge === 'top') return { ...base, top: 0, left: 0, right: 0, height: thickness };
+  if (edge === 'bottom') return { ...base, bottom: 0, left: 0, right: 0, height: thickness };
+  if (edge === 'left') return { ...base, top: 0, bottom: 0, left: 0, width: thickness };
+  return { ...base, top: 0, bottom: 0, right: 0, width: thickness };
 }
 
 interface SideFaceProps {
@@ -373,6 +436,11 @@ interface SideFaceProps {
   /** True for full 2-tile stacks — adds a hairline at the strip's
    *  midpoint suggesting the join between the two stacked tiles. */
   isFull: boolean;
+  /** Which edge of the strip touches the lid (TopFace). The lighter
+   *  band pins to this edge — the cream side-face catches reflected
+   *  light from the lid above. The opposite edge (touching the felt)
+   *  gets the darker band. */
+  lidEdge: Side;
 }
 
 /**
@@ -380,8 +448,10 @@ interface SideFaceProps {
  * the stack, suggesting the stack's vertical height as seen from a
  * slightly-tilted top-down camera. For full 2-tile stacks, a midpoint
  * seam reads as the join between the two physically-stacked tiles.
+ * Lid-side and felt-side bands sell the strip as a real recessed
+ * plane under indirect light from above.
  */
-function SideFace({ stackDir, extent, long, isFull }: SideFaceProps) {
+function SideFace({ stackDir, extent, long, isFull, lidEdge }: SideFaceProps) {
   const width = stackDir === 'column' ? long : extent;
   const height = stackDir === 'column' ? extent : long;
   const seamStyle =
@@ -396,8 +466,11 @@ function SideFace({ stackDir, extent, long, isFull }: SideFaceProps) {
         backgroundColor: COLORS.sideFace,
         borderColor: COLORS.sideEdge,
         borderWidth: 0.5,
+        overflow: 'hidden',
       }}
     >
+      <View style={edgeBandStyle(lidEdge, 1, COLORS.sideTop)} />
+      <View style={edgeBandStyle(oppositeOf(lidEdge), 1, COLORS.sideBottom)} />
       {isFull ? <View style={{ ...seamStyle, backgroundColor: COLORS.sideSeam }} /> : null}
     </View>
   );

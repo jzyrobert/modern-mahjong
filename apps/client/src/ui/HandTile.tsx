@@ -345,6 +345,7 @@ export function HandTile({
           tile={tile}
           flipId={`tile-${id}`}
           raised={isDrawn || dragging}
+          elevation="hand"
           width={width}
           height={height}
         />

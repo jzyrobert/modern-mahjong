@@ -88,7 +88,7 @@ export function SeatDiscardPile({
               }),
             }}
           >
-            <Tile tile={t} flipId={`tile-${id}`} width={tileW} height={tileH} />
+            <Tile tile={t} flipId={`tile-${id}`} elevation="discard" width={tileW} height={tileH} />
           </View>
         );
       })}
