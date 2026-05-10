@@ -1,4 +1,6 @@
 import { Pressable, Text, View } from 'react-native';
+import { useRecorder } from '../../replay/recorder';
+import { useGame } from '../../state/game';
 import { Modal } from '../Modal';
 import { COLORS } from '../colors';
 import { EMOTES } from './ChatBar';
@@ -58,6 +60,25 @@ export function MenuSheet({
     onSendChat?.(emote);
     onClose();
   };
+  const draftActive = useRecorder((s) => s.draft !== null);
+  const savedThisMatch = useRecorder((s) => s.savedThisMatch);
+  const saveExplicit = useRecorder((s) => s.saveExplicit);
+  const discardThisMatch = useRecorder((s) => s.discardThisMatch);
+  const autoRecord = useGame((s) => s.settings.autoRecordReplays);
+  const replayQuota = useGame((s) => s.settings.replayQuota);
+  const setSettings = useGame((s) => s.setSettings);
+
+  const onSaveMatch = () => {
+    if (savedThisMatch) {
+      discardThisMatch();
+    } else {
+      saveExplicit(replayQuota);
+    }
+  };
+  const onToggleAutoRecord = () => {
+    setSettings({ autoRecordReplays: !autoRecord });
+  };
+
   return (
     <Modal open={open} title="Menu" onClose={onClose} placement="bottom" maxWidth={520}>
       <View style={{ padding: 14, gap: 8 }}>
@@ -85,6 +106,28 @@ export function MenuSheet({
           title="Scoring rules"
           hint="Every fan pattern with worked example hands."
           onPress={handle(onOpenScoring)}
+        />
+        {draftActive ? (
+          <MenuRow
+            icon={savedThisMatch ? '✓' : '💾'}
+            title={savedThisMatch ? 'Saved · tap to discard' : 'Save this match'}
+            hint={
+              savedThisMatch
+                ? 'Stays available in /replays. Tap to stop persisting further deltas.'
+                : 'Records this match to your replay library.'
+            }
+            onPress={onSaveMatch}
+          />
+        ) : null}
+        <MenuRow
+          icon={autoRecord ? '◉' : '○'}
+          title={autoRecord ? 'Auto-record: on' : 'Auto-record: off'}
+          hint={
+            autoRecord
+              ? 'Every match auto-saves on teardown. Tap to disable.'
+              : 'Future matches save only if you tap "Save this match".'
+          }
+          onPress={onToggleAutoRecord}
         />
         <MenuRow
           icon="←"

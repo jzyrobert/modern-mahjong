@@ -1,9 +1,11 @@
 import { useTransport } from '@/src/net/transport-context';
 import { BOT_LABELS, generateMatchCode } from '@mahjong/protocol';
-import { type ReactNode, useState } from 'react';
+import { useRouter } from 'expo-router';
+import { type ReactNode, useEffect, useState } from 'react';
 import { Platform, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getDisplayName, setDisplayName } from '../../identity';
+import { listHeaders } from '../../replay/storage';
 import { useGame } from '../../state/game';
 import { HostLanModal } from '../HostLanModal';
 import { JoinLanModal } from '../JoinLanModal';
@@ -14,7 +16,7 @@ import { LobbyPreview } from './LobbyPreview';
 import { LobbyWatermark } from './LobbyWatermark';
 import { ModeCard, ModeGrid } from './ModeCard';
 import { ScatteredTiles } from './ScatteredTiles';
-import { BotIcon, BoxIcon, GlobeIcon, WifiIcon } from './icons';
+import { BotIcon, BoxIcon, GlobeIcon, PlayIcon, WifiIcon } from './icons';
 
 /**
  * Top-level menu screen. Hero with the wind emblem + bilingual title
@@ -29,6 +31,7 @@ import { BotIcon, BoxIcon, GlobeIcon, WifiIcon } from './icons';
  * fall through to manual entry.
  */
 export function Lobby() {
+  const router = useRouter();
   const transport = useTransport();
   const lobby = useGame((s) => s.lobby);
   // Lazy initialiser — `getDisplayName()` reads from preferences, so we
@@ -37,6 +40,13 @@ export function Lobby() {
   const [code, setCode] = useState('');
   const [hostLanOpen, setHostLanOpen] = useState(false);
   const [joinLanOpen, setJoinLanOpen] = useState(false);
+  const [replayCount, setReplayCount] = useState(0);
+
+  // Refresh replay count on mount and when the user comes back to the
+  // lobby after recording one.
+  useEffect(() => {
+    setReplayCount(listHeaders().length);
+  }, []);
 
   // Hide the "Host LAN match" button on web — there's no embedded
   // server runtime in a browser tab, so even if the user pastes a
@@ -142,6 +152,21 @@ export function Lobby() {
                   <PrimaryButton onPress={() => setHostLanOpen(true)}>Host LAN match</PrimaryButton>
                 ) : null}
                 <GhostButton onPress={() => setJoinLanOpen(true)}>Join LAN match</GhostButton>
+              </ButtonRow>
+            </ModeCard>
+
+            <ModeCard
+              title="Replays"
+              subtitle="Watch saved matches with the scrubber"
+              icon={<PlayIcon color="#65594c" />}
+            >
+              <Text style={{ fontSize: 12, color: '#918275', lineHeight: 18 }}>
+                {replayCount > 0
+                  ? `${replayCount} saved replay${replayCount === 1 ? '' : 's'}. Step through any past hand and see every player's tiles.`
+                  : 'No replays yet. Hit "Save this match" from the in-match menu, or flip on auto-record.'}
+              </Text>
+              <ButtonRow>
+                <PrimaryButton onPress={() => router.push('/replays')}>Open library</PrimaryButton>
               </ButtonRow>
             </ModeCard>
           </ModeGrid>

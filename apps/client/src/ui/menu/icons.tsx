@@ -58,3 +58,11 @@ export function BoxIcon({ size = 14, color = 'currentColor' }: IconProps) {
     </Svg>
   );
 }
+
+export function PlayIcon({ size = 20, color = 'currentColor' }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M8 5v14l11-7L8 5z" stroke={color} strokeWidth={2.2} strokeLinejoin="round" />
+    </Svg>
+  );
+}

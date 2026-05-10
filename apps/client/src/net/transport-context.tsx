@@ -14,6 +14,7 @@ import {
 } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 import { getDisplayName, getPlayerId } from '../identity';
+import { useRecorder } from '../replay/recorder';
 import { playDiscard } from '../sound';
 import { useGame } from '../state/game';
 import { type SoloSnapshot, clearSoloSnapshot, saveSoloSnapshot } from '../state/solo-persist';
@@ -144,6 +145,11 @@ export function TransportProvider({ children }: { children: ReactNode }) {
   const pushChat = useGame((s) => s.pushChat);
   const flashClaimMissed = useGame((s) => s.flashClaimMissed);
   const reset = useGame((s) => s.reset);
+  const recorderStartMatch = useRecorder((s) => s.startMatch);
+  const recorderOnDelta = useRecorder((s) => s.onDelta);
+  const recorderOnState = useRecorder((s) => s.onState);
+  const recorderOnLobby = useRecorder((s) => s.onLobby);
+  const recorderFinalizeMatch = useRecorder((s) => s.finalizeMatch);
 
   // Tracks the wall-clock timestamp of the user's most recent
   // non-pass `declareClaim` action. Used by the error handler to
@@ -281,13 +287,19 @@ export function TransportProvider({ children }: { children: ReactNode }) {
   // explicit `leave()` and the HOST_LEFT server message, which both
   // need to reset the same fields plus reset the engine store.
   const teardown = useCallback(() => {
+    // Persist the in-memory replay draft (auto or explicit) before the
+    // store gets cleared. Reads the live settings off the zustand
+    // store so teardowns triggered by HOST_LEFT respect the user's
+    // current toggles even if they flipped them mid-match.
+    const settings = useGame.getState().settings;
+    recorderFinalizeMatch(settings.autoRecordReplays, settings.replayQuota);
     setTransport(null);
     setMatchCode(null);
     setStatus('idle');
     reconnectInfoRef.current = null;
     setJoinInfo(null);
     reset();
-  }, [reset]);
+  }, [reset, recorderFinalizeMatch]);
 
   const leave = useCallback(() => {
     transport?.send({ t: 'leave' });
@@ -344,6 +356,10 @@ export function TransportProvider({ children }: { children: ReactNode }) {
   // Wire inbound messages into the zustand store + side-effects.
   useEffect(() => {
     if (!transport) return;
+    // Track whether the recorder draft has been started for this transport
+    // session. The first `state` message begins the draft; subsequent
+    // `state` messages (reconnect) update the latest frame instead.
+    let recorderStarted = false;
     return transport.onMessage((m: ServerMessage) => {
       // Any inbound that mutates engine / lobby state needs to flow back
       // into the solo snapshot so a reload of `/match?solo=1` rebuilds
@@ -351,18 +367,35 @@ export function TransportProvider({ children }: { children: ReactNode }) {
       // `persistSoloIfActive` (it gates on `kind === 'solo'`).
       const isStateUpdate = m.t === 'state' || m.t === 'delta' || m.t === 'lobby';
       switch (m.t) {
-        case 'state':
+        case 'state': {
           setState(m.state, m.you);
+          const join = reconnectInfoRef.current;
+          if (join && !recorderStarted) {
+            recorderStartMatch({
+              state: m.state,
+              you: m.you,
+              matchCode:
+                join.kind === 'solo' ? 'SOLO' : join.kind === 'online' ? join.code : join.code,
+              joinKind: join.kind,
+              rules: m.state.rules,
+            });
+            recorderStarted = true;
+          } else {
+            recorderOnState(m.state);
+          }
           break;
+        }
         case 'delta':
           setState(m.state);
           appendEvents(m.events);
+          recorderOnDelta(m.events, m.state);
           for (const event of m.events) {
             if (event.t === 'discarded') playDiscard();
           }
           break;
         case 'lobby':
           setLobby(m);
+          recorderOnLobby(m);
           break;
         case 'error': {
           console.warn('server error:', m.code, m.detail);
@@ -409,6 +442,10 @@ export function TransportProvider({ children }: { children: ReactNode }) {
     flashClaimMissed,
     teardown,
     persistSoloIfActive,
+    recorderStartMatch,
+    recorderOnState,
+    recorderOnDelta,
+    recorderOnLobby,
   ]);
 
   // AppState foreground re-join. We don't proactively close the socket

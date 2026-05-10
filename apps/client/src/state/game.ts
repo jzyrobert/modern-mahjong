@@ -41,6 +41,14 @@ export interface UserSettings {
    *  hard-coded mix in `createSoloTransport`. Persisted across
    *  sessions so the user's last-picked skill set survives reloads. */
   botSkills: [BotKind, BotKind, BotKind];
+  /** When true, every match auto-saves to the replay library on
+   *  teardown. Default off — the user opts in either by flipping this
+   *  setting once, or by hitting "Save this match" from the in-match
+   *  menu (per-match opt-in). */
+  autoRecordReplays: boolean;
+  /** Maximum number of replays kept on disk. Oldest entries prune on
+   *  insert past this cap. */
+  replayQuota: number;
 }
 
 const DEFAULT_SETTINGS: UserSettings = {
@@ -51,6 +59,8 @@ const DEFAULT_SETTINGS: UserSettings = {
   sound: false,
   discardHint: false,
   botSkills: ['heuristic', 'simple', 'passive'],
+  autoRecordReplays: false,
+  replayQuota: 50,
 };
 
 const SETTINGS_STORAGE_KEY = 'mj.settings.v1';
