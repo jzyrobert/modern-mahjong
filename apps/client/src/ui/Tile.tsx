@@ -32,7 +32,19 @@ interface TileProps {
    *  engine `tileId` so identity survives across components. Omit for
    *  decorative / static tile renders that shouldn't animate. */
   flipId?: string | undefined;
+  /** How far this tile floats above its surface — drives an outer cast
+   *  shadow on the wrapper. Defaults to `'flat'` (no shadow) for
+   *  decorative / face-down strip tiles. `'discard'` sits close to the
+   *  felt; `'hand'` reads as raised plastic above it. */
+  elevation?: 'flat' | 'discard' | 'hand' | undefined;
 }
+
+/** Directional cast shadow per `elevation` value. */
+const ELEVATION_SHADOW: Record<NonNullable<TileProps['elevation']>, string | null> = {
+  flat: null,
+  discard: '0px 1px 2px rgba(0,0,0,0.15)',
+  hand: '0px 2px 4px rgba(0,0,0,0.18)',
+};
 
 /**
  * Renders a single tile face or back as layered SVG with a
@@ -60,6 +72,7 @@ function TileComponent({
   style,
   testID,
   flipId,
+  elevation = 'flat',
 }: TileProps) {
   // Subscribe to the user's tile-back skin so face-down tiles repaint
   // when the SettingsPanel changes it. The selector returns a string id
@@ -67,19 +80,23 @@ function TileComponent({
   // tile — only flips of `tileBack` itself trigger a re-render.
   const tileBackId = useGame((s) => s.settings.tileBack);
   const lift = selected ? -10 : raised ? -4 : 0;
+  // Compose the cast shadow from elevation + the gold raised-glow. RN's
+  // `boxShadow` takes a comma-separated CSS-string just like the web
+  // form, so multiple shadows stack naturally.
+  const shadows: string[] = [];
+  const elevationShadow = ELEVATION_SHADOW[elevation];
+  if (elevationShadow) shadows.push(elevationShadow);
+  if (raised) shadows.push('0px 0px 8px rgba(220,159,79,0.7)');
   const wrapperStyle: ViewStyle = {
     width,
     height,
-    // Match the SVG face's rx (W * 0.18) so when `raised` adds a
-    // boxShadow the glow follows the tile silhouette rather than
-    // protruding past the rounded corners as square chunks. No-op
-    // visually when no shadow is rendered (the View has no fill).
+    // Match the SVG face's rx (W * 0.18) so the cast shadow follows the
+    // tile silhouette rather than protruding past the rounded corners
+    // as square chunks. No-op visually when no shadow is rendered.
     borderRadius: width * 0.18,
     transform: [{ rotate: `${rotate ?? 0}deg` }, { translateY: lift }],
     opacity: dim ? 0.85 : 1,
-    ...(raised && {
-      boxShadow: '0px 0px 8px rgba(220,159,79,0.7)',
-    }),
+    ...(shadows.length > 0 && { boxShadow: shadows.join(', ') }),
     ...style,
   };
 
@@ -146,7 +163,7 @@ interface TileBodyProps {
   tileBackId: keyof typeof TILE_BACK_SKINS;
 }
 
-/** Layered SVG: shadow rect, side rect, face/back rect, hairline stroke, optional selection ring. */
+/** Layered SVG: side rect, face/back rect, NE-light bevel overlay, hairline stroke, optional selection ring. */
 const TileBody = memo(function TileBody({
   width,
   height,
@@ -171,21 +188,31 @@ const TileBody = memo(function TileBody({
     >
       <Defs>
         <LinearGradient id="mj-tile-face" x1="0" x2="0" y1="0" y2="1">
-          <Stop offset="0%" stopColor="#fbf8f0" />
-          <Stop offset="100%" stopColor="#e8e0cf" />
+          <Stop offset="0%" stopColor="#fcfaf2" />
+          <Stop offset="60%" stopColor="#f4eede" />
+          <Stop offset="100%" stopColor="#e3dac6" />
         </LinearGradient>
         <LinearGradient id="mj-tile-side" x1="0" x2="0" y1="0" y2="1">
           <Stop offset="0%" stopColor="#d8ccb1" />
-          <Stop offset="100%" stopColor="#bfae8c" />
+          <Stop offset="100%" stopColor="#a89572" />
         </LinearGradient>
         <LinearGradient id="mj-tile-back" x1="0" x2="0" y1="0" y2="1">
           <Stop offset="0%" stopColor={tileBack.top} />
           <Stop offset="100%" stopColor={tileBack.bottom} />
         </LinearGradient>
+        {/* Diagonal NE→SW rim light. Stops cluster at the corners so
+            most of the face surface stays untouched and the bevel
+            reads as edge highlighting + edge shadow, not a full
+            diagonal wash. Single overlay = cheap; runs on top of any
+            face/back fill so it composes with every tile-back skin. */}
+        <LinearGradient id="mj-tile-bevel" x1="1" y1="0" x2="0" y2="1">
+          <Stop offset="0%" stopColor="#ffffff" stopOpacity="0.28" />
+          <Stop offset="8%" stopColor="#ffffff" stopOpacity="0" />
+          <Stop offset="92%" stopColor="#000000" stopOpacity="0" />
+          <Stop offset="100%" stopColor="#000000" stopOpacity="0.22" />
+        </LinearGradient>
       </Defs>
-      {/* drop shadow */}
-      <Rect x={1} y={H * 0.08} width={W - 2} height={H * 0.95} rx={R} fill="rgba(80,60,40,0.18)" />
-      {/* side */}
+      {/* side (visible bottom thickness — top of tile is drawn over it) */}
       <Rect x={0} y={H * 0.04} width={W} height={H * 0.96} rx={R} fill="url(#mj-tile-side)" />
       {/* face / back */}
       <Rect
@@ -196,6 +223,9 @@ const TileBody = memo(function TileBody({
         rx={R}
         fill={faceDown ? 'url(#mj-tile-back)' : 'url(#mj-tile-face)'}
       />
+      {/* NE-light rim bevel — overlays the face/back rect, follows the
+          same rounded shape so it doesn't bleed past the corners. */}
+      <Rect x={0} y={0} width={W} height={H * 0.92} rx={R} fill="url(#mj-tile-bevel)" />
       {/* hairline stroke */}
       <Rect
         x={1.2}
