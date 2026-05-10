@@ -11,12 +11,13 @@ import { HostLanModal } from '../HostLanModal';
 import { JoinLanModal } from '../JoinLanModal';
 import { GhostButton, PrimaryButton, TextField } from '../buttons';
 import { COLORS } from '../colors';
+import { basicsLesson } from '../tutorial/lessons/basics';
 import { LobbyHeader } from './LobbyHeader';
 import { LobbyPreview } from './LobbyPreview';
 import { LobbyWatermark } from './LobbyWatermark';
 import { ModeCard, ModeGrid } from './ModeCard';
 import { ScatteredTiles } from './ScatteredTiles';
-import { BotIcon, BoxIcon, GlobeIcon, PlayIcon, WifiIcon } from './icons';
+import { BotIcon, BoxIcon, GlobeIcon, PlayIcon, TutorialIcon, WifiIcon } from './icons';
 
 /**
  * Top-level menu screen. Hero with the wind emblem + bilingual title
@@ -34,6 +35,8 @@ export function Lobby() {
   const router = useRouter();
   const transport = useTransport();
   const lobby = useGame((s) => s.lobby);
+  const tutorialsCompleted = useGame((s) => s.settings.tutorialsCompleted);
+  const basicsDone = tutorialsCompleted.includes(basicsLesson.id);
   // Lazy initialiser — `getDisplayName()` reads from preferences, so we
   // only want to run it on first mount, not on every render.
   const [name, setName] = useState(() => getDisplayName());
@@ -131,6 +134,25 @@ export function Lobby() {
               <TagRow tags={[BOT_LABELS.heuristic, BOT_LABELS.simple, BOT_LABELS.passive]} />
               <ButtonRow>
                 <PrimaryButton onPress={transport.joinSolo}>Play vs bots</PrimaryButton>
+              </ButtonRow>
+            </ModeCard>
+
+            <ModeCard
+              title="Tutorial"
+              subtitle={
+                basicsDone ? 'Replay the guided hand' : 'New here? Learn the basics in one hand'
+              }
+              icon={<TutorialIcon color="#65594c" />}
+            >
+              <Text style={{ fontSize: 12, color: '#918275', lineHeight: 18 }}>
+                {basicsDone
+                  ? 'You’ve finished the basics lesson. Tap to play through it again.'
+                  : 'A quick guided hand walks you through drawing, discarding, and how a round resolves. Three passive bots play the other seats.'}
+              </Text>
+              <ButtonRow>
+                <PrimaryButton onPress={() => transport.joinSoloTutorial(basicsLesson.id)}>
+                  {basicsDone ? 'Replay tutorial' : 'Start tutorial'}
+                </PrimaryButton>
               </ButtonRow>
             </ModeCard>
 

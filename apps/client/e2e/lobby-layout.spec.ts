@@ -54,26 +54,36 @@ test.describe('Lobby mode cards', () => {
     }
   });
 
-  test('three cards fit in a row at desktop width', async ({ page }) => {
+  test('cards lay out in rows at desktop width', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto('/');
     await expect(page.getByRole('heading', { name: 'Modern Mahjong' })).toBeVisible();
 
+    // The five cards (Online / Practice / Tutorial / LAN / Replays)
+    // wrap into multiple rows on a 1280-wide viewport — `ModeGrid`
+    // caps at maxWidth: 1080 with 28px side padding, leaving ~1024px
+    // of content row, and each card's min-width is 280 + 14 gap, so
+    // three cards fit per row. We assert the responsive contract
+    // qualitatively: every card has a positive bounding box, and
+    // the first three (Online / Practice / Tutorial) share the same
+    // top row.
     const ys = await Promise.all(
-      [/^Online match$/, /^Practice vs bots$/, /^LAN \/ offline$/].map(async (name) => {
-        const heading = page.getByText(name, { exact: true }).first();
-        const box = await heading.boundingBox();
-        if (!box) throw new Error(`No bounding box for "${name}"`);
-        return box.y;
-      }),
+      [/^Online match$/, /^Practice vs bots$/, /^Tutorial$/, /^LAN \/ offline$/, /^Replays$/].map(
+        async (name) => {
+          const heading = page.getByText(name, { exact: true }).first();
+          const box = await heading.boundingBox();
+          if (!box) throw new Error(`No bounding box for "${name}"`);
+          return box.y;
+        },
+      ),
     );
 
-    // All three card titles share (close to) the same baseline y.
-    const [a, b, c] = ys;
-    if (a === undefined || b === undefined || c === undefined) {
-      throw new Error('expected three card y-coordinates');
+    const [online, practice, tutorial] = ys;
+    if (online === undefined || practice === undefined || tutorial === undefined) {
+      throw new Error('expected card y-coordinates for the first row');
     }
-    expect(Math.abs(a - b)).toBeLessThan(8);
-    expect(Math.abs(b - c)).toBeLessThan(8);
+    // Top row of three cards shares (close to) the same baseline y.
+    expect(Math.abs(online - practice)).toBeLessThan(8);
+    expect(Math.abs(practice - tutorial)).toBeLessThan(8);
   });
 });

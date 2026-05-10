@@ -50,6 +50,22 @@ export const DEFAULT_RULES: RuleConfig = {
   claimHardWindowMs: 12_000,
 };
 
+/**
+ * Strip the soft + hard claim-fairness windows. Solo / single-device
+ * matches don't need them — there's no other human to wait on, and
+ * leaving them set parks every discard at `phase: 'awaitingClaims'`
+ * for the soft floor before resolution. Both the in-process solo
+ * transport and the engine fuzzers / invariant tests use this; the
+ * shared helper exists so the destructure-and-`void` dance doesn't
+ * have to be copy-pasted at every callsite.
+ */
+export function soloRulesFrom(base: RuleConfig = DEFAULT_RULES): RuleConfig {
+  const { claimSoftWindowMs: _omitSoft, claimHardWindowMs: _omitHard, ...rest } = base;
+  void _omitSoft;
+  void _omitHard;
+  return rest;
+}
+
 export const FAAN_OPTIONS: readonly RuleConfig['faanMin'][] = [0, 1, 3, 5] as const;
 
 export type Claim =

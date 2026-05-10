@@ -1,8 +1,11 @@
 import { Pressable, Text, View } from 'react-native';
+import { useTransport } from '../../net/transport-context';
 import { useRecorder } from '../../replay/recorder';
 import { useGame } from '../../state/game';
+import { useTutorial } from '../../state/tutorial';
 import { Modal } from '../Modal';
 import { COLORS } from '../colors';
+import { basicsLesson } from '../tutorial/lessons/basics';
 import { EMOTES } from './ChatBar';
 
 interface MenuSheetProps {
@@ -67,6 +70,13 @@ export function MenuSheet({
   const autoRecord = useGame((s) => s.settings.autoRecordReplays);
   const replayQuota = useGame((s) => s.settings.replayQuota);
   const setSettings = useGame((s) => s.setSettings);
+  const tutorialsCompleted = useGame((s) => s.settings.tutorialsCompleted);
+  const tutorialActive = useTutorial((s) => s.active !== null);
+  const transport = useTransport();
+  // First-time players see the row only via the lobby card so the
+  // in-match menu stays uncluttered; once they're in a lesson or
+  // have completed it, the row gives them an in-match restart hatch.
+  const showTutorialRow = tutorialActive || tutorialsCompleted.includes(basicsLesson.id);
 
   const onSaveMatch = () => {
     if (savedThisMatch) {
@@ -77,6 +87,9 @@ export function MenuSheet({
   };
   const onToggleAutoRecord = () => {
     setSettings({ autoRecordReplays: !autoRecord });
+  };
+  const onRestartTutorial = () => {
+    transport.joinSoloTutorial(basicsLesson.id);
   };
 
   return (
@@ -107,6 +120,18 @@ export function MenuSheet({
           hint="Every fan pattern with worked example hands."
           onPress={handle(onOpenScoring)}
         />
+        {showTutorialRow ? (
+          <MenuRow
+            icon="🎓"
+            title={tutorialActive ? 'Restart tutorial' : 'Replay tutorial'}
+            hint={
+              tutorialActive
+                ? 'Reset the lesson back to the welcome step.'
+                : 'Run through the basics lesson again.'
+            }
+            onPress={handle(onRestartTutorial)}
+          />
+        ) : null}
         {draftActive ? (
           <MenuRow
             icon={savedThisMatch ? '✓' : '💾'}

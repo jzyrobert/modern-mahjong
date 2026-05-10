@@ -66,3 +66,17 @@ export function PlayIcon({ size = 20, color = 'currentColor' }: IconProps) {
     </Svg>
   );
 }
+
+/** Mortarboard / cap icon — the Tutorial card. Two strokes form the
+ *  diamond mortar plus a simple tassel; a horizontal underline hints
+ *  at the cap's base. Same line-weight as the rest of the icon set
+ *  so the row reads as a coherent group. */
+export function TutorialIcon({ size = 20, color = 'currentColor' }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path d="M2 9l10-5 10 5-10 5L2 9z" stroke={color} strokeWidth={2.2} strokeLinejoin="round" />
+      <Path d="M6 11v4c0 1.5 3 3 6 3s6-1.5 6-3v-4" stroke={color} strokeWidth={2.2} />
+      <Line x1={20} y1={9} x2={20} y2={14} stroke={color} strokeWidth={2.2} />
+    </Svg>
+  );
+}

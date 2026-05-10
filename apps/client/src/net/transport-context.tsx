@@ -1,4 +1,5 @@
 import type { Action, Seat } from '@mahjong/game-logic';
+import { emptyState, soloRulesFrom, startHand } from '@mahjong/game-logic';
 import type { BotKind, ServerMessage } from '@mahjong/protocol';
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
@@ -18,6 +19,7 @@ import { useRecorder } from '../replay/recorder';
 import { playDiscard } from '../sound';
 import { useGame } from '../state/game';
 import { type SoloSnapshot, clearSoloSnapshot, saveSoloSnapshot } from '../state/solo-persist';
+import { LESSONS, useTutorial } from '../state/tutorial';
 import { type SoloTransportControls, createSoloTransport } from './solo-transport';
 import {
   type Transport,
@@ -50,6 +52,11 @@ interface TransportContextValue {
   joinOnline: (code: string) => void;
   joinLan: (hostUrl: string, code: string) => void;
   joinSolo: () => void;
+  /** Tutorial entry point. Forces all bots to `passive`, seeds the
+   *  engine to a deterministic wall via `lesson.seed` + `lesson.dealer`,
+   *  and kicks the lesson controller into step 0 so the welcome
+   *  overlay surfaces as soon as `<Match>` mounts. */
+  joinSoloTutorial: (lessonId: string) => void;
   /** Reload-survival entry point: seed a fresh solo transport with the
    *  persisted engine snapshot read from `mj.activeMatch.solo.v1`.
    *  See `apps/client/app/match.tsx`. */
@@ -235,6 +242,48 @@ export function TransportProvider({ children }: { children: ReactNode }) {
     );
   }, [swap, recordJoin]);
 
+  const joinSoloTutorial = useCallback(
+    (lessonId: string) => {
+      const lesson = LESSONS[lessonId];
+      if (!lesson) {
+        console.warn(`joinSoloTutorial: unknown lesson "${lessonId}"`);
+        return;
+      }
+      recordJoin({ kind: 'solo' });
+      clearSoloSnapshot();
+      // Pre-build the engine state at the lesson's deterministic seed
+      // so the wall is identical every run. `seedState` lands the
+      // transport straight in `phase: 'turn'`, skipping the dice
+      // ceremony + lobby waiting room — without it the user would
+      // have to tap "Start match" themselves before the welcome
+      // overlay made any sense. `soloRulesFrom()` strips the claim
+      // fairness windows (same shape `createSoloTransport` builds
+      // internally) so user discards don't park awaiting a soft
+      // floor that no other human is waiting on.
+      const tutorialState = startHand(
+        emptyState(soloRulesFrom()),
+        lesson.seed,
+        lesson.dealer,
+      ).state;
+      // Force every bot to `passive` for the duration of the lesson —
+      // a heuristic bot might claim or self-draw mid-walkthrough,
+      // which would invalidate the script's predicates. The user's
+      // `settings.botSkills` is left untouched so leaving the tutorial
+      // returns them to their preferred mix.
+      swap(
+        createSoloTransport({
+          playerId: getPlayerId(),
+          displayName: getDisplayName(),
+          botSkills: ['passive', 'passive', 'passive'],
+          seedState: tutorialState,
+        }),
+        'SOLO',
+      );
+      useTutorial.getState().begin(lessonId);
+    },
+    [swap, recordJoin],
+  );
+
   const joinSoloResume = useCallback(
     (snap: SoloSnapshot) => {
       recordJoin({ kind: 'solo' });
@@ -293,6 +342,9 @@ export function TransportProvider({ children }: { children: ReactNode }) {
     // current toggles even if they flipped them mid-match.
     const settings = useGame.getState().settings;
     recorderFinalizeMatch(settings.autoRecordReplays, settings.replayQuota);
+    // Tear down any in-flight tutorial too — leaving the match
+    // mid-lesson should drop the lesson, same as the Skip button.
+    useTutorial.getState().dismiss();
     setTransport(null);
     setMatchCode(null);
     setStatus('idle');
@@ -370,17 +422,21 @@ export function TransportProvider({ children }: { children: ReactNode }) {
         case 'state': {
           setState(m.state, m.you);
           const join = reconnectInfoRef.current;
+          // Tutorial sessions don't tee into the replay library —
+          // saving them would pollute the user's saved-matches list
+          // with throwaway lesson runs. Auto-record stays honoured
+          // for ordinary solo matches.
+          if (useTutorial.getState().active !== null) break;
           if (join && !recorderStarted) {
             recorderStartMatch({
               state: m.state,
               you: m.you,
-              matchCode:
-                join.kind === 'solo' ? 'SOLO' : join.kind === 'online' ? join.code : join.code,
+              matchCode: join.kind === 'solo' ? 'SOLO' : join.code,
               joinKind: join.kind,
               rules: m.state.rules,
             });
             recorderStarted = true;
-          } else {
+          } else if (recorderStarted) {
             recorderOnState(m.state);
           }
           break;
@@ -482,6 +538,7 @@ export function TransportProvider({ children }: { children: ReactNode }) {
       joinOnline,
       joinLan,
       joinSolo,
+      joinSoloTutorial,
       joinSoloResume,
       leave,
       send,
@@ -498,6 +555,7 @@ export function TransportProvider({ children }: { children: ReactNode }) {
       joinOnline,
       joinLan,
       joinSolo,
+      joinSoloTutorial,
       joinSoloResume,
       leave,
       send,
