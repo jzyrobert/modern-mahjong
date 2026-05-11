@@ -10,8 +10,9 @@ import {
   advertise as lanAdvertise,
   start as lanStart,
   stop as lanStop,
+  unadvertise as lanUnadvertise,
 } from '../../native/lan-server';
-import { startLanHostBridge } from '../../net/lan-host-bridge';
+import { startLanHostBridge, stopLanHostBridge } from '../../net/lan-host-bridge';
 import { listHeaders } from '../../replay/storage';
 import { useGame } from '../../state/game';
 import { LESSONS, LESSON_ORDER } from '../../state/tutorial';
@@ -105,6 +106,21 @@ export function Lobby() {
     if (hostStatus === 'starting') return;
     setHostStatus('starting');
     try {
+      // Defensive cleanup before bringing up a fresh server. If the user
+      // got here via "Leave" from a previous LAN match, `transport.leave`
+      // already disposed the bridge + stopped the server. But a back-
+      // navigation or app-state hiccup can leave the bridge wired to a
+      // half-dead server — and the new `lanStart` then opens onto a port
+      // the kernel hasn't quite released, so the host's own WS upgrades
+      // and immediately drops with no obvious cause. Calling these here
+      // is idempotent (`stopServer` in the Kotlin module no-ops when
+      // there's no server; `stopLanHostBridge` no-ops when there's no
+      // active bridge) and ensures `lanStart` always lands on a known-
+      // clean state.
+      stopLanHostBridge();
+      await lanUnadvertise().catch(() => undefined);
+      await lanStop().catch(() => undefined);
+
       const res = await lanStart({ port: HOST_PORT });
       const hostUrl = res.addresses[0];
       if (!hostUrl) {

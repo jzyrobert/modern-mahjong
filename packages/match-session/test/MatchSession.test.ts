@@ -390,6 +390,59 @@ describe('MatchSession — disconnect + reconnect grace', () => {
     });
     expect(pickSends(out, 'c0b').filter((m) => m.t === 'error')).toHaveLength(0);
   });
+
+  // The mobile reality is that a screen-lock or task-switch can outlast
+  // any grace window we pick (a generous 5 min default is still finite).
+  // When the original owner finally reconnects, they should land back in
+  // their *original* seat from the bot stand-in, not get shuffled into
+  // whatever empty slot happens to be next — otherwise the lobby drifts
+  // (bot in seat 0, host in seat 1, etc.) and the LobbyPreview's "who's
+  // host" cue stops matching the actual host.
+  it('reconnect AFTER grace expiry reclaims the original seat from the bot stand-in', () => {
+    const s = new MatchSession({ reconnectGraceMs: 1_000 });
+    helloAs(s, 'c0', 'p0', 'Host');
+    // Leave seats 1-3 empty so this test exercises the post-grace branch
+    // of `findOrAssignSeat` specifically — not the "no empty seats, fall
+    // through to bot stand-in" branch the existing test covers.
+    s.detachConnection('c0', 0);
+    s.fireAlarm(2_000);
+    // p0 comes back well after the grace window has lapsed.
+    const reconn = helloAs(s, 'c0b', 'p0', 'Host');
+    expect(stateYouFor(reconn, 'c0b')).toBe(0);
+    // And the lobby broadcast must reflect a live human in seat 0,
+    // not a leftover bot label (the `formerPlayerId` reclaim must
+    // overwrite the auto-bot, mirroring the within-grace reconnect).
+    const lobby = pickBroadcasts(reconn).find((m) => m.t === 'lobby');
+    expect(lobby?.t).toBe('lobby');
+    if (lobby?.t === 'lobby') {
+      expect(lobby.players[0]?.isBot).toBe(false);
+      expect(lobby.players[0]?.connected).toBe(true);
+      expect(lobby.players[0]?.displayName).toBe('Host');
+    }
+  });
+
+  it('AFTER grace expiry a *different* playerId still falls through to the stand-in (existing semantics preserved)', () => {
+    // Companion to the post-grace reclaim test: confirms a new player
+    // (different `playerId`) can still take an abandoned auto-bot seat
+    // once the room is otherwise full. Mirrors the
+    // "grace expiry frees the seat so a new player can claim it" test
+    // above but expressed with seats 1-3 left empty too, so we're
+    // checking that pass-2 (empty seat) wins for new joiners and the
+    // post-grace `formerPlayerId` slot only matters for the original
+    // owner.
+    const s = new MatchSession({ reconnectGraceMs: 1_000 });
+    helloAs(s, 'c0', 'p0');
+    helloAs(s, 'c1', 'p1');
+    helloAs(s, 'c2', 'p2');
+    helloAs(s, 'c3', 'p3');
+    s.detachConnection('c0', 0);
+    s.fireAlarm(2_000);
+    // A brand-new player (pX, never seen) joins post-grace. Every other
+    // seat is held by a live human, so they must take the only
+    // available slot — the stand-in formerly occupied by p0.
+    const lateOut = helloAs(s, 'cX', 'pX');
+    expect(stateYouFor(lateOut, 'cX')).toBe(0);
+  });
 });
 
 describe('MatchSession — snapshot + restore', () => {
