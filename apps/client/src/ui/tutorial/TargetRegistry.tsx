@@ -1,4 +1,13 @@
-import { type ReactNode, createContext, useContext, useEffect, useMemo, useRef } from 'react';
+import {
+  type ReactNode,
+  type RefObject,
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+} from 'react';
 import { useSyncExternalStore } from 'react';
 import { View } from 'react-native';
 import type { TutorialTargetId } from './types';
@@ -19,12 +28,21 @@ interface TargetRegistryApi {
   read(id: TutorialTargetId): TargetRect | null;
   /** Subscribe to changes; called whenever any rect is written. */
   subscribe(cb: () => void): () => void;
+  /** Sentinel root the registry uses as the origin for all rects.
+   *  Targets store `(target.window.x - root.window.x, target.window.y
+   *  - root.window.y)` in the registry; `<TutorialOverlay>` paints
+   *  the halo at the same offset in its own coordinate space (and
+   *  also adds the host shell's safe-area top inset to undo Android
+   *  Fabric's habit of returning measureInWindow positions without
+   *  including the host `<SafeAreaView edges=['top']>` padding). */
+  rootRef: RefObject<View | null>;
 }
 
 const noopApi: TargetRegistryApi = {
   set: () => {},
   read: () => null,
   subscribe: () => () => {},
+  rootRef: { current: null },
 };
 
 const TargetRegistryContext = createContext<TargetRegistryApi>(noopApi);
@@ -53,6 +71,7 @@ export function TargetRegistryProvider({ children }: TargetRegistryProviderProps
   // us that without the zustand selector machinery.
   const map = useRef(new Map<TutorialTargetId, TargetRect>()).current;
   const listeners = useRef(new Set<() => void>()).current;
+  const rootRef = useRef<View | null>(null);
 
   const api = useMemo<TargetRegistryApi>(
     () => ({
@@ -87,11 +106,18 @@ export function TargetRegistryProvider({ children }: TargetRegistryProviderProps
           listeners.delete(cb);
         };
       },
+      rootRef,
     }),
     [listeners, map],
   );
 
-  return <TargetRegistryContext.Provider value={api}>{children}</TargetRegistryContext.Provider>;
+  return (
+    <TargetRegistryContext.Provider value={api}>
+      <View ref={rootRef} style={{ flex: 1 }} collapsable={false}>
+        {children}
+      </View>
+    </TargetRegistryContext.Provider>
+  );
 }
 
 export function useTargetRegistry(): TargetRegistryApi {
@@ -130,7 +156,9 @@ interface TutorialTargetProps {
 }
 
 interface MeasurableNode {
-  measureInWindow: (cb: (x: number, y: number, w: number, h: number) => void) => void;
+  measureInWindow: (
+    onSuccess: (x: number, y: number, width: number, height: number) => void,
+  ) => void;
 }
 
 /**
@@ -143,6 +171,53 @@ interface MeasurableNode {
 export function TutorialTarget({ id, children, enabled = true }: TutorialTargetProps) {
   const api = useTargetRegistry();
   const ref = useRef<MeasurableNode | null>(null);
+
+  const measureAndRegister = useCallback(() => {
+    if (!enabled || !ref.current) return;
+    const rootNode = api.rootRef.current as unknown as MeasurableNode | null;
+    if (!rootNode) return;
+    // Defer to the next frame so any pending layout commits (a sibling
+    // conditionally rendering, a parent ScrollView reflowing, the
+    // dice-ceremony overlay dismissing) have settled before we ask
+    // for coordinates. Otherwise the measure can return the position
+    // the wrapper had *before* the current commit finished.
+    //
+    // Measure both the target and the registry root in window coords
+    // and store the offset between them. Two reasons we don't just
+    // use the target's raw window position: (a) on Android Fabric
+    // with edge-to-edge the root's own window origin is negative
+    // (the activity content frame sits above where the status bar
+    // overlays), and (b) the host shell's `<SafeAreaView
+    // edges=['top']>` pads its content but `measureInWindow` reports
+    // the position WITHOUT that padding folded in. Subtracting the
+    // root cancels (a); `<TutorialOverlay>` adds the safe-area top
+    // inset to cancel (b).
+    requestAnimationFrame(() => {
+      rootNode.measureInWindow((rootX, rootY) => {
+        ref.current?.measureInWindow((targetX, targetY, width, height) => {
+          api.set(id, {
+            x: targetX - rootX,
+            y: targetY - rootY,
+            w: width,
+            h: height,
+          });
+        });
+      });
+    });
+  }, [api, id, enabled]);
+
+  // Re-measure after every render commit. `onLayout` only fires when
+  // the wrapper's own frame changes, but the *screen* position can
+  // shift when a sibling above us conditionally renders (DISCARDS /
+  // MELDS rows appearing mid-hand) or the parent ScrollView reflows
+  // — neither of which re-fires onLayout on this wrapper. A
+  // useEffect with no deps fires after each render, the registry
+  // dedupes identical rects, so this is cheap and self-healing.
+  // useLayoutEffect would run before paint, but `measureInWindow` is
+  // async on native, so a regular useEffect is sufficient.
+  useEffect(() => {
+    measureAndRegister();
+  });
 
   // Clear on unmount so a target that's torn down (e.g. mobile→desktop
   // shell swap) doesn't leave a phantom rect in the registry. Targets
@@ -158,16 +233,7 @@ export function TutorialTarget({ id, children, enabled = true }: TutorialTargetP
       ref={(node) => {
         ref.current = node as unknown as MeasurableNode | null;
       }}
-      onLayout={() => {
-        if (!enabled || !ref.current) return;
-        ref.current.measureInWindow((x, y, w, h) => {
-          api.set(id, { x, y, w, h });
-        });
-      }}
-      // The wrapper is structurally invisible — no styling — so it
-      // doesn't disturb the parent's layout. Targets are typically
-      // wrapped around an existing `<View>` so the only effect of this
-      // wrapper is the onLayout / measure pipe.
+      onLayout={measureAndRegister}
       collapsable={false}
     >
       {children}
