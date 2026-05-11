@@ -427,6 +427,15 @@ export function TransportProvider({ children }: { children: ReactNode }) {
   // lobby. On an online/LAN `closed` flip, also null the transport so
   // the AppState foreground handler (or a user retry) can rejoin via
   // the server's reconnect-grace window. Solo never closes unexpectedly.
+  //
+  // When the close arrives while the app is already foregrounded — the
+  // most common shape of "screen-lock blip" on Android, where the WS
+  // close fires *after* the AppState transition has settled — we also
+  // proactively re-join here. Without this, the AppState listener
+  // below sees `transport` still non-null at the moment foreground
+  // fires and bails out, then the close lands a tick later but there's
+  // no subsequent foreground edge to retrigger it, so the user stays
+  // stuck on a dead transport until they manually retry.
   useEffect(() => {
     if (!transport) return;
     return transport.onStatus((s) => {
@@ -435,8 +444,12 @@ export function TransportProvider({ children }: { children: ReactNode }) {
       const info = reconnectInfoRef.current;
       if (!info || info.kind === 'solo') return;
       setTransport(null);
+      if (AppState.currentState === 'active') {
+        if (info.kind === 'online') joinOnline(info.code);
+        else if (info.kind === 'lan') joinLan(info.hostUrl, info.code);
+      }
     });
-  }, [transport]);
+  }, [transport, joinOnline, joinLan]);
 
   // Mirror the live solo engine to localStorage so a reload of
   // `/match?solo=1` can rebuild the bot loop from the persisted

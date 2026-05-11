@@ -34,6 +34,15 @@ interface SeatState {
    * is permanent for the match.
    */
   botAutoInstalled: boolean;
+  /**
+   * After grace expires, the original `playerId` moves here so a returning
+   * player can still reclaim their original seat from the auto-bot stand-in
+   * via `findOrAssignSeat`. Cleared on a fresh hello, an explicit `seatBot`,
+   * or `leave` (any path that replaces / clears the slot). Stays `null` while
+   * `playerId` is still set (within grace) — the live `playerId` already
+   * carries that information, no need to duplicate.
+   */
+  formerPlayerId: string | null;
 }
 
 const HOST_ONLY_ACTIONS: ReadonlySet<Action['t']> = new Set(['startHand', 'setRules']);
@@ -48,7 +57,11 @@ export interface MatchSessionOptions {
   /**
    * How long a seat is held for its owner after they drop. After this
    * elapses without a reconnect the seat is freed (the auto-bot keeps
-   * playing) so a new player can take it. Default 60s.
+   * playing) so a new player can take it — but the original `playerId`
+   * is preserved as `formerPlayerId` so the owner can still reclaim the
+   * seat from the stand-in if they come back later. Default 5 minutes —
+   * mobile-friendly enough to survive a short screen-lock + tab-away
+   * without yanking the player into a different seat on resume.
    */
   reconnectGraceMs?: number;
   /**
@@ -68,6 +81,8 @@ interface SerializableSeat {
   botKind: BotKind | null;
   disconnectedSinceMs: number | null;
   botAutoInstalled: boolean;
+  /** Added later; older snapshots without this field default to null on restore. */
+  formerPlayerId?: string | null;
 }
 
 /**
@@ -130,7 +145,7 @@ export class MatchSession {
   private lastEmittedDeadline: number | null = null;
 
   constructor(opts: MatchSessionOptions = {}) {
-    this.reconnectGraceMs = opts.reconnectGraceMs ?? 60_000;
+    this.reconnectGraceMs = opts.reconnectGraceMs ?? 300_000;
     this.botPaceMs = opts.botPaceMs ?? DEFAULT_BOT_PACE_MS;
   }
 
@@ -162,6 +177,7 @@ export class MatchSession {
         botKind: slot.bot?.kind ?? null,
         disconnectedSinceMs: slot.disconnectedSinceMs,
         botAutoInstalled: slot.botAutoInstalled,
+        formerPlayerId: slot.formerPlayerId,
       };
     }
     return {
@@ -198,6 +214,7 @@ export class MatchSession {
         connectionId: null,
         disconnectedSinceMs: ser.disconnectedSinceMs,
         botAutoInstalled: ser.botAutoInstalled,
+        formerPlayerId: ser.formerPlayerId ?? null,
       };
     }
   }
@@ -388,6 +405,14 @@ export class MatchSession {
       if (slot.disconnectedSinceMs === null) continue;
       if (nowMs - slot.disconnectedSinceMs < this.reconnectGraceMs) continue;
       const wasHost = slot.playerId !== null && slot.playerId === this.hostPlayerId;
+      // Preserve the original playerId as `formerPlayerId` so the owner
+      // can still reclaim this seat from the bot stand-in if they come
+      // back later — that's the mobile reality where a screen-lock can
+      // outlast even a generous grace window. `findOrAssignSeat` checks
+      // `formerPlayerId` after the live-playerId pass but before falling
+      // through to "any empty seat", so the original owner still wins
+      // over a brand-new joiner.
+      slot.formerPlayerId = slot.playerId;
       slot.playerId = null;
       slot.displayName = slot.bot ? botDisplayName(slot.bot) : null;
       slot.disconnectedSinceMs = null;
@@ -509,12 +534,23 @@ export class MatchSession {
   }
 
   private findOrAssignSeat(playerId: string): Seat | null {
+    // 1. Live playerId match — within grace, or never disconnected.
     for (const s of SEATS) {
       if (this.seats[s].playerId === playerId) return s;
     }
+    // 2. Post-grace reclaim — the owner has come back after the grace
+    //    window already collapsed their `playerId` into `formerPlayerId`.
+    //    Prefer this over any empty seat so a returning player always
+    //    lands in their original seat, even after a long screen-lock.
+    for (const s of SEATS) {
+      if (this.seats[s].playerId === null && this.seats[s].formerPlayerId === playerId) return s;
+    }
+    // 3. Empty seat — no `playerId`, no bot.
     for (const s of SEATS) {
       if (this.seats[s].playerId === null && this.seats[s].bot === null) return s;
     }
+    // 4. Any abandoned auto-bot stand-in — last-resort claim for a new
+    //    joiner when every other seat is locked or filled.
     for (const s of SEATS) {
       if (this.seats[s].playerId === null && this.seats[s].botAutoInstalled) return s;
     }
@@ -588,6 +624,7 @@ export class MatchSession {
       connectionId: null,
       disconnectedSinceMs: null,
       botAutoInstalled: false,
+      formerPlayerId: null,
     };
     // Overwriting an auto-bot stand-in clears its grace deadline; re-arm
     // so the previously-armed alarm doesn't wake the DO for nothing.
@@ -808,6 +845,7 @@ function emptySeat(): SeatState {
     connectionId: null,
     disconnectedSinceMs: null,
     botAutoInstalled: false,
+    formerPlayerId: null,
   };
 }
 
