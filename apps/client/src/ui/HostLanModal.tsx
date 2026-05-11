@@ -1,6 +1,7 @@
 import { generateMatchCode } from '@mahjong/protocol';
-import { useEffect, useState } from 'react';
-import { Text, View } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
+import { useEffect, useMemo, useState } from 'react';
+import { Pressable, Text, View } from 'react-native';
 import { getDisplayName } from '../identity';
 import {
   isLanServerAvailable,
@@ -131,8 +132,38 @@ export function HostLanModal({ open, onClose, onHosted }: HostLanModalProps) {
     : startError
       ? `Couldn't start the embedded server: ${startError}. Paste a host address manually as a fallback — guests can still connect with the match code below.`
       : serverPort !== null
-        ? `Embedded server live on port ${serverPort}. Share this URL + the match code with anyone on the same Wi-Fi.`
+        ? `Embedded server live on port ${serverPort}. Send the Join URL to anyone on the same Wi-Fi — it opens straight in any browser, no app install required.`
         : 'Starting the embedded server…';
+
+  // Browser-friendly join URL: combines the host URL with the match
+  // code so guests can paste it into a browser on the same Wi-Fi and
+  // land directly in the pregame lobby. `MatchRoute` infers the LAN
+  // host from `window.location.origin` when no `host` query param is
+  // present, so this URL is self-contained — no second "host
+  // address" copy step. Trailing slashes are stripped to avoid
+  // ending up with `…//match?code=…`.
+  const joinUrl = useMemo(() => {
+    const trimmed = hostUrl.trim().replace(/\/$/, '');
+    if (!trimmed) return '';
+    return `${trimmed}/match?code=${encodeURIComponent(matchCode)}`;
+  }, [hostUrl, matchCode]);
+  const [joinUrlCopied, setJoinUrlCopied] = useState(false);
+  useEffect(() => {
+    if (!joinUrlCopied) return;
+    const t = setTimeout(() => setJoinUrlCopied(false), 1500);
+    return () => clearTimeout(t);
+  }, [joinUrlCopied]);
+  const onCopyJoinUrl = async () => {
+    if (!joinUrl) return;
+    try {
+      await Clipboard.setStringAsync(joinUrl);
+      setJoinUrlCopied(true);
+    } catch {
+      // Clipboard access can be denied on non-HTTPS browsers or
+      // backgrounded native apps. The on-screen URL is selectable
+      // for manual copy, so no recovery is needed here.
+    }
+  };
 
   return (
     <Modal open={open} onClose={handleCancel} title="Host LAN match" maxWidth={460}>
@@ -200,6 +231,84 @@ export function HostLanModal({ open, onClose, onHosted }: HostLanModalProps) {
             Share with guests so they can find this match.
           </Text>
         </View>
+
+        {joinUrl ? (
+          <View
+            style={{
+              backgroundColor: COLORS.cream,
+              borderColor: COLORS.hairline,
+              borderWidth: 1,
+              borderRadius: 10,
+              paddingVertical: 12,
+              paddingHorizontal: 14,
+              gap: 8,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 11,
+                fontWeight: '700',
+                color: COLORS.ink3,
+                letterSpacing: 0.6,
+              }}
+            >
+              JOIN URL
+            </Text>
+            <Text
+              selectable
+              numberOfLines={2}
+              style={{
+                fontFamily: 'JetBrains Mono',
+                fontSize: 12,
+                color: COLORS.ink,
+                lineHeight: 16,
+              }}
+            >
+              {joinUrl}
+            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <Pressable
+                onPress={onCopyJoinUrl}
+                accessibilityRole="button"
+                accessibilityLabel={joinUrlCopied ? 'Join URL copied' : 'Copy join URL'}
+                style={({ pressed }) => ({
+                  backgroundColor: joinUrlCopied
+                    ? '#c2e2c5'
+                    : pressed
+                      ? COLORS.creamPressed
+                      : COLORS.creamLow,
+                  borderColor: joinUrlCopied ? '#2d8645' : COLORS.hairline,
+                  borderWidth: 1,
+                  borderRadius: 8,
+                  paddingVertical: 6,
+                  paddingHorizontal: 12,
+                })}
+              >
+                <Text
+                  style={{
+                    fontSize: 11,
+                    fontWeight: '800',
+                    letterSpacing: 0.6,
+                    color: joinUrlCopied ? '#2d8645' : COLORS.ink,
+                  }}
+                >
+                  {joinUrlCopied ? 'COPIED' : 'COPY'}
+                </Text>
+              </Pressable>
+              <Text
+                style={{
+                  flexShrink: 1,
+                  fontSize: 11,
+                  color: COLORS.ink3,
+                  fontWeight: '600',
+                  lineHeight: 16,
+                }}
+              >
+                Open in any browser on the same Wi-Fi — no app required.
+              </Text>
+            </View>
+          </View>
+        ) : null}
 
         <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
           <GhostButton onPress={handleCancel}>Cancel</GhostButton>

@@ -1,8 +1,10 @@
+import { isLanOrigin } from '@/src/net/transport';
 import { useTransport } from '@/src/net/transport-context';
 import { readSoloSnapshot } from '@/src/state/solo-persist';
 import { Match } from '@/src/ui/Match';
 import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef } from 'react';
+import { Platform } from 'react-native';
 
 /**
  * `/match` route entry. Wraps `<Match />` with reload-survival glue:
@@ -12,7 +14,19 @@ import { useEffect, useRef } from 'react';
  * in their match without having to re-navigate from the lobby.
  *
  * URL contracts (mirrored on every push from `app/index.tsx`):
- *   /match?code=ABCDE         → online (server rebinds by playerId)
+ *   /match?code=ABCDE         → online (server rebinds by playerId).
+ *                               EXCEPT when the page itself is served
+ *                               from a LAN origin (the host's
+ *                               NanoHTTPD `http://lan-ip:port/…`):
+ *                               in that case there's no separate
+ *                               online server, so we infer the LAN
+ *                               host from `window.location.origin`
+ *                               and treat the URL as a LAN join.
+ *                               This is what makes the single URL the
+ *                               host shares from `LanInviteCard` /
+ *                               `HostLanModal` work for browser
+ *                               guests on the same Wi-Fi without
+ *                               needing the app installed.
  *   /match?code=ABCDE&host=…  → LAN (host URL must still be reachable)
  *   /match?solo=1             → solo (rebuild from localStorage
  *                               snapshot in `solo-persist.ts`)
@@ -53,9 +67,19 @@ export default function MatchRoute() {
     if (typeof params.code === 'string' && params.code.length > 0) {
       if (typeof params.host === 'string' && params.host.length > 0) {
         transport.joinLan(params.host, params.code);
-      } else {
-        transport.joinOnline(params.code);
+        return;
       }
+      // Web browser served from a LAN origin (e.g. the host's
+      // NanoHTTPD `http://192.168.1.42:7777/match?code=ABCD`): no
+      // explicit `host` query param is needed because the same device
+      // serving the bundle IS the LAN match server. Use
+      // `window.location.origin` so a host can share a single URL
+      // that works in any browser on the same Wi-Fi.
+      if (Platform.OS === 'web' && isLanOrigin() && typeof window !== 'undefined') {
+        transport.joinLan(window.location.origin, params.code);
+        return;
+      }
+      transport.joinOnline(params.code);
       return;
     }
     if (params.solo === '1') {
