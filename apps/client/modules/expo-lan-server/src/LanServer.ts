@@ -21,6 +21,7 @@ const native = requireOptionalNativeModule<{
   start(opts: LanServerStartOptions): Promise<LanServerStartResult>;
   stop(): Promise<void>;
   send(opts: { id: string; data: string }): Promise<void>;
+  close(opts: { id: string }): Promise<void>;
   advertise(opts: LanServerAdvertiseOptions): Promise<void>;
   unadvertise(): Promise<void>;
   startDiscovery(): Promise<void>;
@@ -49,6 +50,16 @@ export async function stop(): Promise<void> {
 export async function send(opts: { id: string; data: string }): Promise<void> {
   if (!native) throw new Error(NOT_LOADED_MSG);
   return native.send(opts);
+}
+
+/**
+ * Evict a single connection by id. Used by the host-side LAN bridge
+ * to drop a stale seat-holder when the same playerId reconnects on a
+ * fresh WS. No-op when the native module isn't loaded.
+ */
+export async function close(opts: { id: string }): Promise<void> {
+  if (!native) return;
+  return native.close(opts);
 }
 
 /**

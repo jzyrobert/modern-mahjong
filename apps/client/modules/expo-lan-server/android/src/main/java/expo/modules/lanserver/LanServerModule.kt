@@ -102,6 +102,24 @@ class LanServerModule : Module() {
       sock.send(data)
     }
 
+    // Close a single connection by id. Used by the host-side LAN
+    // bridge to evict a duplicate seat-holder when the same player
+    // reconnects on a fresh WS (the `MatchSession` dispatches a
+    // `closeConnection` Outbound for the stale socket). Missing-id
+    // is silently tolerated — the bridge sometimes asks to close a
+    // socket that's already gone, and a thrown error there would
+    // bubble up through the JS-side promise as a noise log.
+    AsyncFunction("close") { opts: Map<String, Any?> ->
+      val id = opts["id"] as? String
+        ?: throw IllegalArgumentException("close: missing connection id")
+      val sock = sockets.remove(id) ?: return@AsyncFunction
+      try {
+        sock.close(NanoWSD.WebSocketFrame.CloseCode.NormalClosure, "evicted", false)
+      } catch (_: IOException) {
+        // Already torn down — nothing to do.
+      }
+    }
+
     AsyncFunction("advertise") { opts: Map<String, Any?> ->
       val serviceName = opts["serviceName"] as? String
         ?: throw IllegalArgumentException("advertise: missing serviceName")

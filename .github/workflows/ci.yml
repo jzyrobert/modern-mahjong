@@ -25,8 +25,8 @@ jobs:
       - name: Typecheck (all workspaces)
         run: pnpm -r typecheck
 
-      - name: Test (packages + server)
-        run: pnpm -r --filter './packages/*' --filter './apps/server' test
+      - name: Test (packages)
+        run: pnpm -r --filter './packages/*' test
 
       - name: Lint
         run: pnpm lint

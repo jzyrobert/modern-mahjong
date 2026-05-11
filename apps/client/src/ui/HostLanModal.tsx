@@ -9,6 +9,7 @@ import {
   stop as lanStop,
   unadvertise as lanUnadvertise,
 } from '../native/lan-server';
+import { startLanHostBridge, stopLanHostBridge } from '../net/lan-host-bridge';
 import { Modal } from './Modal';
 import { GhostButton, PrimaryButton, TextField } from './buttons';
 import { COLORS } from './colors';
@@ -81,6 +82,14 @@ export function HostLanModal({ open, onClose, onHosted }: HostLanModalProps) {
         }
         setServerPort(res.port);
         if (res.addresses[0]) setHostUrl(res.addresses[0]);
+        // Wire the in-process MatchSession bridge to the embedded
+        // server's connection / message / close events. Without this,
+        // the NanoHTTPD socket would upgrade fine but no `state`
+        // reply would ever come back — the host's own client would
+        // hang on "Connecting…" and then time out to "Couldn't reach
+        // the match server". Idempotent — disposes any prior bridge
+        // first.
+        startLanHostBridge();
         // Advertise on mDNS so guest devices' JoinLanModal
         // discovery lists pick this host up automatically. Use the
         // local display name so the entry is human-recognisable
@@ -101,8 +110,12 @@ export function HostLanModal({ open, onClose, onHosted }: HostLanModalProps) {
   const handleCancel = () => {
     if (serverPort !== null) {
       // Order matters: unadvertise before stop so guests see the
-      // service drop while it's still resolvable.
+      // service drop while it's still resolvable. The bridge must
+      // tear down with the server so a re-open of the modal starts
+      // from a clean MatchSession (rather than reattaching stale
+      // seats from the cancelled session).
       lanUnadvertise().catch(() => undefined);
+      stopLanHostBridge();
       lanStop().catch(() => undefined);
       setServerPort(null);
     }

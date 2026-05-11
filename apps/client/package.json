@@ -19,6 +19,7 @@
     "@expo/metro-runtime": "~6.1.2",
     "@mahjong/bots": "workspace:*",
     "@mahjong/game-logic": "workspace:*",
+    "@mahjong/match-session": "workspace:*",
     "@mahjong/protocol": "workspace:*",
     "expo": "~54.0.33",
     "expo-asset": "~12.0.13",

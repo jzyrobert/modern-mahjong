@@ -6,7 +6,7 @@
   "packageManager": "pnpm@10.33.0",
   "scripts": {
     "build": "pnpm -r --filter='./packages/*' build",
-    "test": "pnpm -r --filter='./packages/*' --filter='./apps/server' test",
+    "test": "pnpm -r --filter='./packages/*' test",
     "typecheck": "pnpm -r typecheck",
     "lint": "biome check .",
     "format": "biome format --write ."

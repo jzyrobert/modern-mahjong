@@ -32,6 +32,9 @@ importers:
       '@mahjong/game-logic':
         specifier: workspace:*
         version: link:../../packages/game-logic
+      '@mahjong/match-session':
+        specifier: workspace:*
+        version: link:../../packages/match-session
       '@mahjong/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
@@ -126,6 +129,9 @@ importers:
       '@mahjong/game-logic':
         specifier: workspace:*
         version: link:../../packages/game-logic
+      '@mahjong/match-session':
+        specifier: workspace:*
+        version: link:../../packages/match-session
       '@mahjong/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
@@ -177,6 +183,25 @@ importers:
       tsx:
         specifier: ^4.21.0
         version: 4.21.0
+      typescript:
+        specifier: 5.6.3
+        version: 5.6.3
+      vitest:
+        specifier: 2.1.8
+        version: 2.1.8(@types/node@22.10.1)(lightningcss@1.30.1)(terser@5.46.2)
+
+  packages/match-session:
+    dependencies:
+      '@mahjong/bots':
+        specifier: workspace:*
+        version: link:../bots
+      '@mahjong/game-logic':
+        specifier: workspace:*
+        version: link:../game-logic
+      '@mahjong/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+    devDependencies:
       typescript:
         specifier: 5.6.3
         version: 5.6.3
