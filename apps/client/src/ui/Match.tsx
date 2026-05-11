@@ -12,8 +12,9 @@ import {
   tileId,
 } from '@mahjong/game-logic';
 import { BOT_LABELS, type BotKind, type PublicPlayer } from '@mahjong/protocol';
+import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { isSeatHost, useGame } from '../state/game';
@@ -83,6 +84,18 @@ export function Match() {
   const felt = FELT_SKINS[settings.felt];
   const seat = you !== null && you !== 'spectator' ? you : null;
   const isHost = isSeatHost(lobby, seat);
+
+  // "COPIED" pulse for the header-row Copy URL button used in the
+  // pre-game waiting room. Hoisted to the top of `Match` (rather than
+  // a subcomponent inside the waiting block) so the same hook order
+  // runs for every render regardless of `state.phase`. Unused outside
+  // the waiting phase, but the state is cheap.
+  const [joinUrlCopied, setJoinUrlCopied] = useState(false);
+  useEffect(() => {
+    if (!joinUrlCopied) return;
+    const t = setTimeout(() => setJoinUrlCopied(false), 1500);
+    return () => clearTimeout(t);
+  }, [joinUrlCopied]);
 
   // Seed `manualOrder` with the currently-displayed hand on the
   // suit/number → manual transition so the first render after the
@@ -239,6 +252,32 @@ export function Match() {
   }
 
   if (state.phase === 'waiting') {
+    const isLanHost = !!(
+      isHost &&
+      transport.joinInfo?.kind === 'lan' &&
+      transport.joinInfo.hostUrl &&
+      transport.matchCode
+    );
+    // Mirror `LanInviteCard`'s URL construction so the header-row copy
+    // button copies the same string guests would paste into a browser:
+    // `<host>/match?code=<CODE>`. Trailing slashes on the host URL are
+    // stripped to avoid `…//match?code=…`. Empty string when this user
+    // isn't the LAN host (button is hidden in that case).
+    const headerJoinUrl =
+      isLanHost && transport.joinInfo?.kind === 'lan'
+        ? `${transport.joinInfo.hostUrl.trim().replace(/\/$/, '')}/match?code=${encodeURIComponent(transport.matchCode ?? '')}`
+        : '';
+    const onCopyHeaderJoinUrl = async () => {
+      if (!headerJoinUrl) return;
+      try {
+        await Clipboard.setStringAsync(headerJoinUrl);
+        setJoinUrlCopied(true);
+      } catch {
+        // Clipboard access can be denied on non-HTTPS browsers or
+        // backgrounded apps — the LanInviteCard below renders the
+        // same URL with its own COPY/SHARE row as a fallback.
+      }
+    };
     return (
       <View style={{ flex: 1, backgroundColor: COLORS.cream }}>
         <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.cream }} edges={['top']}>
@@ -251,24 +290,76 @@ export function Match() {
               width: '100%',
             }}
           >
-            <Text
-              accessibilityRole="header"
-              style={{ fontSize: 28, fontWeight: '900', color: COLORS.ink }}
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12,
+                flexWrap: 'wrap',
+              }}
             >
-              Lobby
-            </Text>
+              <Text
+                accessibilityRole="header"
+                style={{ fontSize: 28, fontWeight: '900', color: COLORS.ink }}
+              >
+                Lobby
+              </Text>
+              {/* Header-row quick-copy of the LAN join URL. Sits next to
+               * the title so it's the first share affordance the host
+               * sees on landing in the waiting room — the full
+               * `LanInviteCard` below still has per-link COPY/SHARE
+               * controls for the browser URL + native deep link. */}
+              {isLanHost ? (
+                <Pressable
+                  onPress={onCopyHeaderJoinUrl}
+                  accessibilityRole="button"
+                  accessibilityLabel={joinUrlCopied ? 'Join URL copied' : 'Copy join URL'}
+                  style={({ pressed }) => ({
+                    backgroundColor: joinUrlCopied
+                      ? '#c2e2c5'
+                      : pressed
+                        ? COLORS.creamPressed
+                        : COLORS.creamLow,
+                    borderColor: joinUrlCopied ? '#2d8645' : COLORS.hairline,
+                    borderWidth: 1,
+                    borderRadius: 8,
+                    paddingVertical: 6,
+                    paddingHorizontal: 12,
+                  })}
+                >
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      fontWeight: '800',
+                      letterSpacing: 0.6,
+                      color: joinUrlCopied ? '#2d8645' : COLORS.ink,
+                    }}
+                  >
+                    {joinUrlCopied ? 'URL COPIED' : 'COPY JOIN URL'}
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
             <Text style={{ marginTop: 4, marginBottom: 12, fontSize: 13, color: COLORS.ink3 }}>
-              {isHost
-                ? 'Share the match code with friends. Start when everyone is ready.'
-                : 'Waiting for the host to start the match.'}
+              {isLanHost
+                ? 'Share the join URL with friends on the same Wi-Fi. Start when everyone is ready.'
+                : isHost
+                  ? 'Share the match code with friends. Start when everyone is ready.'
+                  : 'Waiting for the host to start the match.'}
             </Text>
-            {lobby ? <LobbyPreview lobby={lobby} matchCode={transport.matchCode} /> : null}
-            {isHost &&
-            transport.joinInfo?.kind === 'lan' &&
-            transport.matchCode &&
-            transport.joinInfo.hostUrl ? (
-              <LanInviteCard hostUrl={transport.joinInfo.hostUrl} matchCode={transport.matchCode} />
+            {/* Show the LAN invite URLs (with COPY/SHARE buttons) *above*
+             * the LobbyPreview so the host's first reflex on landing in
+             * the pre-game waiting room is to share the URL with guests
+             * — the lobby preview is useful but secondary while the
+             * other seats are still empty. */}
+            {isLanHost && transport.joinInfo?.kind === 'lan' ? (
+              <LanInviteCard
+                hostUrl={transport.joinInfo.hostUrl}
+                matchCode={transport.matchCode ?? ''}
+              />
             ) : null}
+            {lobby ? <LobbyPreview lobby={lobby} matchCode={transport.matchCode} /> : null}
             {lobby && isHost && seat !== null ? (
               <LobbySeatControls
                 players={lobby.players}

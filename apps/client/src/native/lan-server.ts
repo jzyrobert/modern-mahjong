@@ -18,9 +18,9 @@
  *   - On web (and Expo Go, where third-party modules don't ship),
  *     `requireOptionalNativeModule('LanServer')` returns `null`,
  *     `isLanServerAvailable()` returns `false`, and method calls
- *     throw the legacy "needs dev client" error. The lobby's
- *     `HostLanModal` falls through to manual URL entry, same as
- *     before autolinking landed.
+ *     throw the legacy "needs dev client" error. The lobby hides
+ *     the "Host LAN match" button entirely in that case (see
+ *     `canHostLan` in `Lobby.tsx`).
  */
 
 export {

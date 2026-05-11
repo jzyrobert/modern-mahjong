@@ -5,10 +5,16 @@ import { type ReactNode, useEffect, useState } from 'react';
 import { Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getDisplayName, setDisplayName } from '../../identity';
+import {
+  isLanServerAvailable,
+  advertise as lanAdvertise,
+  start as lanStart,
+  stop as lanStop,
+} from '../../native/lan-server';
+import { startLanHostBridge } from '../../net/lan-host-bridge';
 import { listHeaders } from '../../replay/storage';
 import { useGame } from '../../state/game';
 import { LESSONS, LESSON_ORDER } from '../../state/tutorial';
-import { HostLanModal } from '../HostLanModal';
 import { JoinLanModal } from '../JoinLanModal';
 import { GhostButton, PrimaryButton, TextField } from '../buttons';
 import { COLORS } from '../colors';
@@ -19,6 +25,13 @@ import { ModeCard, ModeGrid } from './ModeCard';
 import { ScatteredTiles } from './ScatteredTiles';
 import { BotIcon, BoxIcon, GlobeIcon, PlayIcon, TutorialIcon, WifiIcon } from './icons';
 
+// Embedded NanoHTTPD port the host's LAN server listens on. Matches the
+// legacy LanServer convention so any prior copy-pasted URLs from the
+// mobile app keep working. The native module falls back to a free port
+// if 7777 is already taken — the resolved port is what we read back
+// from `start()`.
+const HOST_PORT = 7777;
+
 /**
  * Top-level menu screen. Hero with the wind emblem + bilingual title
  * (`<LobbyHeader>`), three mode cards (Online / Practice / LAN) inside
@@ -26,10 +39,15 @@ import { BotIcon, BoxIcon, GlobeIcon, PlayIcon, TutorialIcon, WifiIcon } from '.
  * `LobbyPreview` of the current `useGame.lobby` once the user has
  * joined a match.
  *
- * `HostLanModal` / `JoinLanModal` open from the LAN card. On Android
- * dev/preview/production builds the host modal auto-populates its URL
- * via the autolinked `expo-lan-server` module; web / iOS / Expo Go
- * fall through to manual entry.
+ * The LAN card's "Host LAN match" button starts the embedded
+ * NanoHTTPD server (via the autolinked `expo-lan-server` module) and
+ * calls `transport.joinLan` immediately, so the host always takes
+ * seat 0. Previously the host went through a modal interstitial,
+ * which left a window during which a guest who already had the match
+ * code could connect first and claim seat 0 — see the regression note
+ * on `onHostLan` below. The lobby's `<LanInviteCard>` surfaces the
+ * shareable URL with copy/share buttons once the host lands in the
+ * pre-game waiting room.
  */
 export function Lobby() {
   const router = useRouter();
@@ -48,7 +66,8 @@ export function Lobby() {
   // only want to run it on first mount, not on every render.
   const [name, setName] = useState(() => getDisplayName());
   const [code, setCode] = useState('');
-  const [hostLanOpen, setHostLanOpen] = useState(false);
+  // null = idle, 'starting' = lanStart in flight, string = error blurb
+  const [hostStatus, setHostStatus] = useState<null | 'starting' | string>(null);
   const [joinLanOpen, setJoinLanOpen] = useState(false);
   const [replayCount, setReplayCount] = useState(0);
 
@@ -58,14 +77,52 @@ export function Lobby() {
     setReplayCount(listHeaders().length);
   }, []);
 
-  // Hide the "Host LAN match" button on web — there's no embedded
-  // server runtime in a browser tab, so even if the user pastes a
-  // URL the host flow can't actually serve a match. The expo-lan-server
-  // native module is autolinked into Android (and the iOS skeleton),
-  // so any non-web target keeps the button. Joining a LAN match
-  // *is* viable from a browser (the guest flow is plain WS), so the
-  // "Join LAN match" button stays for everyone.
-  const canHostLan = Platform.OS !== 'web';
+  // Hide the "Host LAN match" button when the embedded server module
+  // isn't loadable. That covers web (no NanoHTTPD runtime in a browser
+  // tab) and Expo Go (third-party native modules don't ship there).
+  // Android dev/preview/production builds autolink `expo-lan-server`
+  // so `isLanServerAvailable()` returns true and the host can start a
+  // real server. Joining a LAN match is plain WS and works everywhere,
+  // so the "Join LAN match" button stays unconditional.
+  const canHostLan = Platform.OS !== 'web' && isLanServerAvailable();
+
+  // Click handler for "Host LAN match". Starts the embedded server,
+  // wires the in-process MatchSession bridge, advertises on mDNS, and
+  // immediately joins the LAN as the host so the host always takes
+  // seat 0. Previously this opened a modal that showed the URL +
+  // match code and only joined once the user clicked "Start hosting"
+  // — but between the server going live and that click, any guest
+  // already holding the match code could connect first and claim
+  // seat 0, which left the actual host without host privileges in
+  // their own match.
+  //
+  // Errors (EADDRINUSE on a stale server, iOS skeleton "not
+  // implemented", network race) surface as an inline blurb under the
+  // button via `hostStatus`. Caller doesn't need to await — the
+  // transport's `joinLan` triggers the route change to /match via
+  // `app/index.tsx` once the first server message arrives.
+  const onHostLan = async () => {
+    if (hostStatus === 'starting') return;
+    setHostStatus('starting');
+    try {
+      const res = await lanStart({ port: HOST_PORT });
+      const hostUrl = res.addresses[0];
+      if (!hostUrl) {
+        await lanStop().catch(() => undefined);
+        setHostStatus('No LAN address found — are you on Wi-Fi?');
+        return;
+      }
+      startLanHostBridge();
+      const serviceName = getDisplayName() || 'Modern Mahjong host';
+      lanAdvertise({ serviceName, port: res.port }).catch(() => undefined);
+      const matchCode = generateMatchCode();
+      transport.joinLan(hostUrl, matchCode);
+      setHostStatus(null);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setHostStatus(`Couldn't start the embedded server: ${msg}`);
+    }
+  };
 
   return (
     // Outer cream-coloured View wraps the SafeAreaView so the
@@ -188,10 +245,17 @@ export function Lobby() {
               </InlineHint>
               <ButtonRow>
                 {canHostLan ? (
-                  <PrimaryButton onPress={() => setHostLanOpen(true)}>Host LAN match</PrimaryButton>
+                  <PrimaryButton onPress={onHostLan} disabled={hostStatus === 'starting'}>
+                    {hostStatus === 'starting' ? 'Starting host…' : 'Host LAN match'}
+                  </PrimaryButton>
                 ) : null}
                 <GhostButton onPress={() => setJoinLanOpen(true)}>Join LAN match</GhostButton>
               </ButtonRow>
+              {typeof hostStatus === 'string' && hostStatus !== 'starting' ? (
+                <Text style={{ fontSize: 12, color: '#b14d3a', fontWeight: '700', lineHeight: 16 }}>
+                  {hostStatus}
+                </Text>
+              ) : null}
             </ModeCard>
 
             <ModeCard
@@ -218,14 +282,6 @@ export function Lobby() {
             </View>
           ) : null}
         </ScrollView>
-        <HostLanModal
-          open={hostLanOpen}
-          onClose={() => setHostLanOpen(false)}
-          onHosted={(hostUrl, matchCode) => {
-            setHostLanOpen(false);
-            transport.joinLan(hostUrl, matchCode);
-          }}
-        />
         <JoinLanModal
           open={joinLanOpen}
           onClose={() => setJoinLanOpen(false)}
