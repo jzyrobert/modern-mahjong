@@ -69,6 +69,20 @@ interface TutorialState {
    *  called). Set only for user-facing lessons; the internal `_stub`
    *  smoke-test lesson skips it. */
   justCompleted: string | null;
+  /** Seed of the engine state when the user dismissed the opening
+   *  dice modal during a tutorial. Tutorials run on fixed seeds, so
+   *  pinning the seed here keeps the modal closed for the rest of
+   *  the lesson AND across the lesson-end → completion-prompt → leave
+   *  navigation (where `tutorialLessonId` is already null but the
+   *  match state still carries the same seed, so an open predicate
+   *  keyed solely on lesson id would let the modal re-pop on the
+   *  empty board). Cleared on `begin()` so a replay re-pops — the
+   *  reset has to happen *synchronously* before any DiceCeremony
+   *  render, which is why this lives here and not as local state in
+   *  the component (a `useEffect`-based clear runs post-commit, by
+   *  which time the open predicate has already evaluated against the
+   *  stale value and the modal stays hidden). */
+  dismissedTutorialSeed: number | null;
   begin(lessonId: string): void;
   advance(): void;
   dismiss(): void;
@@ -76,6 +90,11 @@ interface TutorialState {
    *  Used by the "Continue playing" / "Back to lobby" / "Next lesson"
    *  CTAs in the post-completion card. */
   dismissCompletion(): void;
+  /** Called by `<DiceCeremony>` when the user dismisses the opening
+   *  dice modal while a tutorial is active. Pins the lesson's seed
+   *  so the modal stays hidden post-dismissal even after the lesson
+   *  ends. See `dismissedTutorialSeed` above. */
+  setDismissedTutorialSeed(seed: number): void;
   /** Bump the nudge counter for the active step — UI subscribes to
    *  this and surfaces a transient toast when it changes. */
   nudge(): void;
@@ -85,6 +104,7 @@ export const useTutorial = create<TutorialState>((set, get) => ({
   active: null,
   lastNudge: null,
   justCompleted: null,
+  dismissedTutorialSeed: null,
   begin: (lessonId) => {
     if (!LESSONS[lessonId]) {
       throw new Error(`Unknown tutorial lesson: ${lessonId}`);
@@ -93,8 +113,17 @@ export const useTutorial = create<TutorialState>((set, get) => ({
     // prompt — even when the user picks "Next lesson" from the
     // prompt itself, the begin() that follows wipes the just-
     // completed marker so the new lesson's first step renders
-    // cleanly.
-    set({ active: { lessonId, stepIndex: 0 }, lastNudge: null, justCompleted: null });
+    // cleanly. Clears `dismissedTutorialSeed` for the same reason:
+    // a replay needs to re-pop the dice modal, and the only way to
+    // make that deterministic against the user's previous in-lesson
+    // dismissal is to wipe the pin synchronously here (before any
+    // DiceCeremony render).
+    set({
+      active: { lessonId, stepIndex: 0 },
+      lastNudge: null,
+      justCompleted: null,
+      dismissedTutorialSeed: null,
+    });
   },
   advance: () => {
     const { active } = get();
@@ -128,6 +157,7 @@ export const useTutorial = create<TutorialState>((set, get) => ({
   },
   dismiss: () => set({ active: null, lastNudge: null, justCompleted: null }),
   dismissCompletion: () => set({ justCompleted: null }),
+  setDismissedTutorialSeed: (seed) => set({ dismissedTutorialSeed: seed }),
   nudge: () => {
     const { active, lastNudge } = get();
     if (!active) return;
