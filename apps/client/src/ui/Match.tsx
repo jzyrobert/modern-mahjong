@@ -29,6 +29,7 @@ import type { Position } from './match/seatColor';
 import { type SeatPlacement, layoutFor } from './match/seatPlacement';
 import { FELT_SKINS } from './match/skins';
 import { useDeadlineCrossed, useSecondsUntil } from './match/useClaimCue';
+import { LanInviteCard } from './menu/LanInviteCard';
 import { LobbyPreview } from './menu/LobbyPreview';
 import { SEAT_WIND_GLYPH } from './winds';
 
@@ -262,6 +263,12 @@ export function Match() {
                 : 'Waiting for the host to start the match.'}
             </Text>
             {lobby ? <LobbyPreview lobby={lobby} matchCode={transport.matchCode} /> : null}
+            {isHost &&
+            transport.joinInfo?.kind === 'lan' &&
+            transport.matchCode &&
+            transport.joinInfo.hostUrl ? (
+              <LanInviteCard hostUrl={transport.joinInfo.hostUrl} matchCode={transport.matchCode} />
+            ) : null}
             {lobby && isHost && seat !== null ? (
               <LobbySeatControls
                 players={lobby.players}
