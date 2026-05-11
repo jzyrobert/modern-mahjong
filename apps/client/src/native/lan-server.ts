@@ -26,6 +26,7 @@
 export {
   addListener,
   advertise,
+  close,
   isLanServerAvailable,
   send,
   start,

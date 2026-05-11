@@ -1,5 +1,5 @@
+import { MatchSession, type Outbound } from '@mahjong/match-session';
 import { type WebSocket, WebSocketServer } from 'ws';
-import { MatchSession, type Outbound } from '../../../../apps/server/src/MatchSession.js';
 
 /**
  * In-process test-only WebSocket server that wraps the real `MatchSession`

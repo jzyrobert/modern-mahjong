@@ -1,8 +1,8 @@
+import { MatchSession, type MatchSessionSnapshot, type Outbound } from '@mahjong/match-session';
 import type { ServerMessage } from '@mahjong/protocol';
 import { type Connection, type ConnectionContext, Server, type WSMessage } from 'partyserver';
-import { MatchSession, type MatchSessionSnapshot, type Outbound } from './MatchSession.js';
 
-export { botByKind } from './MatchSession.js';
+export { botByKind } from '@mahjong/match-session';
 
 const STORAGE_KEY = 'session-snapshot';
 
