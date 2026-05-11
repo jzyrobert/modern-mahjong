@@ -98,8 +98,17 @@ export function Match() {
 
   const onAction = (action: Action) => transport.send(action);
   const onLeave = () => {
-    transport.leave();
+    // Order matters: navigate first, *then* tear the transport down.
+    // `app/match.tsx`'s reload-survival effect re-runs whenever
+    // `transport` or the URL params change. If we cleared the
+    // transport first, the next render would see `hasTransport=false`
+    // with `params.code` still set, and the effect would auto-rejoin
+    // the user back into the match they just left. Replacing the
+    // route first batches the URL change with the transport reset, so
+    // by the time the effect would re-run, `params.code` is `undefined`
+    // (and `MatchRoute` is unmounting anyway).
     router.replace('/');
+    transport.leave();
   };
 
   const placements = useMemo(

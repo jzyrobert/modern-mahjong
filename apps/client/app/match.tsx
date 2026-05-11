@@ -2,7 +2,7 @@ import { useTransport } from '@/src/net/transport-context';
 import { readSoloSnapshot } from '@/src/state/solo-persist';
 import { Match } from '@/src/ui/Match';
 import { useLocalSearchParams } from 'expo-router';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 /**
  * `/match` route entry. Wraps `<Match />` with reload-survival glue:
@@ -32,8 +32,24 @@ export default function MatchRoute() {
   const params = useLocalSearchParams<{ code?: string; host?: string; solo?: string }>();
   const transport = useTransport();
 
+  // Track whether this MatchRoute instance has ever seen a live
+  // transport. The reload-survival effect below only fires the
+  // auto-rejoin when `hasTransport` is false; without this guard,
+  // an explicit `transport.leave()` (e.g. from the pregame lobby's
+  // Leave button) flips `hasTransport` to false before the route
+  // change to `/` settles, and the effect re-fires with the URL's
+  // `params.code` still set — yanking the user right back into the
+  // match they just left. Once we've held a transport on this route,
+  // any subsequent `hasTransport=false` means the user explicitly
+  // left (or got disconnected); we should NOT auto-rejoin.
+  const everHadTransport = useRef(false);
+
   useEffect(() => {
-    if (transport.hasTransport) return;
+    if (transport.hasTransport) {
+      everHadTransport.current = true;
+      return;
+    }
+    if (everHadTransport.current) return;
     if (typeof params.code === 'string' && params.code.length > 0) {
       if (typeof params.host === 'string' && params.host.length > 0) {
         transport.joinLan(params.host, params.code);
