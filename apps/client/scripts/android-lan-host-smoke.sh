@@ -79,13 +79,25 @@ sleep 12
 "$ADB" shell screencap -p /sdcard/01.png
 "$ADB" pull /sdcard/01.png "$OUT_DIR/01-lobby.png" >/dev/null
 
-# The LAN card lives below the fold; scroll twice so the Host button
-# is reachable. The exact swipe distance doesn't matter — uiautomator
-# bounds are read fresh after each scroll.
-"$ADB" shell input swipe 540 1500 540 500 600
-sleep 1
-"$ADB" shell input swipe 540 1500 540 500 600
-sleep 1
+# The LAN card lives below the fold. The lobby has grown over time
+# (5 tutorial rows + a Replays card before the LAN card) so a fixed
+# scroll count is fragile — instead, scroll a few times and bail out
+# of the loop as soon as "Host LAN match"'s bounds resolve to a real
+# coordinate. uiautomator reports `[0,0][0,0]` for off-screen Views,
+# so without this check `tap` would click the screen corner and the
+# embedded-server assertion downstream would fail with a confusing
+# "modal never opened" message.
+echo "→ Scrolling until 'Host LAN match' is reachable"
+for attempt in 1 2 3 4 5 6; do
+  coords=$(center_of "Host LAN match" 2>/dev/null || true)
+  read -r cx cy <<<"$coords"
+  if [ -n "${cx:-}" ] && [ -n "${cy:-}" ] && [ "$cx" -gt 0 ] && [ "$cy" -gt 0 ]; then
+    echo "  reachable at $coords after $((attempt - 1)) scroll(s)"
+    break
+  fi
+  "$ADB" shell input swipe 540 1500 540 500 600
+  sleep 1
+done
 
 echo "→ Tap 'Host LAN match'"
 tap_center "Host LAN match"
