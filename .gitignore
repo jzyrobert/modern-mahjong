@@ -37,3 +37,6 @@ Thumbs.db
 
 # Claude Code per-user settings
 .claude/
+
+# Local LAN-host smoke artefacts (screenshots, UI dumps, logcat)
+apps/client/lan-host-smoke/

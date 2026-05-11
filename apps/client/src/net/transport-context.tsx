@@ -210,6 +210,11 @@ export function TransportProvider({ children }: { children: ReactNode }) {
     (hostUrl: string, code: string) => {
       recordJoin({ kind: 'lan', hostUrl, code });
       clearSoloSnapshot();
+      // Mirror `joinOnline`: tell the lobby's connection-status line
+      // which host we're trying so a failed connection surfaces the
+      // actual URL ("Tried http://192.168.1.42:7777") instead of the
+      // useless "Tried (no host)" fallback.
+      setResolvedHost(hostUrl);
       swap(
         createLanTransport({
           hostUrl,
