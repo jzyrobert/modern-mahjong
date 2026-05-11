@@ -71,11 +71,13 @@ the resulting APK ships without the web bundle. In that mode `serveHttp`
 returns a 404 with a hint pointing at this section — i.e. host-WS still
 works, but browser-join is disabled.
 
-`apps/client/.easignore` overrides the monorepo's root `.gitignore`
-(which excludes `dist/`) so EAS keeps the freshly-exported bundle in
-the build tarball. Without that file the prod APK builds clean but
-ships empty, since EAS would tar the project respecting `.gitignore`
-and strip `dist/` back out.
+The monorepo root's `.easignore` overrides the root `.gitignore`
+(which excludes `dist/` everywhere) so EAS keeps the freshly-exported
+bundle in the build tarball. Without that file the prod APK builds
+clean but ships empty, since EAS would tar the project respecting
+`.gitignore` and strip `dist/` back out. The file must live at the
+**monorepo root** — `eas build --local` in monorepo mode does not
+consult a workspace-local `apps/client/.easignore`.
 
 The host's URL serves:
 
