@@ -101,44 +101,29 @@ export function DiceCeremony() {
   const tutorialLessonId = tutorialActive?.lessonId ?? null;
   const tutorialAllowsDice =
     !tutorialActive || (LESSONS[tutorialActive.lessonId]?.showOpeningRolls ?? false);
-  // Per-tutorial-session dismissal. Tutorials run on fixed seeds, so
-  // the localStorage `dismissedSeed` memo would suppress the dice
-  // modal forever after the first run. Track dismissal by the
-  // currently-active lesson id instead: dismiss → store the lesson
-  // id; replay → a `null → lessonId` transition (handled below) clears
-  // the stored id, so the modal shows again. Outside tutorials this
-  // value stays null and the localStorage gate alone applies.
-  const [tutorialDismissedFor, setTutorialDismissedFor] = useState<string | null>(null);
-  // Reset per-session state when a tutorial begins (incl. replays).
-  // Without this, `tutorialDismissedFor` from a prior run would carry
-  // into a replay of the same lesson and silently suppress the modal;
-  // and the in-memory `dismissedSeed` pinned by the tutorial dismissal
-  // (see `dismiss` below) would stay set across sessions.
-  //
-  // Done at render time via the tracked-prev-state pattern (React's
-  // "Adjusting state based on props" idiom) rather than in a
-  // `useEffect`. An effect runs *after* commit, so on the first
-  // render following `begin(lessonId)` the `open` predicate below
-  // would still see the stale dismissal values and the modal would
-  // never appear — the previous run's pinned `dismissedSeed === 5`
-  // matched the lesson's fixed seed and gated `open` to false.
-  // Setting state during render triggers an immediate re-render
-  // with the cleared values; the equality check above the setters
-  // keeps it from looping.
-  const [prevLessonId, setPrevLessonId] = useState<string | null>(null);
-  if (tutorialLessonId !== prevLessonId) {
-    setPrevLessonId(tutorialLessonId);
-    if (tutorialLessonId !== null) {
-      setTutorialDismissedFor(null);
-      setDismissedSeed(readDismissedSeed());
-    }
-  }
+  // Tutorial-scoped dismissal. Tutorials run on fixed seeds and don't
+  // write to `localStorage`-backed `dismissedSeed` (a pin there would
+  // bleed into unrelated non-tutorial matches with the same RNG roll).
+  // Instead, the tutorial store carries a `dismissedTutorialSeed`
+  // pin that:
+  //   - is set when the user dismisses the modal during a lesson
+  //     (so the modal stays closed for the rest of that lesson AND
+  //      across the lesson-end → completion-prompt → leave dance,
+  //      where `tutorialLessonId` has already gone null but the same
+  //      seed would otherwise re-pop the modal on the empty board);
+  //   - is cleared synchronously by `begin()` (so a replay re-pops
+  //     the modal — the clear has to land before any DiceCeremony
+  //     render to beat the open predicate, which is why this lives
+  //     in the zustand store and not in component state cleared by
+  //     a useEffect).
+  const dismissedTutorialSeed = useTutorial((s) => s.dismissedTutorialSeed);
+  const setDismissedTutorialSeed = useTutorial((s) => s.setDismissedTutorialSeed);
   const open =
     !!rolls &&
     seed !== undefined &&
     tutorialAllowsDice &&
     seed !== dismissedSeed &&
-    (!tutorialLessonId || tutorialDismissedFor !== tutorialLessonId);
+    seed !== dismissedTutorialSeed;
   // `useFadeInOut` honours `useGame.settings.animations` — when the
   // user has reduced-motion on the overlay snaps in / out instead of
   // fading. The dismiss timer is unchanged so on-screen duration is
@@ -146,29 +131,23 @@ export function DiceCeremony() {
   const { fade, fadeOut } = useFadeInOut({ visible: open });
 
   // Fade out then commit the dismissal. In a tutorial session the
-  // dismissal is keyed by lesson id (cleared on the next replay);
-  // outside tutorials it persists to localStorage so a reload
-  // (solo / online / LAN) honours it. Shared between the
-  // auto-dismiss timer and the tap-to-dismiss handler.
+  // dismissal pins `dismissedTutorialSeed` in the tutorial store
+  // (cleared synchronously on the next `begin()`); outside tutorials
+  // it persists to localStorage so a reload (solo / online / LAN)
+  // honours it. Shared between the auto-dismiss timer and the
+  // tap-to-dismiss handler.
   const dismiss = useCallback(
     (s: number) => {
       fadeOut(() => {
         if (tutorialLessonId) {
-          setTutorialDismissedFor(tutorialLessonId);
-          // Also pin the seed in-memory so the modal stays closed
-          // once the tutorial ends and the lesson-id gate stops
-          // applying — without this, finishing the basics lesson
-          // reopened the dice modal. Skip the localStorage write:
-          // tutorials use fixed seeds and persisting them would
-          // bleed into unrelated non-tutorial matches.
-          setDismissedSeed(s);
+          setDismissedTutorialSeed(s);
         } else {
           setDismissedSeed(s);
           writeDismissedSeed(s);
         }
       });
     },
-    [fadeOut, tutorialLessonId],
+    [fadeOut, tutorialLessonId, setDismissedTutorialSeed],
   );
 
   // While a lesson step targets the dice ceremony, suspend the
