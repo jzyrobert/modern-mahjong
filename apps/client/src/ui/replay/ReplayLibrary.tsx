@@ -41,7 +41,7 @@ export function ReplayLibrary() {
 
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.cream }}>
-      <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.cream }} edges={['top']}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.cream }} edges={['top', 'bottom']}>
         <ScrollView
           style={{ flex: 1 }}
           contentContainerStyle={{ paddingBottom: 40, paddingHorizontal: 16, paddingTop: 14 }}

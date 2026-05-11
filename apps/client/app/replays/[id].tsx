@@ -25,7 +25,7 @@ export default function ReplayDetail() {
 
   if (!record) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.cream }} edges={['top']}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.cream }} edges={['top', 'bottom']}>
         <View
           style={{
             flex: 1,
@@ -77,7 +77,7 @@ export default function ReplayDetail() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.cream }} edges={['top']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.cream }} edges={['top', 'bottom']}>
       <PlaybackProvider record={record}>
         <View
           style={{

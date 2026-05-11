@@ -148,7 +148,7 @@ export function Lobby() {
     // `contentStyle` shows through. Mirrors the same pattern in
     // `MobileShell.tsx`.
     <View style={{ flex: 1, backgroundColor: '#f1eadc' }}>
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#f1eadc' }} edges={['top']}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#f1eadc' }} edges={['top', 'bottom']}>
         <LobbyWatermark />
         <ScatteredTiles />
         <ScrollView
