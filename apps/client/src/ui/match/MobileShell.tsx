@@ -153,7 +153,7 @@ export function MobileShell(props: MobileShellProps) {
   const showCode = matchCode !== null && matchCode !== 'SOLO';
   return (
     <View style={{ flex: 1, backgroundColor: felt.top }}>
-      <SafeAreaView style={{ flex: 1, backgroundColor: felt.top }} edges={['top']}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: felt.top }} edges={['top', 'bottom']}>
         <View
           style={{
             flexDirection: 'row',

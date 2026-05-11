@@ -205,7 +205,7 @@ export function Match() {
       // so scrolling doesn't reveal the Stack's default content
       // background as a stripe. Same pattern as `MobileShell`.
       <View style={{ flex: 1, backgroundColor: COLORS.cream }}>
-        <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.cream }} edges={['top']}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.cream }} edges={['top', 'bottom']}>
           <View
             style={{
               flex: 1,
@@ -280,7 +280,7 @@ export function Match() {
     };
     return (
       <View style={{ flex: 1, backgroundColor: COLORS.cream }}>
-        <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.cream }} edges={['top']}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.cream }} edges={['top', 'bottom']}>
           <ScrollView
             style={{ flex: 1 }}
             contentContainerStyle={{

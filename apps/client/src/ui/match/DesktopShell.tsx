@@ -160,7 +160,7 @@ export function DesktopShell(props: DesktopShellProps) {
     // safe-area inset (iPad home indicator on tablet-width desktop
     // shells); same pattern as `MobileShell` and `Lobby`.
     <View style={{ flex: 1, backgroundColor: COLORS.cream }}>
-      <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.cream }} edges={['top']}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.cream }} edges={['top', 'bottom']}>
         <ScrollView
           style={{ flex: 1 }}
           contentContainerStyle={{

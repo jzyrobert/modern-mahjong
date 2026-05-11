@@ -34,7 +34,7 @@ interface TargetRegistryApi {
    *  the halo at the same offset in its own coordinate space (and
    *  also adds the host shell's safe-area top inset to undo Android
    *  Fabric's habit of returning measureInWindow positions without
-   *  including the host `<SafeAreaView edges=['top']>` padding). */
+   *  including the host `<SafeAreaView edges=['top', 'bottom']>` padding). */
   rootRef: RefObject<View | null>;
 }
 
@@ -188,7 +188,7 @@ export function TutorialTarget({ id, children, enabled = true }: TutorialTargetP
     // with edge-to-edge the root's own window origin is negative
     // (the activity content frame sits above where the status bar
     // overlays), and (b) the host shell's `<SafeAreaView
-    // edges=['top']>` pads its content but `measureInWindow` reports
+    // edges=['top', 'bottom']>` pads its content but `measureInWindow` reports
     // the position WITHOUT that padding folded in. Subtracting the
     // root cancels (a); `<TutorialOverlay>` adds the safe-area top
     // inset to cancel (b).

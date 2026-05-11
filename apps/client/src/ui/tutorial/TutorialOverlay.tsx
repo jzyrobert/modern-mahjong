@@ -69,7 +69,7 @@ export function TutorialOverlay() {
   // The target's rect is registered in window coordinates relative
   // to the registry root. On Android, RN's `measureInWindow` reports
   // positions without including the safe-area top inset that the
-  // host shell's `<SafeAreaView edges=['top']>` adds as padding —
+  // host shell's `<SafeAreaView edges=['top', 'bottom']>` adds as padding —
   // so a target inside that SafeAreaView reads ~status-bar-height
   // higher than where it actually paints. Add the safe-area top
   // back here so the halo lands on the visible target. (`insets.top`
