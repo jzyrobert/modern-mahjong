@@ -23,10 +23,11 @@ import { Platform } from 'react-native';
  *                               host from `window.location.origin`
  *                               and treat the URL as a LAN join.
  *                               This is what makes the single URL the
- *                               host shares from `LanInviteCard` /
- *                               `HostLanModal` work for browser
- *                               guests on the same Wi-Fi without
- *                               needing the app installed.
+ *                               host shares from `LanInviteCard` (or
+ *                               the lobby's header-row Copy URL
+ *                               button) work for browser guests on
+ *                               the same Wi-Fi without needing the
+ *                               app installed.
  *   /match?code=ABCDE&host=…  → LAN (host URL must still be reachable)
  *   /match?solo=1             → solo (rebuild from localStorage
  *                               snapshot in `solo-persist.ts`)

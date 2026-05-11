@@ -15,11 +15,13 @@ import {
 } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 import { getDisplayName, getPlayerId } from '../identity';
+import { stop as lanStop, unadvertise as lanUnadvertise } from '../native/lan-server';
 import { useRecorder } from '../replay/recorder';
 import { playDiscard } from '../sound';
 import { useGame } from '../state/game';
 import { type SoloSnapshot, clearSoloSnapshot, saveSoloSnapshot } from '../state/solo-persist';
 import { LESSONS, useTutorial } from '../state/tutorial';
+import { getActiveLanHostBridge, stopLanHostBridge } from './lan-host-bridge';
 import { type SoloTransportControls, createSoloTransport } from './solo-transport';
 import {
   type Transport,
@@ -388,6 +390,19 @@ export function TransportProvider({ children }: { children: ReactNode }) {
     transport?.send({ t: 'leave' });
     transport?.close();
     clearSoloSnapshot();
+    // If we're the LAN host (the in-process bridge is wired), tear
+    // down the embedded NanoHTTPD server + mDNS advertisement here.
+    // Without this, the server keeps running after the host leaves
+    // and the next `Host LAN match` either rebinds onto another port
+    // (orphaning the old one) or fails with EADDRINUSE on 7777. The
+    // bridge check is cheap and only true when this client started a
+    // server in `Lobby.tsx`'s `onHostLan`, so it's a no-op for guests
+    // and for online/solo matches.
+    if (getActiveLanHostBridge() !== null) {
+      stopLanHostBridge();
+      lanUnadvertise().catch(() => undefined);
+      lanStop().catch(() => undefined);
+    }
     teardown();
   }, [transport, teardown]);
 
