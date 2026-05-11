@@ -27,6 +27,21 @@ android {
     lintOptions {
         abortOnError false
     }
+
+    // AAPT's default `ignoreAssetsPattern` strips any folder whose name
+    // matches `<dir>_*` OR `.*` from the merged assets — which silently
+    // drops Expo's `_expo/` (the JS bundle + `.routes.json` route
+    // manifest) and `assets/__node_modules/.pnpm/…` (per-package static
+    // asset trees) when we stage the web export under
+    // `assets/lan-bundle/`. The result is a LAN guest fetching
+    // `/_expo/static/js/…` and getting a 404, so the page loads the
+    // splash background but never boots the React app. Drop both
+    // clauses; the `dist/` output produced by `expo export -p web` is
+    // already a clean build artefact (no `.git`, `.svn`, `.DS_Store`
+    // etc. to worry about).
+    aaptOptions {
+        ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:!CVS:!thumbs.db:!picasa.ini:!*~'
+    }
 }
 
 // Stage the host app's Expo Web export (the output of
