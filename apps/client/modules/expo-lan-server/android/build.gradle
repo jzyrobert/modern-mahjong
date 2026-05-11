@@ -2,6 +2,17 @@ apply plugin: 'com.android.library'
 apply plugin: 'kotlin-android'
 apply plugin: 'expo-module-gradle-plugin'
 
+import javax.inject.Inject
+import org.gradle.api.DefaultTask
+import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.file.FileSystemOperations
+import org.gradle.api.tasks.InputDirectory
+import org.gradle.api.tasks.Optional
+import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.PathSensitive
+import org.gradle.api.tasks.PathSensitivity
+import org.gradle.api.tasks.TaskAction
+
 group = 'expo.modules.lanserver'
 version = '0.0.0'
 
@@ -16,42 +27,58 @@ android {
     lintOptions {
         abortOnError false
     }
+}
 
-    // Surface the host app's Expo Web export at runtime under
-    // `assets/lan-bundle/` so `WSDServer.serveHttp` can serve it to
-    // guests that hit the host's URL in a browser. The export is the
-    // output of `pnpm --filter @mahjong/client export-web` and must
-    // exist before `eas build`; we copy `apps/client/dist/` into a
-    // namespaced staging directory so the files land under
-    // `assets/lan-bundle/index.html` etc., not at the assets root
-    // (avoids collisions with the host app's own web export). When
-    // the export hasn't been run, the staged directory is empty and
-    // the APK simply ships without a bundle — `serveHttp` falls back
-    // to a friendly 404 so the failure mode is "guests can't
-    // browser-join" rather than a build failure.
-    sourceSets {
-        main {
-            assets.srcDirs += file("$buildDir/intermediates/lan-bundle-assets")
+// Stage the host app's Expo Web export (the output of
+// `pnpm --filter @mahjong/client export-web`) under `assets/lan-bundle/`
+// so the Kotlin NanoHTTPD module can serve it to browser guests on the
+// LAN. Registered through AGP's variant source API so every downstream
+// task (mergeAssets, packageAssets, lint model writers, AAR bundling)
+// gets an implicit dependency on the staging task — required since
+// Gradle 8.14 hard-fails on undeclared task inputs.
+abstract class StageLanBundleAssets extends DefaultTask {
+    @InputDirectory
+    @Optional
+    @PathSensitive(PathSensitivity.RELATIVE)
+    abstract DirectoryProperty getBundleSource()
+
+    @OutputDirectory
+    abstract DirectoryProperty getOutputDir()
+
+    @Inject
+    abstract FileSystemOperations getFs()
+
+    @TaskAction
+    void stage() {
+        def out = outputDir.get().asFile
+        fs.delete { delete(out) }
+        out.mkdirs()
+        if (bundleSource.isPresent()) {
+            fs.copy {
+                from(bundleSource)
+                into(new File(out, 'lan-bundle'))
+            }
         }
     }
 }
 
-def stageLanBundleAssets = tasks.register('stageLanBundleAssets', Copy) {
-    from(file("$projectDir/../../../dist"))
-    into(file("$buildDir/intermediates/lan-bundle-assets/lan-bundle"))
-    // dist may not exist if `expo export -p web` hasn't been run; the
-    // task is a no-op in that case.
-    onlyIf { file("$projectDir/../../../dist").exists() }
-    // Don't fail if dist is empty.
-    includeEmptyDirs = false
-}
-
-afterEvaluate {
-    tasks.matching { it.name.startsWith('merge') && it.name.endsWith('Assets') }.configureEach {
-        dependsOn stageLanBundleAssets
-    }
-    tasks.matching { it.name.startsWith('package') && it.name.endsWith('Assets') }.configureEach {
-        dependsOn stageLanBundleAssets
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        def stageTask = tasks.register(
+            "stage${variant.name.capitalize()}LanBundleAssets",
+            StageLanBundleAssets
+        ) {
+            // dist/ may not exist if `expo export -p web` hasn't been
+            // run; the task is a no-op in that case and the APK simply
+            // ships without a bundle (serveHttp falls back to a friendly
+            // 404 so the failure mode is "guests can't browser-join"
+            // rather than a build failure).
+            def distDir = file("$projectDir/../../../dist")
+            if (distDir.exists()) {
+                bundleSource.set(distDir)
+            }
+        }
+        variant.sources.assets.addGeneratedSourceDirectory(stageTask) { it.outputDir }
     }
 }
 
