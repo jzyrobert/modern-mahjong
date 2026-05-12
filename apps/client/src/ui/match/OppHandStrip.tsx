@@ -5,10 +5,15 @@ import { usePulse } from '../animations';
 import { COLORS as SHARED_COLORS } from '../colors';
 import { WIND_GLYPH } from '../winds';
 import { MeldStrip } from './MeldStrip';
+import { type Position, SEAT_COLOR } from './seatColor';
 
 interface OppHandStripProps {
   seat: Seat;
   seatWind: Wind;
+  /** Perimeter slot this opponent occupies — drives the seat-coloured
+   *  ring around the wind glyph so the strip's identity hue matches
+   *  the underline on this seat's discards in `SharedDiscardPool`. */
+  position: Position;
   lobby: LobbyState | null;
   /** This seat's exposed melds, rendered inline on the right of the
    *  strip. Empty list → the meld area is left blank. The previous
@@ -59,6 +64,7 @@ const COLORS = {
 export function OppHandStrip({
   seat,
   seatWind,
+  position,
   lobby,
   melds,
   isActive,
@@ -99,17 +105,34 @@ export function OppHandStrip({
         transform: isActive ? [{ scale }] : undefined,
       }}
     >
-      <View style={{ alignItems: 'center', minWidth: 64 }}>
-        <Text
+      <View style={{ alignItems: 'center', minWidth: 64, gap: 1 }}>
+        <View
           style={{
-            fontFamily: 'Noto Serif TC',
-            fontSize: 14,
-            color: isActive ? 'white' : COLORS.red,
-            fontWeight: '700',
+            width: 24,
+            height: 24,
+            borderRadius: 12,
+            borderWidth: 2,
+            // Stays seat-coloured even on the active red fill — the
+            // three opponent palette entries (jade / mauve / sky) are
+            // all distinct from `redHot`, and keeping the ring colour
+            // stable means the user can still cross-reference a discard
+            // underline against the strip while it's lit up.
+            borderColor: SEAT_COLOR[position],
+            alignItems: 'center',
+            justifyContent: 'center',
           }}
         >
-          {WIND_GLYPH[seatWind]}
-        </Text>
+          <Text
+            style={{
+              fontFamily: 'Noto Serif TC',
+              fontSize: 14,
+              color: isActive ? 'white' : COLORS.red,
+              fontWeight: '700',
+            }}
+          >
+            {WIND_GLYPH[seatWind]}
+          </Text>
+        </View>
         <Text
           style={{
             fontSize: 10,
