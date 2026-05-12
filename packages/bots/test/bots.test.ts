@@ -71,11 +71,20 @@ describe('bots — self-play smoke test', () => {
         ({ state } = reduce(state, { t: 'discard', seat, tile }));
       } else if (state.phase === 'awaitingClaims') {
         for (const seat of SEATS) {
+          // The engine now auto-resolves the moment every seat is
+          // submitted (no soft-floor gate), so a single declareClaim
+          // can flip state to `turn`. Skip seats that are already
+          // submitted (pre-passed in the discard reducer) and bail
+          // the loop the instant the window closes.
+          if (state.phase !== 'awaitingClaims' || !state.pendingClaims) break;
           if (seat === state.lastDiscard?.from) continue;
+          if (state.pendingClaims.submitted[seat] !== undefined) continue;
           const claim = heuristicBot.pickClaim({ state, seat });
           ({ state } = reduce(state, { t: 'declareClaim', seat, claim }));
         }
-        ({ state } = reduce(state, { t: 'resolveClaims', nowMs: Date.now() }));
+        if (state.phase === 'awaitingClaims') {
+          ({ state } = reduce(state, { t: 'resolveClaims', nowMs: Date.now() }));
+        }
       }
     }
     expect(state.phase).toBe('resolved');

@@ -764,8 +764,58 @@ export class MatchSession {
    */
   private runBots(nowMs: number): Outbound[] {
     const out: Outbound[] = [];
-    for (let i = 0; i < 16; i++) {
+    // Cap the per-call iteration count so a buggy bot can't pin a DO
+    // request indefinitely. The cap was 16 back when every discard
+    // yielded via `phase: 'awaitingClaims'` (one bot turn per call —
+    // the alarm re-entered for the next). The claim-window auto-
+    // resolve now folds an uncontested discard back into `phase:
+    // 'turn'` in the same reduce, so a `botPaceMs: 0` session can
+    // chain many bot turns through one call. 256 is comfortably
+    // above the ~100 turns in a typical hand, so a full all-bots
+    // hand finishes in a single fireAlarm without losing the safety
+    // net against runaway loops.
+    for (let i = 0; i < 256; i++) {
       const state = this.state;
+      // Synchronously drain a bot claim if one's pending. This is
+      // what lets a host-vs-bots match advance off a discard the
+      // moment a bot is the only seat with a meaningful claim —
+      // pre-fix the bot's claim was deferred to the soft-floor
+      // alarm 3s later (and an `easy`-mode bot's `pickClaim` returns
+      // `pass`, so the round was just sitting on a guaranteed
+      // outcome). Mirrors the solo transport's claim-drain loop.
+      if (state.phase === 'awaitingClaims' && state.pendingClaims) {
+        const pending = state.pendingClaims;
+        let polledBot = false;
+        for (const seat of SEATS) {
+          if (seat === pending.discard.from) continue;
+          if (pending.submitted[seat] !== undefined) continue;
+          const bot = this.seats[seat].bot;
+          if (!bot) continue;
+          let claim: Claim;
+          try {
+            claim = bot.pickClaim({ state: this.state, seat });
+          } catch (e) {
+            console.error('bot pickClaim threw', e);
+            claim = { kind: 'pass' };
+          }
+          try {
+            out.push(this.apply({ t: 'declareClaim', seat, claim }));
+          } catch (e) {
+            if (e instanceof IllegalActionError) {
+              out.push(this.apply({ t: 'declareClaim', seat, claim: { kind: 'pass' } }));
+            } else {
+              throw e;
+            }
+          }
+          polledBot = true;
+          break;
+        }
+        if (polledBot) continue;
+        // Window still open with only humans pending — bail out
+        // and let the alarm / human action drive the next step.
+        this.botActionDeadline = null;
+        return out;
+      }
       if (state.phase !== 'turn') {
         this.botActionDeadline = null;
         return out;
