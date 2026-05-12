@@ -1,10 +1,12 @@
-import { type Tile as MTile, type Seat, seatWindFor, tileId, tileLabel } from '@mahjong/game-logic';
+import { type Seat, seatWindFor, tileId, tileLabel } from '@mahjong/game-logic';
+import { useMemo } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { type PlaybackPov, usePlayback } from '../../replay/playback';
 import { Hand } from '../Hand';
 import { Tile } from '../Tile';
 import { COLORS } from '../colors';
 import { MeldStrip } from '../match/MeldStrip';
+import { type Position, SEAT_COLOR } from '../match/seatColor';
 import { SEAT_WIND_GLYPH, WIND_GLYPH } from '../winds';
 import { Scrubber } from './Scrubber';
 
@@ -145,14 +147,13 @@ function playerLineFor(header: ReturnType<typeof usePlayback>['header']): string
 function DiscardPool() {
   const playback = usePlayback();
   const state = playback.state;
-  // Show all discards merged from every seat, in chronological order.
-  const allDiscards: Array<{ seat: Seat; tile: MTile; idx: number }> = [];
-  for (const seat of SEATS) {
-    state.discards[seat].forEach((tile, idx) => {
-      allDiscards.push({ seat, tile, idx });
-    });
-  }
-  if (allDiscards.length === 0) {
+  const order = state.discardOrder;
+  const pov = playback.pov;
+  const localSeat = playback.header.localSeat;
+  // Memoised so a scrub between frames doesn't re-allocate the map —
+  // both inputs are stable across the vast majority of frames.
+  const seatToPosition = useMemo(() => positionMapFor(pov, localSeat), [pov, localSeat]);
+  if (order.length === 0) {
     return (
       <View
         style={{
@@ -190,28 +191,53 @@ function DiscardPool() {
           marginBottom: 4,
         }}
       >
-        DISCARDS · {allDiscards.length}
+        DISCARDS · {order.length}
       </Text>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
-        {allDiscards.map(({ seat, tile, idx }) => {
-          const id = tileId(tile);
+        {order.map((entry, i) => {
+          const id = tileId(entry.tile);
           const isLast = id === lastId;
           return (
-            <View
-              key={`${seat}-${idx}-${id}`}
-              style={{
-                borderColor: isLast ? COLORS.red : 'transparent',
-                borderWidth: 1.5,
-                borderRadius: 4,
-              }}
-            >
-              <Tile tile={tile} width={22} height={30} />
+            <View key={`${i}-${id}`} style={{ alignItems: 'center', gap: 2 }}>
+              <View
+                style={{
+                  borderColor: isLast ? COLORS.red : 'transparent',
+                  borderWidth: 1.5,
+                  borderRadius: 4,
+                }}
+              >
+                <Tile tile={entry.tile} width={22} height={30} />
+              </View>
+              <View
+                style={{
+                  width: 18,
+                  height: 2,
+                  borderRadius: 1,
+                  backgroundColor: SEAT_COLOR[seatToPosition[entry.from]],
+                }}
+              />
             </View>
           );
         })}
       </View>
     </View>
   );
+}
+
+// Mirror the live match's bottom-seat-is-you convention so the underline
+// colour for a given player's discards matches their badge / hand strip.
+// When the user is watching from a specific seat (POV picker), that seat
+// anchors at the bottom; otherwise fall back to the recorded local seat,
+// then to East (seat 0) for spectator recordings.
+const POSITION_CYCLE: readonly Position[] = ['bottom', 'right', 'top', 'left'];
+function positionMapFor(pov: PlaybackPov, localSeat: Seat | 'spectator'): Record<Seat, Position> {
+  const anchor: Seat = pov !== 'all' ? pov : localSeat !== 'spectator' ? localSeat : 0;
+  return {
+    0: POSITION_CYCLE[(0 - anchor + 4) % 4]!,
+    1: POSITION_CYCLE[(1 - anchor + 4) % 4]!,
+    2: POSITION_CYCLE[(2 - anchor + 4) % 4]!,
+    3: POSITION_CYCLE[(3 - anchor + 4) % 4]!,
+  };
 }
 
 function SeatRow({
