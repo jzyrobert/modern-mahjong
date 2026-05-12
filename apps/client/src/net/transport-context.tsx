@@ -42,6 +42,13 @@ export type JoinInfo =
   | { kind: 'lan'; hostUrl: string; code: string }
   | { kind: 'solo' };
 
+/** The match code we stamp into the recorder header for a given join.
+ *  Solo sessions don't have a server-assigned code, so they all share
+ *  the sentinel `'SOLO'`. */
+function matchCodeFor(join: JoinInfo): string {
+  return join.kind === 'solo' ? 'SOLO' : join.code;
+}
+
 interface TransportContextValue {
   matchCode: string | null;
   hasTransport: boolean;
@@ -475,7 +482,22 @@ export function TransportProvider({ children }: { children: ReactNode }) {
     // Track whether the recorder draft has been started for this transport
     // session. The first `state` message begins the draft; subsequent
     // `state` messages (reconnect) update the latest frame instead.
-    let recorderStarted = false;
+    //
+    // Seed from the existing draft so a transport swap mid-match (e.g.,
+    // AppState foreground rejoin re-establishing the socket) keeps
+    // appending to the same draft rather than wiping it with a fresh
+    // `startMatch` — that bug left online recordings starting from the
+    // reconnect point with all pre-background frames gone. We only treat
+    // the draft as continuing this transport when it's for the same
+    // match; an explicit join to a different code falls through to
+    // `startMatch`, which replaces the stale draft.
+    const draftAtMount = useRecorder.getState().draft;
+    const joinAtMount = reconnectInfoRef.current;
+    let recorderStarted =
+      draftAtMount !== null &&
+      joinAtMount !== null &&
+      draftAtMount.header.matchCode === matchCodeFor(joinAtMount) &&
+      draftAtMount.header.joinKind === joinAtMount.kind;
     return transport.onMessage((m: ServerMessage) => {
       // Any inbound that mutates engine / lobby state needs to flow back
       // into the solo snapshot so a reload of `/match?solo=1` rebuilds
@@ -495,7 +517,7 @@ export function TransportProvider({ children }: { children: ReactNode }) {
             recorderStartMatch({
               state: m.state,
               you: m.you,
-              matchCode: join.kind === 'solo' ? 'SOLO' : join.code,
+              matchCode: matchCodeFor(join),
               joinKind: join.kind,
               rules: m.state.rules,
             });
