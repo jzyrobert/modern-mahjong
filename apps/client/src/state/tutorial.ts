@@ -150,7 +150,10 @@ export const useTutorial = create<TutorialState>((set, get) => ({
       // and the framework spec asserts the overlay tears down
       // entirely once stub's last predicate fires.
       const justCompleted = active.lessonId === '_stub' ? null : active.lessonId;
-      set({ active: null, lastNudge: null, justCompleted });
+      // Pin the seed so DiceCeremony stays hidden under the completion
+      // prompt and after "Continue playing" clears `justCompleted`.
+      const seed = useGame.getState().state?.seed ?? null;
+      set({ active: null, lastNudge: null, justCompleted, dismissedTutorialSeed: seed });
       return;
     }
     set({ active: { lessonId: active.lessonId, stepIndex: nextIndex } });
