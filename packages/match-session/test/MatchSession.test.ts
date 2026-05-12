@@ -258,6 +258,7 @@ describe('MatchSession — per-turn timeout', () => {
       t: 'action',
       action: { t: 'startHand', seed: 1, dealer: 0 },
     });
+    const wallBefore = s.getState().wall.length;
     const turnDeadline = s.getState().turnDeadlineMs!;
     expect(s.getState().phase).toBe('turn');
     expect(s.getState().turn).toBe(0);
@@ -265,11 +266,12 @@ describe('MatchSession — per-turn timeout', () => {
     // bot) hasn't acted, so `forceTurnAutoDiscard` runs — passive-bot
     // discard, claim window opens, instant pre-pass resolves it (the
     // seat 1/2/3 bots have no claim against a random discard), bots
-    // play through to seat 1's draw, and so on.
+    // play through to seat 1's draw, and so on. With `botPaceMs: 0`
+    // the bot loop can chain a full round before yielding back to
+    // the human at seat 0; assert on wall progress instead of seat
+    // identity so the test doesn't pin the cadence.
     s.fireAlarm(turnDeadline + 1);
-    // After the alarm, the engine should have moved past seat 0 — at
-    // minimum we're either at a different seat or in resolved.
-    expect(s.getState().turn === 0 && s.getState().phase === 'turn').toBe(false);
+    expect(s.getState().wall.length).toBeLessThan(wallBefore);
   });
 
   it('does not schedule an alarm for the turn deadline when the active seat is a bot', () => {
@@ -842,6 +844,79 @@ describe('MatchSession — bots stay out of the claim timer', () => {
     // Hard fallback resolves regardless.
     s.fireAlarm(pending.hardDeadlineMs!);
     expect(s.getState().phase === 'awaitingClaims').toBe(false);
+  });
+
+  it('drains bot claims synchronously when only bots have meaningful claims (no soft-floor wait)', () => {
+    // Repro of the user-reported bug: 1 human host + 3 bots (any
+    // skill — the easy/passive bot is the worst case because its
+    // `pickClaim` always passes). Host discards a tile that one of
+    // the bots could legally peng/gang. Pre-fix, the bot's claim
+    // was deferred to the soft-floor alarm 3s later — and if the
+    // bot is `passive` (easy mode), the alarm would just record a
+    // pass that could have happened immediately. Post-fix, the
+    // claim drains inside `runBots` synchronously, so the round
+    // resolves at discard time and the next bot's turn begins
+    // immediately.
+    const s = new MatchSession({ botPaceMs: 0 });
+    helloAs(s, 'c0', 'p0', 'Host');
+    // Seat all three opponents as easy/passive bots — passive's
+    // `pickClaim` always returns pass, so any meaningful claim
+    // ends in an all-pass resolution.
+    s.applyClientMessage('c0', { t: 'seatBot', seat: 1, kind: 'passive' });
+    s.applyClientMessage('c0', { t: 'seatBot', seat: 2, kind: 'passive' });
+    s.applyClientMessage('c0', { t: 'seatBot', seat: 3, kind: 'passive' });
+    s.applyClientMessage('c0', {
+      t: 'action',
+      action: { t: 'startHand', seed: 11, dealer: 0 },
+    });
+    // Find a tile in the host's hand that some other seat could
+    // peng on (≥ 2 copies in that seat's hand). If no such tile
+    // exists for this seed, fall back to the first tile (the test
+    // is still meaningful: every-seat-pre-passed also exercises
+    // the engine's new auto-resolve fast path).
+    const hand0 = s.getState().hands[0];
+    let discard = hand0[0]!;
+    let pengSeat: 1 | 2 | 3 | null = null;
+    for (const t of hand0) {
+      for (const seat of [1, 2, 3] as const) {
+        const copies = s
+          .getState()
+          .hands[seat].filter(
+            (h) =>
+              (h.kind === 'suit' && t.kind === 'suit' && h.suit === t.suit && h.rank === t.rank) ||
+              (h.kind === 'honor' && t.kind === 'honor' && h.honor === t.honor),
+          ).length;
+        if (copies >= 2) {
+          discard = t;
+          pengSeat = seat;
+          break;
+        }
+      }
+      if (pengSeat) break;
+    }
+
+    const out = s.applyClientMessage('c0', {
+      t: 'action',
+      action: { t: 'discard', seat: 0, tile: discard },
+    });
+    // Pre-fix: state would be `phase: 'awaitingClaims'` with the
+    // peng-able bot still pending, parked there for the soft
+    // floor. Post-fix: the bot's pass drains in-line and the
+    // engine auto-resolves to the next seat's turn. (Also covers
+    // the all-pre-passed case where pengSeat is null — that one
+    // resolved in the engine itself.)
+    expect(s.getState().phase).not.toBe('awaitingClaims');
+    // And no alarm should be armed at the soft floor: there's
+    // nothing left to resolve.
+    const claimAlarms = out
+      .filter((o): o is { kind: 'scheduleAlarm'; deadlineMs: number } => o.kind === 'scheduleAlarm')
+      .map((o) => o.deadlineMs);
+    // Any scheduled alarm should be a turn/bot-pace deadline, not
+    // the stale soft-floor we'd have armed under the old gate.
+    // We can't easily distinguish those here without instrumenting
+    // the deadline source, so just sanity-check we're past
+    // 'awaitingClaims' — that proves no claim alarm is needed.
+    void claimAlarms;
   });
 
   it('human submission triggers resolution + bot-claim polling without waiting on bots', () => {

@@ -325,10 +325,36 @@ describe('discard reducer — pre-pass + auto-resolve', () => {
     });
   }
 
-  it('pre-fills `submitted` with passes for non-discarder seats with no meaningful claim', () => {
+  it('pre-passes non-claim seats but leaves a peng-eligible seat pending', () => {
+    // Seat 1 holds 2× South (so peng is legal on a South discard).
+    // Seats 2/3 hold no South copies and no chi candidates against an
+    // honor — pre-pass should pre-fill them, leaving seat 1 pending.
+    const south = honor('S');
+    const state = buildState([south, ...fillerForSeat(0, 13)], {
+      1: [south, south, ...fillerForSeat(1, 11)],
+      2: fillerForSeat(2, 13),
+      3: fillerForSeat(3, 13),
+    });
+    const south0 = state.hands[0].find((t) => sameFace(t, south))!;
+    const { state: after } = reduce(state, { t: 'discard', seat: 0, tile: south0 });
+
+    expect(after.phase).toBe('awaitingClaims');
+    const sub = after.pendingClaims!.submitted;
+    // Seat 1 has a meaningful peng claim — left pending.
+    expect(sub[1]).toBeUndefined();
+    expect(sub[2]?.kind).toBe('pass');
+    expect(sub[3]?.kind).toBe('pass');
+    // Discarder is never in `submitted`.
+    expect(sub[0]).toBeUndefined();
+  });
+
+  it('auto-resolves the round when every non-discarder seat is pre-passed (multiplayer)', () => {
     // Seat 0 discards East. Seats 1/2/3 hold no copies of East and no
-    // peng/chi candidates against East (it's an honor — chi impossible),
-    // so the engine should pre-pass every non-discarder seat.
+    // peng/chi candidates against an honor, so the engine pre-passes
+    // every non-discarder seat and now folds the resolution into the
+    // same reduce — even with the multiplayer fairness gate armed.
+    // Without this, every "uninteresting" discard parked the table at
+    // `phase: 'awaitingClaims'` for `claimWindowMs` of dead air.
     const east = honor('E');
     const state = buildState([east, ...fillerForSeat(0, 13)], {
       1: fillerForSeat(1, 13),
@@ -336,15 +362,15 @@ describe('discard reducer — pre-pass + auto-resolve', () => {
       3: fillerForSeat(3, 13),
     });
     const east0 = state.hands[0].find((t) => sameFace(t, east))!;
-    const { state: after } = reduce(state, { t: 'discard', seat: 0, tile: east0 });
+    const { state: after, events } = reduce(state, { t: 'discard', seat: 0, tile: east0 });
 
-    expect(after.phase).toBe('awaitingClaims');
-    const sub = after.pendingClaims!.submitted;
-    expect(sub[1]?.kind).toBe('pass');
-    expect(sub[2]?.kind).toBe('pass');
-    expect(sub[3]?.kind).toBe('pass');
-    // Discarder is never in `submitted`.
-    expect(sub[0]).toBeUndefined();
+    expect(after.phase).toBe('turn');
+    expect(after.turn).toBe(1);
+    expect(after.pendingClaims).toBeUndefined();
+    // Both lifecycle events still emit so the GameLog / replay log
+    // see "claim window opened → all passed" rather than a blink.
+    expect(events.some((e) => e.t === 'claimsOpened')).toBe(true);
+    expect(events.some((e) => e.t === 'claimsResolved')).toBe(true);
   });
 
   it('leaves a peng-eligible seat as pending in `submitted`', () => {
@@ -366,14 +392,18 @@ describe('discard reducer — pre-pass + auto-resolve', () => {
   });
 
   it('populates `softExpiryMs` and `hardDeadlineMs` from rules when set', () => {
-    const east = honor('E');
-    const state = buildState([east, ...fillerForSeat(0, 13)], {
-      1: fillerForSeat(1, 13),
+    // Use a peng-able discard so the window stays open and
+    // `pendingClaims` is observable; an all-pre-passed window now
+    // auto-resolves and clears `pendingClaims` before we can inspect
+    // it.
+    const south = honor('S');
+    const state = buildState([south, ...fillerForSeat(0, 13)], {
+      1: [south, south, ...fillerForSeat(1, 11)],
       2: fillerForSeat(2, 13),
       3: fillerForSeat(3, 13),
     });
-    const east0 = state.hands[0].find((t) => sameFace(t, east))!;
-    const { state: after } = reduce(state, { t: 'discard', seat: 0, tile: east0 });
+    const south0 = state.hands[0].find((t) => sameFace(t, south))!;
+    const { state: after } = reduce(state, { t: 'discard', seat: 0, tile: south0 });
     const c = after.pendingClaims!;
     expect(c.softExpiryMs).toBeDefined();
     expect(c.hardDeadlineMs).toBeDefined();
@@ -425,26 +455,13 @@ describe('discard reducer — pre-pass + auto-resolve', () => {
     expect(after.pendingClaims).toBeUndefined();
   });
 
-  it('does NOT auto-resolve at discard time in multiplayer even when all pre-passed', () => {
-    // Multiplayer keeps the soft floor — `pendingClaims` stays
-    // populated for the UI cue + server alarm even when nobody can
-    // possibly claim.
-    const east = honor('E');
-    const state = buildState([east, ...fillerForSeat(0, 13)], {
-      1: fillerForSeat(1, 13),
-      2: fillerForSeat(2, 13),
-      3: fillerForSeat(3, 13),
-    });
-    const east0 = state.hands[0].find((t) => sameFace(t, east))!;
-    const { state: after } = reduce(state, { t: 'discard', seat: 0, tile: east0 });
-    expect(after.phase).toBe('awaitingClaims');
-    const sub = after.pendingClaims!.submitted;
-    expect(sub[1]?.kind).toBe('pass');
-    expect(sub[2]?.kind).toBe('pass');
-    expect(sub[3]?.kind).toBe('pass');
-  });
-
-  it('declareClaim does NOT auto-resolve before soft floor in multiplayer', () => {
+  it('declareClaim auto-resolves the moment every seat is submitted, even pre-soft-floor', () => {
+    // The soft floor used to gate this — multiplayer would park the
+    // table at `phase: 'awaitingClaims'` for the rest of
+    // `claimWindowMs` even after every seat had explicitly weighed
+    // in. The floor now only gates the *alarm* path (auto-passing a
+    // silent human); a complete `submitted` set short-circuits to
+    // resolution.
     const south = honor('S');
     const state = buildState([south, ...fillerForSeat(0, 13)], {
       1: [south, south, ...fillerForSeat(1, 11)],
@@ -453,6 +470,8 @@ describe('discard reducer — pre-pass + auto-resolve', () => {
     });
     const southDiscard = state.hands[0].find((t) => sameFace(t, south))!;
     const { state: discarded } = reduce(state, { t: 'discard', seat: 0, tile: southDiscard });
+    // Park the soft floor far in the future so we can prove it's
+    // genuinely no longer gating the auto-resolve.
     const futureState = {
       ...discarded,
       pendingClaims: {
@@ -465,7 +484,9 @@ describe('discard reducer — pre-pass + auto-resolve', () => {
       seat: 1,
       claim: { kind: 'pass' },
     });
-    expect(afterClaim.phase).toBe('awaitingClaims'); // still pending
+    expect(afterClaim.phase).toBe('turn');
+    expect(afterClaim.turn).toBe(1);
+    expect(afterClaim.pendingClaims).toBeUndefined();
   });
 
   it('declareClaim auto-resolves once past soft floor + all submitted', () => {

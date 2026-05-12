@@ -301,14 +301,18 @@ export function discard(
     { t: 'discarded', seat, tile },
     { t: 'claimsOpened', deadlineMs },
   ];
-  // Solo case: when no fairness gate is set AND every non-discarder
-  // seat was pre-passed, fold the resolution into this same reduce.
-  // (Multiplayer keeps the soft floor — even an all-pre-passed window
-  // pauses for `claimWindowMs` so the table doesn't visually flicker
-  // through claims.)
+  // When every non-discarder seat was pre-passed (= literally nobody
+  // has a meaningful claim against this tile), fold the resolution
+  // into this same reduce regardless of whether a fairness gate is
+  // armed. The soft floor exists to give *humans with options* time
+  // to think; an all-pre-passed window has no human option to wait
+  // on, so the 3s pause is pure dead air. Solo never armed the gate
+  // in the first place; multiplayer used to wait the floor here on
+  // the theory that the felt would otherwise "flicker through" the
+  // claim UI — but the claim UI never renders when every seat has
+  // already auto-passed, so there's nothing to flicker through.
   const allIn = SEATS.every((s) => s === seat || submitted[s]);
-  const noFairnessGate = hardDeadlineMs === undefined;
-  if (allIn && noFairnessGate) {
+  if (allIn) {
     const resolved = resolveAndApply(baseState, now);
     return { state: resolved.state, events: [...events, ...resolved.events] };
   }
@@ -349,16 +353,19 @@ export function declareClaim(
     ...state,
     pendingClaims: { ...state.pendingClaims, submitted },
   };
-  // Auto-resolve when every non-discarder seat is in `submitted` and
-  // either the soft floor has passed or the rules opt out of one
-  // (solo: `hardDeadlineMs === undefined` ⇒ no minimum wait, since
-  // there are no other humans to be fair to).
+  // Auto-resolve the moment every non-discarder seat is in
+  // `submitted`. The soft floor existed to give humans with options
+  // time to react, but `allIn` already proves every seat (human and
+  // bot) has weighed in — there's nothing left for the floor to
+  // protect, so resolve right now instead of parking the table at
+  // `phase: 'awaitingClaims'` for `claimWindowMs` of dead air. (The
+  // floor still gates the *alarm* path in `MatchSession.fireAlarm`,
+  // which is where it matters: a human who hasn't clicked yet
+  // shouldn't be auto-passed before the soft floor.)
   const discardFrom = state.pendingClaims.discard.from;
   const allIn = SEATS.every((s) => s === discardFrom || submitted[s]);
   const now = Date.now();
-  const pastSoftFloor = now >= state.pendingClaims.deadlineMs;
-  const noFairnessGate = state.pendingClaims.hardDeadlineMs === undefined;
-  if (allIn && (pastSoftFloor || noFairnessGate)) {
+  if (allIn) {
     return resolveAndApply(newState, now);
   }
   return { state: newState, events: [] };
@@ -583,14 +590,14 @@ export function declareGangPromoted(
   };
   const events: Event[] = [{ t: 'claimsOpened', deadlineMs }];
 
-  // Solo: when no fairness gate is set AND every non-gang seat was
-  // pre-passed (= no robbers, but we already short-circuited above
-  // so this only fires when robbers exist *and* the rules opt out
-  // of the soft floor — robbers must still submit). Mirrors the
-  // discard reducer's auto-resolve fast path.
+  // Mirror the `discard` reducer's auto-resolve fast path. The
+  // `robbers.length === 0` early-return above already covers the
+  // "nobody could rob" case, so in practice this branch only fires
+  // if some future rules tweak pre-passes every robber up front;
+  // keep the symmetry with the discard reducer so the two stay
+  // aligned if the pre-pass shape changes.
   const allIn = SEATS.every((s) => s === seat || submitted[s]);
-  const noFairnessGate = hardDeadlineMs === undefined;
-  if (allIn && noFairnessGate) {
+  if (allIn) {
     const resolved = resolveAndApply(baseState, now);
     return { state: resolved.state, events: [...events, ...resolved.events] };
   }
