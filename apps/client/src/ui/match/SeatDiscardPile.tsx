@@ -25,7 +25,9 @@ interface SeatDiscardPileProps {
 }
 
 const HALO = '#dc9f4f';
-const HALO_STYLE = {
+/** Live-claim-target border. Also used by `SharedDiscardPool` to mark
+ *  the same tile in the centre pool view. */
+export const DISCARD_HALO_STYLE = {
   boxShadow: `0px 0px 6px ${HALO}b3`,
   borderWidth: 1.5,
   borderColor: HALO,
@@ -91,7 +93,7 @@ export function SeatDiscardPile({
               style={{
                 width: tileH,
                 height: tileW,
-                ...(isLatest && HALO_STYLE),
+                ...(isLatest && DISCARD_HALO_STYLE),
               }}
             >
               <View
@@ -121,7 +123,7 @@ export function SeatDiscardPile({
             key={`${id}-${i}`}
             style={{
               transform: [{ rotate: `${rotate}deg` }],
-              ...(isLatest && HALO_STYLE),
+              ...(isLatest && DISCARD_HALO_STYLE),
             }}
           >
             <Tile tile={t} flipId={`tile-${id}`} elevation="discard" width={tileW} height={tileH} />

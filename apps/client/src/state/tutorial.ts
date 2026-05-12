@@ -150,15 +150,18 @@ export const useTutorial = create<TutorialState>((set, get) => ({
       // and the framework spec asserts the overlay tears down
       // entirely once stub's last predicate fires.
       const justCompleted = active.lessonId === '_stub' ? null : active.lessonId;
-      // Pin the seed so DiceCeremony stays hidden under the completion
-      // prompt and after "Continue playing" clears `justCompleted`.
       const seed = useGame.getState().state?.seed ?? null;
       set({ active: null, lastNudge: null, justCompleted, dismissedTutorialSeed: seed });
       return;
     }
     set({ active: { lessonId: active.lessonId, stepIndex: nextIndex } });
   },
-  dismiss: () => set({ active: null, lastNudge: null, justCompleted: null }),
+  // `dismissedTutorialSeed` clears too — otherwise a tutorial-completed
+  // pin can survive into the lobby and (under Playwright's fixed
+  // `__MAHJONG_TEST_SEED__`) suppress the dice modal in a follow-on
+  // non-tutorial match whose seed happens to match.
+  dismiss: () =>
+    set({ active: null, lastNudge: null, justCompleted: null, dismissedTutorialSeed: null }),
   dismissCompletion: () => set({ justCompleted: null }),
   setDismissedTutorialSeed: (seed) => set({ dismissedTutorialSeed: seed }),
   nudge: () => {

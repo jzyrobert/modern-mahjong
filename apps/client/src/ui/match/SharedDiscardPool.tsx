@@ -2,6 +2,7 @@ import type { GameState, Tile as MTile, Seat } from '@mahjong/game-logic';
 import { tileId } from '@mahjong/game-logic';
 import { Text, View } from 'react-native';
 import { Tile } from '../Tile';
+import { DISCARD_HALO_STYLE } from './SeatDiscardPile';
 import { type Position, SEAT_COLOR } from './seatColor';
 
 interface SharedDiscardPoolProps {
@@ -64,16 +65,7 @@ export function SharedDiscardPool({
               gap: 2,
             }}
           >
-            <View
-              style={{
-                ...(live && {
-                  boxShadow: '0px 0px 6px rgba(220,159,79,0.7)',
-                  borderWidth: 1.5,
-                  borderColor: '#dc9f4f',
-                  borderRadius: 4,
-                }),
-              }}
-            >
+            <View style={live ? DISCARD_HALO_STYLE : undefined}>
               <Tile tile={entry.tile} width={TILE_W} height={TILE_H} />
             </View>
             <View
