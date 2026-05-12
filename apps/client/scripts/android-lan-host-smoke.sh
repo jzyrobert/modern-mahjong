@@ -85,8 +85,8 @@ sleep 12
 # of the loop as soon as "Host LAN match"'s bounds resolve to a real
 # coordinate. uiautomator reports `[0,0][0,0]` for off-screen Views,
 # so without this check `tap` would click the screen corner and the
-# embedded-server assertion downstream would fail with a confusing
-# "modal never opened" message.
+# downstream assertion would fail waiting for a /match navigation
+# that never happened.
 echo "→ Scrolling until 'Host LAN match' is reachable"
 for attempt in 1 2 3 4 5 6; do
   coords=$(center_of "Host LAN match" 2>/dev/null || true)
@@ -101,54 +101,49 @@ done
 
 echo "→ Tap 'Host LAN match'"
 tap_center "Host LAN match"
-sleep 6
-"$ADB" shell screencap -p /sdcard/02.png
-"$ADB" pull /sdcard/02.png "$OUT_DIR/02-host-modal.png" >/dev/null
 
-# The modal's status copy flips to "Embedded server live on port …"
-# once `LanServer.start()` resolves. Without that the WS bridge can't
-# accept connections, so this is the first must-pass assertion.
-"$ADB" shell uiautomator dump /sdcard/02.xml >/dev/null
-"$ADB" pull /sdcard/02.xml "$OUT_DIR/02.xml" >/dev/null 2>&1
-if ! grep -q "Embedded server live on port" "$OUT_DIR/02.xml"; then
-  echo "::error::Host LAN modal opened but the embedded server never reported a port"
-  "$ADB" logcat -d > "$OUT_DIR/host-modal.log"
-  exit 1
-fi
-
-echo "→ Tap 'Start hosting'"
-tap_center "Start hosting"
-
-# Status flow: Start hosting → joinLan → WS opens → host receives
-# state → /match navigation → "In lobby" pre-game waiting room.
-# 10s is enough on a TCG-emulated AVD; KVM-accelerated hosts land
-# under 2s. We re-poll the UI tree instead of trusting a fixed
-# sleep so the script doesn't flake on slow runners.
-echo "→ Waiting for the pre-game lobby"
+# Status flow: tap → onHostLan() starts the embedded server, wires
+# the in-process MatchSession bridge, advertises on mDNS, and calls
+# `transport.joinLan` — which navigates to /match and lands the host
+# in the pre-game waiting room (header reads "Lobby"). On failure,
+# `hostStatus` surfaces an inline error blurb under the button on
+# the menu screen ("Couldn't start the embedded server: …" or "No
+# LAN address found — are you on Wi-Fi?"); we treat both as fast-
+# fail signals so the smoke doesn't burn its 30s budget waiting for
+# a navigation that won't happen. We re-poll the UI tree instead of
+# trusting a fixed sleep so the script doesn't flake on slow
+# runners (TCG-emulated AVDs land in ~10s; KVM-accelerated hosts
+# under 2s).
+echo "→ Waiting for the pre-game waiting room"
 ok=""
 for i in $(seq 1 30); do
   sleep 1
   "$ADB" shell uiautomator dump /sdcard/p.xml >/dev/null 2>&1 || continue
   "$ADB" pull /sdcard/p.xml "$OUT_DIR/post.xml" >/dev/null 2>&1
-  if grep -q "In lobby" "$OUT_DIR/post.xml"; then ok="lobby"; break; fi
-  if grep -q "Couldn.t reach the match server" "$OUT_DIR/post.xml"; then ok="toast"; break; fi
+  if grep -q 'text="Lobby"' "$OUT_DIR/post.xml"; then ok="lobby"; break; fi
+  if grep -q "Couldn.t start the embedded server" "$OUT_DIR/post.xml"; then ok="server-fail"; break; fi
+  if grep -q "No LAN address found" "$OUT_DIR/post.xml"; then ok="no-lan"; break; fi
 done
 
 "$ADB" shell screencap -p /sdcard/03.png
-"$ADB" pull /sdcard/03.png "$OUT_DIR/03-after-start.png" >/dev/null
-"$ADB" logcat -d > "$OUT_DIR/post-start.log"
+"$ADB" pull /sdcard/03.png "$OUT_DIR/03-after-host.png" >/dev/null
+"$ADB" logcat -d > "$OUT_DIR/post-host.log"
 
 case "${ok:-}" in
   lobby)
-    echo "LAN host smoke OK — host reached the pre-game lobby"
+    echo "LAN host smoke OK — host reached the pre-game waiting room"
     exit 0
     ;;
-  toast)
-    echo "::error::Host saw 'Couldn't reach the match server' instead of the pre-game lobby"
+  server-fail)
+    echo "::error::Host saw 'Couldn't start the embedded server' instead of the pre-game waiting room"
+    exit 1
+    ;;
+  no-lan)
+    echo "::error::Host saw 'No LAN address found' — emulator/device is not on Wi-Fi"
     exit 1
     ;;
   *)
-    echo "::error::Neither the lobby nor the error toast appeared within 30s"
+    echo "::error::Neither the waiting room nor an inline error appeared within 30s"
     exit 1
     ;;
 esac
