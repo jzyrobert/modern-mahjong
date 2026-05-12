@@ -154,10 +154,22 @@ function PlayerRow({
             </Text>
           ) : null}
         </View>
-        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
-          <Text style={{ fontFamily: 'Noto Serif TC', fontSize: 13, color: COLORS.red }}>
-            {WIND_GLYPH[seatWind]}
-          </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <View
+            style={{
+              width: 22,
+              height: 22,
+              borderRadius: 11,
+              borderWidth: 1.5,
+              borderColor: RELATIVE_COLOR[relativeKey],
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Text style={{ fontFamily: 'Noto Serif TC', fontSize: 13, color: COLORS.red }}>
+              {WIND_GLYPH[seatWind]}
+            </Text>
+          </View>
           <Text style={{ fontSize: 11, color: COLORS.ink3, fontWeight: '700' }}>
             {WIND_NAME[seatWind]} · seat {seat}
           </Text>

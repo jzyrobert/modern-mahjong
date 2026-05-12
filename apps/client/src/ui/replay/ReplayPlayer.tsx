@@ -25,14 +25,28 @@ const SEATS: readonly Seat[] = [0, 1, 2, 3];
  */
 export function ReplayPlayer() {
   const playback = usePlayback();
-  const state = playback.state;
 
   // Order seats so the local player ends up at the bottom of the
   // vertical stack — matches the live MobileShell convention. When the
   // local seat is `'spectator'`, fall back to natural seat order
   // (East → North).
   const localSeat = playback.header.localSeat;
+  const pov = playback.pov;
   const orderedSeats = useOrderedSeats(localSeat);
+  // Seat-keyed colour palette: the wind-glyph ring on each `SeatRow`
+  // and the underline on its discards share the same hue so the
+  // discard pool reads as "this came from that player". Mirrors the
+  // live perimeter `SEAT_COLOR` keying via `positionMapFor` (POV
+  // anchors to the bottom seat).
+  const seatColor = useMemo<Record<Seat, string>>(() => {
+    const positions = positionMapFor(pov, localSeat);
+    return {
+      0: SEAT_COLOR[positions[0]],
+      1: SEAT_COLOR[positions[1]],
+      2: SEAT_COLOR[positions[2]],
+      3: SEAT_COLOR[positions[3]],
+    };
+  }, [pov, localSeat]);
 
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.cream }}>
@@ -41,9 +55,15 @@ export function ReplayPlayer() {
         contentContainerStyle={{ paddingBottom: 12, paddingHorizontal: 10, gap: 8 }}
       >
         <Header />
-        <DiscardPool />
+        <DiscardPool seatColor={seatColor} />
         {orderedSeats.map((seat) => (
-          <SeatRow key={seat} seat={seat} pov={playback.pov} isLocal={seat === localSeat} />
+          <SeatRow
+            key={seat}
+            seat={seat}
+            pov={pov}
+            isLocal={seat === localSeat}
+            seatColor={seatColor[seat]}
+          />
         ))}
         <EventStrip />
       </ScrollView>
@@ -144,15 +164,10 @@ function playerLineFor(header: ReturnType<typeof usePlayback>['header']): string
   return parts.join('  ·  ');
 }
 
-function DiscardPool() {
+function DiscardPool({ seatColor }: { seatColor: Record<Seat, string> }) {
   const playback = usePlayback();
   const state = playback.state;
   const order = state.discardOrder;
-  const pov = playback.pov;
-  const localSeat = playback.header.localSeat;
-  // Memoised so a scrub between frames doesn't re-allocate the map —
-  // both inputs are stable across the vast majority of frames.
-  const seatToPosition = useMemo(() => positionMapFor(pov, localSeat), [pov, localSeat]);
   if (order.length === 0) {
     return (
       <View
@@ -213,7 +228,7 @@ function DiscardPool() {
                   width: 18,
                   height: 2,
                   borderRadius: 1,
-                  backgroundColor: SEAT_COLOR[seatToPosition[entry.from]],
+                  backgroundColor: seatColor[entry.from],
                 }}
               />
             </View>
@@ -244,10 +259,12 @@ function SeatRow({
   seat,
   pov,
   isLocal,
+  seatColor,
 }: {
   seat: Seat;
   pov: PlaybackPov;
   isLocal: boolean;
+  seatColor: string;
 }) {
   const playback = usePlayback();
   const state = playback.state;
@@ -276,18 +293,28 @@ function SeatRow({
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <Text
+        <View
           style={{
-            fontFamily: 'Noto Serif TC',
-            fontSize: 16,
-            color: COLORS.red,
-            fontWeight: '700',
-            minWidth: 22,
-            textAlign: 'center',
+            width: 26,
+            height: 26,
+            borderRadius: 13,
+            borderWidth: 2,
+            borderColor: seatColor,
+            alignItems: 'center',
+            justifyContent: 'center',
           }}
         >
-          {WIND_GLYPH[seatWind]}
-        </Text>
+          <Text
+            style={{
+              fontFamily: 'Noto Serif TC',
+              fontSize: 14,
+              color: COLORS.red,
+              fontWeight: '700',
+            }}
+          >
+            {WIND_GLYPH[seatWind]}
+          </Text>
+        </View>
         <View style={{ flex: 1 }}>
           <Text style={{ fontSize: 13, fontWeight: '900', color: COLORS.ink }}>
             {name}
