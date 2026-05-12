@@ -25,6 +25,12 @@ interface SeatDiscardPileProps {
 }
 
 const HALO = '#dc9f4f';
+const HALO_STYLE = {
+  boxShadow: `0px 0px 6px ${HALO}b3`,
+  borderWidth: 1.5,
+  borderColor: HALO,
+  borderRadius: 4,
+} as const;
 
 /**
  * One seat's discard pile, oriented for that seat's view of the table.
@@ -71,21 +77,51 @@ export function SeatDiscardPile({
       {tiles.map((t, i) => {
         const id = tileId(t);
         const isLatest = latestId === id;
-        // The seat-orientation rotation lives on this wrapper (rather
-        // than on `<Tile>`) so the latest-discard halo border carries
-        // the same rotation as the tile underneath it.
+        // Vertical piles: the wrapper takes the rotated bounds and the
+        // unrotated Tile sits absolutely inside. Without this the
+        // wrapper would consume tileH of column-flex stride for a tile
+        // that's only tileW tall after rotation, baking an
+        // (tileH − tileW) px phantom gap between adjacent tiles.
+        if (isVertical) {
+          const offset = (tileH - tileW) / 2;
+          return (
+            <View
+              // biome-ignore lint/suspicious/noArrayIndexKey: discard order is append-only and stable; tiles can repeat so we composite with i
+              key={`${id}-${i}`}
+              style={{
+                width: tileH,
+                height: tileW,
+                ...(isLatest && HALO_STYLE),
+              }}
+            >
+              <View
+                style={{
+                  position: 'absolute',
+                  left: offset,
+                  top: -offset,
+                  width: tileW,
+                  height: tileH,
+                  transform: [{ rotate: `${rotate}deg` }],
+                }}
+              >
+                <Tile
+                  tile={t}
+                  flipId={`tile-${id}`}
+                  elevation="discard"
+                  width={tileW}
+                  height={tileH}
+                />
+              </View>
+            </View>
+          );
+        }
         return (
           <View
-            // biome-ignore lint/suspicious/noArrayIndexKey: discard order is append-only and stable; tiles can repeat (multiple of the same face) so we composite with i
+            // biome-ignore lint/suspicious/noArrayIndexKey: discard order is append-only and stable; tiles can repeat so we composite with i
             key={`${id}-${i}`}
             style={{
               transform: [{ rotate: `${rotate}deg` }],
-              ...(isLatest && {
-                boxShadow: `0px 0px 6px ${HALO}b3`,
-                borderWidth: 1.5,
-                borderColor: HALO,
-                borderRadius: 4,
-              }),
+              ...(isLatest && HALO_STYLE),
             }}
           >
             <Tile tile={t} flipId={`tile-${id}`} elevation="discard" width={tileW} height={tileH} />

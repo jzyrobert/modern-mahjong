@@ -2,6 +2,7 @@ import { tileId } from '@mahjong/game-logic';
 import { useEffect, useState } from 'react';
 import { Animated, Pressable, Text, View } from 'react-native';
 import { nameForSeat, useGame } from '../state/game';
+import { useTutorial } from '../state/tutorial';
 import { PULSE_TEMPO, useFadeInOut, usePulse } from './animations';
 import { COLORS } from './colors';
 import { DISMISS_MS } from './timing';
@@ -18,7 +19,11 @@ export function WinCelebration() {
   const lobby = useGame((s) => s.lobby);
   const [dismissed, setDismissed] = useState(false);
   const isWin = !!result && result.kind === 'win';
-  const visibleForFade = isWin && !dismissed;
+  // Suppress while the tutorial completion prompt is up. The
+  // DISMISS_MS timer below keeps running, so by the time the prompt
+  // is dismissed the celebration has fade-cleared itself.
+  const tutorialJustCompleted = useTutorial((s) => s.justCompleted);
+  const visibleForFade = isWin && !dismissed && !tutorialJustCompleted;
   const { fade, fadeOut } = useFadeInOut({ visible: visibleForFade });
 
   // Content-derived key for the current result. Multiplayer hosts

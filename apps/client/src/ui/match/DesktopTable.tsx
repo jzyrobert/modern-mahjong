@@ -757,7 +757,7 @@ function CenterDiscards({
             {...tileProps}
           />
         </View>
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>{centerHud}</View>
+        <View style={{ flex: 1 }} />
         <View style={{ width: dims.sideCellWidth, alignItems: 'center' }}>
           <SeatDiscardPile
             tiles={discards[byPos.right.seat]}
@@ -779,6 +779,27 @@ function CenterDiscards({
           />
         </TutorialTarget>
       </View>
+      {/* Rendered as an absolute overlay rather than a child of the
+          middle flex cell — that cell's cross-axis width clamped the
+          tsumo button below its intrinsic width and the lesson halo
+          only covered half of it. `box-none` keeps the discard piles
+          beneath tappable. */}
+      {centerHud ? (
+        <View
+          pointerEvents="box-none"
+          style={{
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            right: 0,
+            bottom: 0,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          {centerHud}
+        </View>
+      ) : null}
     </View>
   );
 }
