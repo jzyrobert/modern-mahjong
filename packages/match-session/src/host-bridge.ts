@@ -160,6 +160,10 @@ export class LanHostBridge {
           break;
         case 'closeConnection':
           this.openConnections.delete(out.connectionId);
+          // `close` rejects when the native side has already torn the
+          // socket down (e.g. the peer dropped just before we asked
+          // to close it). Swallow — the connection is gone either
+          // way, which is the only invariant the caller cares about.
           await this.native.close({ id: out.connectionId }).catch(() => undefined);
           break;
         case 'scheduleAlarm':
