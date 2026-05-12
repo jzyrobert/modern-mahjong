@@ -391,6 +391,7 @@ function SeatRow({
     <OppHandStrip
       seat={placement.seat}
       seatWind={placement.seatWind}
+      position={placement.position}
       lobby={lobby}
       melds={state.melds[placement.seat]}
       isActive={isActive}
