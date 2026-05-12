@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Pressable, Modal as RNModal, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS as SHARED_COLORS } from './colors';
 
 interface ModalProps {
@@ -49,6 +50,7 @@ export function Modal({
   placement = 'center',
 }: ModalProps) {
   const isBottom = placement === 'bottom';
+  const insets = useSafeAreaInsets();
   return (
     <RNModal
       visible={open}
@@ -56,6 +58,7 @@ export function Modal({
       animationType={isBottom ? 'slide' : 'fade'}
       onRequestClose={onClose}
       statusBarTranslucent
+      navigationBarTranslucent
     >
       <Pressable
         style={{
@@ -63,7 +66,10 @@ export function Modal({
           backgroundColor: COLORS.scrim,
           justifyContent: isBottom ? 'flex-end' : 'center',
           alignItems: 'center',
-          paddingTop: 20,
+          // The scrim deliberately ignores insets — it covers the nav
+          // bar / status bar strip too so the whole screen dims. The
+          // sheet card below handles its own bottom inset.
+          paddingTop: isBottom ? 0 : 20,
           paddingHorizontal: isBottom ? 0 : 20,
           paddingBottom: isBottom ? 0 : 20,
         }}
@@ -119,6 +125,15 @@ export function Modal({
             </Pressable>
           </View>
           {children}
+          {/* `navigationBarTranslucent` lets the modal extend behind
+              the system nav bar so the scrim dims that strip too —
+              the trade is that the sheet's tail end would sit under
+              the nav bar. The spacer keeps the cream bg flush with
+              the viewport edge but pushes interactive content up by
+              the nav-bar inset so the last row stays tappable. On
+              devices without a soft nav bar `insets.bottom` is 0 and
+              this collapses out. */}
+          {isBottom && insets.bottom > 0 ? <View style={{ height: insets.bottom }} /> : null}
         </Pressable>
       </Pressable>
     </RNModal>
