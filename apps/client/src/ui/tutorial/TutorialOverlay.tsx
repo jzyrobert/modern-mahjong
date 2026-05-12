@@ -1,6 +1,5 @@
 import { useRouter } from 'expo-router';
 import { Pressable, Text, View, useWindowDimensions } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTransport } from '../../net/transport-context';
 import { useGame } from '../../state/game';
 import { LESSONS, nextLesson, useActiveTutorialStep, useTutorial } from '../../state/tutorial';
@@ -49,7 +48,6 @@ export function TutorialOverlay() {
   const dismiss = useTutorial((s) => s.dismiss);
   const advance = useTutorial((s) => s.advance);
   const window = useWindowDimensions();
-  const insets = useSafeAreaInsets();
   const targetRect = useTutorialTargetRect(active?.step.targetId ?? null);
 
   // Post-completion prompt takes precedence — the active step is
@@ -66,18 +64,18 @@ export function TutorialOverlay() {
   const HALO_BORDER = 3;
   const SCRIM_COLOR = 'rgba(20,15,10,0.55)';
 
-  // The target's rect is registered in window coordinates relative
-  // to the registry root. On Android, RN's `measureInWindow` reports
-  // positions without including the safe-area top inset that the
-  // host shell's `<SafeAreaView edges=['top', 'bottom']>` adds as padding —
-  // so a target inside that SafeAreaView reads ~status-bar-height
-  // higher than where it actually paints. Add the safe-area top
-  // back here so the halo lands on the visible target. (`insets.top`
-  // is 0 on web / iOS-with-no-notch, so this is a no-op there.)
+  // The target's rect is registered relative to the registry root,
+  // which sits at the top of the activity content frame. On Android
+  // Fabric in edge-to-edge mode the activity content frame extends
+  // above the visible window (its `measureInWindow` y reads negative,
+  // since the status bar overlays the top of the frame). The
+  // `(target - root)` subtraction in `TutorialTarget` already cancels
+  // that negative offset, so the rect's y here is already in the
+  // overlay's coord space — no further safe-area correction needed.
   const halo = targetRect
     ? {
         left: Math.max(0, targetRect.x - PAD),
-        top: Math.max(0, targetRect.y + insets.top - PAD),
+        top: Math.max(0, targetRect.y - PAD),
         width: targetRect.w + PAD * 2,
         height: targetRect.h + PAD * 2,
       }
