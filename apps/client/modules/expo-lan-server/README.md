@@ -15,8 +15,9 @@ call-site changes elsewhere in the client.
 The TS bridge in `src/LanServer.ts` uses `requireOptionalNativeModule`, so on
 web (and in Expo Go, where third-party modules aren't bundled) the module
 resolves to `null`, `isLanServerAvailable()` returns `false`, and `start()`
-throws the legacy "needs dev client" error. The lobby's `HostLanModal`
-detects that and falls through to manual host-URL entry.
+throws the legacy "needs dev client" error. The lobby's "Host LAN match"
+button checks `isLanServerAvailable()` up-front and hides the option on
+unsupported environments.
 
 ## Wiring
 
@@ -157,9 +158,9 @@ Wi-Fi multicast. iOS is intentionally a stub — no iOS build is
 currently planned — so `advertise()` / `startDiscovery()` throw
 `"not implemented"` there.
 
-The lobby's `HostLanModal` / `JoinLanModal` haven't been wired to
-these events yet — that UI pass is queued in TODO.md. Today the
-native primitives are available, just not surfaced.
+The host side advertises automatically once `lanStart` succeeds in
+`apps/client/src/net/transport-context.tsx`. The guest-side
+discovery hookup in `JoinLanModal` is queued in TODO.md.
 
 ## Notes for forks
 

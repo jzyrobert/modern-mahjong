@@ -11,8 +11,9 @@ import ExpoModulesCore
  *
  * Every async function except `stop` / `unadvertise` /
  * `stopDiscovery` throws — the JS bridge calls
- * `requireOptionalNativeModule` and the lobby's `HostLanModal` falls
- * through to manual URL entry, the same path web + Expo Go take.
+ * `requireOptionalNativeModule` and the lobby's "Host LAN match"
+ * button hides itself when `isLanServerAvailable()` returns false,
+ * the same path web + Expo Go take.
  *
  * If someone does pick this up later, the Android Kotlin module is
  * the reference: drop in Telegraph (or Swifter / GCDWebServer + a

@@ -95,7 +95,7 @@ test('online: short background keeps the socket alive — host sees the guest on
  * `transport-context.tsx` nulls the transport, and the AppState
  * foreground handler then re-joins via `findOrAssignSeat`'s
  * playerId-match branch within the server's reconnect-grace window
- * (default 60s).
+ * (default 5 min).
  *
  * Drives the same setup as the spec above but force-terminates the
  * WebSocket from JS (the closest browser-side analogue of an OS

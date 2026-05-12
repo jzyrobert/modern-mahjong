@@ -679,8 +679,9 @@ describe('MatchSession — seatBot / unseatBot', () => {
     helloAs(s, 'c0', 'p0', 'Host');
     helloAs(s, 'c1', 'p1', 'Guest');
     s.detachConnection('c1');
-    // The grace timer evicts after default 60s; fire just past it.
-    s.fireAlarm(Date.now() + 120_000);
+    // The grace timer evicts after the default reconnectGraceMs (5 min);
+    // fire just past it.
+    s.fireAlarm(Date.now() + 360_000);
     const out = s.applyClientMessage('c0', { t: 'seatBot', seat: 1, kind: 'heuristic' });
     expect(pickSends(out, 'c0').filter((m) => m.t === 'error')).toHaveLength(0);
     const lobby = pickBroadcasts(out).find((m) => m.t === 'lobby');
