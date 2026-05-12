@@ -1,7 +1,6 @@
 import type { Meld, Seat, Wind } from '@mahjong/game-logic';
-import { Animated, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import type { LobbyState } from '../../state/game';
-import { usePulse } from '../animations';
 import { COLORS as SHARED_COLORS } from '../colors';
 import { WIND_GLYPH } from '../winds';
 import { MeldStrip } from './MeldStrip';
@@ -29,7 +28,7 @@ interface OppHandStripProps {
   isActive: boolean;
   /** Set when this seat would draw next once claims resolve AND the
    *  soft floor (`pendingClaims.deadlineMs`) has elapsed. Surfaces a
-   *  gold halo + scale pulse so the mobile felt mirrors the desktop
+   *  static gold halo so the mobile felt mirrors the desktop
    *  PlayerBadge cue. Default false. */
   aboutToDraw?: boolean;
   /** Whole seconds until the hard fallback once `softExpiryMs` is
@@ -54,9 +53,11 @@ const COLORS = {
 /**
  * Compact opponent strip — wind glyph + display name on the left, the
  * seat's exposed melds inline on the right. Active-turn picks up a red
- * fill + scale pulse (mirrors the desktop `PlayerBadge`); the
- * "next about to draw" cue is a static gold halo so the two
- * highlights don't fight for attention.
+ * fill + gold border + soft glow, held statically: an earlier 1.03x
+ * scale pulse made the card visibly grow each cycle and shifted the
+ * rows below it on a tight portrait phone. The "next about to draw"
+ * cue is a static gold halo so the two highlights don't fight for
+ * attention.
  *
  * The legacy strip of face-down tile rectangles was dropped to reclaim
  * mobile vertical space — see the `melds` prop comment above.
@@ -76,24 +77,22 @@ export function OppHandStrip({
   const name = player?.displayName ?? `Seat ${seat}`;
   const isBot = player?.isBot ?? false;
 
-  // Mirror PlayerBadge's pulse — driven on the native thread so it
-  // doesn't compete with engine updates for the JS thread.
-  const pulse = usePulse({ enabled: isActive });
-  const scale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.03] });
-
   // `aboutToDraw` only surfaces when this seat is *not* the current
   // turn (it's the "next" seat). Active-turn cue takes priority.
   const cueBorder = !isActive && aboutToDraw;
 
   return (
-    <Animated.View
+    <View
       style={{
         flexDirection: 'row',
         alignItems: 'center',
         gap: 8,
         backgroundColor: isActive ? COLORS.redHot : COLORS.paperHi,
         borderColor: isActive ? COLORS.gold : cueBorder ? COLORS.gold : COLORS.hairline,
-        borderWidth: isActive || cueBorder ? 2 : 1,
+        // Stays 2 px in every state — toggling 1↔2 with `isActive`
+        // grew the card by 1 px on each side when the turn rotated
+        // and shifted the rows below it on a portrait phone.
+        borderWidth: 2,
         borderRadius: 10,
         paddingVertical: 6,
         paddingHorizontal: 10,
@@ -102,7 +101,6 @@ export function OppHandStrip({
           : cueBorder
             ? '0px 0px 8px rgba(243,197,74,0.5)'
             : 'none',
-        transform: isActive ? [{ scale }] : undefined,
       }}
     >
       <View style={{ alignItems: 'center', minWidth: 64, gap: 1 }}>
@@ -175,6 +173,6 @@ export function OppHandStrip({
       <View style={{ flex: 1 }}>
         {melds.length > 0 ? <MeldStrip melds={melds} tileWidth={14} tileHeight={20} /> : null}
       </View>
-    </Animated.View>
+    </View>
   );
 }
