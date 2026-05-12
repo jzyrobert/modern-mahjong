@@ -90,12 +90,9 @@ export function Lobby() {
   // Click handler for "Host LAN match". Starts the embedded server,
   // wires the in-process MatchSession bridge, advertises on mDNS, and
   // immediately joins the LAN as the host so the host always takes
-  // seat 0. Previously this opened a modal that showed the URL +
-  // match code and only joined once the user clicked "Start hosting"
-  // — but between the server going live and that click, any guest
-  // already holding the match code could connect first and claim
-  // seat 0, which left the actual host without host privileges in
-  // their own match.
+  // seat 0. The join is part of the same async block as `lanStart` so
+  // a guest who already has the match code can't slip in between
+  // server-live and host-joined and steal seat 0.
   //
   // Errors (EADDRINUSE on a stale server, iOS skeleton "not
   // implemented", network race) surface as an inline blurb under the

@@ -6,8 +6,8 @@ import { type TestServerHandle, startTestServer } from './test-server/server.js'
  * the lobby's `Leave` button) while hosting only sent `{t: 'leave'}`
  * to the server, which closed the leaver's socket without further
  * action — guests sat in the lobby with the host's seat showing an
- * auto-bot for 60s until the reconnect-grace timer fired and finally
- * promoted a guest to host.
+ * auto-bot for the full reconnect-grace window (default 5 min)
+ * before the timer fired and finally promoted a guest to host.
  *
  * Server-side fix (`MatchSession.onLeave`): an explicit leave from
  * the host either (a) immediately promotes the next-connected human
@@ -20,8 +20,9 @@ import { type TestServerHandle, startTestServer } from './test-server/server.js'
  *
  * E2E covers the user-visible host-promotion case: the new host's
  * `Start match` button flips from disabled → enabled the instant
- * the original host walks away, instead of a 60-second wait. The
- * dissolve path (host alone) is covered by `MatchSession.test.ts`.
+ * the original host walks away, instead of after the full grace
+ * window. The dissolve path (host alone) is covered by
+ * `MatchSession.test.ts`.
  */
 
 const MATCH_CODE = 'LEAVE';
