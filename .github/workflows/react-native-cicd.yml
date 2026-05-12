@@ -35,9 +35,17 @@ jobs:
     needs: check-skip
     if: (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: 🏗 Checkout repository
         uses: actions/checkout@v4
+        with:
+          # Full history so `git rev-list --count HEAD` returns the true
+          # commit count on main — that count drives versionCode (must
+          # strictly increase for Android to treat installs as upgrades)
+          # and the semver patch component.
+          fetch-depth: 0
 
       # Must install pnpm BEFORE setup-node@v4 because `cache: "pnpm"`
       # invokes `pnpm store path` to find the cache dir — without pnpm
@@ -75,6 +83,45 @@ jobs:
         run: |
           echo "EAS CLI version:"
           eas --version
+
+      # Derive a unique, monotonically-increasing version from git
+      # history. `versionCode` MUST strictly increase between releases or
+      # Android refuses to treat the install as an upgrade (it'll either
+      # ignore the new APK or fail with INSTALL_FAILED_VERSION_DOWNGRADE).
+      # `versionName` is the user-visible semver string.
+      #
+      # `git rev-list --count HEAD` on main gives a strictly-increasing
+      # integer that survives squash-merges and force-pushes. We map it
+      # to `0.1.<count>` for the semver — bump the 0.1 manually here when
+      # we ship a real release milestone.
+      - name: 🔢 Compute version from git history
+        id: version
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+        run: |
+          COMMIT_COUNT=$(git rev-list --count HEAD)
+          VERSION_NAME="0.1.${COMMIT_COUNT}"
+          VERSION_CODE="${COMMIT_COUNT}"
+          echo "version_name=${VERSION_NAME}" >> "$GITHUB_OUTPUT"
+          echo "version_code=${VERSION_CODE}" >> "$GITHUB_OUTPUT"
+          echo "Computed versionName=${VERSION_NAME} versionCode=${VERSION_CODE}"
+
+      # `eas.json` declares `appVersionSource: "local"`, so EAS reads
+      # `expo.version` and `expo.android.versionCode` from `app.json` at
+      # build time and writes them into the generated Android project.
+      # Patch the file here (only on main pushes) so the produced APK
+      # carries the unique version computed above.
+      - name: 🔢 Patch app.json with computed version
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+        working-directory: apps/client
+        run: |
+          tmp=$(mktemp)
+          jq --arg v "${{ steps.version.outputs.version_name }}" \
+             --argjson vc ${{ steps.version.outputs.version_code }} \
+             '.expo.version = $v | .expo.android.versionCode = $vc' \
+             app.json > "$tmp"
+          mv "$tmp" app.json
+          echo "--- patched app.json (expo.version, expo.android.versionCode) ---"
+          jq '{version: .expo.version, versionCode: .expo.android.versionCode}' app.json
 
       # Note: the upstream version of this workflow had two steps here
       # that rewrote the root `package.json`'s `"main"` entry and the
@@ -119,6 +166,16 @@ jobs:
         env:
           NODE_ENV: production
 
+      # Rename the APK to include the version so the downloaded file is
+      # self-identifying once attached to a release. Skipped for PR /
+      # workflow_dispatch runs (no version was computed there).
+      - name: 🏷️ Rename APK with version
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+        working-directory: apps/client
+        run: |
+          mv app-prod.apk "modern-mahjong-v${{ steps.version.outputs.version_name }}.apk"
+          ls -la modern-mahjong-v*.apk
+
       - name: 📦 Upload build artifacts to GitHub
         uses: actions/upload-artifact@v4
         with:
@@ -128,5 +185,31 @@ jobs:
           # list when re-enabling.
           path: |
             apps/client/app-prod.apk
+            apps/client/modern-mahjong-v*.apk
           retention-days: 7
           if-no-files-found: ignore
+
+      # Publish the APK as a GitHub Release asset. Release assets (unlike
+      # workflow artifacts) are not zipped, so the `.apk` downloads as a
+      # `.apk` and can be installed directly on a device. Each main commit
+      # gets its own tag `v<versionName>`, so reinstalling a newer APK
+      # over an older one is recognised as an upgrade.
+      - name: 🚀 Create GitHub Release with APK
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version_name }}
+          name: v${{ steps.version.outputs.version_name }}
+          body: |
+            Automated Android build for `${{ github.sha }}`.
+
+            - versionName: `${{ steps.version.outputs.version_name }}`
+            - versionCode: `${{ steps.version.outputs.version_code }}`
+
+            Install on device:
+            ```
+            adb install -r modern-mahjong-v${{ steps.version.outputs.version_name }}.apk
+            ```
+          files: apps/client/modern-mahjong-v${{ steps.version.outputs.version_name }}.apk
+          fail_on_unmatched_files: true
+          make_latest: true
