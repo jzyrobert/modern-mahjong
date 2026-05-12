@@ -19,9 +19,9 @@ export function WinCelebration() {
   const lobby = useGame((s) => s.lobby);
   const [dismissed, setDismissed] = useState(false);
   const isWin = !!result && result.kind === 'win';
-  // Suppress while the tutorial completion prompt is up. The
-  // DISMISS_MS timer below keeps running, so by the time the prompt
-  // is dismissed the celebration has fade-cleared itself.
+  // The DISMISS_MS timer below keeps running while the tutorial
+  // completion prompt is up, so by the time the prompt is dismissed
+  // the celebration has fade-cleared itself.
   const tutorialJustCompleted = useTutorial((s) => s.justCompleted);
   const visibleForFade = isWin && !dismissed && !tutorialJustCompleted;
   const { fade, fadeOut } = useFadeInOut({ visible: visibleForFade });
