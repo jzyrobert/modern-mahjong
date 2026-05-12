@@ -400,8 +400,13 @@ export function TransportProvider({ children }: { children: ReactNode }) {
     // and for online/solo matches.
     if (getActiveLanHostBridge() !== null) {
       stopLanHostBridge();
-      lanUnadvertise().catch(() => undefined);
-      lanStop().catch(() => undefined);
+      // Fire-and-forget teardown: both calls are best-effort cleanup,
+      // and the next `lanStart` defensively re-runs them anyway
+      // (`Lobby.onHostLan`). A native-side error here would only
+      // delay the next host attempt by one EADDRINUSE retry, so we
+      // log to surface real regressions but don't await/abort.
+      lanUnadvertise().catch((err) => console.warn('leave: lanUnadvertise failed', err));
+      lanStop().catch((err) => console.warn('leave: lanStop failed', err));
     }
     teardown();
   }, [transport, teardown]);

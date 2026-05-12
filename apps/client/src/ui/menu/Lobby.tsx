@@ -115,19 +115,30 @@ export function Lobby() {
       // active bridge) and ensures `lanStart` always lands on a known-
       // clean state.
       stopLanHostBridge();
-      await lanUnadvertise().catch(() => undefined);
-      await lanStop().catch(() => undefined);
+      // Pre-start cleanup is best-effort: both calls no-op when
+      // there's nothing to tear down. A native-side error here is
+      // surfaced via console (not the inline blurb) so it doesn't
+      // mask the real failure if `lanStart` itself goes on to throw.
+      await lanUnadvertise().catch((err) => console.warn('onHostLan: lanUnadvertise failed', err));
+      await lanStop().catch((err) => console.warn('onHostLan: lanStop (pre-start) failed', err));
 
       const res = await lanStart({ port: HOST_PORT });
       const hostUrl = res.addresses[0];
       if (!hostUrl) {
-        await lanStop().catch(() => undefined);
+        // Roll back the server we just started so the next attempt
+        // doesn't hit EADDRINUSE; log if even the rollback fails.
+        await lanStop().catch((err) => console.warn('onHostLan: lanStop (rollback) failed', err));
         setHostStatus('No LAN address found — are you on Wi-Fi?');
         return;
       }
       startLanHostBridge();
       const serviceName = getDisplayName() || 'Modern Mahjong host';
-      lanAdvertise({ serviceName, port: res.port }).catch(() => undefined);
+      // Advertise is best-effort — failure here silently disables
+      // mDNS discovery from guests, but the manually-shared URL
+      // still works. Log so a regression in mDNS isn't invisible.
+      lanAdvertise({ serviceName, port: res.port }).catch((err) =>
+        console.warn('onHostLan: lanAdvertise failed', err),
+      );
       const matchCode = generateMatchCode();
       transport.joinLan(hostUrl, matchCode);
       setHostStatus(null);

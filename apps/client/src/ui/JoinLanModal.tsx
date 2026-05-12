@@ -70,10 +70,16 @@ export function JoinLanModal({ open, onClose, onJoin, defaultUrl = '' }: JoinLan
       hostsRef.current.delete(name);
       setHosts(Array.from(hostsRef.current.values()));
     });
-    lanStartDiscovery().catch(() => undefined);
+    // mDNS start can fail (no Wi-Fi multicast permission, mDNS daemon
+    // not running). The modal degrades to manual URL entry in that
+    // case — log so the regression is visible during dev, but don't
+    // surface the failure to the user beyond the absent host list.
+    lanStartDiscovery().catch((err) => console.warn('JoinLanModal: lanStartDiscovery failed', err));
     return () => {
       foundSub.remove();
       lostSub.remove();
+      // Idempotent cleanup; native side no-ops if discovery never
+      // actually started (e.g. `lanStartDiscovery` rejected above).
       lanStopDiscovery().catch(() => undefined);
     };
   }, [open, available]);
