@@ -226,8 +226,25 @@ export function DiceCeremony() {
           cardRef.current = node as unknown as typeof cardRef.current;
         }}
         onLayout={() => {
-          cardRef.current?.measureInWindow((x, y, w, h) => {
-            registry.set('dice-ceremony', { x, y, w, h });
+          // Match `TutorialTarget`'s storage convention: measure both
+          // the card and the registry root in window coords and store
+          // the offset between them. The subtraction cancels the
+          // negative root y Android Fabric reports for the activity
+          // content frame under edge-to-edge, so the overlay paints
+          // halos in a single consistent coord space.
+          const rootNode = registry.rootRef.current as unknown as {
+            measureInWindow: (cb: (x: number, y: number, w: number, h: number) => void) => void;
+          } | null;
+          if (!rootNode) return;
+          rootNode.measureInWindow((rootX, rootY) => {
+            cardRef.current?.measureInWindow((x, y, w, h) => {
+              registry.set('dice-ceremony', {
+                x: x - rootX,
+                y: y - rootY,
+                w,
+                h,
+              });
+            });
           });
         }}
         style={{

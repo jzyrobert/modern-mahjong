@@ -30,11 +30,11 @@ interface TargetRegistryApi {
   subscribe(cb: () => void): () => void;
   /** Sentinel root the registry uses as the origin for all rects.
    *  Targets store `(target.window.x - root.window.x, target.window.y
-   *  - root.window.y)` in the registry; `<TutorialOverlay>` paints
-   *  the halo at the same offset in its own coordinate space (and
-   *  also adds the host shell's safe-area top inset to undo Android
-   *  Fabric's habit of returning measureInWindow positions without
-   *  including the host `<SafeAreaView edges=['top', 'bottom']>` padding). */
+   *  - root.window.y)` in the registry; `<TutorialOverlay>` is mounted
+   *  inside this same root and paints halos in matching local
+   *  coordinates, so the offset subtraction cancels Android Fabric's
+   *  negative activity-content-frame y in edge-to-edge mode and the
+   *  overlay needs no further safe-area correction. */
   rootRef: RefObject<View | null>;
 }
 
@@ -183,15 +183,12 @@ export function TutorialTarget({ id, children, enabled = true }: TutorialTargetP
     // the wrapper had *before* the current commit finished.
     //
     // Measure both the target and the registry root in window coords
-    // and store the offset between them. Two reasons we don't just
-    // use the target's raw window position: (a) on Android Fabric
-    // with edge-to-edge the root's own window origin is negative
-    // (the activity content frame sits above where the status bar
-    // overlays), and (b) the host shell's `<SafeAreaView
-    // edges=['top', 'bottom']>` pads its content but `measureInWindow` reports
-    // the position WITHOUT that padding folded in. Subtracting the
-    // root cancels (a); `<TutorialOverlay>` adds the safe-area top
-    // inset to cancel (b).
+    // and store the offset between them. On Android Fabric with
+    // edge-to-edge the root's own window origin is negative (the
+    // activity content frame sits above where the status bar
+    // overlays) — subtracting the root y cancels that, leaving a
+    // value in the same coord space `<TutorialOverlay>` paints in
+    // (the overlay is mounted inside this same root).
     requestAnimationFrame(() => {
       rootNode.measureInWindow((rootX, rootY) => {
         ref.current?.measureInWindow((targetX, targetY, width, height) => {
