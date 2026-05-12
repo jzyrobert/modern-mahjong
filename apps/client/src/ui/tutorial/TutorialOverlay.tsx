@@ -113,23 +113,35 @@ export function TutorialOverlay() {
       : EDGE_GAP;
   }
 
-  // Cancel-the-cutout: four rectangles around the halo. When no
-  // target exists, render a single full-screen scrim instead. Each
-  // panel carries a stable `key` so React doesn't churn the four
-  // edges' identity when the halo position shifts.
+  // Cancel-the-cutout: four rectangles around the halo painted with
+  // `SCRIM_COLOR`. When no target exists, render a single full-screen
+  // scrim instead. Each panel carries a stable `key` so React doesn't
+  // churn the four edges' identity when the halo position shifts.
   //
-  // When a halo is mounted, these four panels are kept *transparent*
-  // and only serve to absorb taps outside the highlighted region —
-  // the actual dimming comes from the halo's `boxShadow` with a huge
-  // spread, which naturally respects the halo's `borderRadius` so
-  // the dimmed area's inner edge follows the rounded corners
-  // exactly. Without that, the four panels' inner edges would meet
-  // at sharp corners while the halo border curved away, leaving four
-  // tiny un-dimmed corners around any rounded highlight (visible on
-  // the desktop discard-tile lessons).
+  // Earlier this code kept the four panels transparent and relied on
+  // a 9999-px-spread `boxShadow` on the halo View to paint the entire
+  // dim region (so the cutout naturally followed the halo's
+  // `borderRadius`). Android's renderer caps `boxShadow` spread well
+  // short of 9999 — on at least Pixel-class API 36 it stops within a
+  // few hundred px of the halo edge — so anything farther than that
+  // (typically the screen area below the halo) ended up undimmed.
+  // Painting the panels directly is reliable across platforms; the
+  // only cost is four tiny L-shapes (≈31 sq-px each at borderRadius=12)
+  // between the halo's curved border and its rectangular bound that
+  // stay undimmed. The halo's own `borderColor` already draws a
+  // visible gold ring through those L-shapes, so the gap reads as
+  // part of the highlight rather than a rendering bug.
+  // Panels are anchored to the overlay's bounds via `right: 0` /
+  // `bottom: 0` rather than sized with `useWindowDimensions()`.
+  // `window.height` returns the visible window minus the
+  // safe-area-bottom inset on Android edge-to-edge — ~268 px short of
+  // the physical screen — which used to leave the strip behind the
+  // system nav bar undimmed. The overlay wrapper below spans the
+  // entire app root (it inherits the registry root's `flex: 1`), so
+  // anchoring panels to its edges covers the full screen reliably.
   const scrimPanels: ReadonlyArray<Panel & { key: string }> = halo
-    ? scrimAround(halo, window.width, window.height)
-    : [{ key: 'full', left: 0, top: 0, width: window.width, height: window.height }];
+    ? scrimAround(halo)
+    : [{ key: 'full', left: 0, top: 0, right: 0, bottom: 0 }];
 
   return (
     // Plain absolute-positioned overlay rather than `RNModal`:
@@ -163,14 +175,11 @@ export function TutorialOverlay() {
             position: 'absolute',
             left: panel.left,
             top: panel.top,
+            right: panel.right,
+            bottom: panel.bottom,
             width: panel.width,
             height: panel.height,
-            // Transparent when a halo is mounted — the dimming is
-            // painted by the halo's huge-spread `boxShadow` below
-            // so the cutout matches the rounded corners. Without a
-            // halo there's nothing to paint the shadow, so the
-            // single full-screen panel falls back to a solid scrim.
-            backgroundColor: halo ? 'transparent' : SCRIM_COLOR,
+            backgroundColor: SCRIM_COLOR,
           }}
         />
       ))}
@@ -185,13 +194,6 @@ export function TutorialOverlay() {
             borderWidth: HALO_BORDER,
             borderColor: COLORS.gold,
             borderRadius: 12,
-            // A huge-spread shadow with zero offset/blur paints the
-            // scrim color around the halo while respecting its
-            // `borderRadius` — the only portable way (without
-            // `react-native-svg`) to get an inverse rounded-rect
-            // cutout that matches the gold border exactly. RN 0.76+
-            // supports `boxShadow` natively on web/iOS/Android.
-            boxShadow: `0 0 0 9999px ${SCRIM_COLOR}`,
           }}
           pointerEvents="none"
         />
@@ -286,27 +288,40 @@ export function TutorialOverlay() {
 }
 
 interface Panel {
+  left?: number;
+  top?: number;
+  right?: number;
+  bottom?: number;
+  width?: number;
+  height?: number;
+}
+
+interface HaloRect {
   left: number;
   top: number;
   width: number;
   height: number;
 }
 
-/** Compute the four scrim rectangles surrounding a halo cut-out. The
- *  halo region itself is left transparent; the rest of the viewport
- *  is dimmed. Rectangles can degenerate to zero width/height when the
- *  halo touches a viewport edge — that's fine, RN draws no pixels. */
-function scrimAround(halo: Panel, vw: number, vh: number): Array<Panel & { key: string }> {
+/** Compute the four scrim rectangles surrounding a halo cut-out. Each
+ *  rectangle is anchored to the overlay edge it shares with the halo
+ *  (e.g. the top strip uses `top: 0 / right: 0 / left: 0` and a
+ *  computed `height`), so the panels reliably fill the overlay
+ *  parent's actual bounds — `useWindowDimensions()` excludes the
+ *  Android nav-bar inset, so width/height-based sizing left a strip
+ *  behind the nav bar undimmed. The halo region itself is left
+ *  uncovered; the rest is painted with SCRIM_COLOR by the caller. */
+function scrimAround(halo: HaloRect): Array<Panel & { key: string }> {
   return [
     // Top strip — full width, from y=0 to halo.top
-    { key: 'top', left: 0, top: 0, width: vw, height: halo.top },
-    // Bottom strip — from halo bottom to viewport bottom
+    { key: 'top', left: 0, top: 0, right: 0, height: halo.top },
+    // Bottom strip — from halo bottom to overlay bottom
     {
       key: 'bottom',
       left: 0,
       top: halo.top + halo.height,
-      width: vw,
-      height: Math.max(0, vh - (halo.top + halo.height)),
+      right: 0,
+      bottom: 0,
     },
     // Left strip — from x=0 to halo.left, between halo top + bottom
     {
@@ -316,12 +331,12 @@ function scrimAround(halo: Panel, vw: number, vh: number): Array<Panel & { key: 
       width: halo.left,
       height: halo.height,
     },
-    // Right strip — from halo right edge to viewport right edge
+    // Right strip — from halo right edge to overlay right edge
     {
       key: 'right',
       left: halo.left + halo.width,
       top: halo.top,
-      width: Math.max(0, vw - (halo.left + halo.width)),
+      right: 0,
       height: halo.height,
     },
   ];
