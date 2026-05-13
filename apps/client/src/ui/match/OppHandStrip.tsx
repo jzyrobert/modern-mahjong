@@ -1,6 +1,7 @@
 import type { Meld, Seat, Wind } from '@mahjong/game-logic';
-import { Text, View } from 'react-native';
+import { Animated, Text, View } from 'react-native';
 import type { LobbyState } from '../../state/game';
+import { PULSE_TEMPO, usePulse } from '../animations';
 import { COLORS as SHARED_COLORS } from '../colors';
 import { WIND_GLYPH } from '../winds';
 import { MeldStrip } from './MeldStrip';
@@ -53,11 +54,13 @@ const COLORS = {
 /**
  * Compact opponent strip — wind glyph + display name on the left, the
  * seat's exposed melds inline on the right. Active-turn picks up a red
- * fill + gold border + soft glow, held statically: an earlier 1.03x
- * scale pulse made the card visibly grow each cycle and shifted the
- * rows below it on a tight portrait phone. The "next about to draw"
- * cue is a static gold halo so the two highlights don't fight for
- * attention.
+ * fill + gold border + soft glow, with a breathing gold halo overlay
+ * on top. The halo is an absolutely-positioned `Animated.View` so its
+ * opacity + tiny scale loop are compositor-only and never touch the
+ * card's outer dimensions — an earlier card-level 1.03x scale pulse
+ * visibly grew the strip each cycle and shifted the rows below it on
+ * a tight portrait phone. The "next about to draw" cue is a static
+ * gold halo so the two highlights don't fight for attention.
  *
  * The legacy strip of face-down tile rectangles was dropped to reclaim
  * mobile vertical space — see the `melds` prop comment above.
@@ -103,6 +106,7 @@ export function OppHandStrip({
             : 'none',
       }}
     >
+      {isActive ? <ActiveHalo /> : null}
       <View style={{ alignItems: 'center', minWidth: 64, gap: 1 }}>
         <View
           style={{
@@ -174,5 +178,38 @@ export function OppHandStrip({
         {melds.length > 0 ? <MeldStrip melds={melds} tileWidth={14} tileHeight={20} /> : null}
       </View>
     </View>
+  );
+}
+
+/**
+ * Breathing gold halo for the active-turn strip. Sits as an
+ * absolutely-positioned overlay 2 px outside the card edge, so its
+ * opacity + scale loop is purely visual — siblings can't be pushed
+ * by an `position: absolute` element, and `transform` doesn't reflow
+ * regardless. Symmetric 0 → peak → 0 breath via `usePulse` (which
+ * runs 0 → 1 → 0 on the native thread); scale tops out at 1.04x for
+ * a subtle "exhale" widening the halo ring without it reading as a
+ * separate moving element.
+ */
+function ActiveHalo() {
+  const t = usePulse({ durationMs: PULSE_TEMPO.state });
+  const opacity = t.interpolate({ inputRange: [0, 1], outputRange: [0, 0.6] });
+  const scale = t.interpolate({ inputRange: [0, 1], outputRange: [1, 1.04] });
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={{
+        position: 'absolute',
+        top: -2,
+        left: -2,
+        right: -2,
+        bottom: -2,
+        borderRadius: 12,
+        borderWidth: 2,
+        borderColor: COLORS.gold,
+        opacity,
+        transform: [{ scale }],
+      }}
+    />
   );
 }
