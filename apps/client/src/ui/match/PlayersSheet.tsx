@@ -1,6 +1,7 @@
 import { SEATS, type Seat, type Wind, seatWindFor } from '@mahjong/game-logic';
+import { type BotKind, botDisplayName } from '@mahjong/protocol';
 import { ScrollView, Text, View } from 'react-native';
-import { type LobbyState, nameForSeat, useGame } from '../../state/game';
+import { type LobbyState, nameForSeat, playerForSeat, useGame } from '../../state/game';
 import { computeInitials } from '../../util';
 import { Modal } from '../Modal';
 import { COLORS } from '../colors';
@@ -95,6 +96,9 @@ function PlayerRow({
 }: PlayerRowProps) {
   const name = nameForSeat(lobby, seat);
   const initials = computeInitials(name);
+  const player = playerForSeat(lobby, seat);
+  const botKind = (player?.isBot ? (player.botKind ?? null) : null) as BotKind | null;
+  const botStatus = player?.isBot ? (botKind ? botDisplayName(botKind) : 'Bot') : null;
   return (
     <View
       style={{
@@ -152,6 +156,27 @@ function PlayerRow({
             >
               DEALER
             </Text>
+          ) : null}
+          {botStatus ? (
+            <View
+              style={{
+                backgroundColor: 'rgba(115,90,163,0.12)',
+                borderRadius: 4,
+                paddingVertical: 1,
+                paddingHorizontal: 5,
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 9,
+                  fontWeight: '800',
+                  letterSpacing: 0.3,
+                  color: '#735aa3',
+                }}
+              >
+                {botStatus}
+              </Text>
+            </View>
           ) : null}
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>

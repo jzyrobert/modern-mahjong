@@ -1,6 +1,7 @@
-import type { GameState, Tile as MTile, Seat } from '@mahjong/game-logic';
-import { tileId } from '@mahjong/game-logic';
-import { Text, View } from 'react-native';
+import type { GameState, Seat } from '@mahjong/game-logic';
+import { SEATS, tileId } from '@mahjong/game-logic';
+import { useState } from 'react';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 import { Tile } from '../Tile';
 import { DISCARD_HALO_STYLE } from './SeatDiscardPile';
 import { type Position, SEAT_COLOR } from './seatColor';
@@ -13,19 +14,34 @@ interface SharedDiscardPoolProps {
   latestId: number | null;
 }
 
+type SortMode = 'order' | 'player';
+
 const TILE_W = 24;
 const TILE_H = 32;
 
 /**
- * Centre-of-table discard pool. Tiles in true turn order, each with a
- * colour underline keying the discarder's visual position. The live
- * claim-window tile gets a static gold-tinted border.
+ * Centre-of-table discard pool. Top row carries the `DISCARDS` label
+ * plus a two-button toggle (`Order` / `Player`) that flips the body
+ * between two views:
  *
- * Layout uses `justifyContent: 'flex-start'` so tiles pack into a
- * fixed left-aligned grid — newly-discarded tiles append to the next
- * empty slot instead of pushing the existing tiles around to keep
- * the row centered. Without this, every discard nudged every prior
- * tile by half a column, which made it impossible to track which
+ *   - `order` (default) — every tile in true turn order, wrapping left
+ *     to right. Matches how the table physically grows; useful when
+ *     reading the most recent discard and the live claim-window halo.
+ *   - `player` — four sub-rows, one per seat (in seat-number order),
+ *     with each seat's discards laid out chronologically inside that
+ *     row. Useful for at-a-glance "what has this opponent thrown?"
+ *     scanning, which the chronological view buries behind interleaved
+ *     opponent discards.
+ *
+ * Each tile carries a seat-coloured underline keyed to its discarder's
+ * perimeter `Position`. The live claim-window tile gets a static
+ * gold-tinted border so the user can still find it in either view.
+ *
+ * Layout uses `justifyContent: 'flex-start'` in `order` mode so tiles
+ * pack into a fixed left-aligned grid — newly-discarded tiles append
+ * to the next empty slot instead of pushing the existing tiles around
+ * to keep the row centred. Without this, every discard nudged every
+ * prior tile by half a column, which made it impossible to track which
  * tile was the live claim target.
  */
 export function SharedDiscardPool({
@@ -33,13 +49,67 @@ export function SharedDiscardPool({
   seatToPosition,
   latestId,
 }: SharedDiscardPoolProps) {
-  if (discardOrder.length === 0) {
-    return (
-      <View style={{ padding: 16, alignItems: 'center' }}>
-        <Text style={{ fontSize: 11, color: '#918275' }}>No discards yet</Text>
+  const [sortMode, setSortMode] = useState<SortMode>('order');
+
+  // Pre-discard the panel collapses entirely — the header + sort
+  // buttons are meaningless before any tile lands in the pool, and
+  // hiding the whole component keeps the empty start-of-hand felt
+  // visually quiet (also matches the legacy mobile spec that
+  // expected `DISCARDS` to only appear once a tile is thrown).
+  if (discardOrder.length === 0) return null;
+
+  return (
+    <View style={{ flex: 1, gap: 6, minHeight: 0 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <Text
+          style={{
+            fontSize: 11,
+            fontWeight: '800',
+            color: 'rgba(255,255,255,0.7)',
+            letterSpacing: 0.5,
+          }}
+        >
+          DISCARDS
+        </Text>
+        <View style={{ flex: 1 }} />
+        <SortToggle mode={sortMode} onChange={setSortMode} />
       </View>
-    );
-  }
+      {/* Body — scrolls internally when the rows pile up so the
+          surrounding action zone stays anchored at the bottom of the
+          shell. The label + sort toggle above stay pinned to the top
+          of the pane. */}
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingBottom: 4 }}
+        showsVerticalScrollIndicator={false}
+      >
+        {sortMode === 'order' ? (
+          <OrderView
+            discardOrder={discardOrder}
+            seatToPosition={seatToPosition}
+            latestId={latestId}
+          />
+        ) : (
+          <PlayerView
+            discardOrder={discardOrder}
+            seatToPosition={seatToPosition}
+            latestId={latestId}
+          />
+        )}
+      </ScrollView>
+    </View>
+  );
+}
+
+function OrderView({
+  discardOrder,
+  seatToPosition,
+  latestId,
+}: {
+  discardOrder: GameState['discardOrder'];
+  seatToPosition: Record<Seat, Position>;
+  latestId: number | null;
+}) {
   return (
     <View
       style={{
@@ -52,33 +122,176 @@ export function SharedDiscardPool({
         borderRadius: 12,
       }}
     >
-      {discardOrder.map((entry, i) => {
-        const id = tileId(entry.tile);
-        const pos = seatToPosition[entry.from];
-        const live = id === latestId;
+      {discardOrder.map((entry, i) => (
+        <DiscardCell
+          key={`${tileId(entry.tile)}-${i}`}
+          entry={entry}
+          position={seatToPosition[entry.from]}
+          live={tileId(entry.tile) === latestId}
+        />
+      ))}
+    </View>
+  );
+}
+
+function PlayerView({
+  discardOrder,
+  seatToPosition,
+  latestId,
+}: {
+  discardOrder: GameState['discardOrder'];
+  seatToPosition: Record<Seat, Position>;
+  latestId: number | null;
+}) {
+  // Bucket each seat's discards in chronological order. The
+  // `discardOrder` array is already chronological, so a per-seat
+  // filter preserves the within-seat order without an extra sort.
+  return (
+    <View
+      style={{
+        gap: 4,
+        padding: 8,
+        backgroundColor: 'rgba(0,0,0,0.05)',
+        borderRadius: 12,
+      }}
+    >
+      {SEATS.map((seat) => {
+        const tiles = discardOrder
+          .map((entry, i) => ({ entry, i }))
+          .filter(({ entry }) => entry.from === seat);
+        const pos = seatToPosition[seat];
         return (
           <View
-            // biome-ignore lint/suspicious/noArrayIndexKey: discardOrder is append-only and indexed by turn order
-            key={`${id}-${i}`}
-            style={{
-              alignItems: 'center',
-              gap: 2,
-            }}
+            key={seat}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: TILE_H + 6 }}
           >
-            <View style={live ? DISCARD_HALO_STYLE : undefined}>
-              <Tile tile={entry.tile} width={TILE_W} height={TILE_H} />
-            </View>
             <View
               style={{
-                width: TILE_W - 4,
-                height: 2,
-                borderRadius: 1,
+                width: 4,
+                alignSelf: 'stretch',
+                borderRadius: 2,
                 backgroundColor: SEAT_COLOR[pos],
               }}
             />
+            <View
+              style={{
+                flex: 1,
+                flexDirection: 'row',
+                flexWrap: 'wrap',
+                gap: 4,
+                alignItems: 'center',
+              }}
+            >
+              {tiles.length === 0 ? (
+                <Text
+                  style={{
+                    fontSize: 10,
+                    color: 'rgba(255,255,255,0.5)',
+                    fontStyle: 'italic',
+                  }}
+                >
+                  no discards
+                </Text>
+              ) : (
+                tiles.map(({ entry, i }) => (
+                  <DiscardCell
+                    key={`${tileId(entry.tile)}-${i}`}
+                    entry={entry}
+                    position={pos}
+                    live={tileId(entry.tile) === latestId}
+                  />
+                ))
+              )}
+            </View>
           </View>
         );
       })}
     </View>
+  );
+}
+
+function DiscardCell({
+  entry,
+  position,
+  live,
+}: {
+  entry: GameState['discardOrder'][number];
+  position: Position;
+  live: boolean;
+}) {
+  return (
+    <View style={{ alignItems: 'center', gap: 2 }}>
+      <View style={live ? DISCARD_HALO_STYLE : undefined}>
+        <Tile tile={entry.tile} width={TILE_W} height={TILE_H} />
+      </View>
+      <View
+        style={{
+          width: TILE_W - 4,
+          height: 2,
+          borderRadius: 1,
+          backgroundColor: SEAT_COLOR[position],
+        }}
+      />
+    </View>
+  );
+}
+
+function SortToggle({ mode, onChange }: { mode: SortMode; onChange: (m: SortMode) => void }) {
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        backgroundColor: 'rgba(0,0,0,0.18)',
+        borderRadius: 6,
+        padding: 2,
+      }}
+    >
+      <SortToggleButton label="Order" active={mode === 'order'} onPress={() => onChange('order')} />
+      <SortToggleButton
+        label="Player"
+        active={mode === 'player'}
+        onPress={() => onChange('player')}
+      />
+    </View>
+  );
+}
+
+function SortToggleButton({
+  label,
+  active,
+  onPress,
+}: {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`Sort discards by ${label.toLowerCase()}`}
+      accessibilityState={{ selected: active }}
+      style={({ pressed }) => ({
+        paddingVertical: 3,
+        paddingHorizontal: 8,
+        borderRadius: 4,
+        backgroundColor: active
+          ? 'rgba(255,255,255,0.92)'
+          : pressed
+            ? 'rgba(255,255,255,0.12)'
+            : 'transparent',
+      })}
+    >
+      <Text
+        style={{
+          fontSize: 10,
+          fontWeight: '800',
+          letterSpacing: 0.4,
+          color: active ? '#3a3328' : 'rgba(255,255,255,0.78)',
+        }}
+      >
+        {label}
+      </Text>
+    </Pressable>
   );
 }

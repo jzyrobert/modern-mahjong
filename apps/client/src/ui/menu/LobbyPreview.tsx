@@ -1,4 +1,5 @@
 import { SEATS } from '@mahjong/game-logic';
+import { type BotKind, botDisplayName } from '@mahjong/protocol';
 import * as Clipboard from 'expo-clipboard';
 import { useEffect, useState } from 'react';
 import { Pressable, Text, View, useWindowDimensions } from 'react-native';
@@ -219,7 +220,10 @@ export function LobbyPreview({ lobby, matchCode }: LobbyPreviewProps) {
                   >
                     {p.displayName}
                   </Text>
-                  <StatusPill kind={p.isBot ? 'bot' : p.connected ? 'online' : 'offline'} />
+                  <StatusPill
+                    kind={p.isBot ? 'bot' : p.connected ? 'online' : 'offline'}
+                    botKind={p.isBot ? ((p.botKind ?? null) as BotKind | null) : null}
+                  />
                 </>
               ) : (
                 <Text
@@ -241,8 +245,26 @@ export function LobbyPreview({ lobby, matchCode }: LobbyPreviewProps) {
   );
 }
 
-function StatusPill({ kind }: { kind: 'bot' | 'online' | 'offline' }) {
+interface StatusPillProps {
+  kind: 'bot' | 'online' | 'offline';
+  /** When this is a bot, the strategy kind drives the inline
+   *  difficulty label (`Bot (Easy)` / `Bot (Standard)` / `Bot (Smart)`).
+   *  Falls back to the bare `Bot` label when the server hasn't
+   *  projected one (older snapshots). */
+  botKind?: BotKind | null;
+}
+
+function StatusPill({ kind, botKind = null }: StatusPillProps) {
   const palette = STATUS_COLORS[kind];
+  // For a bot, surface its difficulty inline so the lobby reads
+  // "Riley · Bot (Easy)" rather than just "Riley · Bot" — the host
+  // can tell at a glance which opponent is the soft target. The
+  // bot label is rendered sentence-case (the parenthesised form
+  // reads worse all-caps); the online/offline labels keep the
+  // existing all-caps style for visual consistency with the rest
+  // of the pre-game lobby chrome.
+  const isBotWithKind = kind === 'bot' && botKind !== null;
+  const label = isBotWithKind ? botDisplayName(botKind) : palette.label.toUpperCase();
   return (
     <View
       style={{
@@ -261,7 +283,7 @@ function StatusPill({ kind }: { kind: 'bot' | 'online' | 'offline' }) {
           color: palette.color,
         }}
       >
-        {palette.label.toUpperCase()}
+        {label}
       </Text>
     </View>
   );

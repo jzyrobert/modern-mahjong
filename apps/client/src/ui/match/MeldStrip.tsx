@@ -8,6 +8,11 @@ interface MeldStripProps {
   melds: readonly Meld[];
   tileWidth?: number;
   tileHeight?: number;
+  /** Renders the trailing `PENG`/`CHI`/`GANG` label after each meld's
+   *  tiles. Defaults to true (user's own melds use this for clarity).
+   *  Compact opponent strips set it false so four melds can fit on
+   *  one row inside a 360 px portrait viewport. */
+  showKindLabel?: boolean;
 }
 
 /**
@@ -15,7 +20,12 @@ interface MeldStripProps {
  * from `state.melds[seat]`. Empty list → nothing rendered (parent
  * decides whether to reserve space).
  */
-export function MeldStrip({ melds, tileWidth = 18, tileHeight = 24 }: MeldStripProps) {
+export function MeldStrip({
+  melds,
+  tileWidth = 18,
+  tileHeight = 24,
+  showKindLabel = true,
+}: MeldStripProps) {
   if (melds.length === 0) return null;
   return (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
@@ -42,11 +52,13 @@ export function MeldStrip({ melds, tileWidth = 18, tileHeight = 24 }: MeldStripP
               height={tileHeight}
             />
           ))}
-          <View style={{ alignSelf: 'flex-end', paddingLeft: 4 }}>
-            <Text style={{ fontSize: 8, fontWeight: '700', color: COLORS.ink3 }}>
-              {meld.kind.toUpperCase()}
-            </Text>
-          </View>
+          {showKindLabel ? (
+            <View style={{ alignSelf: 'flex-end', paddingLeft: 4 }}>
+              <Text style={{ fontSize: 8, fontWeight: '700', color: COLORS.ink3 }}>
+                {meld.kind.toUpperCase()}
+              </Text>
+            </View>
+          ) : null}
         </View>
       ))}
     </View>

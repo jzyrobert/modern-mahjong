@@ -1,4 +1,5 @@
 import type { Meld, Seat, Wind } from '@mahjong/game-logic';
+import { type BotKind, botDisplayName } from '@mahjong/protocol';
 import { useState } from 'react';
 import { Animated, Text, View } from 'react-native';
 import type { LobbyState } from '../../state/game';
@@ -16,15 +17,11 @@ interface OppHandStripProps {
    *  the underline on this seat's discards in `SharedDiscardPool`. */
   position: Position;
   lobby: LobbyState | null;
-  /** This seat's exposed melds, rendered inline on the right of the
-   *  strip. Empty list → the meld area is left blank. The previous
-   *  rendering of `handBacks` face-down tile rectangles was dropped:
-   *  the count was inferable from "did they discard yet" via the
-   *  active-turn cue, and the strip ate ~30 px per seat × 3 seats of
-   *  vertical space on a phone for visual filler. Inlining the melds
-   *  here also collapses the separate MeldStrip row that used to sit
-   *  below the OppHandStrip — saves another row when an opponent has
-   *  exposed any melds. */
+  /** This seat's exposed melds, rendered inline below the header. The
+   *  earlier rendering of `handBacks` face-down tile rectangles was
+   *  dropped: the count was inferable from "did they discard yet" via
+   *  the active-turn cue, and the strip ate ~30 px per seat × 3 seats
+   *  of vertical space on a phone for visual filler. */
   melds: readonly Meld[];
   /** Highlight when this seat is on the move. */
   isActive: boolean;
@@ -52,19 +49,33 @@ const COLORS = {
   gold: '#f3c54a',
 };
 
+// Compact tile dims for the inline meld row. Smaller than the previous
+// 14×20 so the row can comfortably hold four chi/peng melds inside a
+// 360 px portrait viewport — the previous 14 px tiles + `PENG`/`CHI`
+// kind labels ate enough horizontal room that the fourth meld
+// overflowed onto a second row.
+const MELD_TILE_W = 12;
+const MELD_TILE_H = 18;
+
 /**
- * Compact opponent strip — wind glyph + display name on the left, the
- * seat's exposed melds inline on the right. Active-turn picks up a red
- * fill + gold border + soft glow, with a breathing gold halo overlay
- * on top. The halo is an absolutely-positioned `Animated.View` so its
- * opacity + tiny scale loop are compositor-only and never touch the
- * card's outer dimensions — an earlier card-level 1.03x scale pulse
- * visibly grew the strip each cycle and shifted the rows below it on
- * a tight portrait phone. The "next about to draw" cue is a static
- * gold halo so the two highlights don't fight for attention.
+ * Compact opponent strip — single-line header at the top (wind glyph
+ * ring + display name + bot/difficulty marker), exposed melds inline
+ * below. Active-turn picks up a red fill + gold border + soft glow
+ * plus a breathing gold halo overlay; the halo is an absolutely-
+ * positioned `Animated.View` so its opacity + tiny scale loop are
+ * compositor-only and never touch the card's outer dimensions. An
+ * earlier card-level 1.03x scale pulse visibly grew the strip each
+ * cycle and shifted the rows below it on a tight portrait phone. The
+ * "next about to draw" cue is a static gold halo so the two
+ * highlights don't fight for attention.
  *
- * The legacy strip of face-down tile rectangles was dropped to reclaim
- * mobile vertical space — see the `melds` prop comment above.
+ * The pre-2026-05 layout stacked wind / name / BOT vertically in a
+ * 64-px left column with the meld strip on the right. That ate ~80 px
+ * vertical per card × three opponents = 240 px before the discard pool
+ * even rendered. The new single-line header drops card height to ~50
+ * px (header ~24 px + meld row ~24 px) and surfaces the bot's
+ * difficulty inline as `Bot (Easy)` so the user can tell at a glance
+ * which opponent is the soft target.
  */
 export function OppHandStrip({
   seat,
@@ -80,6 +91,8 @@ export function OppHandStrip({
   const player = lobby?.players.find((p) => p.seat === seat);
   const name = player?.displayName ?? `Seat ${seat}`;
   const isBot = player?.isBot ?? false;
+  const botKind = (player?.botKind ?? null) as BotKind | null;
+  const botStatus = isBot && botKind ? botDisplayName(botKind) : isBot ? 'Bot' : null;
 
   // `aboutToDraw` only surfaces when this seat is *not* the current
   // turn (it's the "next" seat). Active-turn cue takes priority.
@@ -88,9 +101,6 @@ export function OppHandStrip({
   return (
     <View
       style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
         backgroundColor: isActive ? COLORS.redHot : COLORS.paperHi,
         borderColor: isActive ? COLORS.gold : cueBorder ? COLORS.gold : COLORS.hairline,
         // Stays 2 px in every state — toggling 1↔2 with `isActive`
@@ -100,6 +110,7 @@ export function OppHandStrip({
         borderRadius: 10,
         paddingVertical: 6,
         paddingHorizontal: 10,
+        gap: melds.length > 0 ? 4 : 0,
         boxShadow: isActive
           ? `0px 4px 12px ${COLORS.redHot}73`
           : cueBorder
@@ -108,12 +119,15 @@ export function OppHandStrip({
       }}
     >
       {isActive ? <ActiveHalo /> : null}
-      <View style={{ alignItems: 'center', minWidth: 64, gap: 1 }}>
+      {/* Single-line header — wind glyph (small ring), name, bot
+          status, and any active-turn / about-to-draw countdown. All
+          inline so the card height collapses to the row height. */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <View
           style={{
-            width: 24,
-            height: 24,
-            borderRadius: 12,
+            width: 20,
+            height: 20,
+            borderRadius: 10,
             borderWidth: 2,
             // Stays seat-coloured even on the active red fill — the
             // three opponent palette entries (jade / mauve / sky) are
@@ -128,7 +142,8 @@ export function OppHandStrip({
           <Text
             style={{
               fontFamily: 'Noto Serif TC',
-              fontSize: 14,
+              fontSize: 11,
+              lineHeight: 13,
               color: isActive ? 'white' : COLORS.red,
               fontWeight: '700',
             }}
@@ -138,46 +153,66 @@ export function OppHandStrip({
         </View>
         <Text
           style={{
-            fontSize: 10,
+            fontSize: 12,
             fontWeight: '800',
             color: isActive ? 'white' : COLORS.ink,
+            // Cap name width so a long human displayName doesn't push
+            // the bot-status chip off the row on a narrow portrait
+            // viewport. 110 px fits ~10 chars of bold-weight Inter,
+            // which is enough for the entire `BOT_NAME_POOL` plus the
+            // server's 32-char human cap with truncation.
+            maxWidth: 110,
           }}
           numberOfLines={1}
         >
           {name}
         </Text>
-        {isBot ? (
-          <Text
+        {botStatus ? (
+          <View
             style={{
-              fontSize: 8,
-              color: isActive ? 'rgba(255,255,255,0.85)' : COLORS.ink3,
-              fontWeight: '700',
+              backgroundColor: isActive ? 'rgba(255,255,255,0.18)' : 'rgba(115,90,163,0.12)',
+              borderRadius: 4,
+              paddingVertical: 1,
+              paddingHorizontal: 5,
             }}
           >
-            BOT
-          </Text>
+            <Text
+              style={{
+                fontSize: 9,
+                fontWeight: '800',
+                letterSpacing: 0.3,
+                color: isActive ? 'rgba(255,255,255,0.92)' : '#735aa3',
+              }}
+            >
+              {botStatus}
+            </Text>
+          </View>
         ) : null}
+        {/* Spacer pushes any countdown chip to the right edge. */}
+        <View style={{ flex: 1 }} />
         {cueBorder && drawCountdown !== null ? (
-          <Text style={{ fontSize: 8, fontWeight: '800', color: COLORS.red }} numberOfLines={1}>
+          <Text style={{ fontSize: 9, fontWeight: '800', color: COLORS.red }} numberOfLines={1}>
             drawing in {drawCountdown}s
           </Text>
         ) : null}
         {isActive && turnCountdown !== null ? (
-          <Text
-            style={{
-              fontSize: 8,
-              fontWeight: '800',
-              color: isActive ? 'white' : COLORS.red,
-            }}
-            numberOfLines={1}
-          >
+          <Text style={{ fontSize: 9, fontWeight: '800', color: 'white' }} numberOfLines={1}>
             {turnCountdown}s left
           </Text>
         ) : null}
       </View>
-      <View style={{ flex: 1 }}>
-        {melds.length > 0 ? <MeldStrip melds={melds} tileWidth={14} tileHeight={20} /> : null}
-      </View>
+      {/* Melds row — inline tiles, no kind labels (the user can read
+          the meld shape from the tile arrangement). Hidden entirely
+          when the seat has no exposed melds so the card collapses
+          back to header-height alone. */}
+      {melds.length > 0 ? (
+        <MeldStrip
+          melds={melds}
+          tileWidth={MELD_TILE_W}
+          tileHeight={MELD_TILE_H}
+          showKindLabel={false}
+        />
+      ) : null}
     </View>
   );
 }
