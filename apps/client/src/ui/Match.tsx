@@ -9,6 +9,7 @@ import {
   nextSeat,
   rankDiscards,
   sameFace,
+  scoreHand,
   tileId,
 } from '@mahjong/game-logic';
 import { BOT_LABELS, type BotKind, type PublicPlayer } from '@mahjong/protocol';
@@ -429,6 +430,19 @@ export function Match() {
       allowSpecial,
     });
 
+  // Preview the faan the user would score by declaring tsumo right
+  // now — surfaced on the "Declare win" button label so they don't
+  // have to commit blind. `declareWin(selfDraw)` treats the most
+  // recently drawn tile (the last element of `state.hands[seat]`) as
+  // the winning tile, so the score reads off the same shape.
+  const tsumoFaan: number | null = (() => {
+    if (!canTsumo) return null;
+    const hand = state.hands[seat];
+    const winningTile = hand[hand.length - 1];
+    if (!winningTile) return null;
+    return scoreHand({ state, winner: seat, winningTile, selfDraw: true }).faan;
+  })();
+
   // Concealed-gang candidate: any face the user has 4 copies of in
   // their concealed hand. The engine accepts `declareGangConcealed`
   // only on the user's turn after a draw — gate the button on the
@@ -468,6 +482,7 @@ export function Match() {
     myTurn,
     needsDraw,
     canTsumo,
+    tsumoFaan,
     concealedGangTile,
     hasClaimOption,
     nextDrawerSeat,
