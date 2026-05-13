@@ -388,7 +388,7 @@ export function MobileShell(props: MobileShellProps) {
             }}
             pointerEvents="box-none"
           >
-            <ResultPanel onAction={onAction} mySeat={seat} isHost={isHost} />
+            <ResultPanel onAction={onAction} mySeat={seat} isHost={isHost} onLeave={onLeave} />
           </View>
         ) : null}
 
