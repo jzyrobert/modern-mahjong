@@ -117,6 +117,16 @@ export interface GameState {
   turn: Seat;
   /** Whether the current `turn` seat has already drawn this turn. */
   hasDrawn: boolean;
+  /**
+   * Whether the current `hasDrawn: true` state was reached via a real
+   * wall/dead-wall draw (vs. via a chi or peng claim, which sets
+   * `hasDrawn: true` so the claimer must discard but where no tile was
+   * actually drawn). Required for `declareWin(selfDraw: true)` —
+   * winning via the chi/peng-claimed tile is not a self-draw and must
+   * not pick up the 自摸 +1 faan bonus. Reset to `false` when the
+   * turn ends (discard) or claim window opens.
+   */
+  drewThisTurn: boolean;
   wall: Tile[];
   deadWall: Tile[];
   hands: Record<Seat, Tile[]>;
@@ -214,6 +224,7 @@ export function emptyState(rules: RuleConfig = DEFAULT_RULES): GameState {
     dealer: 0,
     turn: 0,
     hasDrawn: false,
+    drewThisTurn: false,
     wall: [],
     deadWall: [],
     hands: { 0: [], 1: [], 2: [], 3: [] },

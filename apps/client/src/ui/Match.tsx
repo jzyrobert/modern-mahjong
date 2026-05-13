@@ -430,9 +430,16 @@ export function Match() {
   const nextDrawerSeat: Seat | null =
     state.phase === 'awaitingClaims' && state.lastDiscard ? nextSeat(state.lastDiscard.from) : null;
 
+  // `drewThisTurn` rules out chi/peng-claimed shapes — those set
+  // `hasDrawn: true` so the claimer must discard, but no real draw
+  // happened. The engine's `declareWin(selfDraw: true)` now rejects
+  // those (otherwise a low-faan hu could be passed, chi'd, and
+  // re-declared as tsumo for the 自摸 +1 faan bonus); gating the
+  // button match keeps the UI honest.
   const canTsumo =
     myTurn &&
     state.hasDrawn &&
+    state.drewThisTurn &&
     isWinning({
       hand: state.hands[seat],
       exposedMelds: state.melds[seat].length,
