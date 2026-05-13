@@ -42,10 +42,11 @@ test.describe('tutorial: win', () => {
 
     // Step 2 — declare tsumo. The dealer's natural deal at this
     // seed is a complete 4-melds + pair shape, so the
-    // "Declare win (tsumo)" button is present from the first
-    // render.
+    // "Declare win (tsumo, …)" button is present from the first
+    // render. The label includes the projected faan in brackets, so
+    // match by prefix rather than exact text.
     await expect(page.getByText("You're already winning!")).toBeVisible();
-    await page.getByRole('button', { name: 'Declare win (tsumo)' }).click();
+    await page.getByRole('button', { name: /^Declare win \(tsumo/ }).click();
 
     // Step 3 — final.
     await expect(page.getByText('Lesson complete!')).toBeVisible({ timeout: 10_000 });

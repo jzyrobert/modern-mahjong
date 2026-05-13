@@ -30,6 +30,10 @@ interface DesktopShellProps {
   myTurn: boolean;
   needsDraw: boolean;
   canTsumo: boolean;
+  /** Faan the user would score by declaring tsumo right now — surfaced
+   *  on the "Declare win" label so they can decide whether to commit.
+   *  Null when `canTsumo` is false. */
+  tsumoFaan: number | null;
   concealedGangTile: MTile | null;
   hasClaimOption: boolean;
   /** Seat that would draw next once claims resolve. Populated only
@@ -98,6 +102,7 @@ export function DesktopShell(props: DesktopShellProps) {
     myTurn,
     needsDraw,
     canTsumo,
+    tsumoFaan,
     concealedGangTile,
     hasClaimOption,
     nextDrawerSeat,
@@ -141,7 +146,9 @@ export function DesktopShell(props: DesktopShellProps) {
         <View style={{ flexDirection: 'row', gap: 8 }}>
           {canTsumo ? (
             <PrimaryButton onPress={() => onAction({ t: 'declareWin', seat, selfDraw: true })}>
-              Declare win (tsumo)
+              {tsumoFaan !== null
+                ? `Declare win (tsumo, ${tsumoFaan} faan)`
+                : 'Declare win (tsumo)'}
             </PrimaryButton>
           ) : null}
           {concealedGangTile ? (

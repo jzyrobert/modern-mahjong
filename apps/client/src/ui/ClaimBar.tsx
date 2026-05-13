@@ -61,6 +61,11 @@ export function ClaimBar({ onAction, seat }: ClaimBarProps) {
   const state = useGame((s) => s.state);
   const [chiPickerOpen, setChiPickerOpen] = useState(false);
   const legal = new Set<CallKind>(state ? legalClaimsFor(state, seat) : []);
+  // Score the projected win when the live discard would complete the
+  // user's hand. Kept around even after the `legal.has('hu')` gate so
+  // the Win button can surface the faan count in its label — the user
+  // shouldn't have to commit before knowing what they'd score.
+  let huFaan: number | null = null;
   if (state?.lastDiscard && state.lastDiscard.from !== seat) {
     const allowSpecial = state.rules.allowSevenPairs || state.rules.allowThirteenOrphans;
     const winnable = isWinning({
@@ -75,7 +80,10 @@ export function ClaimBar({ onAction, seat }: ClaimBarProps) {
         winningTile: state.lastDiscard.tile,
         selfDraw: false,
       });
-      if (score.faan >= state.rules.faanMin) legal.add('hu');
+      if (score.faan >= state.rules.faanMin) {
+        legal.add('hu');
+        huFaan = score.faan;
+      }
     }
   }
   const visible = ORDER.filter((k) => legal.has(k));
@@ -119,7 +127,12 @@ export function ClaimBar({ onAction, seat }: ClaimBarProps) {
         </Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {visible.map((kind) => (
-            <CallButton key={kind} kind={kind} onPress={() => handleClick(kind)} />
+            <CallButton
+              key={kind}
+              kind={kind}
+              faan={kind === 'hu' ? huFaan : null}
+              onPress={() => handleClick(kind)}
+            />
           ))}
         </View>
       </View>
@@ -190,7 +203,18 @@ function sortRun(a: MTile, b: MTile, c: MTile): MTile[] {
   });
 }
 
-function CallButton({ kind, onPress }: { kind: CallKind; onPress: () => void }) {
+function CallButton({
+  kind,
+  faan,
+  onPress,
+}: {
+  kind: CallKind;
+  /** Surfaces "(N faan)" next to the EN label on the win button so the
+   *  user sees what they'd score before committing. Null on every other
+   *  kind (chi/peng/gang/pass don't score). */
+  faan: number | null;
+  onPress: () => void;
+}) {
   const meta = LABELS[kind];
   const tone = TONE[meta.tone];
   const isCream = meta.tone === 'cream';
@@ -224,7 +248,7 @@ function CallButton({ kind, onPress }: { kind: CallKind; onPress: () => void }) 
           textTransform: 'uppercase',
         }}
       >
-        {meta.en}
+        {faan !== null ? `${meta.en} (${faan} faan)` : meta.en}
       </Text>
     </Pressable>
   );

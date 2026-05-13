@@ -32,6 +32,10 @@ interface MobileShellProps {
   myTurn: boolean;
   needsDraw: boolean;
   canTsumo: boolean;
+  /** Faan the user would score by declaring tsumo right now — surfaced
+   *  on the "Declare win" label so they can decide whether to commit.
+   *  Null when `canTsumo` is false. */
+  tsumoFaan: number | null;
   /** When set, the user's concealed hand has 4 copies of this face;
    *  shows a "Declare gang (concealed)" button next to the tsumo
    *  affordance. */
@@ -110,6 +114,7 @@ export function MobileShell(props: MobileShellProps) {
     myTurn,
     needsDraw,
     canTsumo,
+    tsumoFaan,
     concealedGangTile,
     hasClaimOption,
     nextDrawerSeat,
@@ -321,7 +326,9 @@ export function MobileShell(props: MobileShellProps) {
                   <PrimaryButton
                     onPress={() => onAction({ t: 'declareWin', seat, selfDraw: true })}
                   >
-                    Declare win (tsumo)
+                    {tsumoFaan !== null
+                      ? `Declare win (tsumo, ${tsumoFaan} faan)`
+                      : 'Declare win (tsumo)'}
                   </PrimaryButton>
                 ) : null}
                 {concealedGangTile ? (
