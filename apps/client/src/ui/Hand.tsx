@@ -178,25 +178,25 @@ export function Hand({
 /**
  * Pulsing tile-shaped slot rendered at the end of the hand row when it's
  * the user's turn but they haven't drawn yet. Tap fires the engine
- * `draw` action. Visually shares the gold halo language of the desktop
- * shell's `WallEdge` next-to-draw cue, so the cross-shell vocabulary
- * stays consistent. Uses `useNativeDriver` for the pulse so the JS
- * thread stays free for engine ticks during animation.
+ * `draw` action. Mirrors the discard-hint halo (`HandTile` recommended
+ * branch): a filled gold blob behind the tile breathing on opacity +
+ * scale, plus a static brighter-gold ring on top with an outer
+ * boxShadow glow so the cue stays obvious at the trough of the pulse.
+ * Same `width * 0.18` corner radius as the tile's SVG `rx`, so the
+ * halo follows the tile's rounded edges instead of reading as a
+ * square frame around it. Pulse runs on `useNativeDriver` via
+ * `usePulse` so the JS thread stays free for engine ticks.
  */
 function DrawGhostSlot({ cue, width, height }: { cue: DrawCue; width: number; height: number }) {
   const t = usePulse({ durationMs: PULSE_TEMPO.urgent });
-  const scale = t.interpolate({ inputRange: [0, 1], outputRange: [1, 1.18] });
-  const opacity = t.interpolate({ inputRange: [0, 1], outputRange: [0.6, 0] });
+  const haloScale = t.interpolate({ inputRange: [0, 1], outputRange: [1.05, 1.35] });
+  const haloOpacity = t.interpolate({ inputRange: [0, 1], outputRange: [0.85, 0.35] });
+  const radius = width * 0.18;
   return (
     <Pressable
       onPress={cue.onPress}
       testID="wall-draw-next"
-      style={({ pressed }) => ({
-        opacity: pressed ? 0.85 : 1,
-        borderRadius: 4,
-        borderWidth: 1.5,
-        borderColor: '#dc9f4f',
-      })}
+      style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
     >
       <Animated.View
         style={{
@@ -205,11 +205,25 @@ function DrawGhostSlot({ cue, width, height }: { cue: DrawCue; width: number; he
           left: 0,
           width,
           height,
-          borderRadius: 4,
+          borderRadius: radius,
           backgroundColor: '#dc9f4f',
-          opacity,
-          transform: [{ scale }],
+          opacity: haloOpacity,
+          transform: [{ scale: haloScale }],
           pointerEvents: 'none',
+        }}
+      />
+      <View
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width,
+          height,
+          borderRadius: radius,
+          borderWidth: 3,
+          borderColor: '#f3c54a',
+          pointerEvents: 'none',
+          boxShadow: '0px 0px 6px rgba(243,197,74,0.8)',
         }}
       />
       <Tile tile={cue.tile} faceDown width={width} height={height} />
