@@ -74,6 +74,15 @@ export function Match() {
   const settings = useGame((s) => s.settings);
   const { width: viewportWidth, height: viewportHeight } = useWindowDimensions();
   const isDesktop = viewportWidth >= DESKTOP_WIDTH && viewportHeight >= DESKTOP_HEIGHT;
+  // Landscape phones still hit `MobileShell` (height < DESKTOP_HEIGHT
+  // keeps them off the perimeter-felt desktop layout, which needs more
+  // vertical room than ~430 px to render the seats around the felt).
+  // The vertical stack of 3 opponent strips eats ~150 px on its own,
+  // which on a 393 px-tall landscape viewport leaves zero room for the
+  // discard pool. `isLandscape` lets `MobileShell` flatten the opponent
+  // strips into a single horizontal row so the discard pane gets real
+  // vertical real estate.
+  const isLandscape = !isDesktop && viewportWidth > viewportHeight;
   const initialSort: SortMode = settings.autoSort ? 'suit' : 'manual';
   const [sortMode, setSortMode] = useState<SortMode>(initialSort);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -518,7 +527,9 @@ export function Match() {
     return <DesktopShell {...sharedProps} />;
   }
 
-  return <MobileShell {...sharedProps} felt={felt} byPosition={byPosition} />;
+  return (
+    <MobileShell {...sharedProps} felt={felt} byPosition={byPosition} isLandscape={isLandscape} />
+  );
 }
 
 /** Mirrors the server's `startHand` SEATS gate. */
