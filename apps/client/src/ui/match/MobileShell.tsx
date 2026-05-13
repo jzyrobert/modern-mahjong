@@ -68,6 +68,12 @@ interface MobileShellProps {
    *  hands). The shell omits the per-seat strips in that case. */
   byPosition: Record<Position, SeatPlacement> | null;
   seatToPosition: Record<Seat, Position>;
+  /** True when the viewport is a landscape phone (width > height but
+   *  still below the desktop threshold). Flattens the 3 opponent
+   *  strips into a single horizontal row so the discard pool keeps
+   *  vertical real estate — vertical-stack opp strips otherwise eat
+   *  ~150 px and crush the flex middle to zero on a ~393 px landscape. */
+  isLandscape: boolean;
   settingsOpen: boolean;
   setSettingsOpen: (open: boolean) => void;
   logOpen: boolean;
@@ -133,6 +139,7 @@ export function MobileShell(props: MobileShellProps) {
     onTileTap,
     byPosition,
     seatToPosition,
+    isLandscape,
     settingsOpen,
     setSettingsOpen,
     logOpen,
@@ -209,37 +216,52 @@ export function MobileShell(props: MobileShellProps) {
         >
           <Scoreboard />
           {byPosition ? (
-            <View style={{ gap: 6 }}>
-              <SeatRow
-                placement={byPosition.top}
-                state={state}
-                lobby={lobby}
-                aboutToDraw={aboutToDraw && nextDrawerSeat === byPosition.top.seat}
-                drawCountdown={
-                  aboutToDraw && nextDrawerSeat === byPosition.top.seat ? drawCountdown : null
-                }
-                turnCountdown={turnCountdown}
-              />
-              <SeatRow
-                placement={byPosition.left}
-                state={state}
-                lobby={lobby}
-                aboutToDraw={aboutToDraw && nextDrawerSeat === byPosition.left.seat}
-                drawCountdown={
-                  aboutToDraw && nextDrawerSeat === byPosition.left.seat ? drawCountdown : null
-                }
-                turnCountdown={turnCountdown}
-              />
-              <SeatRow
-                placement={byPosition.right}
-                state={state}
-                lobby={lobby}
-                aboutToDraw={aboutToDraw && nextDrawerSeat === byPosition.right.seat}
-                drawCountdown={
-                  aboutToDraw && nextDrawerSeat === byPosition.right.seat ? drawCountdown : null
-                }
-                turnCountdown={turnCountdown}
-              />
+            <View
+              style={{
+                gap: 6,
+                // Landscape phones flatten the 3 strips into a single
+                // horizontal row (each strip gets `flex: 1` via the
+                // wrappers below). Portrait keeps the vertical stack
+                // which suits the tall-narrow shape better.
+                flexDirection: isLandscape ? 'row' : 'column',
+              }}
+            >
+              <View style={isLandscape ? { flex: 1, minWidth: 0 } : undefined}>
+                <SeatRow
+                  placement={byPosition.top}
+                  state={state}
+                  lobby={lobby}
+                  aboutToDraw={aboutToDraw && nextDrawerSeat === byPosition.top.seat}
+                  drawCountdown={
+                    aboutToDraw && nextDrawerSeat === byPosition.top.seat ? drawCountdown : null
+                  }
+                  turnCountdown={turnCountdown}
+                />
+              </View>
+              <View style={isLandscape ? { flex: 1, minWidth: 0 } : undefined}>
+                <SeatRow
+                  placement={byPosition.left}
+                  state={state}
+                  lobby={lobby}
+                  aboutToDraw={aboutToDraw && nextDrawerSeat === byPosition.left.seat}
+                  drawCountdown={
+                    aboutToDraw && nextDrawerSeat === byPosition.left.seat ? drawCountdown : null
+                  }
+                  turnCountdown={turnCountdown}
+                />
+              </View>
+              <View style={isLandscape ? { flex: 1, minWidth: 0 } : undefined}>
+                <SeatRow
+                  placement={byPosition.right}
+                  state={state}
+                  lobby={lobby}
+                  aboutToDraw={aboutToDraw && nextDrawerSeat === byPosition.right.seat}
+                  drawCountdown={
+                    aboutToDraw && nextDrawerSeat === byPosition.right.seat ? drawCountdown : null
+                  }
+                  turnCountdown={turnCountdown}
+                />
+              </View>
             </View>
           ) : null}
         </View>
