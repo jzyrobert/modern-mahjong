@@ -292,7 +292,7 @@ export function MobileShell(props: MobileShellProps) {
               minHeight: 0,
             }}
           >
-            <TutorialTarget id="shared-discards">
+            <TutorialTarget id="shared-discards" style={{ flex: 1, minHeight: 0 }}>
               <SharedDiscardPool
                 discardOrder={state.discardOrder}
                 seatToPosition={seatToPosition}

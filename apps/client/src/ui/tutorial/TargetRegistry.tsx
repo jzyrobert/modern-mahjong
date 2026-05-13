@@ -9,7 +9,7 @@ import {
   useRef,
 } from 'react';
 import { useSyncExternalStore } from 'react';
-import { View } from 'react-native';
+import { type StyleProp, View, type ViewStyle } from 'react-native';
 import type { TutorialTargetId } from './types';
 
 export interface TargetRect {
@@ -153,6 +153,13 @@ interface TutorialTargetProps {
    *  may render the menu pill in two places; only one should
    *  register). */
   enabled?: boolean;
+  /** Forwarded to the wrapping `<View>`. Needed when the target sits
+   *  in a flex-constrained slot (e.g. the discard pool's `flex: 1`
+   *  parent on mobile) — without `flex: 1, minHeight: 0` on the
+   *  wrapper the inner ScrollView can't compute its scroll area and
+   *  silently overflows instead. Defaults to undefined so existing
+   *  content-fit usages keep their previous layout. */
+  style?: StyleProp<ViewStyle>;
 }
 
 interface MeasurableNode {
@@ -168,7 +175,7 @@ interface MeasurableNode {
  * tile FLIP) and registers the rect with the surrounding registry.
  * Unmount clears the entry so a stale rect doesn't outlive its source.
  */
-export function TutorialTarget({ id, children, enabled = true }: TutorialTargetProps) {
+export function TutorialTarget({ id, children, enabled = true, style }: TutorialTargetProps) {
   const api = useTargetRegistry();
   const ref = useRef<MeasurableNode | null>(null);
 
@@ -232,6 +239,7 @@ export function TutorialTarget({ id, children, enabled = true }: TutorialTargetP
       }}
       onLayout={measureAndRegister}
       collapsable={false}
+      style={style}
     >
       {children}
     </View>
