@@ -1,7 +1,9 @@
 import type { Meld, Seat, Wind } from '@mahjong/game-logic';
 import { type BotKind, botDisplayName } from '@mahjong/protocol';
-import { Text, View } from 'react-native';
+import { useState } from 'react';
+import { Animated, Text, View } from 'react-native';
 import type { LobbyState } from '../../state/game';
+import { PULSE_TEMPO, usePulse } from '../animations';
 import { COLORS as SHARED_COLORS } from '../colors';
 import { WIND_GLYPH } from '../winds';
 import { MeldStrip } from './MeldStrip';
@@ -56,13 +58,16 @@ const MELD_TILE_W = 12;
 const MELD_TILE_H = 18;
 
 /**
- * Compact opponent strip — header row at the top (wind glyph + display
- * name + bot/difficulty marker on a single line) and the seat's exposed
- * melds inline below. Active-turn picks up a red fill + gold border +
- * soft glow, held statically: an earlier 1.03x scale pulse made the
- * card visibly grow each cycle and shifted the rows below it on a
- * tight portrait phone. The "next about to draw" cue is a static gold
- * halo so the two highlights don't fight for attention.
+ * Compact opponent strip — single-line header at the top (wind glyph
+ * ring + display name + bot/difficulty marker), exposed melds inline
+ * below. Active-turn picks up a red fill + gold border + soft glow
+ * plus a breathing gold halo overlay; the halo is an absolutely-
+ * positioned `Animated.View` so its opacity + tiny scale loop are
+ * compositor-only and never touch the card's outer dimensions. An
+ * earlier card-level 1.03x scale pulse visibly grew the strip each
+ * cycle and shifted the rows below it on a tight portrait phone. The
+ * "next about to draw" cue is a static gold halo so the two
+ * highlights don't fight for attention.
  *
  * The pre-2026-05 layout stacked wind / name / BOT vertically in a
  * 64-px left column with the meld strip on the right. That ate ~80 px
@@ -113,6 +118,7 @@ export function OppHandStrip({
             : 'none',
       }}
     >
+      {isActive ? <ActiveHalo /> : null}
       {/* Single-line header — wind glyph (small ring), name, bot
           status, and any active-turn / about-to-draw countdown. All
           inline so the card height collapses to the row height. */}
@@ -208,5 +214,61 @@ export function OppHandStrip({
         />
       ) : null}
     </View>
+  );
+}
+
+/**
+ * Breathing gold halo for the active-turn strip. Sits as an
+ * absolutely-positioned overlay 2 px outside the card edge, so its
+ * opacity + scale loop is purely visual — siblings can't be pushed
+ * by a `position: absolute` element, and `transform` doesn't reflow
+ * regardless. Symmetric 0 → peak → 0 breath via `usePulse` (which
+ * runs 0 → 1 → 0 on the native thread).
+ *
+ * `scaleX` / `scaleY` are derived from the measured overlay size so
+ * every edge grows by the same absolute pixel amount at the breath's
+ * peak. A single uniform `scale: 1.04` grew the long edges of a
+ * ~360 × ~50 px portrait strip by ~7 px and the short edges by only
+ * ~1 px, so the pulse read as left/right-only; using independent
+ * axes balances the visual growth in all four directions.
+ */
+function ActiveHalo() {
+  const t = usePulse({ durationMs: PULSE_TEMPO.state });
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+  // Each edge moves outward by GROWTH_PX at the breath's peak —
+  // small enough that the ring stays a halo (not a separate moving
+  // object) but big enough to read on a portrait phone.
+  const GROWTH_PX = 3;
+  const sx = size && size.w > 0 ? 1 + (GROWTH_PX * 2) / size.w : 1;
+  const sy = size && size.h > 0 ? 1 + (GROWTH_PX * 2) / size.h : 1;
+  const scaleX = t.interpolate({ inputRange: [0, 1], outputRange: [1, sx] });
+  const scaleY = t.interpolate({ inputRange: [0, 1], outputRange: [1, sy] });
+  const opacity = t.interpolate({ inputRange: [0, 1], outputRange: [0, 0.6] });
+  return (
+    <Animated.View
+      pointerEvents="none"
+      onLayout={(e) => {
+        const { width, height } = e.nativeEvent.layout;
+        // Guard against the layout-firing-every-render loop — only
+        // setState when the dimensions actually change. The strip's
+        // outer box is static (see borderWidth comment above), so in
+        // practice this fires once per mount.
+        setSize((prev) =>
+          prev && prev.w === width && prev.h === height ? prev : { w: width, h: height },
+        );
+      }}
+      style={{
+        position: 'absolute',
+        top: -2,
+        left: -2,
+        right: -2,
+        bottom: -2,
+        borderRadius: 12,
+        borderWidth: 2,
+        borderColor: COLORS.gold,
+        opacity,
+        transform: [{ scaleX }, { scaleY }],
+      }}
+    />
   );
 }
