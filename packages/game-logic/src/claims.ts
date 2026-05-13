@@ -293,6 +293,12 @@ export function applyClaim(
     pendingClaims: undefined,
     turn: seat,
     hasDrawn: true, // claimed seat must discard next, no draw
+    // chi / peng forced the seat into "must discard" without actually
+    // drawing a tile, so a subsequent `declareWin(selfDraw: true)` on
+    // the resulting shape would incorrectly pick up the 自摸 +1 faan
+    // bonus. Only exposed-gang (which pulls a replacement from the
+    // dead wall) qualifies as a real draw for tsumo purposes.
+    drewThisTurn: gangChained,
     hands: newHands,
     melds: newMelds,
     deadWall: newDeadWall,

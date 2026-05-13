@@ -548,4 +548,186 @@ describe('discard reducer — pre-pass + auto-resolve', () => {
   });
 });
 
+/**
+ * `drewThisTurn` flag flows. The field is `true` only when the
+ * current `hasDrawn: true` state was reached via a real wall /
+ * dead-wall draw — never via a chi or peng claim, where `hasDrawn`
+ * is set so the claimer must discard but no tile is actually drawn.
+ * `declareWin(selfDraw: true)` consults the flag so chi/peng-completed
+ * shapes can't pick up the 自摸 +1 faan bonus.
+ */
+describe('drewThisTurn flag', () => {
+  function suit(s: 'man' | 'pin' | 'sou', rank: number): Tile {
+    return { kind: 'suit', suit: s, rank: rank as 1, copy: 0 };
+  }
+
+  function build(seat1Hand: Tile[], lastDiscardTile: Tile): GameState {
+    const pool = [...buildWall()];
+    function takeFace(target: Tile): Tile {
+      const i = pool.findIndex((t) => sameFace(t, target));
+      if (i < 0) throw new Error(`pool exhausted for ${tileId(target)}`);
+      return pool.splice(i, 1)[0]!;
+    }
+    const seat1 = seat1Hand.map(takeFace);
+    // Three fillers so the assertTileConservation invariant holds.
+    const seat0 = Array.from({ length: 13 }, () => pool.pop()!);
+    const seat2 = Array.from({ length: 13 }, () => pool.pop()!);
+    const seat3 = Array.from({ length: 13 }, () => pool.pop()!);
+    const deadWall = pool.splice(pool.length - 14, 14);
+    const wall = pool;
+    return {
+      ...emptyState(DEFAULT_RULES),
+      phase: 'awaitingClaims',
+      hasDrawn: false,
+      drewThisTurn: false,
+      turn: 0,
+      hands: { 0: seat0, 1: seat1, 2: seat2, 3: seat3 },
+      wall,
+      deadWall,
+      lastDiscard: { tile: lastDiscardTile, from: 0 },
+      // Pre-pass seats 2 + 3 so seat 1's submission auto-resolves
+      // (the discard reducer would do the same pre-pass for any seat
+      // with no meaningful claim against this tile).
+      pendingClaims: {
+        discard: { tile: lastDiscardTile, from: 0 },
+        deadlineMs: 0,
+        submitted: { 2: { kind: 'pass' }, 3: { kind: 'pass' } },
+      },
+    };
+  }
+
+  it('chi claim leaves drewThisTurn=false (claimer must discard, no draw)', () => {
+    const fourM = suit('man', 4);
+    const fiveM = suit('man', 5);
+    const sixM = suit('man', 6);
+    const state = build(
+      [fourM, sixM, ...Array.from({ length: 11 }, (_, i) => suit('pin', (i % 9) + 1))],
+      fiveM,
+    );
+    const fourInHand = state.hands[1].find((t) => sameFace(t, fourM))!;
+    const sixInHand = state.hands[1].find((t) => sameFace(t, sixM))!;
+    const { state: after } = reduce(state, {
+      t: 'declareClaim',
+      seat: 1,
+      claim: { kind: 'chi', with: [fourInHand, sixInHand] },
+    });
+    expect(after.phase).toBe('turn');
+    expect(after.turn).toBe(1);
+    expect(after.hasDrawn).toBe(true); // claimer must discard
+    expect(after.drewThisTurn).toBe(false); // but no real draw happened
+  });
+
+  it('peng claim leaves drewThisTurn=false (same reason)', () => {
+    const fiveM = suit('man', 5);
+    const state = build(
+      [
+        { ...fiveM, copy: 0 },
+        { ...fiveM, copy: 1 },
+        ...Array.from({ length: 11 }, (_, i) => suit('pin', (i % 9) + 1)),
+      ],
+      { ...fiveM, copy: 2 },
+    );
+    const { state: after } = reduce(state, {
+      t: 'declareClaim',
+      seat: 1,
+      claim: { kind: 'peng' },
+    });
+    expect(after.phase).toBe('turn');
+    expect(after.hasDrawn).toBe(true);
+    expect(after.drewThisTurn).toBe(false);
+  });
+
+  it('exposed-gang claim leaves drewThisTurn=true (replacement comes from dead wall)', () => {
+    const fiveM = suit('man', 5);
+    const state = build(
+      [
+        { ...fiveM, copy: 0 },
+        { ...fiveM, copy: 1 },
+        { ...fiveM, copy: 2 },
+        ...Array.from({ length: 10 }, (_, i) => suit('pin', (i % 9) + 1)),
+      ],
+      { ...fiveM, copy: 3 },
+    );
+    const { state: after } = reduce(state, {
+      t: 'declareClaim',
+      seat: 1,
+      claim: { kind: 'gang' },
+    });
+    expect(after.phase).toBe('turn');
+    expect(after.hasDrawn).toBe(true);
+    // Gang-exposed pulls a replacement from the dead wall — counts as
+    // a real draw for tsumo purposes (any subsequent win scores
+    // 槓上開花).
+    expect(after.drewThisTurn).toBe(true);
+  });
+
+  it('declareWin(selfDraw=true) rejects a chi/peng-claimed shape with STATE error', () => {
+    // Hand-craft the post-chi state shape directly: phase=turn,
+    // hasDrawn=true, drewThisTurn=false, with a winning concealed
+    // hand. The exact tiles don't matter for the guard — `declareWin`
+    // checks `drewThisTurn` before shape/faan/scoring.
+    const wallFiller = buildWall().slice(0, 1);
+    const minimalWinning: Tile[] = [
+      suit('man', 1),
+      suit('man', 2),
+      suit('man', 3),
+      suit('man', 1),
+      suit('man', 2),
+      suit('man', 3),
+      suit('pin', 1),
+      suit('pin', 2),
+      suit('pin', 3),
+      suit('sou', 1),
+      suit('sou', 2),
+      suit('sou', 3),
+      suit('man', 5),
+      suit('man', 5),
+    ];
+    const baseState: GameState = {
+      ...emptyState({ ...DEFAULT_RULES, faanMin: 0 }),
+      phase: 'turn',
+      turn: 1,
+      hasDrawn: true,
+      drewThisTurn: false, // entered via claim, not draw
+      hands: { 0: [], 1: minimalWinning, 2: [], 3: [] },
+      wall: wallFiller,
+    };
+    expect(() => reduce(baseState, { t: 'declareWin', seat: 1, selfDraw: true })).toThrow(
+      /self-draw win requires a real draw/,
+    );
+  });
+
+  it('declareWin(selfDraw=true) accepts the same shape when drewThisTurn=true', () => {
+    const wallFiller = buildWall().slice(0, 1);
+    const winning: Tile[] = [
+      suit('man', 1),
+      suit('man', 2),
+      suit('man', 3),
+      suit('man', 1),
+      suit('man', 2),
+      suit('man', 3),
+      suit('pin', 1),
+      suit('pin', 2),
+      suit('pin', 3),
+      suit('sou', 1),
+      suit('sou', 2),
+      suit('sou', 3),
+      suit('man', 5),
+      suit('man', 5),
+    ];
+    const baseState: GameState = {
+      ...emptyState({ ...DEFAULT_RULES, faanMin: 0 }),
+      phase: 'turn',
+      turn: 1,
+      hasDrawn: true,
+      drewThisTurn: true,
+      hands: { 0: [], 1: winning, 2: [], 3: [] },
+      wall: wallFiller,
+    };
+    const { state: after } = reduce(baseState, { t: 'declareWin', seat: 1, selfDraw: true });
+    expect(after.phase).toBe('resolved');
+    expect(after.lastResult?.kind).toBe('win');
+  });
+});
+
 void SEATS; // exported for completeness; tests above don't reference directly

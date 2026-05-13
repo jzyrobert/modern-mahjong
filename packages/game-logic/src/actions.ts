@@ -185,6 +185,7 @@ export function startHand(
     dealer,
     turn: dealer,
     hasDrawn: true, // dealer effectively just drew their 14th tile
+    drewThisTurn: true,
     phase: 'turn',
     wall,
     deadWall,
@@ -232,7 +233,7 @@ export function drawTile(state: GameState, seat: Seat): { state: GameState; even
   const tile = wall.pop()!;
   const hands = { ...state.hands, [seat]: [...state.hands[seat], tile] };
   return {
-    state: { ...state, wall, hands, hasDrawn: true },
+    state: { ...state, wall, hands, hasDrawn: true, drewThisTurn: true },
     events: [{ t: 'drew', seat, tile }],
   };
 }
@@ -268,6 +269,7 @@ export function discard(
     discards,
     discardOrder,
     hasDrawn: false,
+    drewThisTurn: false,
     lastDiscard: { tile, from: seat },
     // A discard breaks any in-flight gang-replacement chain, so the
     // 槓上開花 / 槓上槓 scoring conditions are no longer satisfied
@@ -432,6 +434,7 @@ export function resolveAndApply(
       pendingClaims: undefined,
       turn: resolution.seat,
       hasDrawn: false,
+      drewThisTurn: false,
       // declareWin chains immediately and clears phase to 'resolved',
       // so this deadline is transient — set it anyway so the field
       // stays consistent for any caller that observes the
@@ -452,6 +455,7 @@ export function resolveAndApply(
         pendingClaims: undefined,
         turn: next,
         hasDrawn: false,
+        drewThisTurn: false,
         turnDeadlineMs: computeTurnDeadline(state.rules, nowMs),
       },
       events,
@@ -513,6 +517,12 @@ export function declareGangConcealed(
       hands: { ...state.hands, [seat]: newHand },
       melds,
       deadWall,
+      // Concealed gang only fires on the seat's own turn after a real
+      // draw (`PHASE` guard above), so `hasDrawn` is already true. The
+      // replacement draw from the dead wall keeps `drewThisTurn` true
+      // — the gang-replacement tile is the new "self-drawn" tile for
+      // any subsequent tsumo, scored under 槓上開花.
+      drewThisTurn: true,
       gangReplacementCount: state.gangReplacementCount + 1,
     },
     events: [{ t: 'gangDeclared', seat, kind: 'concealed' }],
@@ -652,6 +662,10 @@ function finalizePromotion(state: GameState, seat: Seat, tile: Tile, meldIdx: nu
     phase: 'turn',
     turn: seat,
     hasDrawn: true,
+    // Promoted gang pulls a replacement from the dead wall, so the
+    // seat is back in "just drew" state for any subsequent tsumo
+    // (scored under 槓上開花).
+    drewThisTurn: true,
     hands: { ...state.hands, [seat]: newHand },
     melds: { ...state.melds, [seat]: newMelds },
     deadWall,
@@ -672,6 +686,16 @@ export function declareWin(
   if (selfDraw) {
     if (state.phase !== 'turn' || state.turn !== seat || !state.hasDrawn) {
       throw new IllegalActionError('PHASE', 'self-draw win needs turn+drawn');
+    }
+    // Block tsumo when `hasDrawn` was set by a chi/peng claim rather
+    // than a wall draw. Otherwise the user can pass on a low-faan hu,
+    // chi/peng the same tile, and re-declare the resulting shape as a
+    // self-draw — picking up the 自摸 +1 faan bonus on a win that
+    // wasn't actually self-drawn. Gang replacements DO count as draws
+    // (see `declareGangConcealed` / `finalizePromotion` / the gang-
+    // exposed branch in `applyClaim`).
+    if (!state.drewThisTurn) {
+      throw new IllegalActionError('STATE', 'self-draw win requires a real draw, not a claim');
     }
     winningTile = state.hands[seat][state.hands[seat].length - 1]!;
   } else {

@@ -220,7 +220,13 @@ export class MatchSession {
       console.warn(`MatchSession: ignoring snapshot with unknown version ${snap.version}`);
       return;
     }
-    this.state = snap.state;
+    // `drewThisTurn` was added after the v1 schema landed; older
+    // snapshots have it undefined at runtime. Default to false so a
+    // mid-match DO restart doesn't grant a spurious tsumo on the
+    // first claim — restored seats fall back to "needs to draw or
+    // claim again before tsumo is legal," which matches the engine's
+    // post-restart guard in `declareWin`.
+    this.state = { ...snap.state, drewThisTurn: snap.state.drewThisTurn ?? false };
     this.hostPlayerId = snap.hostPlayerId;
     this.botActionDeadline = snap.botActionDeadline ?? null;
     this.lastEmittedDeadline = null;
