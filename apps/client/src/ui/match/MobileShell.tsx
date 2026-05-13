@@ -1,4 +1,5 @@
 import type { Action, GameState, Tile as MTile, Seat } from '@mahjong/game-logic';
+import type { ReactNode } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { LobbyState } from '../../state/game';
@@ -15,6 +16,7 @@ import { ClaimMissedToast } from './ClaimMissedToast';
 import { GameStatusBar } from './GameStatusBar';
 import { MatchModals } from './MatchModals';
 import { MeldStrip } from './MeldStrip';
+import { OppDiscardColumn } from './OppDiscardColumn';
 import { OppHandStrip } from './OppHandStrip';
 import { SharedDiscardPool } from './SharedDiscardPool';
 import { type SortMode, SortPicker } from './SortPicker';
@@ -163,151 +165,232 @@ export function MobileShell(props: MobileShellProps) {
   // no info the user can act on (no one to share it with). For online
   // / LAN matches the actual code stays visible.
   const showCode = matchCode !== null && matchCode !== 'SOLO';
+  const chromeStatus = (
+    <GameStatusBar
+      prevailing={state.prevailingWind}
+      dealerName={dealerName}
+      wallCount={state.wall.length}
+      isMyTurn={myTurn}
+      turnCountdown={myTurn ? turnCountdown : null}
+      onPress={() => setPlayersOpen(true)}
+      trailing={
+        <ChromeTrailing
+          showCode={showCode}
+          matchCode={matchCode}
+          viewers={lobby?.viewers ?? null}
+        />
+      }
+    />
+  );
   return (
     <View style={{ flex: 1, backgroundColor: felt.top }}>
       <SafeAreaView style={{ flex: 1, backgroundColor: felt.top }} edges={['top', 'bottom']}>
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 8,
-            paddingHorizontal: 12,
-            paddingTop: 12,
-            // Minimum gap below the chrome row so the first scrollable
-            // row (`SeatRow` / `OppHandStrip`) doesn't visually butt up
-            // against it. The ScrollView's own `padding: 12` adds more
-            // on top of this when content scrolls; this floor keeps the
-            // chrome → first-row separation honest at the no-scroll
-            // start state too.
-            paddingBottom: 8,
-            backgroundColor: felt.top,
-          }}
-        >
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <GameStatusBar
-              prevailing={state.prevailingWind}
-              dealerName={dealerName}
-              wallCount={state.wall.length}
-              isMyTurn={myTurn}
-              turnCountdown={myTurn ? turnCountdown : null}
-              onPress={() => setPlayersOpen(true)}
-              trailing={
-                <ChromeTrailing
-                  showCode={showCode}
-                  matchCode={matchCode}
-                  viewers={lobby?.viewers ?? null}
-                />
-              }
-            />
+        {!isLandscape ? (
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+              paddingHorizontal: 12,
+              paddingTop: 12,
+              // Minimum gap below the chrome row so the first scrollable
+              // row (`SeatRow` / `OppHandStrip`) doesn't visually butt up
+              // against it. The ScrollView's own `padding: 12` adds more
+              // on top of this when content scrolls; this floor keeps the
+              // chrome → first-row separation honest at the no-scroll
+              // start state too.
+              paddingBottom: 8,
+              backgroundColor: felt.top,
+            }}
+          >
+            <View style={{ flex: 1, minWidth: 0 }}>{chromeStatus}</View>
+            <MenuPill onPress={() => setMenuOpen(true)} />
           </View>
-          <MenuPill onPress={() => setMenuOpen(true)} />
-        </View>
-        {/* Fixed top section — Scoreboard (when scored) + opponent
-            strips. Sits outside the scroll zone so the active-turn
-            and about-to-draw cues stay visible no matter how many
-            discards have piled up. */}
-        <View
-          style={{
-            paddingHorizontal: 12,
-            paddingTop: 4,
-            gap: 8,
-            backgroundColor: felt.top,
-          }}
-        >
-          <Scoreboard />
-          {byPosition ? (
-            <View
-              style={{
-                gap: 6,
-                // Landscape phones flatten the 3 strips into a single
-                // horizontal row (each strip gets `flex: 1` via the
-                // wrappers below). Portrait keeps the vertical stack
-                // which suits the tall-narrow shape better.
-                flexDirection: isLandscape ? 'row' : 'column',
-              }}
-            >
-              <View style={isLandscape ? { flex: 1, minWidth: 0 } : undefined}>
-                <SeatRow
-                  placement={byPosition.top}
-                  state={state}
-                  lobby={lobby}
-                  aboutToDraw={aboutToDraw && nextDrawerSeat === byPosition.top.seat}
-                  drawCountdown={
-                    aboutToDraw && nextDrawerSeat === byPosition.top.seat ? drawCountdown : null
-                  }
-                  turnCountdown={turnCountdown}
-                />
-              </View>
-              <View style={isLandscape ? { flex: 1, minWidth: 0 } : undefined}>
-                <SeatRow
-                  placement={byPosition.left}
-                  state={state}
-                  lobby={lobby}
-                  aboutToDraw={aboutToDraw && nextDrawerSeat === byPosition.left.seat}
-                  drawCountdown={
-                    aboutToDraw && nextDrawerSeat === byPosition.left.seat ? drawCountdown : null
-                  }
-                  turnCountdown={turnCountdown}
-                />
-              </View>
-              <View style={isLandscape ? { flex: 1, minWidth: 0 } : undefined}>
-                <SeatRow
-                  placement={byPosition.right}
-                  state={state}
-                  lobby={lobby}
-                  aboutToDraw={aboutToDraw && nextDrawerSeat === byPosition.right.seat}
-                  drawCountdown={
-                    aboutToDraw && nextDrawerSeat === byPosition.right.seat ? drawCountdown : null
-                  }
-                  turnCountdown={turnCountdown}
-                />
-              </View>
-            </View>
-          ) : null}
-        </View>
-
-        {/* Flex middle — the discard pool is the only thing in here,
-            so when its rows wrap onto 2+ lines the overflow scrolls
-            inside the pool's own ScrollView instead of pushing the
-            action zone below it off-screen. The pool renders even
-            with an empty `discardOrder` so the action zone doesn't
-            jump up the first time a tile is thrown. */}
-        <View
-          style={{
-            flex: 1,
-            minHeight: 0,
-            paddingHorizontal: 12,
-            paddingTop: 8,
-            backgroundColor: felt.top,
-          }}
-        >
+        ) : null}
+        {/* Portrait: fixed-top Scoreboard + vertically-stacked opp
+            strips above the flex middle, which hosts the shared
+            discard pool. Landscape: the opp area moves *into* the
+            flex middle as 3 side-by-side columns, each with the
+            strip header plus that seat's own discard column inline
+            below — the shared centre pool is dropped because the
+            per-opp columns already convey the same info with seat
+            spatial context preserved. */}
+        {isLandscape ? (
           <View
             style={{
               flex: 1,
-              backgroundColor: felt.bottom,
-              borderColor: 'rgba(255,255,255,0.12)',
-              borderWidth: 1,
-              borderRadius: 12,
-              padding: 8,
               minHeight: 0,
+              flexDirection: 'row',
+              paddingHorizontal: 12,
+              paddingTop: 4,
+              gap: 8,
+              backgroundColor: felt.top,
             }}
           >
-            <TutorialTarget id="shared-discards" style={{ flex: 1, minHeight: 0 }}>
-              <SharedDiscardPool
-                discardOrder={state.discardOrder}
-                seatToPosition={seatToPosition}
-                latestId={latestDiscardId}
-              />
-            </TutorialTarget>
+            <View style={{ flex: 1, minHeight: 0 }}>
+              <Scoreboard />
+              {byPosition ? (
+                // The shared-discards TutorialTarget still needs to
+                // register a rect in landscape so any tutorial halo
+                // that points at the discard pool has something to
+                // anchor to. Wrapping the per-opp row in it gives the
+                // overlay a bounding box that covers all three
+                // opponent columns.
+                <TutorialTarget
+                  id="shared-discards"
+                  style={{ flex: 1, minHeight: 0, marginTop: 4 }}
+                >
+                  <View
+                    style={{
+                      flex: 1,
+                      minHeight: 0,
+                      flexDirection: 'row',
+                      gap: 6,
+                    }}
+                  >
+                    <LandscapeOppColumn
+                      placement={byPosition.left}
+                      state={state}
+                      lobby={lobby}
+                      aboutToDraw={aboutToDraw && nextDrawerSeat === byPosition.left.seat}
+                      drawCountdown={
+                        aboutToDraw && nextDrawerSeat === byPosition.left.seat
+                          ? drawCountdown
+                          : null
+                      }
+                      turnCountdown={turnCountdown}
+                      latestDiscardId={latestDiscardId}
+                    />
+                    <LandscapeOppColumn
+                      placement={byPosition.top}
+                      state={state}
+                      lobby={lobby}
+                      aboutToDraw={aboutToDraw && nextDrawerSeat === byPosition.top.seat}
+                      drawCountdown={
+                        aboutToDraw && nextDrawerSeat === byPosition.top.seat ? drawCountdown : null
+                      }
+                      turnCountdown={turnCountdown}
+                      latestDiscardId={latestDiscardId}
+                    />
+                    <LandscapeOppColumn
+                      placement={byPosition.right}
+                      state={state}
+                      lobby={lobby}
+                      aboutToDraw={aboutToDraw && nextDrawerSeat === byPosition.right.seat}
+                      drawCountdown={
+                        aboutToDraw && nextDrawerSeat === byPosition.right.seat
+                          ? drawCountdown
+                          : null
+                      }
+                      turnCountdown={turnCountdown}
+                      latestDiscardId={latestDiscardId}
+                    />
+                  </View>
+                </TutorialTarget>
+              ) : null}
+            </View>
+            {/* Right rail — chrome status pill at the top (replacing
+                the portrait shell's full-width top bar) plus the
+                action zone below. In portrait everything sits above
+                the hand which steals vertical from the discard pool;
+                landscape moves it to a thumb-friendly column so the
+                hand strip can extend full-width below. */}
+            <LandscapeActionRail
+              state={state}
+              seat={seat}
+              hasClaimOption={hasClaimOption}
+              canTsumo={canTsumo}
+              tsumoFaan={tsumoFaan}
+              concealedGangTile={concealedGangTile}
+              onAction={onAction}
+              chromeStatus={chromeStatus}
+              onOpenMenu={() => setMenuOpen(true)}
+            />
           </View>
-        </View>
+        ) : (
+          <>
+            <View
+              style={{
+                paddingHorizontal: 12,
+                paddingTop: 4,
+                gap: 8,
+                backgroundColor: felt.top,
+              }}
+            >
+              <Scoreboard />
+              {byPosition ? (
+                <View style={{ gap: 6 }}>
+                  <SeatRow
+                    placement={byPosition.top}
+                    state={state}
+                    lobby={lobby}
+                    aboutToDraw={aboutToDraw && nextDrawerSeat === byPosition.top.seat}
+                    drawCountdown={
+                      aboutToDraw && nextDrawerSeat === byPosition.top.seat ? drawCountdown : null
+                    }
+                    turnCountdown={turnCountdown}
+                  />
+                  <SeatRow
+                    placement={byPosition.left}
+                    state={state}
+                    lobby={lobby}
+                    aboutToDraw={aboutToDraw && nextDrawerSeat === byPosition.left.seat}
+                    drawCountdown={
+                      aboutToDraw && nextDrawerSeat === byPosition.left.seat ? drawCountdown : null
+                    }
+                    turnCountdown={turnCountdown}
+                  />
+                  <SeatRow
+                    placement={byPosition.right}
+                    state={state}
+                    lobby={lobby}
+                    aboutToDraw={aboutToDraw && nextDrawerSeat === byPosition.right.seat}
+                    drawCountdown={
+                      aboutToDraw && nextDrawerSeat === byPosition.right.seat ? drawCountdown : null
+                    }
+                    turnCountdown={turnCountdown}
+                  />
+                </View>
+              ) : null}
+            </View>
+            <View
+              style={{
+                flex: 1,
+                minHeight: 0,
+                paddingHorizontal: 12,
+                paddingTop: 8,
+                backgroundColor: felt.top,
+              }}
+            >
+              <View
+                style={{
+                  flex: 1,
+                  backgroundColor: felt.bottom,
+                  borderColor: 'rgba(255,255,255,0.12)',
+                  borderWidth: 1,
+                  borderRadius: 12,
+                  padding: 8,
+                  minHeight: 0,
+                }}
+              >
+                <TutorialTarget id="shared-discards" style={{ flex: 1, minHeight: 0 }}>
+                  <SharedDiscardPool
+                    discardOrder={state.discardOrder}
+                    seatToPosition={seatToPosition}
+                    latestId={latestDiscardId}
+                  />
+                </TutorialTarget>
+              </View>
+            </View>
+          </>
+        )}
 
         {/* Fixed bottom action zone — own melds, sort picker, hand,
             and any active claim / tsumo / gang / result CTAs. Pinned
             so the hand strip never drifts off-screen as the discard
-            pool grows. The action buttons + claim bar + result panel
-            sit just above the hand so a long sequence of CTAs
-            (claim bar with 4 buttons + tsumo) doesn't get clipped. */}
+            pool grows. In landscape the claim/tsumo/melds slots are
+            hosted by the right rail instead, so this row reduces to
+            sort + hand and the hand can extend full-width. */}
         <View
           style={{
             paddingHorizontal: 12,
@@ -319,7 +402,7 @@ export function MobileShell(props: MobileShellProps) {
             borderTopWidth: 1,
           }}
         >
-          {state.melds[seat].length > 0 ? (
+          {!isLandscape && state.melds[seat].length > 0 ? (
             <View style={{ gap: 4 }}>
               <Text
                 style={{
@@ -335,13 +418,13 @@ export function MobileShell(props: MobileShellProps) {
             </View>
           ) : null}
 
-          {hasClaimOption ? (
+          {!isLandscape && hasClaimOption ? (
             <TutorialTarget id="claim-bar">
               <ClaimBar onAction={onAction} seat={seat} />
             </TutorialTarget>
           ) : null}
 
-          {canTsumo || concealedGangTile ? (
+          {!isLandscape && (canTsumo || concealedGangTile) ? (
             <TutorialTarget id="tsumo-button">
               <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
                 {canTsumo ? (
@@ -368,9 +451,12 @@ export function MobileShell(props: MobileShellProps) {
 
           {/* The SortPicker sits flush-right above the hand so the
               user can switch sort order mid-hand without taking their
-              eyes off the tiles. */}
+              eyes off the tiles. In landscape the segmented picker
+              collapses to a single cycle button — landscape gives the
+              user the discoverability they already had on the portrait
+              hand-zone bar in earlier sessions. */}
           <View style={{ alignSelf: 'flex-end' }}>
-            <SortPicker mode={sortMode} onChange={onSortModeChange} />
+            <SortPicker mode={sortMode} onChange={onSortModeChange} compact={isLandscape} />
           </View>
           <TutorialTarget id="own-hand">
             <Hand
@@ -448,6 +534,7 @@ interface SeatRowProps {
   aboutToDraw: boolean;
   drawCountdown: number | null;
   turnCountdown: number | null;
+  compact?: boolean;
 }
 
 function SeatRow({
@@ -457,6 +544,7 @@ function SeatRow({
   aboutToDraw,
   drawCountdown,
   turnCountdown,
+  compact,
 }: SeatRowProps) {
   const isActive = state.turn === placement.seat && state.phase === 'turn';
   return (
@@ -470,7 +558,139 @@ function SeatRow({
       aboutToDraw={aboutToDraw}
       drawCountdown={drawCountdown}
       turnCountdown={isActive ? turnCountdown : null}
+      compact={compact ?? false}
     />
+  );
+}
+
+interface LandscapeOppColumnProps extends SeatRowProps {
+  latestDiscardId: number | null;
+}
+
+/**
+ * Landscape opponent column — `OppHandStrip` header at the top with
+ * this seat's own discard pile flex-grown below it. Three of these
+ * sit side-by-side in the landscape flex middle (replacing the
+ * shared centre discard pool), so opponent discards live spatially
+ * next to the player who threw them — closer to a physical mahjong
+ * table than the chronological centre pool.
+ */
+function LandscapeOppColumn({
+  placement,
+  state,
+  lobby,
+  aboutToDraw,
+  drawCountdown,
+  turnCountdown,
+  latestDiscardId,
+}: LandscapeOppColumnProps) {
+  return (
+    <View style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
+      <SeatRow
+        placement={placement}
+        state={state}
+        lobby={lobby}
+        aboutToDraw={aboutToDraw}
+        drawCountdown={drawCountdown}
+        turnCountdown={turnCountdown}
+        compact
+      />
+      <OppDiscardColumn
+        seat={placement.seat}
+        position={placement.position}
+        discardOrder={state.discardOrder}
+        latestId={latestDiscardId}
+      />
+    </View>
+  );
+}
+
+interface LandscapeActionRailProps {
+  state: GameState;
+  seat: Seat;
+  hasClaimOption: boolean;
+  canTsumo: boolean;
+  tsumoFaan: number | null;
+  concealedGangTile: MTile | null;
+  onAction: (a: Action) => void;
+  /** Pre-rendered status pill (prevailing wind / dealer / wall count /
+   *  your-turn dot). The shell folds the portrait shell's top chrome
+   *  bar into the rail in landscape so the band above the discard
+   *  area can disappear entirely. */
+  chromeStatus: ReactNode;
+  onOpenMenu: () => void;
+}
+
+/**
+ * Landscape-only right-edge column for the chrome status pill, the
+ * claim bar, tsumo/gang CTAs, and own melds. In portrait these stack
+ * above the hand, which is fine because the hand row only needs
+ * ~50 px of width margin; in landscape the same stack would steal
+ * half the discard area's height for buttons that the user only
+ * touches a few times per hand. Moving them to a thumb-friendly
+ * right rail lets the discard columns extend down to the hand strip
+ * uninterrupted.
+ */
+function LandscapeActionRail({
+  state,
+  seat,
+  hasClaimOption,
+  canTsumo,
+  tsumoFaan,
+  concealedGangTile,
+  onAction,
+  chromeStatus,
+  onOpenMenu,
+}: LandscapeActionRailProps) {
+  return (
+    <View style={{ width: 200, gap: 8 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <View style={{ flex: 1, minWidth: 0 }}>{chromeStatus}</View>
+        <MenuPill onPress={onOpenMenu} />
+      </View>
+      {state.melds[seat].length > 0 ? (
+        <View style={{ gap: 4 }}>
+          <Text
+            style={{
+              fontSize: 10,
+              fontWeight: '800',
+              color: 'rgba(255,255,255,0.7)',
+              letterSpacing: 0.5,
+            }}
+          >
+            YOUR MELDS
+          </Text>
+          <MeldStrip melds={state.melds[seat]} tileWidth={14} tileHeight={20} />
+        </View>
+      ) : null}
+      {hasClaimOption ? (
+        <TutorialTarget id="claim-bar">
+          <ClaimBar onAction={onAction} seat={seat} />
+        </TutorialTarget>
+      ) : null}
+      {canTsumo || concealedGangTile ? (
+        <TutorialTarget id="tsumo-button">
+          <View style={{ gap: 6 }}>
+            {canTsumo ? (
+              <PrimaryButton onPress={() => onAction({ t: 'declareWin', seat, selfDraw: true })}>
+                {tsumoFaan !== null
+                  ? `Declare win (tsumo, ${tsumoFaan} faan)`
+                  : 'Declare win (tsumo)'}
+              </PrimaryButton>
+            ) : null}
+            {concealedGangTile ? (
+              <PrimaryButton
+                onPress={() =>
+                  onAction({ t: 'declareGangConcealed', seat, tile: concealedGangTile })
+                }
+              >
+                Declare gang
+              </PrimaryButton>
+            ) : null}
+          </View>
+        </TutorialTarget>
+      ) : null}
+    </View>
   );
 }
 
