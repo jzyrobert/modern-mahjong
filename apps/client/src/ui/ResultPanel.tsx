@@ -15,6 +15,11 @@ interface ResultPanelProps {
   onAction: (a: Action) => void;
   mySeat: Seat;
   isHost: boolean;
+  /** Surfaces a "Leave match" button next to "Start next hand". On the
+   *  mobile shell the panel renders as a full-screen dim overlay that
+   *  visually covers the ☰ menu pill (where Leave normally lives), so
+   *  exposing it here is the only discoverable exit between hands. */
+  onLeave: () => void;
 }
 
 /**
@@ -22,7 +27,7 @@ interface ResultPanelProps {
  * Wins show a one-line summary + a "View breakdown" button that opens
  * `ScoringBreakdownModal` with the per-pattern faan list.
  */
-export function ResultPanel({ onAction, mySeat, isHost }: ResultPanelProps) {
+export function ResultPanel({ onAction, mySeat, isHost, onLeave }: ResultPanelProps) {
   const state = useGame((s) => s.state);
   const [breakdownOpen, setBreakdownOpen] = useState(false);
   if (!state || !state.lastResult) return null;
@@ -69,6 +74,7 @@ export function ResultPanel({ onAction, mySeat, isHost }: ResultPanelProps) {
         >
           Start next hand
         </PrimaryButton>
+        <GhostButton onPress={onLeave}>Leave match</GhostButton>
         <Text style={{ fontSize: 12, color: COLORS.ink3 }}>
           (seat {mySeat}; next dealer: seat {dealerForNext})
         </Text>

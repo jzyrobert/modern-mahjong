@@ -234,7 +234,7 @@ export function DesktopShell(props: DesktopShellProps) {
           </View>
 
           {state.lastResult ? (
-            <ResultPanel onAction={onAction} mySeat={seat} isHost={isHost} />
+            <ResultPanel onAction={onAction} mySeat={seat} isHost={isHost} onLeave={onLeave} />
           ) : null}
 
           <ChatBubbles seatToPosition={seatToPosition} />
