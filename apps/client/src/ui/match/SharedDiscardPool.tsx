@@ -51,12 +51,12 @@ export function SharedDiscardPool({
 }: SharedDiscardPoolProps) {
   const [sortMode, setSortMode] = useState<SortMode>('order');
 
-  // Pre-discard the panel collapses entirely — the header + sort
-  // buttons are meaningless before any tile lands in the pool, and
-  // hiding the whole component keeps the empty start-of-hand felt
-  // visually quiet (also matches the legacy mobile spec that
-  // expected `DISCARDS` to only appear once a tile is thrown).
-  if (discardOrder.length === 0) return null;
+  // Pre-discard we still render the header + an empty body so the
+  // mobile shell's flex middle stays the same height before vs. after
+  // the first discard — otherwise the panel pops in once a tile lands
+  // and the action zone jumps up by ~36 px on a portrait phone. The
+  // sort toggle is harmless on an empty body (PlayerView shows "no
+  // discards" placeholders; OrderView is just the rounded felt).
 
   return (
     <View style={{ flex: 1, gap: 6, minHeight: 0 }}>

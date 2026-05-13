@@ -59,10 +59,11 @@ test('mobile: tap-to-discard sends the tile to the shared discard pool', async (
   await dismissOpeningRolls(page);
   await expect(page.getByText(/\d+ tiles/)).toBeVisible();
 
+  // The DISCARDS panel renders from the start of the hand (with an
+  // empty body) so the action zone doesn't jump on the first discard.
   // The dealer (seat 0, by TEST_SEED) starts with 14 tiles + hasDrawn,
-  // so any hand-tile tap discards. The DISCARDS panel only renders once
-  // a tile has been thrown.
-  await expect(page.getByText('DISCARDS', { exact: true })).toBeHidden();
+  // so any hand-tile tap discards.
+  await expect(page.getByText('DISCARDS', { exact: true })).toBeVisible();
   await page.getByTestId('own-hand-tile').first().click();
   await expect(page.getByText('DISCARDS', { exact: true })).toBeVisible({ timeout: 10_000 });
 });
