@@ -1,4 +1,5 @@
 import type { Meld, Seat, Wind } from '@mahjong/game-logic';
+import { useState } from 'react';
 import { Animated, Text, View } from 'react-native';
 import type { LobbyState } from '../../state/game';
 import { PULSE_TEMPO, usePulse } from '../animations';
@@ -185,19 +186,42 @@ export function OppHandStrip({
  * Breathing gold halo for the active-turn strip. Sits as an
  * absolutely-positioned overlay 2 px outside the card edge, so its
  * opacity + scale loop is purely visual — siblings can't be pushed
- * by an `position: absolute` element, and `transform` doesn't reflow
+ * by a `position: absolute` element, and `transform` doesn't reflow
  * regardless. Symmetric 0 → peak → 0 breath via `usePulse` (which
- * runs 0 → 1 → 0 on the native thread); scale tops out at 1.04x for
- * a subtle "exhale" widening the halo ring without it reading as a
- * separate moving element.
+ * runs 0 → 1 → 0 on the native thread).
+ *
+ * `scaleX` / `scaleY` are derived from the measured overlay size so
+ * every edge grows by the same absolute pixel amount at the breath's
+ * peak. A single uniform `scale: 1.04` grew the long edges of a
+ * ~360 × ~50 px portrait strip by ~7 px and the short edges by only
+ * ~1 px, so the pulse read as left/right-only; using independent
+ * axes balances the visual growth in all four directions.
  */
 function ActiveHalo() {
   const t = usePulse({ durationMs: PULSE_TEMPO.state });
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+  // Each edge moves outward by GROWTH_PX at the breath's peak —
+  // small enough that the ring stays a halo (not a separate moving
+  // object) but big enough to read on a portrait phone.
+  const GROWTH_PX = 3;
+  const sx = size && size.w > 0 ? 1 + (GROWTH_PX * 2) / size.w : 1;
+  const sy = size && size.h > 0 ? 1 + (GROWTH_PX * 2) / size.h : 1;
+  const scaleX = t.interpolate({ inputRange: [0, 1], outputRange: [1, sx] });
+  const scaleY = t.interpolate({ inputRange: [0, 1], outputRange: [1, sy] });
   const opacity = t.interpolate({ inputRange: [0, 1], outputRange: [0, 0.6] });
-  const scale = t.interpolate({ inputRange: [0, 1], outputRange: [1, 1.04] });
   return (
     <Animated.View
       pointerEvents="none"
+      onLayout={(e) => {
+        const { width, height } = e.nativeEvent.layout;
+        // Guard against the layout-firing-every-render loop — only
+        // setState when the dimensions actually change. The strip's
+        // outer box is static (see borderWidth comment above), so in
+        // practice this fires once per mount.
+        setSize((prev) =>
+          prev && prev.w === width && prev.h === height ? prev : { w: width, h: height },
+        );
+      }}
       style={{
         position: 'absolute',
         top: -2,
@@ -208,7 +232,7 @@ function ActiveHalo() {
         borderWidth: 2,
         borderColor: COLORS.gold,
         opacity,
-        transform: [{ scale }],
+        transform: [{ scaleX }, { scaleY }],
       }}
     />
   );
