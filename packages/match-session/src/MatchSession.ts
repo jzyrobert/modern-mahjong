@@ -16,6 +16,7 @@ import {
   type PublicPlayer,
   type ServerMessage,
   parseClientMessage,
+  pickRandomBotName,
   botDisplayName as protocolBotDisplayName,
 } from '@mahjong/protocol';
 
@@ -153,13 +154,31 @@ export class MatchSession {
     return this.state;
   }
 
-  /** Test/seeding helper: place a bot in a specific seat. */
+  /** Test/seeding helper: place a bot in a specific seat. Defaults the
+   *  displayName to a randomly-picked entry from `BOT_NAME_POOL` that
+   *  isn't already in use by another seat — matches the production
+   *  `onSeatBot` path so tests inherit the same uniqueness invariant
+   *  the lobby renderer relies on. */
   seatBot(seat: Seat, bot: Bot, displayName?: string): void {
     this.seats[seat] = {
       ...emptySeat(),
-      displayName: displayName ?? botDisplayName(bot),
+      displayName: displayName ?? this.allocateBotName(seat),
       bot,
     };
+  }
+
+  /** Pick a `BOT_NAME_POOL` entry that no other seat already owns. The
+   *  excluded seat (where we're about to write) is skipped so seat
+   *  re-skinning (host swaps Easy → Smart on the same seat) doesn't
+   *  collide with the slot's existing name. */
+  private allocateBotName(forSeat: Seat): string {
+    const taken: string[] = [];
+    for (const s of SEATS) {
+      if (s === forSeat) continue;
+      const dn = this.seats[s].displayName;
+      if (dn) taken.push(dn);
+    }
+    return pickRandomBotName(taken);
   }
 
   /**
@@ -414,7 +433,12 @@ export class MatchSession {
       // over a brand-new joiner.
       slot.formerPlayerId = slot.playerId;
       slot.playerId = null;
-      slot.displayName = slot.bot ? botDisplayName(slot.bot) : null;
+      // Past the grace window the seat reads as "this is now a bot
+      // playing in place of the absent human" — assign a fresh random
+      // name from `BOT_NAME_POOL` so the felt rotates seat avatars
+      // away from the disconnected human's identity. The status chip
+      // (rendered from `botKind`) still surfaces the difficulty.
+      slot.displayName = slot.bot ? this.allocateBotName(seat) : null;
       slot.disconnectedSinceMs = null;
       if (wasHost) this.hostPlayerId = this.firstConnectedPlayerId();
       evicted = true;
@@ -617,9 +641,14 @@ export class MatchSession {
       return [errMsg(connectionId, 'OCCUPIED', 'seat is held for a disconnected player')];
     }
     const bot = botByKind(kind);
+    // If the seat already held a bot (host swapping difficulty), keep
+    // the existing random name — the player is the "same" character at
+    // the table, just with new strategy. Fresh seats get a freshly
+    // allocated unique name.
+    const existingName = slot.bot ? slot.displayName : null;
     this.seats[seat] = {
       playerId: null,
-      displayName: botDisplayName(bot),
+      displayName: existingName ?? this.allocateBotName(seat),
       bot,
       connectionId: null,
       disconnectedSinceMs: null,

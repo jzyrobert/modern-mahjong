@@ -1,5 +1,5 @@
 import type { Action, GameState, Tile as MTile, Seat } from '@mahjong/game-logic';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { LobbyState } from '../../state/game';
 import type { FeltSkin } from '../../state/game';
@@ -190,12 +190,19 @@ export function MobileShell(props: MobileShellProps) {
           </View>
           <MenuPill onPress={() => setMenuOpen(true)} />
         </View>
-        <ScrollView
-          style={{ flex: 1, backgroundColor: felt.top }}
-          contentContainerStyle={{ padding: 12, paddingTop: 12, gap: 12 }}
+        {/* Fixed top section — Scoreboard (when scored) + opponent
+            strips. Sits outside the scroll zone so the active-turn
+            and about-to-draw cues stay visible no matter how many
+            discards have piled up. */}
+        <View
+          style={{
+            paddingHorizontal: 12,
+            paddingTop: 4,
+            gap: 8,
+            backgroundColor: felt.top,
+          }}
         >
           <Scoreboard />
-
           {byPosition ? (
             <View style={{ gap: 6 }}>
               <SeatRow
@@ -230,28 +237,38 @@ export function MobileShell(props: MobileShellProps) {
               />
             </View>
           ) : null}
+        </View>
 
+        {/* Flex middle — the discard pool is the only thing in here,
+            so when its rows wrap onto 2+ lines the overflow scrolls
+            inside the pool's own ScrollView instead of pushing the
+            action zone below it off-screen. Before any tile is
+            discarded the pane collapses (SharedDiscardPool returns
+            null on an empty `discardOrder`), so the action zone
+            slides up against the opponent strips — matches the
+            legacy "DISCARDS panel only renders once a tile has been
+            thrown" UX. */}
+        <View
+          style={{
+            flex: 1,
+            minHeight: 0,
+            paddingHorizontal: 12,
+            paddingTop: state.discardOrder.length > 0 ? 8 : 0,
+            backgroundColor: felt.top,
+          }}
+        >
           {state.discardOrder.length > 0 ? (
             <View
               style={{
+                flex: 1,
                 backgroundColor: felt.bottom,
                 borderColor: 'rgba(255,255,255,0.12)',
                 borderWidth: 1,
                 borderRadius: 12,
                 padding: 8,
-                gap: 6,
+                minHeight: 0,
               }}
             >
-              <Text
-                style={{
-                  fontSize: 11,
-                  fontWeight: '800',
-                  color: 'rgba(255,255,255,0.7)',
-                  letterSpacing: 0.5,
-                }}
-              >
-                DISCARDS
-              </Text>
               <TutorialTarget id="shared-discards">
                 <SharedDiscardPool
                   discardOrder={state.discardOrder}
@@ -261,12 +278,30 @@ export function MobileShell(props: MobileShellProps) {
               </TutorialTarget>
             </View>
           ) : null}
+        </View>
 
+        {/* Fixed bottom action zone — own melds, sort picker, hand,
+            and any active claim / tsumo / gang / result CTAs. Pinned
+            so the hand strip never drifts off-screen as the discard
+            pool grows. The action buttons + claim bar + result panel
+            sit just above the hand so a long sequence of CTAs
+            (claim bar with 4 buttons + tsumo) doesn't get clipped. */}
+        <View
+          style={{
+            paddingHorizontal: 12,
+            paddingTop: 8,
+            paddingBottom: 4,
+            gap: 8,
+            backgroundColor: felt.top,
+            borderTopColor: 'rgba(0,0,0,0.12)',
+            borderTopWidth: 1,
+          }}
+        >
           {state.melds[seat].length > 0 ? (
             <View style={{ gap: 4 }}>
               <Text
                 style={{
-                  fontSize: 11,
+                  fontSize: 10,
                   fontWeight: '800',
                   color: 'rgba(255,255,255,0.7)',
                   letterSpacing: 0.5,
@@ -274,38 +309,15 @@ export function MobileShell(props: MobileShellProps) {
               >
                 YOUR MELDS
               </Text>
-              <MeldStrip melds={state.melds[seat]} />
+              <MeldStrip melds={state.melds[seat]} tileWidth={14} tileHeight={20} />
             </View>
           ) : null}
 
-          <View style={{ gap: 6 }}>
-            {/* "YOUR HAND" label dropped — the three SortPicker buttons
-                (SUIT / NUMBER / MANUAL) are self-describing, the hand
-                strip is the bottom-most row of the layout, and the
-                label was eating ~16 px before the SortPicker itself
-                even rendered. Wrapping flex row dropped along with
-                it: only one child remained. */}
-            <View style={{ alignSelf: 'flex-end' }}>
-              <SortPicker mode={sortMode} onChange={onSortModeChange} />
-            </View>
-            <TutorialTarget id="own-hand">
-              <Hand
-                tiles={state.hands[seat]}
-                onTileClick={myTurn && state.hasDrawn ? onTileTap : undefined}
-                sortMode={sortMode}
-                drawnTileId={drawnTileId}
-                hintTileId={hintTileId}
-                drawCue={
-                  needsDraw && state.wall.length > 0
-                    ? {
-                        tile: state.wall[state.wall.length - 1]!,
-                        onPress: () => onAction({ t: 'draw', seat }),
-                      }
-                    : undefined
-                }
-              />
+          {hasClaimOption ? (
+            <TutorialTarget id="claim-bar">
+              <ClaimBar onAction={onAction} seat={seat} />
             </TutorialTarget>
-          </View>
+          ) : null}
 
           {canTsumo || concealedGangTile ? (
             <TutorialTarget id="tsumo-button">
@@ -330,40 +342,76 @@ export function MobileShell(props: MobileShellProps) {
             </TutorialTarget>
           ) : null}
 
-          {hasClaimOption ? (
-            <TutorialTarget id="claim-bar">
-              <ClaimBar onAction={onAction} seat={seat} />
-            </TutorialTarget>
-          ) : null}
+          {/* The SortPicker sits flush-right above the hand so the
+              user can switch sort order mid-hand without taking their
+              eyes off the tiles. */}
+          <View style={{ alignSelf: 'flex-end' }}>
+            <SortPicker mode={sortMode} onChange={onSortModeChange} />
+          </View>
+          <TutorialTarget id="own-hand">
+            <Hand
+              tiles={state.hands[seat]}
+              onTileClick={myTurn && state.hasDrawn ? onTileTap : undefined}
+              sortMode={sortMode}
+              drawnTileId={drawnTileId}
+              hintTileId={hintTileId}
+              drawCue={
+                needsDraw && state.wall.length > 0
+                  ? {
+                      tile: state.wall[state.wall.length - 1]!,
+                      onPress: () => onAction({ t: 'draw', seat }),
+                    }
+                  : undefined
+              }
+            />
+          </TutorialTarget>
+        </View>
 
-          {state.lastResult ? (
+        {/* Floating emote bubbles overlay (absolute-positioned). */}
+        <ChatBubbles seatToPosition={seatToPosition} />
+        <ClaimMissedToast />
+
+        {/* ResultPanel — between-hand summary. Lifted out of the
+            scrollable middle so it can overlay the felt cleanly when
+            present; the panel handles its own bottom-aligned layout. */}
+        {state.lastResult ? (
+          <View
+            style={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              bottom: 0,
+              top: 0,
+              justifyContent: 'center',
+              padding: 16,
+              backgroundColor: 'rgba(0,0,0,0.55)',
+            }}
+            pointerEvents="box-none"
+          >
             <ResultPanel onAction={onAction} mySeat={seat} isHost={isHost} />
-          ) : null}
+          </View>
+        ) : null}
 
-          {/* Floating emote bubbles overlay (absolute-positioned). */}
-          <ChatBubbles seatToPosition={seatToPosition} />
-          <ClaimMissedToast />
-          {/* The persistent emote bar that lives on the desktop felt is
-              folded into `MenuSheet` here — see `onSendChat` below.
-              Keeps the mobile body to play-relevant rows only. */}
-          <MatchModals
-            mySeat={seat}
-            settingsOpen={settingsOpen}
-            setSettingsOpen={setSettingsOpen}
-            logOpen={logOpen}
-            setLogOpen={setLogOpen}
-            referenceOpen={referenceOpen}
-            setReferenceOpen={setReferenceOpen}
-            scoringOpen={scoringOpen}
-            setScoringOpen={setScoringOpen}
-            playersOpen={playersOpen}
-            setPlayersOpen={setPlayersOpen}
-            menuOpen={menuOpen}
-            setMenuOpen={setMenuOpen}
-            onLeave={onLeave}
-            onSendChat={onSendChat}
-          />
-        </ScrollView>
+        {/* The persistent emote bar that lives on the desktop felt is
+            folded into `MenuSheet` here — see `onSendChat` below.
+            Keeps the mobile body to play-relevant rows only. */}
+        <MatchModals
+          mySeat={seat}
+          settingsOpen={settingsOpen}
+          setSettingsOpen={setSettingsOpen}
+          logOpen={logOpen}
+          setLogOpen={setLogOpen}
+          referenceOpen={referenceOpen}
+          setReferenceOpen={setReferenceOpen}
+          scoringOpen={scoringOpen}
+          setScoringOpen={setScoringOpen}
+          playersOpen={playersOpen}
+          setPlayersOpen={setPlayersOpen}
+          menuOpen={menuOpen}
+          setMenuOpen={setMenuOpen}
+          onLeave={onLeave}
+          onSendChat={onSendChat}
+        />
       </SafeAreaView>
     </View>
   );

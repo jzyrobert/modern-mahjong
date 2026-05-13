@@ -34,8 +34,68 @@ export const BOT_LABELS = {
   heuristic: 'Smart',
 } as const satisfies Record<BotKind, string>;
 
+/**
+ * User-facing "this seat is a bot" status label — e.g. `Bot (Easy)`.
+ * Pre-2026-05 this also served as the bot's displayName, so the only
+ * thing distinguishing one bot from another in the lobby/scoreboard
+ * was their difficulty. Now bots are assigned a human-like name from
+ * `BOT_NAME_POOL` at seat time (see `pickRandomBotName`) and this
+ * label is rendered as a chip / inline marker beside that name, so
+ * the table reads "Riley · Bot (Easy)" instead of "Bot (Easy)".
+ */
 export function botDisplayName(kind: BotKind): string {
   return `Bot (${BOT_LABELS[kind]})`;
+}
+
+/**
+ * Pool of human-readable first names the server picks from when seating
+ * a bot. Kept short, gender-neutral, and visually distinct from each
+ * other so a four-handed table is easy to read at a glance. Lives in
+ * the protocol package because both the authoritative server
+ * (`MatchSession`) and the in-process solo transport need to draw from
+ * the same list — otherwise online and solo would project different
+ * name styles into the same `PublicPlayer.displayName` field.
+ */
+export const BOT_NAME_POOL: readonly string[] = [
+  'Aiko',
+  'Bao',
+  'Casey',
+  'Dao',
+  'Elena',
+  'Finn',
+  'Haru',
+  'Iris',
+  'Jin',
+  'Kai',
+  'Lin',
+  'Mei',
+  'Niko',
+  'Pia',
+  'Rin',
+  'Sora',
+  'Tao',
+  'Una',
+  'Vera',
+  'Yu',
+] as const;
+
+/**
+ * Pick a name from `BOT_NAME_POOL` that isn't already in use by another
+ * seat at this table. The pool comfortably exceeds the table size (4
+ * seats, 20 names), so the collision path is only relevant when the
+ * pool is bumped down in size for tests — there's a deterministic
+ * fallback to the first pool entry so the function never returns
+ * undefined.
+ */
+export function pickRandomBotName(
+  taken: Iterable<string>,
+  rng: () => number = Math.random,
+): string {
+  const used = new Set<string>();
+  for (const name of taken) used.add(name);
+  const available = BOT_NAME_POOL.filter((n) => !used.has(n));
+  const pool = available.length > 0 ? available : BOT_NAME_POOL;
+  return pool[Math.floor(rng() * pool.length)] ?? BOT_NAME_POOL[0]!;
 }
 
 export interface PublicPlayer {

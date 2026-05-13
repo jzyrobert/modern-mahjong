@@ -12,7 +12,7 @@ import {
   sameFace,
   soloRulesFrom,
 } from '@mahjong/game-logic';
-import { type ServerMessage, botDisplayName } from '@mahjong/protocol';
+import { type ServerMessage, pickRandomBotName } from '@mahjong/protocol';
 import type { Transport, TransportStatus } from './transport';
 
 /**
@@ -109,6 +109,19 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
     1: initialSkills[0],
     2: initialSkills[1],
     3: initialSkills[2],
+  };
+  // Random first-name per bot seat, chosen once at transport creation
+  // and held stable across `setBotSkill` calls — the seat keeps the
+  // same character even when the host swaps its difficulty between
+  // hands. The user's own displayName is fed into the taken-set so
+  // the bot pool never collides with the seated human's name.
+  const botName1 = pickRandomBotName([opts.displayName]);
+  const botName2 = pickRandomBotName([opts.displayName, botName1]);
+  const botName3 = pickRandomBotName([opts.displayName, botName1, botName2]);
+  const botNames: Record<1 | 2 | 3, string> = {
+    1: botName1,
+    2: botName2,
+    3: botName3,
   };
   const bots: Record<Seat, Bot | null> = {
     0: null,
@@ -297,7 +310,7 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
         },
         {
           playerId: BOT_PLAYER_IDS[0],
-          displayName: botDisplayName(botKinds[1]),
+          displayName: botNames[1],
           seat: 1,
           connected: true,
           isBot: true,
@@ -305,7 +318,7 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
         },
         {
           playerId: BOT_PLAYER_IDS[1],
-          displayName: botDisplayName(botKinds[2]),
+          displayName: botNames[2],
           seat: 2,
           connected: true,
           isBot: true,
@@ -313,7 +326,7 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
         },
         {
           playerId: BOT_PLAYER_IDS[2],
-          displayName: botDisplayName(botKinds[3]),
+          displayName: botNames[3],
           seat: 3,
           connected: true,
           isBot: true,
