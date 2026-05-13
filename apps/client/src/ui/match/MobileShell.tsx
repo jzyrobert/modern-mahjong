@@ -242,42 +242,37 @@ export function MobileShell(props: MobileShellProps) {
         {/* Flex middle — the discard pool is the only thing in here,
             so when its rows wrap onto 2+ lines the overflow scrolls
             inside the pool's own ScrollView instead of pushing the
-            action zone below it off-screen. Before any tile is
-            discarded the pane collapses (SharedDiscardPool returns
-            null on an empty `discardOrder`), so the action zone
-            slides up against the opponent strips — matches the
-            legacy "DISCARDS panel only renders once a tile has been
-            thrown" UX. */}
+            action zone below it off-screen. The pool renders even
+            with an empty `discardOrder` so the action zone doesn't
+            jump up the first time a tile is thrown. */}
         <View
           style={{
             flex: 1,
             minHeight: 0,
             paddingHorizontal: 12,
-            paddingTop: state.discardOrder.length > 0 ? 8 : 0,
+            paddingTop: 8,
             backgroundColor: felt.top,
           }}
         >
-          {state.discardOrder.length > 0 ? (
-            <View
-              style={{
-                flex: 1,
-                backgroundColor: felt.bottom,
-                borderColor: 'rgba(255,255,255,0.12)',
-                borderWidth: 1,
-                borderRadius: 12,
-                padding: 8,
-                minHeight: 0,
-              }}
-            >
-              <TutorialTarget id="shared-discards">
-                <SharedDiscardPool
-                  discardOrder={state.discardOrder}
-                  seatToPosition={seatToPosition}
-                  latestId={latestDiscardId}
-                />
-              </TutorialTarget>
-            </View>
-          ) : null}
+          <View
+            style={{
+              flex: 1,
+              backgroundColor: felt.bottom,
+              borderColor: 'rgba(255,255,255,0.12)',
+              borderWidth: 1,
+              borderRadius: 12,
+              padding: 8,
+              minHeight: 0,
+            }}
+          >
+            <TutorialTarget id="shared-discards">
+              <SharedDiscardPool
+                discardOrder={state.discardOrder}
+                seatToPosition={seatToPosition}
+                latestId={latestDiscardId}
+              />
+            </TutorialTarget>
+          </View>
         </View>
 
         {/* Fixed bottom action zone — own melds, sort picker, hand,
