@@ -114,18 +114,17 @@ export function ClaimBar({ onAction, seat }: ClaimBarProps) {
         boxShadow: '0px 4px 12px rgba(0,0,0,0.08)',
       }}
     >
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 10,
-          flexWrap: 'wrap',
-        }}
-      >
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
         <Text style={{ fontSize: 11, fontWeight: '800', color: '#918275', letterSpacing: 0.5 }}>
           CLAIM?
         </Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        {/* `flex: 1, minWidth: 0` so the inner buttons container takes
+            the row's leftover width and `flexWrap: 'wrap'` actually
+            kicks in. Without it the View sized to its content and a
+            crowded bar (CHI + WIN (N FAAN) + PASS at 360 px portrait)
+            overflowed the right edge — the trailing button got clipped
+            under the screen instead of dropping to a second row. */}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, flex: 1, minWidth: 0 }}>
           {visible.map((kind) => (
             <CallButton
               key={kind}
