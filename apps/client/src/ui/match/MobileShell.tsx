@@ -329,8 +329,6 @@ export function MobileShell(props: MobileShellProps) {
               tsumoFaan={tsumoFaan}
               concealedGangTile={concealedGangTile}
               latestDiscardId={latestDiscardId}
-              sortMode={sortMode}
-              onSortModeChange={onSortModeChange}
               onAction={onAction}
               onOpenMenu={() => setMenuOpen(true)}
               onOpenPlayers={() => setPlayersOpen(true)}
@@ -478,34 +476,50 @@ export function MobileShell(props: MobileShellProps) {
             </TutorialTarget>
           ) : null}
 
-          {/* SortPicker sits flush-right above the hand in portrait
+          {/* Portrait: SortPicker sits flush-right above the hand
               so the user can switch sort order mid-hand without
-              taking their eyes off the tiles. In landscape it lives
-              inside the right rail (`LandscapeActionRail`) as a
-              compact cycle button so the bottom row collapses to
-              hand-only and the hand can extend full-width. */}
+              taking their eyes off the tiles. Landscape: hand row
+              centers the tiles inside the full-width bottom band with
+              the compact sort cycle button flush to the hand's right
+              edge — the hand+sort group is centered as one unit. */}
           {!isLandscape ? (
             <View style={{ alignSelf: 'flex-end' }}>
               <SortPicker mode={sortMode} onChange={onSortModeChange} />
             </View>
           ) : null}
-          <TutorialTarget id="own-hand">
-            <Hand
-              tiles={state.hands[seat]}
-              onTileClick={myTurn && state.hasDrawn ? onTileTap : undefined}
-              sortMode={sortMode}
-              drawnTileId={drawnTileId}
-              hintTileId={hintTileId}
-              drawCue={
-                needsDraw && state.wall.length > 0
-                  ? {
-                      tile: state.wall[state.wall.length - 1]!,
-                      onPress: () => onAction({ t: 'draw', seat }),
-                    }
-                  : undefined
-              }
-            />
-          </TutorialTarget>
+          <View
+            style={
+              isLandscape
+                ? {
+                    flexDirection: 'row',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    gap: 8,
+                  }
+                : undefined
+            }
+          >
+            <TutorialTarget id="own-hand">
+              <Hand
+                tiles={state.hands[seat]}
+                onTileClick={myTurn && state.hasDrawn ? onTileTap : undefined}
+                sortMode={sortMode}
+                drawnTileId={drawnTileId}
+                hintTileId={hintTileId}
+                drawCue={
+                  needsDraw && state.wall.length > 0
+                    ? {
+                        tile: state.wall[state.wall.length - 1]!,
+                        onPress: () => onAction({ t: 'draw', seat }),
+                      }
+                    : undefined
+                }
+              />
+            </TutorialTarget>
+            {isLandscape ? (
+              <SortPicker mode={sortMode} onChange={onSortModeChange} compact />
+            ) : null}
+          </View>
         </View>
 
         {/* Floating emote bubbles overlay (absolute-positioned). */}
@@ -649,8 +663,6 @@ interface LandscapeActionRailProps {
   tsumoFaan: number | null;
   concealedGangTile: MTile | null;
   latestDiscardId: number | null;
-  sortMode: SortMode;
-  onSortModeChange: (m: SortMode) => void;
   onAction: (a: Action) => void;
   onOpenMenu: () => void;
   onOpenPlayers: () => void;
@@ -679,8 +691,6 @@ function LandscapeActionRail({
   tsumoFaan,
   concealedGangTile,
   latestDiscardId,
-  sortMode,
-  onSortModeChange,
   onAction,
   onOpenMenu,
   onOpenPlayers,
@@ -744,15 +754,10 @@ function LandscapeActionRail({
         </TutorialTarget>
       ) : null}
       {/* Own-discards card flex-grows to fill whatever vertical the
-          rail has left after the upper sections. The sort picker is
-          folded into its header so the rail bottoms out on a single
-          card instead of dangling a stray cycle button beneath. */}
-      <OwnDiscardsRail
-        discardOrder={state.discardOrder}
-        seat={seat}
-        latestId={latestDiscardId}
-        sortPicker={<SortPicker mode={sortMode} onChange={onSortModeChange} compact />}
-      />
+          rail has left after the upper sections. The sort picker
+          lives alongside the hand in the bottom row, not here — the
+          rail bottoms out on the YOUR DISCARDS card. */}
+      <OwnDiscardsRail discardOrder={state.discardOrder} seat={seat} latestId={latestDiscardId} />
     </View>
   );
 }
@@ -917,10 +922,6 @@ interface OwnDiscardsRailProps {
   discardOrder: GameState['discardOrder'];
   seat: Seat;
   latestId: number | null;
-  /** Compact sort-picker button shown inline in the card header,
-   *  flush-right. Folded in here so the rail doesn't end on an
-   *  orphan button hanging below the bottom card. */
-  sortPicker: ReactNode;
 }
 
 const OWN_TILE_W = 18;
@@ -934,10 +935,9 @@ const OWN_TILE_H = 24;
  * ~120 px of empty felt below, and surfacing the player's own pile
  * here turns that into a useful "what have I been throwing?"
  * tracker. Flex-grows so the rail bottoms out flush with the hand
- * row, and absorbs the sort picker into its header so the rail
- * doesn't end on a stray cycle button.
+ * row.
  */
-function OwnDiscardsRail({ discardOrder, seat, latestId, sortPicker }: OwnDiscardsRailProps) {
+function OwnDiscardsRail({ discardOrder, seat, latestId }: OwnDiscardsRailProps) {
   const tiles = discardOrder.filter((e) => e.from === seat);
   return (
     <View
@@ -949,26 +949,17 @@ function OwnDiscardsRail({ discardOrder, seat, latestId, sortPicker }: OwnDiscar
         paddingHorizontal: 10,
       }}
     >
-      <View
+      <Text
         style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'space-between',
+          fontSize: 9,
+          fontWeight: '800',
+          color: RAIL_INK3,
+          letterSpacing: 0.6,
           marginBottom: 4,
         }}
       >
-        <Text
-          style={{
-            fontSize: 9,
-            fontWeight: '800',
-            color: RAIL_INK3,
-            letterSpacing: 0.6,
-          }}
-        >
-          YOUR DISCARDS
-        </Text>
-        {sortPicker}
-      </View>
+        YOUR DISCARDS
+      </Text>
       {tiles.length === 0 ? (
         <Text style={{ fontSize: 10, color: RAIL_INK3, fontStyle: 'italic' }}>none yet</Text>
       ) : (
