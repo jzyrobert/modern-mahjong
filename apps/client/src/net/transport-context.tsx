@@ -611,12 +611,23 @@ export function TransportProvider({ children }: { children: ReactNode }) {
 
   // AppState foreground re-join. We don't proactively close the socket
   // on background — short screen locks shouldn't kick the user off
-  // their match, and iOS suspending a long-backgrounded WS surfaces
-  // as a `closed` flip the onStatus effect above already handles.
-  // On foreground, if the transport was nulled (closed mid-background),
-  // rejoin so the server reseats us by playerId within the reconnect
-  // grace. Solo stays alive across visibility flips by design — the
-  // in-process bot loop has no socket and no server snapshot to restore.
+  // their match. On foreground we always rebuild the online/LAN socket
+  // because on Android the OS can suspend the underlying WebSocket
+  // within seconds of the app being backgrounded WITHOUT firing a
+  // `close` event — the socket sits in a zombie `open` state until
+  // TCP-level retransmits eventually time out, which the user
+  // perceives as the lobby being stuck reconnecting for 20–30 s. The
+  // pre-2026-05 logic only rejoined when `transport` was already null
+  // (the iOS pattern, where a long-suspended WS does flip to
+  // `closed`); the Android zombie window had no such trigger.
+  //
+  // Forcing a fresh socket on every foreground edge is safe: `swap`
+  // closes the previous transport, the server's 5-minute reconnect
+  // grace reseats us by playerId, and `MatchSession.snapshot/restore`
+  // round-trips the engine state so the user lands back where they
+  // were. Solo has no socket and stays alive across visibility flips
+  // by design — the in-process bot loop has no server snapshot to
+  // restore.
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
   useEffect(() => {
     const sub = AppState.addEventListener('change', (next) => {
@@ -624,15 +635,14 @@ export function TransportProvider({ children }: { children: ReactNode }) {
       appStateRef.current = next;
       if (prev.match(/inactive|background/) && next === 'active') {
         const info = reconnectInfoRef.current;
-        if (info && info.kind !== 'solo' && !transport) {
-          if (info.kind === 'online') {
-            joinOnline(info.code, info.spectate ? { asSpectator: true } : undefined);
-          } else if (info.kind === 'lan') joinLan(info.hostUrl, info.code);
-        }
+        if (!info || info.kind === 'solo') return;
+        if (info.kind === 'online') {
+          joinOnline(info.code, info.spectate ? { asSpectator: true } : undefined);
+        } else if (info.kind === 'lan') joinLan(info.hostUrl, info.code);
       }
     });
     return () => sub.remove();
-  }, [transport, joinOnline, joinLan]);
+  }, [joinOnline, joinLan]);
 
   const value = useMemo<TransportContextValue>(
     () => ({
