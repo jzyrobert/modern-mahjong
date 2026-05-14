@@ -1,8 +1,6 @@
 import type { Action, Seat } from '@mahjong/game-logic';
 import { emptyState, soloRulesFrom, startHand } from '@mahjong/game-logic';
-import type { BotKind, ListLobbiesResponse, ServerMessage } from '@mahjong/protocol';
-import Constants from 'expo-constants';
-import { router } from 'expo-router';
+import type { BotKind, ListLobbiesResponse } from '@mahjong/protocol';
 import {
   type ReactNode,
   createContext,
@@ -13,15 +11,16 @@ import {
   useRef,
   useState,
 } from 'react';
-import { AppState, type AppStateStatus } from 'react-native';
+import { AppState } from 'react-native';
 import { getDisplayName, getPlayerId } from '../identity';
 import { stop as lanStop, unadvertise as lanUnadvertise } from '../native/lan-server';
 import { useRecorder } from '../replay/recorder';
-import { playDiceRoll, playTileClick } from '../sound';
 import { useGame } from '../state/game';
-import { type SoloSnapshot, clearSoloSnapshot, saveSoloSnapshot } from '../state/solo-persist';
+import { type SoloSnapshot, clearSoloSnapshot } from '../state/solo-persist';
 import { LESSONS, useTutorial } from '../state/tutorial';
+import type { JoinInfo } from './join-info';
 import { getActiveLanHostBridge, stopLanHostBridge } from './lan-host-bridge';
+import { resolveServerHost } from './server-host';
 import { type SoloTransportControls, createSoloTransport } from './solo-transport';
 import {
   type Transport,
@@ -30,25 +29,8 @@ import {
   createOnlineTransport,
   fetchLobbyList,
 } from './transport';
-
-/**
- * Shape of the reconnect info we capture every time someone joins.
- * Mirrors the runtime ref used by the AppState foreground re-join,
- * but exposed as state through the context so route components can
- * reconstruct the URL (`/match?code=…&host=…` / `?solo=1`) on a
- * reload.
- */
-export type JoinInfo =
-  | { kind: 'online'; code: string; spectate?: boolean }
-  | { kind: 'lan'; hostUrl: string; code: string }
-  | { kind: 'solo' };
-
-/** The match code we stamp into the recorder header for a given join.
- *  Solo sessions don't have a server-assigned code, so they all share
- *  the sentinel `'SOLO'`. */
-function matchCodeFor(join: JoinInfo): string {
-  return join.kind === 'solo' ? 'SOLO' : join.code;
-}
+import { useReconnectOnForeground } from './use-reconnect';
+import { useWireRouter } from './use-wire-router';
 
 interface TransportContextValue {
   matchCode: string | null;
@@ -92,54 +74,15 @@ interface TransportContextValue {
 
 const TransportContext = createContext<TransportContextValue | null>(null);
 
-/**
- * Resolve the online-match server URL with this precedence:
- * 1. **Web only** — `?serverUrl=…` query string. Used by the
- *    Playwright multi-player e2e (`apps/client/e2e/online-multi-
- *    player.spec.ts`) to point the browser at an in-process test
- *    server. Native has no URL bar so this is a no-op there.
- * 2. `EXPO_PUBLIC_SERVER_URL` — runtime env, baked at build time but
- *    overridable via `.env`. CI sets this from a GitHub secret;
- *    local dev can override per-shell. Wins over the static
- *    `extra.serverUrl` so staging / preview deploys can target a
- *    different Worker without forking `app.json`.
- * 3. Dev fallback: derive the host from Expo's dev-server `hostUri`
- *    (LAN IP, e.g. `192.168.1.5:8081` → `http://192.168.1.5:8787`).
- *    Reaches the dev wrangler server from both Android emulator and
- *    a physical device on the same network, as long as wrangler is
- *    bound to `0.0.0.0` (see `apps/server/package.json`'s `dev` script).
- * 4. `expo-constants` `extra.serverUrl` — canonical production
- *    Worker URL baked into `app.json`. Acts as a safety net when
- *    `EXPO_PUBLIC_SERVER_URL` ends up unset / misconfigured (e.g.
- *    secret pointing at the Pages URL by mistake), and as the
- *    default for native release builds where neither env nor
- *    hostUri is available.
- * 5. Last-resort `http://localhost:8787` — only useful in iOS simulator
- *    or with `adb reverse tcp:8787 tcp:8787` configured.
- */
-function resolveServerHost(): string {
-  if (typeof window !== 'undefined' && typeof window.location !== 'undefined') {
-    const fromQuery = new URLSearchParams(window.location.search).get('serverUrl');
-    if (fromQuery) return fromQuery;
-  }
-  if (process.env.EXPO_PUBLIC_SERVER_URL) return process.env.EXPO_PUBLIC_SERVER_URL;
-  const hostUri = Constants.expoConfig?.hostUri;
-  if (hostUri) {
-    const host = hostUri.split(':')[0];
-    if (host && host !== 'localhost' && host !== '127.0.0.1') {
-      return `http://${host}:8787`;
-    }
-  }
-  const extra = Constants.expoConfig?.extra as { serverUrl?: string } | undefined;
-  if (extra?.serverUrl) return extra.serverUrl;
-  return 'http://localhost:8787';
-}
+const CLAIM_RACE_WINDOW_MS = 5_000;
 
 /**
  * Single source of truth for the live transport. Owns the WebSocket /
- * solo-bot loop, routes inbound `ServerMessage`s into the zustand store,
- * and exposes join / leave / send / sendChat actions to the rest of the
- * app via `useTransport()`.
+ * solo-bot loop and exposes join / leave / send / sendChat actions to
+ * the rest of the app via `useTransport()`. Inbound `ServerMessage`
+ * routing lives in `useWireRouter` (`./use-wire-router.ts`); the
+ * AppState foreground-rejoin listener lives in
+ * `useReconnectOnForeground` (`./use-reconnect.ts`).
  *
  * Mounted once in `app/_layout.tsx`. The lobby and match routes consume
  * it via `useTransport()`.
@@ -166,29 +109,17 @@ export function TransportProvider({ children }: { children: ReactNode }) {
   const [joinInfo, setJoinInfo] = useState<JoinInfo | null>(null);
   const reconnectInfoRef = useRef<JoinInfo | null>(null);
 
-  const setState = useGame((s) => s.setState);
-  const setLobby = useGame((s) => s.setLobby);
-  const appendEvents = useGame((s) => s.appendEvents);
-  const pushChat = useGame((s) => s.pushChat);
-  const flashClaimMissed = useGame((s) => s.flashClaimMissed);
-  const flashClaimAnnouncement = useGame((s) => s.flashClaimAnnouncement);
-  const flashDrawAnimation = useGame((s) => s.flashDrawAnimation);
   const reset = useGame((s) => s.reset);
-  const recorderStartMatch = useRecorder((s) => s.startMatch);
-  const recorderOnDelta = useRecorder((s) => s.onDelta);
-  const recorderOnState = useRecorder((s) => s.onState);
-  const recorderOnLobby = useRecorder((s) => s.onLobby);
   const recorderFinalizeMatch = useRecorder((s) => s.finalizeMatch);
 
   // Tracks the wall-clock timestamp of the user's most recent
-  // non-pass `declareClaim` action. Used by the error handler to
-  // recognise a server `PHASE` bounce that's racing with a hard-
-  // fallback resolution — when it fires within `CLAIM_RACE_WINDOW_MS`
-  // of a meaningful claim attempt, we surface a "claim missed" toast
-  // so the user knows their click landed too late (rather than just
-  // appearing as a silent failure).
+  // non-pass `declareClaim` action. Used by the wire router's error
+  // handler to recognise a server `PHASE` bounce that's racing with a
+  // hard-fallback resolution — when it fires within
+  // `CLAIM_RACE_WINDOW_MS` of a meaningful claim attempt, the router
+  // surfaces a "claim missed" toast so the user knows their click
+  // landed too late.
   const lastMeaningfulClaimRef = useRef<number>(0);
-  const CLAIM_RACE_WINDOW_MS = 5_000;
 
   const swap = useCallback((next: Transport, code: string | null) => {
     setTransport((prev) => {
@@ -385,8 +316,9 @@ export function TransportProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Tear down all local transport / match state. Used by both an
-  // explicit `leave()` and the HOST_LEFT server message, which both
-  // need to reset the same fields plus reset the engine store.
+  // explicit `leave()` and the HOST_LEFT server message (handled
+  // inside `useWireRouter`), which both need to reset the same
+  // fields plus reset the engine store.
   const teardown = useCallback(() => {
     // Persist the in-memory replay draft (auto or explicit) before the
     // store gets cleared. Reads the live settings off the zustand
@@ -463,11 +395,11 @@ export function TransportProvider({ children }: { children: ReactNode }) {
   // When the close arrives while the app is already foregrounded — the
   // most common shape of "screen-lock blip" on Android, where the WS
   // close fires *after* the AppState transition has settled — we also
-  // proactively re-join here. Without this, the AppState listener
-  // below sees `transport` still non-null at the moment foreground
-  // fires and bails out, then the close lands a tick later but there's
-  // no subsequent foreground edge to retrigger it, so the user stays
-  // stuck on a dead transport until they manually retry.
+  // proactively re-join here. Without this, the AppState listener sees
+  // `transport` still non-null at the moment foreground fires and bails
+  // out, then the close lands a tick later but there's no subsequent
+  // foreground edge to retrigger it, so the user stays stuck on a dead
+  // transport until they manually retry.
   useEffect(() => {
     if (!transport) return;
     return transport.onStatus((s) => {
@@ -484,194 +416,15 @@ export function TransportProvider({ children }: { children: ReactNode }) {
     });
   }, [transport, joinOnline, joinLan]);
 
-  // Mirror the live solo engine to localStorage so a reload of
-  // `/match?solo=1` can rebuild the bot loop from the persisted
-  // snapshot — see `apps/client/src/state/solo-persist.ts` and
-  // `apps/client/app/match.tsx`. Online + LAN have their own
-  // server-side rebind (PR #211 + the `joinOnline`/`joinLan`
-  // recovery in `match.tsx`), so they skip this entirely.
-  const persistSoloIfActive = useCallback(() => {
-    if (reconnectInfoRef.current?.kind !== 'solo') return;
-    const { state, lobby, you } = useGame.getState();
-    if (state === null || lobby === null || you === null) return;
-    saveSoloSnapshot({ state, lobby, you });
-  }, []);
-
-  // Wire inbound messages into the zustand store + side-effects.
-  useEffect(() => {
-    if (!transport) return;
-    // Track whether the recorder draft has been started for this transport
-    // session. The first `state` message begins the draft; subsequent
-    // `state` messages (reconnect) update the latest frame instead.
-    //
-    // Seed from the existing draft so a transport swap mid-match (e.g.,
-    // AppState foreground rejoin re-establishing the socket) keeps
-    // appending to the same draft rather than wiping it with a fresh
-    // `startMatch` — that bug left online recordings starting from the
-    // reconnect point with all pre-background frames gone. We only treat
-    // the draft as continuing this transport when it's for the same
-    // match; an explicit join to a different code falls through to
-    // `startMatch`, which replaces the stale draft.
-    const draftAtMount = useRecorder.getState().draft;
-    const joinAtMount = reconnectInfoRef.current;
-    let recorderStarted =
-      draftAtMount !== null &&
-      joinAtMount !== null &&
-      draftAtMount.header.matchCode === matchCodeFor(joinAtMount) &&
-      draftAtMount.header.joinKind === joinAtMount.kind;
-    return transport.onMessage((m: ServerMessage) => {
-      // Any inbound that mutates engine / lobby state needs to flow back
-      // into the solo snapshot so a reload of `/match?solo=1` rebuilds
-      // from up-to-date data. Online + LAN are no-ops in
-      // `persistSoloIfActive` (it gates on `kind === 'solo'`).
-      const isStateUpdate = m.t === 'state' || m.t === 'delta' || m.t === 'lobby';
-      switch (m.t) {
-        case 'state': {
-          setState(m.state, m.you);
-          const join = reconnectInfoRef.current;
-          // Tutorial sessions don't tee into the replay library —
-          // saving them would pollute the user's saved-matches list
-          // with throwaway lesson runs. Auto-record stays honoured
-          // for ordinary solo matches.
-          if (useTutorial.getState().active !== null) break;
-          if (join && !recorderStarted) {
-            recorderStartMatch({
-              state: m.state,
-              you: m.you,
-              matchCode: matchCodeFor(join),
-              joinKind: join.kind,
-              rules: m.state.rules,
-            });
-            recorderStarted = true;
-          } else if (recorderStarted) {
-            recorderOnState(m.state);
-          }
-          break;
-        }
-        case 'delta':
-          setState(m.state);
-          appendEvents(m.events);
-          recorderOnDelta(m.events, m.state);
-          for (const event of m.events) {
-            if (event.t === 'discarded') playTileClick();
-            else if (event.t === 'opened') playDiceRoll();
-            else if (event.t === 'drew') {
-              // Trigger the local user's draw popup + flip animation
-              // (DrawTileOverlay reads `useGame.drawAnimation`). Skip
-              // for spectators (no own seat) and for bot draws — they
-              // shouldn't get a face-down popup the user doesn't see
-              // the tile of.
-              const you = useGame.getState().you;
-              if (typeof you === 'number' && event.seat === you) {
-                flashDrawAnimation(event.tile);
-              }
-            } else if (event.t === 'claimsResolved' && event.result.kind === 'win') {
-              // Only the meld-completing claims (chi/peng/gang) clack
-              // a tile face-up. `hu` is handled separately if/when a
-              // win-sting cue gets added.
-              const kind = event.result.claim.kind;
-              if (kind === 'chi' || kind === 'peng' || kind === 'gang') {
-                playTileClick();
-                flashClaimAnnouncement({ seat: event.result.seat, kind });
-              }
-            } else if (event.t === 'gangDeclared') {
-              // Concealed / promoted gangs don't flow through
-              // `claimsResolved` but still flip tiles into a meld.
-              playTileClick();
-            }
-          }
-          break;
-        case 'lobby':
-          setLobby(m);
-          recorderOnLobby(m);
-          break;
-        case 'error': {
-          console.warn('server error:', m.code, m.detail);
-          // Flash a "claim missed" toast when a `PHASE` error follows
-          // a recent meaningful claim — that's the hard-fallback race
-          // case (server resolved the round before our action arrived).
-          // Other PHASE errors are out-of-turn discards / malformed
-          // input; the cooldown ref keeps those silent.
-          if (m.code === 'PHASE') {
-            const elapsed = Date.now() - lastMeaningfulClaimRef.current;
-            if (lastMeaningfulClaimRef.current > 0 && elapsed < CLAIM_RACE_WINDOW_MS) {
-              flashClaimMissed();
-              lastMeaningfulClaimRef.current = 0;
-            }
-          }
-          // Host explicitly left an online/LAN match with no other
-          // humans present, so the server dissolved the room and
-          // closed every remaining socket. Mirror the leaver's tear-
-          // down on the guests' side: drop the transport, clear the
-          // engine state, and bounce back to the lobby instead of
-          // landing on `Match.tsx`'s "No active match" stranded
-          // screen.
-          if (m.code === 'HOST_LEFT') {
-            transport?.close();
-            teardown();
-            router.replace('/');
-          }
-          return;
-        }
-        case 'pong':
-          return;
-        case 'chat':
-          pushChat({ from: m.from, text: m.text, ts: m.ts });
-          return;
-      }
-      if (isStateUpdate) persistSoloIfActive();
-    });
-  }, [
+  useWireRouter({
     transport,
-    setState,
-    setLobby,
-    appendEvents,
-    pushChat,
-    flashClaimMissed,
-    flashClaimAnnouncement,
-    flashDrawAnimation,
+    reconnectInfoRef,
+    lastMeaningfulClaimRef,
+    claimRaceWindowMs: CLAIM_RACE_WINDOW_MS,
     teardown,
-    persistSoloIfActive,
-    recorderStartMatch,
-    recorderOnState,
-    recorderOnDelta,
-    recorderOnLobby,
-  ]);
+  });
 
-  // AppState foreground re-join. We don't proactively close the socket
-  // on background — short screen locks shouldn't kick the user off
-  // their match. On foreground we always rebuild the online/LAN socket
-  // because on Android the OS can suspend the underlying WebSocket
-  // within seconds of the app being backgrounded WITHOUT firing a
-  // `close` event — the socket sits in a zombie `open` state until
-  // TCP-level retransmits eventually time out, which the user
-  // perceives as the lobby being stuck reconnecting for 20–30 s. The
-  // pre-2026-05 logic only rejoined when `transport` was already null
-  // (the iOS pattern, where a long-suspended WS does flip to
-  // `closed`); the Android zombie window had no such trigger.
-  //
-  // Forcing a fresh socket on every foreground edge is safe: `swap`
-  // closes the previous transport, the server's 5-minute reconnect
-  // grace reseats us by playerId, and `MatchSession.snapshot/restore`
-  // round-trips the engine state so the user lands back where they
-  // were. Solo has no socket and stays alive across visibility flips
-  // by design — the in-process bot loop has no server snapshot to
-  // restore.
-  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
-  useEffect(() => {
-    const sub = AppState.addEventListener('change', (next) => {
-      const prev = appStateRef.current;
-      appStateRef.current = next;
-      if (prev.match(/inactive|background/) && next === 'active') {
-        const info = reconnectInfoRef.current;
-        if (!info || info.kind === 'solo') return;
-        if (info.kind === 'online') {
-          joinOnline(info.code, info.spectate ? { asSpectator: true } : undefined);
-        } else if (info.kind === 'lan') joinLan(info.hostUrl, info.code);
-      }
-    });
-    return () => sub.remove();
-  }, [joinOnline, joinLan]);
+  useReconnectOnForeground({ reconnectInfoRef, joinOnline, joinLan });
 
   const value = useMemo<TransportContextValue>(
     () => ({
