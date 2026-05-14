@@ -42,12 +42,63 @@ describe('protocol — message parsing', () => {
     expect(r.ok).toBe(false);
   });
 
-  it('accepts an action envelope without deep-validating the action', () => {
+  it('accepts an action envelope (discriminator + seat validated, tile passed through)', () => {
     const r = parseClientMessage({
       t: 'action',
       action: { t: 'discard', seat: 0, tile: { kind: 'honor', honor: 'E', copy: 0 } },
     });
     expect(r.ok).toBe(true);
+  });
+
+  it('accepts every action discriminator with minimum valid scalars', () => {
+    const cases = [
+      { t: 'startHand', seed: 0 },
+      { t: 'startHand', seed: 1, dealer: 2 },
+      { t: 'setRules', rules: {} },
+      { t: 'draw', seat: 0 },
+      { t: 'discard', seat: 1, tile: {} },
+      { t: 'declareClaim', seat: 2, claim: { kind: 'pass' } },
+      { t: 'resolveClaims', nowMs: 1700000000000 },
+      { t: 'declareGangConcealed', seat: 3, tile: {} },
+      { t: 'declareGangPromoted', seat: 0, tile: {} },
+      { t: 'declareWin', seat: 1, selfDraw: false },
+    ];
+    for (const action of cases) {
+      const r = parseClientMessage({ t: 'action', action });
+      expect(r.ok, `action.t=${action.t}`).toBe(true);
+    }
+  });
+
+  it('rejects an action envelope with no action body', () => {
+    const r = parseClientMessage({ t: 'action' });
+    expect(r.ok).toBe(false);
+  });
+
+  it('rejects an action with an unknown discriminator', () => {
+    const r = parseClientMessage({ t: 'action', action: { t: 'discardX', seat: 0, tile: {} } });
+    expect(r.ok).toBe(false);
+  });
+
+  it('rejects an action with a non-numeric seat', () => {
+    const r = parseClientMessage({ t: 'action', action: { t: 'draw', seat: 'foo' } });
+    expect(r.ok).toBe(false);
+  });
+
+  it('rejects an action with an out-of-range seat', () => {
+    const r1 = parseClientMessage({ t: 'action', action: { t: 'draw', seat: 4 } });
+    expect(r1.ok).toBe(false);
+    const r2 = parseClientMessage({ t: 'action', action: { t: 'draw', seat: -1 } });
+    expect(r2.ok).toBe(false);
+  });
+
+  it('rejects declareWin missing selfDraw', () => {
+    const r = parseClientMessage({ t: 'action', action: { t: 'declareWin', seat: 0 } });
+    expect(r.ok).toBe(false);
+  });
+
+  it('rejects resolveClaims with a non-numeric nowMs', () => {
+    const r = parseClientMessage({ t: 'action', action: { t: 'resolveClaims', nowMs: 'now' } });
+    expect(r.ok).toBe(false);
   });
 
   it('accepts a seatBot message', () => {
