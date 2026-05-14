@@ -1,7 +1,8 @@
 import type { Action, Tile as MTile, Seat } from '@mahjong/game-logic';
 import { nextDealer, sameTile, sortHand, tileId } from '@mahjong/game-logic';
 import { useState } from 'react';
-import { Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
+import { useRecorder } from '../replay/recorder';
 import { useGame } from '../state/game';
 import { randomSeed } from '../util';
 import { RulePanel } from './RulePanel';
@@ -46,6 +47,7 @@ export function ResultPanel({ onAction, mySeat, isHost, onLeave }: ResultPanelPr
         gap: 10,
       }}
     >
+      <SaveReplayButton />
       {r.kind === 'win' ? (
         <View style={{ gap: 6 }}>
           <Text style={{ fontSize: 18, fontWeight: '900', color: COLORS.ink }}>
@@ -136,5 +138,63 @@ function WinningHand({ winner, winningTile }: { winner: Seat; winningTile: MTile
         })}
       </View>
     </View>
+  );
+}
+
+/**
+ * Small "save replay" pill anchored in the top-right corner of the
+ * ResultPanel. The save action used to live inside the ☰ menu sheet,
+ * but the mobile shell renders the post-hand panel as a full-screen
+ * dim overlay that covers the ☰ pill, so between hands the user had
+ * no way to reach Save. Surfacing it on the panel itself fixes that
+ * without re-exposing the entire menu.
+ *
+ * Hidden when there's no active draft (no match in progress, e.g.
+ * tutorials don't auto-record), and toggles between "save" and
+ * "saved · tap to discard" on press to mirror the MenuSheet row.
+ */
+function SaveReplayButton() {
+  const draftActive = useRecorder((s) => s.draft !== null);
+  const savedThisMatch = useRecorder((s) => s.savedThisMatch);
+  const saveExplicit = useRecorder((s) => s.saveExplicit);
+  const discardThisMatch = useRecorder((s) => s.discardThisMatch);
+  const replayQuota = useGame((s) => s.settings.replayQuota);
+  if (!draftActive) return null;
+  const onPress = () => {
+    if (savedThisMatch) discardThisMatch();
+    else saveExplicit(replayQuota);
+  };
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={savedThisMatch ? 'Replay saved — tap to discard' : 'Save replay'}
+      style={({ pressed }) => ({
+        position: 'absolute',
+        top: 10,
+        right: 10,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 14,
+        backgroundColor: pressed ? COLORS.cream : 'white',
+        borderColor: COLORS.hairline,
+        borderWidth: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 5,
+      })}
+    >
+      <Text style={{ fontSize: 13 }}>{savedThisMatch ? '✓' : '💾'}</Text>
+      <Text
+        style={{
+          fontSize: 11,
+          fontWeight: '800',
+          color: COLORS.ink2,
+          letterSpacing: 0.4,
+        }}
+      >
+        {savedThisMatch ? 'SAVED' : 'SAVE'}
+      </Text>
+    </Pressable>
   );
 }
