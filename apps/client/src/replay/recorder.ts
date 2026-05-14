@@ -205,3 +205,15 @@ export const useRecorder = create<RecorderStore>((set, get) => ({
     set({ draft: null, savedThisMatch: false });
   },
 }));
+
+// Test hook: expose the recorder store on globalThis so e2e specs can
+// drive `savedThisMatch` / `draft` directly. Mirrors the
+// `__MAHJONG_TEST_BOT_SCRIPTS__` pattern in `solo-transport.ts` — an
+// out-of-band escape hatch that lets screenshot / scenario specs set
+// up post-hand UI states without playing a full match to a win.
+declare global {
+  var __MAHJONG_TEST_RECORDER__: typeof useRecorder | undefined;
+}
+if (typeof globalThis !== 'undefined') {
+  globalThis.__MAHJONG_TEST_RECORDER__ = useRecorder;
+}
