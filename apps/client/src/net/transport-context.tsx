@@ -39,7 +39,7 @@ import {
  * reload.
  */
 export type JoinInfo =
-  | { kind: 'online'; code: string }
+  | { kind: 'online'; code: string; spectate?: boolean }
   | { kind: 'lan'; hostUrl: string; code: string }
   | { kind: 'solo' };
 
@@ -59,7 +59,12 @@ interface TransportContextValue {
   resolvedHost: string;
   /** Last successful join descriptor — null before any join + after `leave`. */
   joinInfo: JoinInfo | null;
-  joinOnline: (code: string) => void;
+  /**
+   * Join an online match. Pass `{ asSpectator: true }` to force the
+   * server into spectator mode even when seats are open — drives the
+   * lobby-browser "Watch" path.
+   */
+  joinOnline: (code: string, opts?: { asSpectator?: boolean }) => void;
   joinLan: (hostUrl: string, code: string) => void;
   joinSolo: () => void;
   /** Tutorial entry point. Forces all bots to `passive`, seeds the
@@ -201,8 +206,9 @@ export function TransportProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const joinOnline = useCallback(
-    (code: string) => {
-      recordJoin({ kind: 'online', code });
+    (code: string, opts?: { asSpectator?: boolean }) => {
+      const spectate = opts?.asSpectator === true;
+      recordJoin({ kind: 'online', code, ...(spectate ? { spectate: true } : {}) });
       // Switching transports invalidates any prior solo snapshot — the
       // engine state about to arrive belongs to a different match.
       clearSoloSnapshot();
@@ -214,6 +220,7 @@ export function TransportProvider({ children }: { children: ReactNode }) {
           matchCode: code,
           playerId: getPlayerId(),
           displayName: getDisplayName(),
+          ...(spectate ? { spectate: true } : {}),
         }),
         code,
       );
@@ -468,8 +475,9 @@ export function TransportProvider({ children }: { children: ReactNode }) {
       if (!info || info.kind === 'solo') return;
       setTransport(null);
       if (AppState.currentState === 'active') {
-        if (info.kind === 'online') joinOnline(info.code);
-        else if (info.kind === 'lan') joinLan(info.hostUrl, info.code);
+        if (info.kind === 'online') {
+          joinOnline(info.code, info.spectate ? { asSpectator: true } : undefined);
+        } else if (info.kind === 'lan') joinLan(info.hostUrl, info.code);
       }
     });
   }, [transport, joinOnline, joinLan]);
@@ -617,8 +625,9 @@ export function TransportProvider({ children }: { children: ReactNode }) {
       if (prev.match(/inactive|background/) && next === 'active') {
         const info = reconnectInfoRef.current;
         if (info && info.kind !== 'solo' && !transport) {
-          if (info.kind === 'online') joinOnline(info.code);
-          else if (info.kind === 'lan') joinLan(info.hostUrl, info.code);
+          if (info.kind === 'online') {
+            joinOnline(info.code, info.spectate ? { asSpectator: true } : undefined);
+          } else if (info.kind === 'lan') joinLan(info.hostUrl, info.code);
         }
       }
     });

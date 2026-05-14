@@ -111,7 +111,20 @@ export interface PublicPlayer {
 }
 
 export type ClientMessage =
-  | { t: 'hello'; playerId: string; displayName: string; matchCode: string }
+  | {
+      t: 'hello';
+      playerId: string;
+      displayName: string;
+      matchCode: string;
+      /**
+       * Skip seat assignment and join purely as a spectator. The server
+       * forces the connection into the viewer pool regardless of seat
+       * availability; the client sees `you === 'spectator'` and renders
+       * the read-only watch view. Omitted = legacy behaviour (take the
+       * next available seat, fall back to spectator only when full).
+       */
+      spectate?: boolean;
+    }
   | { t: 'action'; action: Action }
   | { t: 'chat'; text: string }
   | { t: 'leave' }
@@ -151,6 +164,7 @@ export const helloSchema = z.object({
   playerId: z.string().min(1).max(64),
   displayName: z.string().min(1).max(32),
   matchCode: z.string().min(1).max(16),
+  spectate: z.boolean().optional(),
 });
 
 export const chatSchema = z.object({

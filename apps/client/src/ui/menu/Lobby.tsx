@@ -322,8 +322,8 @@ export function Lobby() {
         <BrowseLobbyModal
           open={browseLobbiesOpen}
           onClose={() => setBrowseLobbiesOpen(false)}
-          onJoin={(matchCode) => {
-            transport.joinOnline(matchCode);
+          onJoin={(matchCode, opts) => {
+            transport.joinOnline(matchCode, opts);
           }}
         />
       </SafeAreaView>

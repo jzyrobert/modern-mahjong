@@ -566,14 +566,20 @@ export class MatchSession {
 
   private onHello(
     connectionId: string,
-    msg: { playerId: string; displayName: string; matchCode: string },
+    msg: { playerId: string; displayName: string; matchCode: string; spectate?: boolean },
   ): Outbound[] {
-    const seat = this.findOrAssignSeat(msg.playerId);
+    // Honour an explicit spectate request even when seats are open —
+    // the user picked Watch from the lobby browser. Skip the
+    // findOrAssignSeat() pass entirely so reaching this path doesn't
+    // accidentally take a vacant seat. Reconnecting spectators don't
+    // need re-deduplication (the spectator set is keyed on the
+    // connection id, which is unique per WS).
+    const seat = msg.spectate ? null : this.findOrAssignSeat(msg.playerId);
     if (seat === null) {
-      // Room is full — keep the connection alive as a spectator instead
-      // of closing it. The client gets a 'state' with you === 'spectator'
-      // (already in the protocol), and the viewer count on lobby
-      // broadcasts increments by one.
+      // Room is full OR the user explicitly opted to spectate. Either
+      // way, keep the connection alive as a spectator. The client gets
+      // a 'state' with you === 'spectator' (already in the protocol),
+      // and the viewer count on lobby broadcasts increments by one.
       this.spectators.add(connectionId);
       return [
         {
