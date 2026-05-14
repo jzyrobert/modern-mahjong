@@ -47,7 +47,6 @@
   "devDependencies": {
     "@babel/core": "^7.25.2",
     "@lhci/cli": "^0.15.1",
-    "@mahjong/server": "workspace:*",
     "@playwright/test": "^1.59.1",
     "@types/react": "~19.1.0",
     "@types/ws": "^8.5.13",
