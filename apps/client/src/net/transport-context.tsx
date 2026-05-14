@@ -171,6 +171,7 @@ export function TransportProvider({ children }: { children: ReactNode }) {
   const appendEvents = useGame((s) => s.appendEvents);
   const pushChat = useGame((s) => s.pushChat);
   const flashClaimMissed = useGame((s) => s.flashClaimMissed);
+  const flashClaimAnnouncement = useGame((s) => s.flashClaimAnnouncement);
   const reset = useGame((s) => s.reset);
   const recorderStartMatch = useRecorder((s) => s.startMatch);
   const recorderOnDelta = useRecorder((s) => s.onDelta);
@@ -558,7 +559,10 @@ export function TransportProvider({ children }: { children: ReactNode }) {
               // a tile face-up. `hu` is handled separately if/when a
               // win-sting cue gets added.
               const kind = event.result.claim.kind;
-              if (kind === 'chi' || kind === 'peng' || kind === 'gang') playTileClick();
+              if (kind === 'chi' || kind === 'peng' || kind === 'gang') {
+                playTileClick();
+                flashClaimAnnouncement({ seat: event.result.seat, kind });
+              }
             } else if (event.t === 'gangDeclared') {
               // Concealed / promoted gangs don't flow through
               // `claimsResolved` but still flip tiles into a meld.
@@ -613,6 +617,7 @@ export function TransportProvider({ children }: { children: ReactNode }) {
     appendEvents,
     pushChat,
     flashClaimMissed,
+    flashClaimAnnouncement,
     teardown,
     persistSoloIfActive,
     recorderStartMatch,

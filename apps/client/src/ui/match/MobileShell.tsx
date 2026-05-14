@@ -16,6 +16,7 @@ import { COLORS } from '../colors';
 import { TutorialTarget } from '../tutorial/TargetRegistry';
 import { WIND_GLYPH } from '../winds';
 import { ChatBubbles } from './ChatBubbles';
+import { ClaimAnnouncementToast } from './ClaimAnnouncementToast';
 import { ClaimMissedToast } from './ClaimMissedToast';
 import { GameStatusBar, WALL_LOW_THRESHOLD } from './GameStatusBar';
 import { MatchModals } from './MatchModals';
@@ -549,6 +550,7 @@ export function MobileShell(props: MobileShellProps) {
         {/* Floating emote bubbles overlay (absolute-positioned). */}
         <ChatBubbles seatToPosition={seatToPosition} />
         <ClaimMissedToast />
+        <ClaimAnnouncementToast />
 
         {/* ResultPanel — between-hand summary. Lifted out of the
             scrollable middle so it can overlay the felt cleanly when

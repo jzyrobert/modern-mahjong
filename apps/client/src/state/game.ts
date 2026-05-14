@@ -161,6 +161,17 @@ interface ClientGameStore {
    * `ClaimMissedToast` overlay; cleared on `reset`.
    */
   claimMissedSeq: number;
+  /**
+   * Most-recent successful chi/peng/gang claim by any seat. `seq` ticks
+   * up on every flash so the `ClaimAnnouncementToast` consumer can
+   * deduplicate. Set from the `claimsResolved` event handler in
+   * `transport-context.tsx`; cleared on `reset` / `handStarted`.
+   */
+  claimAnnouncement: {
+    seq: number;
+    seat: Seat;
+    kind: 'chi' | 'peng' | 'gang';
+  } | null;
   setState: (state: GameState, you?: Seat | 'spectator') => void;
   setLobby: (l: LobbyState) => void;
   setShuffling: (shuffling: boolean) => void;
@@ -170,6 +181,7 @@ interface ClientGameStore {
   pushChat: (entry: { from: Seat | 'spectator'; text: string; ts: number }) => void;
   dismissChat: (seq: number) => void;
   flashClaimMissed: () => void;
+  flashClaimAnnouncement: (a: { seat: Seat; kind: 'chi' | 'peng' | 'gang' }) => void;
   reset: () => void;
 }
 
@@ -196,6 +208,7 @@ export const useGame = create<ClientGameStore>((set) => ({
   manualOrder: [],
   chats: [],
   claimMissedSeq: 0,
+  claimAnnouncement: null,
   setState: (state, you) => set((prev) => ({ state, you: you ?? prev.you })),
   setLobby: (lobby) => set({ lobby }),
   setShuffling: (shuffling) => set({ shuffling }),
@@ -214,6 +227,14 @@ export const useGame = create<ClientGameStore>((set) => ({
     }),
   dismissChat: (seq) => set((prev) => ({ chats: prev.chats.filter((c) => c.seq !== seq) })),
   flashClaimMissed: () => set((prev) => ({ claimMissedSeq: prev.claimMissedSeq + 1 })),
+  flashClaimAnnouncement: (a) =>
+    set((prev) => ({
+      claimAnnouncement: {
+        seat: a.seat,
+        kind: a.kind,
+        seq: (prev.claimAnnouncement?.seq ?? 0) + 1,
+      },
+    })),
   appendEvents: (events) =>
     set((prev) => {
       if (events.length === 0) return prev;
@@ -264,6 +285,7 @@ export const useGame = create<ClientGameStore>((set) => ({
       manualOrder: [],
       chats: [],
       claimMissedSeq: 0,
+      claimAnnouncement: null,
     }),
 }));
 
