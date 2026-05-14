@@ -7,6 +7,7 @@ import { Hand } from '../Hand';
 import { TutorialTarget } from '../tutorial/TargetRegistry';
 import { MeldStrip } from './MeldStrip';
 import { PlayerBadge } from './PlayerBadge';
+import { ReadyHandBadge } from './ReadyHandBadge';
 import { SeatDiscardPile } from './SeatDiscardPile';
 import { type SortMode, SortPicker } from './SortPicker';
 import { WallEdge } from './WallEdge';
@@ -33,6 +34,9 @@ interface DesktopTableProps {
   /** When non-null, the bottom seat's `Hand` highlights this `tileId`
    *  as the recommended discard. */
   hintTileId: number | null;
+  /** Distinct wait faces when the user's concealed hand is at shanten
+   *  0. Empty means no badge is shown. */
+  readyWaits: readonly MTile[];
   /** Tile currently in the claim window — gets a gold halo. */
   latestDiscardId: number | null;
   /** Slotted into the table's center cell (e.g. wall count, draw cue, tsumo button). */
@@ -141,6 +145,7 @@ export function DesktopTable({
   onSortModeChange,
   drawnTileId,
   hintTileId,
+  readyWaits,
   latestDiscardId,
   centerHud,
   liveWallCount,
@@ -320,6 +325,7 @@ export function DesktopTable({
         onSortModeChange={onSortModeChange}
         drawnTileId={drawnTileId}
         hintTileId={hintTileId}
+        readyWaits={readyWaits}
         ownHandClickable={ownHandClickable}
         score={scoreboard[byPos.bottom.seat]}
         lobby={lobby}
@@ -512,6 +518,7 @@ interface MyAreaProps {
   onSortModeChange: (m: SortMode) => void;
   drawnTileId: number | null;
   hintTileId: number | null;
+  readyWaits: readonly MTile[];
   ownHandClickable?: ((t: MTile) => void) | undefined;
   score: number;
   lobby: LobbyState | null;
@@ -529,6 +536,7 @@ function MyArea({
   onSortModeChange,
   drawnTileId,
   hintTileId,
+  readyWaits,
   ownHandClickable,
   score,
   lobby,
@@ -553,6 +561,7 @@ function MyArea({
           turnCountdown={turnCountdown}
         />
         <SortPicker mode={sortMode} onChange={onSortModeChange} />
+        <ReadyHandBadge waits={readyWaits} />
       </View>
       <TutorialTarget id="own-hand">
         <Hand

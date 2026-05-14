@@ -21,6 +21,7 @@ import { MatchModals } from './MatchModals';
 import { MeldStrip } from './MeldStrip';
 import { OppDiscardColumn } from './OppDiscardColumn';
 import { OppHandStrip } from './OppHandStrip';
+import { ReadyHandBadge } from './ReadyHandBadge';
 import { SharedDiscardPool } from './SharedDiscardPool';
 import { type SortMode, SortPicker } from './SortPicker';
 import { type Position, SEAT_COLOR } from './seatColor';
@@ -96,6 +97,9 @@ interface MobileShellProps {
   /** When non-null, `Hand` highlights the matching `tileId` as the
    *  heuristic ranker's recommended discard. */
   hintTileId: number | null;
+  /** Distinct wait faces when the user's concealed hand is at shanten
+   *  0 (聽牌). Empty array → no badge rendered. */
+  readyWaits: readonly MTile[];
   sortMode: SortMode;
   onSortModeChange: (m: SortMode) => void;
   onAction: (a: Action) => void;
@@ -169,6 +173,7 @@ export function MobileShell(props: MobileShellProps) {
     dealerName,
     drawnTileId,
     hintTileId,
+    readyWaits,
     sortMode,
     onSortModeChange,
     onAction,
@@ -319,6 +324,7 @@ export function MobileShell(props: MobileShellProps) {
               concealedGangTile={concealedGangTile}
               ownDiscards={discardsBySeat[seat]}
               latestDiscardId={latestDiscardId}
+              readyWaits={readyWaits}
               onAction={onAction}
               onOpenMenu={() => setMenuOpen(true)}
               onOpenPlayers={() => setPlayersOpen(true)}
@@ -468,13 +474,27 @@ export function MobileShell(props: MobileShellProps) {
 
           {/* Portrait: SortPicker sits flush-right above the hand
               so the user can switch sort order mid-hand without
-              taking their eyes off the tiles. Landscape: hand row
-              centers the tiles inside the full-width bottom band with
-              the compact sort cycle button flush to the hand's right
-              edge — the hand+sort group is centered as one unit. */}
+              taking their eyes off the tiles. ReadyHandBadge sits
+              flush-left on the same row when the user is tenpai, so
+              the badge + picker share one strip instead of pushing
+              the hand down. Landscape: hand row centers the tiles
+              inside the full-width bottom band with the compact sort
+              cycle button flush to the hand's right edge — the
+              hand+sort group is centered as one unit. */}
           {!isLandscape ? (
-            <View style={{ alignSelf: 'flex-end' }}>
-              <SortPicker mode={sortMode} onChange={onSortModeChange} />
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 8,
+                flexWrap: 'wrap',
+              }}
+            >
+              <ReadyHandBadge waits={readyWaits} />
+              <View style={{ marginLeft: 'auto' }}>
+                <SortPicker mode={sortMode} onChange={onSortModeChange} />
+              </View>
             </View>
           ) : null}
           <View
@@ -661,6 +681,8 @@ interface LandscapeActionRailProps {
   concealedGangTile: MTile | null;
   ownDiscards: GameState['discardOrder'];
   latestDiscardId: number | null;
+  /** Distinct wait faces when the user's concealed hand is at shanten 0. */
+  readyWaits: readonly MTile[];
   onAction: (a: Action) => void;
   onOpenMenu: () => void;
   onOpenPlayers: () => void;
@@ -686,6 +708,7 @@ function LandscapeActionRail({
   concealedGangTile,
   ownDiscards,
   latestDiscardId,
+  readyWaits,
   onAction,
   onOpenMenu,
   onOpenPlayers,
@@ -738,6 +761,7 @@ function LandscapeActionRail({
           </View>
         </TutorialTarget>
       ) : null}
+      <ReadyHandBadge waits={readyWaits} />
       <OwnDiscardsRail tiles={ownDiscards} latestId={latestDiscardId} />
     </View>
   );

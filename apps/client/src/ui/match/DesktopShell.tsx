@@ -56,6 +56,9 @@ interface DesktopShellProps {
   /** When non-null, the user's hand highlights the matching `tileId`
    *  as the heuristic ranker's recommended discard. */
   hintTileId: number | null;
+  /** Distinct wait faces when the user's concealed hand is at shanten 0
+   *  (聽牌). Empty array means no badge. Computed in `Match.tsx`. */
+  readyWaits: readonly MTile[];
   sortMode: SortMode;
   onSortModeChange: (m: SortMode) => void;
   onAction: (a: Action) => void;
@@ -113,6 +116,7 @@ export function DesktopShell(props: DesktopShellProps) {
     dealerName,
     drawnTileId,
     hintTileId,
+    readyWaits,
     sortMode,
     onSortModeChange,
     onAction,
@@ -218,6 +222,7 @@ export function DesktopShell(props: DesktopShellProps) {
             onSortModeChange={onSortModeChange}
             drawnTileId={drawnTileId}
             hintTileId={hintTileId}
+            readyWaits={readyWaits}
             latestDiscardId={latestDiscardId}
             centerHud={centerHud}
             liveWallCount={state.wall.length}

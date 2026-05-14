@@ -11,6 +11,7 @@ import {
   sameFace,
   scoreHand,
   tileId,
+  waitTiles,
 } from '@mahjong/game-logic';
 import { BOT_LABELS, type BotKind, type PublicPlayer } from '@mahjong/protocol';
 import * as Clipboard from 'expo-clipboard';
@@ -150,6 +151,40 @@ export function Match() {
     if (placements) for (const p of placements) m[p.seat] = p.position;
     return m;
   }, [placements]);
+
+  // Ready-hand (聽牌) waits — when the user's concealed hand is at
+  // shanten 0, surface the faces that would complete it. Rendered
+  // above the user's hand as a gold pill by both shells
+  // (`ReadyHandBadge`); empty array → no badge.
+  //
+  // Only meaningful when the user is between turns (13 tiles, between
+  // their discard and next draw). After they've drawn (14 tiles), the
+  // tsumo button already covers the win path, so we suppress the
+  // badge to avoid bait — a 0-shanten 14-tile shape doesn't tell the
+  // user what to do.
+  //
+  // `waitTiles` is ~34 shanten calls. The memo keys on a stable
+  // tileId-string for the hand so unrelated state deltas (opponent
+  // draws/discards during `awaitingClaims`, other-seat turns) don't
+  // re-run it — only changes to the user's own hand shape do.
+  const showReadyWaits =
+    !!state &&
+    seat !== null &&
+    (state.phase === 'awaitingClaims' || (state.phase === 'turn' && !state.hasDrawn));
+  const readyHand = showReadyWaits ? state!.hands[seat!] : null;
+  const readyHandKey = readyHand ? readyHand.map(tileId).join(',') : '';
+  const readyMeldCount = readyHand ? state!.melds[seat!].length : 0;
+  const readyAllowSpecial =
+    !!state && (state.rules.allowSevenPairs || state.rules.allowThirteenOrphans);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `readyHandKey` is the stable identity for the hand contents; depending on `readyHand` itself would re-fire on every state delta even when the user's hand is unchanged.
+  const readyWaits = useMemo<MTile[]>(() => {
+    if (!readyHand) return [];
+    return waitTiles({
+      hand: readyHand,
+      exposedMelds: readyMeldCount,
+      allowSpecial: readyAllowSpecial,
+    });
+  }, [readyHandKey, readyMeldCount, readyAllowSpecial]);
 
   // Discard hint — runs the same `rankDiscards` scorer the
   // `heuristicBot` uses against the user's hand and surfaces the top
@@ -509,6 +544,7 @@ export function Match() {
     dealerName,
     drawnTileId,
     hintTileId,
+    readyWaits,
     sortMode,
     onSortModeChange,
     onAction,
