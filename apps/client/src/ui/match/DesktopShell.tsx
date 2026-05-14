@@ -12,8 +12,10 @@ import { COLORS } from '../colors';
 import { TutorialTarget } from '../tutorial/TargetRegistry';
 import { ChatBar } from './ChatBar';
 import { ChatBubbles } from './ChatBubbles';
+import { ClaimAnnouncementToast } from './ClaimAnnouncementToast';
 import { ClaimMissedToast } from './ClaimMissedToast';
 import { DesktopTable } from './DesktopTable';
+import { DrawTileOverlay } from './DrawTileOverlay';
 import { GameStatusBar } from './GameStatusBar';
 import { MatchModals } from './MatchModals';
 import type { SortMode } from './SortPicker';
@@ -251,6 +253,8 @@ export function DesktopShell(props: DesktopShellProps) {
 
           <ChatBubbles seatToPosition={seatToPosition} />
           <ClaimMissedToast />
+          <ClaimAnnouncementToast />
+          <DrawTileOverlay />
           <MatchModals
             mySeat={seat}
             settingsOpen={settingsOpen}

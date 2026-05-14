@@ -57,6 +57,27 @@ test('after the first round-trip, the highlighted draw-tile pulls a new tile', a
   await waitForUserDrawCue(page, 30_000);
   await drawTile.click();
   await expect(drawTile).toBeHidden();
+
+  // The freshly-drawn tile flows through DrawTileOverlay: HandTile renders
+  // its slot at opacity 0 while the popup animates, then the overlay's
+  // finish callback fires `clearDrawAnimation()` and the slot fades back
+  // to opacity 1. The overlay must be mounted by whichever shell is
+  // active for this to land — if it isn't (e.g. DesktopShell missed the
+  // mount), `drawAnimation` stays set and the drawn slot is stuck
+  // invisible forever. Total overlay duration is ~1160ms; allow a wide
+  // margin so flake from animation scheduling doesn't false-fail.
+  await expect
+    .poll(
+      async () =>
+        page.getByTestId('own-hand-tile').evaluateAll((nodes) =>
+          nodes.every((n) => {
+            const op = Number.parseFloat(window.getComputedStyle(n).opacity);
+            return Number.isFinite(op) && op > 0.5;
+          }),
+        ),
+      { timeout: 4_000, message: 'A drawn hand tile stayed invisible — DrawTileOverlay never cleared drawAnimation' },
+    )
+    .toBe(true);
 });
 
 async function readWallCount(page: Page): Promise<number> {
