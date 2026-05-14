@@ -28,6 +28,9 @@ jobs:
       - name: Test (packages)
         run: pnpm -r --filter './packages/*' test
 
+      - name: Test (client unit)
+        run: pnpm --filter @mahjong/client test
+
       - name: Lint
         run: pnpm lint
 

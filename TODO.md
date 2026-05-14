@@ -32,7 +32,6 @@ Live tracker for queued and out-of-scope work. The full design lives in [`docs/P
   - Search / filter the library by player name, faan score, hand length.
   - Heatmap of dangerous tiles overlaid on opponents' discards during playback.
   - Spectate-from-current-frame: jump into a live match and rewind a few moments.
-  - Vitest unit tests for the recorder / storage / bookmarks modules — currently exercised end-to-end only (`apps/client/e2e/replay.spec.ts`); a vitest setup for `apps/client` would let us pin the synthetic-stream and quota-prune behaviours directly.
   - Compress saved frames — currently every delta's full state is stored as JSON. A typical 4-hand match lands at ~2–8 MB; gzip would 5–10× that. v1 uses localStorage with a 50-replay quota cap to keep the budget bounded.
 
 ## Out of scope until a maintainer decides
