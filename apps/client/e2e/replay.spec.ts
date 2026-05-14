@@ -1,4 +1,4 @@
-import { expect, test } from './_helpers';
+import { clearReplayStorage, expect, test } from './_helpers';
 
 /**
  * End-to-end coverage for the replay system: solo match → save replay
@@ -15,21 +15,9 @@ import { expect, test } from './_helpers';
 const TEST_SEED = 5;
 
 test.beforeEach(async ({ page }) => {
+  await clearReplayStorage(page);
   await page.addInitScript((seed) => {
     (globalThis as { __MAHJONG_TEST_SEED__?: number }).__MAHJONG_TEST_SEED__ = seed;
-    // Wipe any leftover replay storage from a prior run so the library
-    // assertion below is exact. localStorage is shared across specs in
-    // the same browser context.
-    try {
-      const keys: string[] = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (k?.startsWith('mj.replay.v1.')) keys.push(k);
-      }
-      for (const k of keys) localStorage.removeItem(k);
-    } catch {
-      /* private mode — no-op */
-    }
   }, TEST_SEED);
 });
 

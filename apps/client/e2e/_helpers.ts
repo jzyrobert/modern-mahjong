@@ -23,6 +23,28 @@ export const test = base.extend({
 export { expect };
 
 /**
+ * Wipe any leftover replay records from `localStorage` on next
+ * navigation. `localStorage` is shared across specs within the same
+ * browser context, so specs that assert on the post-save record count
+ * have to reset first. Calls `addInitScript`, so it must run before
+ * the spec's first `page.goto(...)`.
+ */
+export async function clearReplayStorage(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    try {
+      const keys: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k?.startsWith('mj.replay.v1.')) keys.push(k);
+      }
+      for (const k of keys) localStorage.removeItem(k);
+    } catch {
+      /* private mode — no-op */
+    }
+  });
+}
+
+/**
  * Spoof the document's `visibilityState` + `hidden` and dispatch
  * `visibilitychange` so RN-Web's AppState shim flips. Specs use this
  * to simulate Android Chrome / iOS Safari backgrounding the tab.
