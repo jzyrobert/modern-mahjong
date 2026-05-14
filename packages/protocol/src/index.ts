@@ -188,13 +188,51 @@ export const unseatBotSchema = z.object({
 });
 
 /**
- * We do not deeply schema-validate Action — its discriminated-union shape is
- * enforced by the engine reducer (which throws IllegalActionError on
- * anything malformed). At the wire boundary we just check the envelope.
+ * Per-action shape. We validate the discriminator + seat range + the
+ * scalar fields the engine assumes are typed correctly, but leave the
+ * heavier payloads (`tile`, `claim`, `rules`) as `z.unknown()` — those
+ * are owned by the engine reducer, which throws `IllegalActionError`
+ * on anything malformed. Mirroring the full `Tile` / `Claim` /
+ * `RuleConfig` shape here would duplicate the engine's discriminated
+ * union for no real defense-in-depth: the engine's helpers (`sameFace`,
+ * `legalClaimsFor`, etc.) already assume those shapes and crash hard
+ * if they're wrong.
+ *
+ * What this catches at the wire boundary:
+ *   - unknown `t` discriminators (typo'd action names, or new client
+ *     sending an event a stale server doesn't know)
+ *   - `seat` outside 0..3 (string, negative, out-of-range integer)
+ *   - missing required scalar fields (e.g. `declareWin` without
+ *     `selfDraw`, `discard` without `seat`)
+ *
+ * What still flows through to the engine reducer:
+ *   - malformed `tile` payloads (wrong kind, out-of-range rank, etc.)
+ *   - malformed `claim` payloads (unknown kind, missing `with` array
+ *     on chi, etc.)
+ *   - malformed `rules` payloads on `setRules`
+ *
+ * The union is in the same order as the `Action` type in
+ * `@mahjong/game-logic/actions.ts` for one-to-one auditability.
  */
+const actionSchema = z.discriminatedUnion('t', [
+  z.object({
+    t: z.literal('startHand'),
+    seed: z.number(),
+    dealer: seatLiteral.optional(),
+  }),
+  z.object({ t: z.literal('setRules'), rules: z.unknown() }),
+  z.object({ t: z.literal('draw'), seat: seatLiteral }),
+  z.object({ t: z.literal('discard'), seat: seatLiteral, tile: z.unknown() }),
+  z.object({ t: z.literal('declareClaim'), seat: seatLiteral, claim: z.unknown() }),
+  z.object({ t: z.literal('resolveClaims'), nowMs: z.number() }),
+  z.object({ t: z.literal('declareGangConcealed'), seat: seatLiteral, tile: z.unknown() }),
+  z.object({ t: z.literal('declareGangPromoted'), seat: seatLiteral, tile: z.unknown() }),
+  z.object({ t: z.literal('declareWin'), seat: seatLiteral, selfDraw: z.boolean() }),
+]);
+
 export const actionEnvelopeSchema = z.object({
   t: z.literal('action'),
-  action: z.unknown(),
+  action: actionSchema,
 });
 
 export const clientMessageSchema = z.union([
