@@ -1,4 +1,4 @@
-import type { ClientMessage, ServerMessage } from '@mahjong/protocol';
+import type { ClientMessage, ListLobbiesResponse, ServerMessage } from '@mahjong/protocol';
 
 export type TransportStatus = 'connecting' | 'open' | 'closed';
 
@@ -112,6 +112,24 @@ function helloFor(opts: MatchOptions): ClientMessage & { t: 'hello' } {
     displayName: opts.displayName,
     matchCode: opts.matchCode,
   };
+}
+
+/**
+ * Fetch the server's public lobby list. Returns `null` on any network /
+ * parse error; the caller is expected to surface a "Couldn't reach
+ * server" affordance in that case. Older servers (no `/lobbies`
+ * endpoint) return a 404 → mapped to null so the lobby-browser UI
+ * degrades gracefully.
+ */
+export async function fetchLobbyList(host: string): Promise<ListLobbiesResponse | null> {
+  try {
+    const url = new URL('/lobbies', host).toString();
+    const res = await fetch(url, { method: 'GET' });
+    if (!res.ok) return null;
+    return (await res.json()) as ListLobbiesResponse;
+  } catch {
+    return null;
+  }
 }
 
 /**

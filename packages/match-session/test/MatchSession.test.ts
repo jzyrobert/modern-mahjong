@@ -38,6 +38,44 @@ function seatPassiveBots(s: MatchSession, seats: Seat[]): void {
   for (const seat of seats) s.seatBot(seat, passiveBot);
 }
 
+describe('MatchSession — publicSummary (lobby browser)', () => {
+  it('returns null before any human has joined', () => {
+    const s = new MatchSession();
+    expect(s.publicSummary('ABCDE')).toBeNull();
+  });
+
+  it('returns a summary after the host arrives', () => {
+    const s = new MatchSession();
+    helloAs(s, 'c1', 'p1', 'Alice', 'ABCDE');
+    const summary = s.publicSummary('ABCDE');
+    expect(summary).not.toBeNull();
+    expect(summary?.code).toBe('ABCDE');
+    expect(summary?.hostName).toBe('Alice');
+    expect(summary?.humanCount).toBe(1);
+    expect(summary?.botCount).toBe(0);
+    expect(summary?.totalSeats).toBe(4);
+    expect(summary?.isInProgress).toBe(false);
+  });
+
+  it('counts a seated bot toward botCount', () => {
+    const s = new MatchSession();
+    helloAs(s, 'c1', 'p1', 'Alice');
+    s.seatBot(1, simpleBot);
+    const summary = s.publicSummary('X');
+    expect(summary?.humanCount).toBe(1);
+    expect(summary?.botCount).toBe(1);
+  });
+
+  it('reports isInProgress: true once the hand is underway', () => {
+    const s = new MatchSession({ botPaceMs: 0 });
+    helloAs(s, 'c1', 'p1', 'Alice');
+    seatPassiveBots(s, [1, 2, 3]);
+    s.applyClientMessage('c1', { t: 'action', action: { t: 'startHand', seed: 1 } });
+    const summary = s.publicSummary('X');
+    expect(summary?.isInProgress).toBe(true);
+  });
+});
+
 describe('MatchSession — hello + lobby', () => {
   it('first hello assigns seat 0 and becomes host', () => {
     const s = new MatchSession();

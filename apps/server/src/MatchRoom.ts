@@ -4,6 +4,10 @@ import { type Connection, type ConnectionContext, Server, type WSMessage } from 
 
 export { botByKind } from '@mahjong/match-session';
 
+interface MatchRoomEnv {
+  LobbyRegistry?: DurableObjectNamespace;
+}
+
 const STORAGE_KEY = 'session-snapshot';
 
 /** Per-WS state we persist via partyserver `Connection.setState`. Survives DO hibernation. */
@@ -18,11 +22,21 @@ interface ConnState {
  * inputs and dispatches the resulting Outbound messages to the right
  * connections / broadcast / DO alarm. Snapshot-and-restore wires the
  * session through DO storage so a hibernated room rehydrates correctly.
+ *
+ * After every dispatch this room also pings the singleton
+ * `LobbyRegistry` DO with a public-safe summary so `GET /lobbies` has
+ * fresh data for the lobby browser. The registry is fire-and-forget;
+ * a failed RPC just means the next dispatch's ping will catch up.
  */
 export class MatchRoom extends Server {
   static override options = { hibernate: true };
 
   private session = new MatchSession();
+  /** Last `LobbySummary` payload we sent to the registry. We diff
+   *  against this to avoid re-emitting identical pings on every state
+   *  delta during steady-state play (every discard event triggers a
+   *  `dispatch`; the summary only changes on lobby-shape changes). */
+  private lastSummaryJSON: string | null = null;
 
   override async onStart(): Promise<void> {
     const snap = await this.ctx?.storage?.get<MatchSessionSnapshot>(STORAGE_KEY);
@@ -73,10 +87,18 @@ export class MatchRoom extends Server {
 
   override async onClose(conn: Connection): Promise<void> {
     await this.dispatch(this.session.detachConnection(conn.id));
+    // If the room has emptied out, drop our registry entry so it
+    // doesn't linger in the browser until the staleness sweep fires.
+    if (!this.hasAnyConnection()) await this.unregisterFromLobbyRegistry();
   }
 
   override async alarm(): Promise<void> {
     await this.dispatch(this.session.fireAlarm(Date.now()));
+  }
+
+  private hasAnyConnection(): boolean {
+    for (const _conn of this.getConnections()) return true;
+    return false;
   }
 
   private async dispatch(outs: Outbound[]): Promise<void> {
@@ -101,11 +123,54 @@ export class MatchRoom extends Server {
       }
     }
     await this.persist();
+    await this.syncLobbyRegistry();
   }
 
   private async persist(): Promise<void> {
     if (this.ctx?.storage?.put) {
       await this.ctx.storage.put(STORAGE_KEY, this.session.snapshot());
+    }
+  }
+
+  /** Push the current public summary to the singleton lobby registry.
+   *  Skipped when the registry binding isn't configured (e.g. tests
+   *  that mount `MatchRoom` directly without wrangler bindings). */
+  private async syncLobbyRegistry(): Promise<void> {
+    const code = this.name;
+    if (!code) return;
+    const summary = this.session.publicSummary(code);
+    const payload = summary === null ? null : JSON.stringify(summary);
+    if (payload === this.lastSummaryJSON) return;
+    this.lastSummaryJSON = payload;
+    if (summary === null) {
+      await this.callLobbyRegistry('/unregister', { code });
+    } else {
+      await this.callLobbyRegistry('/register', { code, summary });
+    }
+  }
+
+  private async unregisterFromLobbyRegistry(): Promise<void> {
+    const code = this.name;
+    if (!code) return;
+    this.lastSummaryJSON = null;
+    await this.callLobbyRegistry('/unregister', { code });
+  }
+
+  /** Fire-and-forget POST to the singleton `LobbyRegistry` DO. A failed
+   *  RPC just means the next dispatch will catch up; warn so regressions
+   *  show up in `wrangler tail` without spamming connected clients. */
+  private async callLobbyRegistry(path: '/register' | '/unregister', body: unknown): Promise<void> {
+    const registry = (this.env as MatchRoomEnv | undefined)?.LobbyRegistry;
+    if (!registry) return;
+    try {
+      const stub = registry.get(registry.idFromName('global'));
+      await stub.fetch(`http://internal${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    } catch (e) {
+      console.warn(`LobbyRegistry ${path} failed`, e);
     }
   }
 }

@@ -1,6 +1,6 @@
 import type { Action, Seat } from '@mahjong/game-logic';
 import { emptyState, soloRulesFrom, startHand } from '@mahjong/game-logic';
-import type { BotKind, ServerMessage } from '@mahjong/protocol';
+import type { BotKind, ListLobbiesResponse, ServerMessage } from '@mahjong/protocol';
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import {
@@ -28,6 +28,7 @@ import {
   type TransportStatus,
   createLanTransport,
   createOnlineTransport,
+  fetchLobbyList,
 } from './transport';
 
 /**
@@ -77,6 +78,11 @@ interface TransportContextValue {
   seatBot: (seat: Seat, kind: BotKind) => void;
   /** No-op for solo (the user always holds seat 0). Online/LAN: send to host. */
   unseatBot: (seat: Seat) => void;
+  /** Fetch the public lobby list from the configured online server.
+   *  Returns null on any error (offline, server doesn't support it,
+   *  parse failure). The lobby-browser modal calls this on open + on
+   *  manual refresh. */
+  fetchOpenLobbies: () => Promise<ListLobbiesResponse | null>;
 }
 
 const TransportContext = createContext<TransportContextValue | null>(null);
@@ -364,6 +370,11 @@ export function TransportProvider({ children }: { children: ReactNode }) {
     [transport],
   );
 
+  const fetchOpenLobbies = useCallback(async () => {
+    const host = resolveServerHost();
+    return fetchLobbyList(host);
+  }, []);
+
   // Tear down all local transport / match state. Used by both an
   // explicit `leave()` and the HOST_LEFT server message, which both
   // need to reset the same fields plus reset the engine store.
@@ -631,6 +642,7 @@ export function TransportProvider({ children }: { children: ReactNode }) {
       sendChat,
       seatBot,
       unseatBot,
+      fetchOpenLobbies,
     }),
     [
       matchCode,
@@ -648,6 +660,7 @@ export function TransportProvider({ children }: { children: ReactNode }) {
       sendChat,
       seatBot,
       unseatBot,
+      fetchOpenLobbies,
     ],
   );
 

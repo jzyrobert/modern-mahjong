@@ -203,6 +203,43 @@ export function parseClientMessage(
   return { ok: true, msg: r.data as ClientMessage };
 }
 
+/**
+ * Public summary of an active online match — surfaced by the server's
+ * `GET /lobbies` endpoint and consumed by the client's lobby-browser
+ * UI. The fields are restricted to information that should be public
+ * to any potential joiner; the full lobby roster + engine state stays
+ * private to seated/spectating connections.
+ *
+ * `isInProgress` is informational — even mid-hand rooms expose a
+ * spectate route via the existing viewer slot, so the browser doesn't
+ * gate join by it.
+ */
+export interface LobbySummary {
+  code: string;
+  /** Display name of the seat-0 host, or null if the host slot is
+   *  empty (e.g. mid-host-rotation grace). */
+  hostName: string | null;
+  /** Number of seats currently filled by a connected human. 0..4. */
+  humanCount: number;
+  /** Number of seats currently filled by a bot. 0..4. */
+  botCount: number;
+  /** Always 4 in HK rules. Exposed in case future variants land. */
+  totalSeats: 4;
+  /** True when the room is past `phase: 'waiting'` / `'resolved'` —
+   *  i.e. a hand is currently being played. The browser shows a "PLAYING"
+   *  chip but lets the user join anyway (as a spectator if no seats are
+   *  open, or — once seats are still mid-hand — they'd queue for the
+   *  next deal). */
+  isInProgress: boolean;
+  /** Rules snapshot from the host's settings — surfaced so the browser
+   *  can preview faan threshold + special-hand toggles before joining. */
+  rules: RuleConfig;
+}
+
+export interface ListLobbiesResponse {
+  lobbies: LobbySummary[];
+}
+
 /** Match codes: 5 chars from a confusion-resistant alphabet (no 0/O/1/I/L). */
 export const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 
