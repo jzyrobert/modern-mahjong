@@ -1,5 +1,5 @@
 import type { BotKind } from '@mahjong/bots';
-import type { Event as EngineEvent, GameState, Seat } from '@mahjong/game-logic';
+import type { Event as EngineEvent, GameState, Seat, Tile } from '@mahjong/game-logic';
 import { tileId } from '@mahjong/game-logic';
 import type { PublicPlayer, RuleConfig } from '@mahjong/protocol';
 import { create } from 'zustand';
@@ -172,6 +172,15 @@ interface ClientGameStore {
     seat: Seat;
     kind: 'chi' | 'peng' | 'gang';
   } | null;
+  /**
+   * The most recent local-seat `drew` event the user is still animating
+   * through — `seq` ticks up per draw so the `DrawTileOverlay` consumer
+   * can dedupe consecutive draws (e.g. rapid gang-replacement chains).
+   * The overlay reads `tile` to render face-down, flip, then fly toward
+   * the hand. Cleared by the overlay once its animation finishes; also
+   * cleared on `reset` / `handStarted`.
+   */
+  drawAnimation: { seq: number; tile: Tile } | null;
   setState: (state: GameState, you?: Seat | 'spectator') => void;
   setLobby: (l: LobbyState) => void;
   setShuffling: (shuffling: boolean) => void;
@@ -182,6 +191,8 @@ interface ClientGameStore {
   dismissChat: (seq: number) => void;
   flashClaimMissed: () => void;
   flashClaimAnnouncement: (a: { seat: Seat; kind: 'chi' | 'peng' | 'gang' }) => void;
+  flashDrawAnimation: (tile: Tile) => void;
+  clearDrawAnimation: () => void;
   reset: () => void;
 }
 
@@ -209,6 +220,7 @@ export const useGame = create<ClientGameStore>((set) => ({
   chats: [],
   claimMissedSeq: 0,
   claimAnnouncement: null,
+  drawAnimation: null,
   setState: (state, you) => set((prev) => ({ state, you: you ?? prev.you })),
   setLobby: (lobby) => set({ lobby }),
   setShuffling: (shuffling) => set({ shuffling }),
@@ -235,6 +247,11 @@ export const useGame = create<ClientGameStore>((set) => ({
         seq: (prev.claimAnnouncement?.seq ?? 0) + 1,
       },
     })),
+  flashDrawAnimation: (tile) =>
+    set((prev) => ({
+      drawAnimation: { tile, seq: (prev.drawAnimation?.seq ?? 0) + 1 },
+    })),
+  clearDrawAnimation: () => set({ drawAnimation: null }),
   appendEvents: (events) =>
     set((prev) => {
       if (events.length === 0) return prev;
@@ -286,6 +303,7 @@ export const useGame = create<ClientGameStore>((set) => ({
       chats: [],
       claimMissedSeq: 0,
       claimAnnouncement: null,
+      drawAnimation: null,
     }),
 }));
 
