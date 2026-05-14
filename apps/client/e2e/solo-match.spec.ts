@@ -75,7 +75,10 @@ test('after the first round-trip, the highlighted draw-tile pulls a new tile', a
             return Number.isFinite(op) && op > 0.5;
           }),
         ),
-      { timeout: 4_000, message: 'A drawn hand tile stayed invisible — DrawTileOverlay never cleared drawAnimation' },
+      {
+        timeout: 4_000,
+        message: 'A drawn hand tile stayed invisible — DrawTileOverlay never cleared drawAnimation',
+      },
     )
     .toBe(true);
 });
