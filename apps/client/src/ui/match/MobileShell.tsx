@@ -1,7 +1,7 @@
 import type { Action, GameState, Tile as MTile, Seat, Wind } from '@mahjong/game-logic';
 import { tileId } from '@mahjong/game-logic';
 import { type ReactNode, useMemo } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { LobbyState } from '../../state/game';
 import type { FeltSkin } from '../../state/game';
@@ -518,23 +518,31 @@ export function MobileShell(props: MobileShellProps) {
 
         {/* ResultPanel — between-hand summary. Lifted out of the
             scrollable middle so it can overlay the felt cleanly when
-            present; the panel handles its own bottom-aligned layout. */}
+            present. Wrapped in a ScrollView because in landscape (≤
+            ~393 px tall) the panel's win summary + winning hand +
+            rule editor + button row are taller than the viewport
+            and would otherwise clip top-and-bottom with no way to
+            reach the "Start next hand" button. `flexGrow: 1` on the
+            content container keeps `justifyContent: 'center'`
+            working when the content does fit. */}
         {state.lastResult ? (
-          <View
+          <ScrollView
             style={{
               position: 'absolute',
               left: 0,
               right: 0,
               bottom: 0,
               top: 0,
-              justifyContent: 'center',
-              padding: 16,
               backgroundColor: 'rgba(0,0,0,0.55)',
             }}
-            pointerEvents="box-none"
+            contentContainerStyle={{
+              flexGrow: 1,
+              justifyContent: 'center',
+              padding: 16,
+            }}
           >
             <ResultPanel onAction={onAction} mySeat={seat} isHost={isHost} onLeave={onLeave} />
-          </View>
+          </ScrollView>
         ) : null}
 
         {/* The persistent emote bar that lives on the desktop felt is
