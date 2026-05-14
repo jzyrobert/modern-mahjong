@@ -172,6 +172,7 @@ export function TransportProvider({ children }: { children: ReactNode }) {
   const pushChat = useGame((s) => s.pushChat);
   const flashClaimMissed = useGame((s) => s.flashClaimMissed);
   const flashClaimAnnouncement = useGame((s) => s.flashClaimAnnouncement);
+  const flashDrawAnimation = useGame((s) => s.flashDrawAnimation);
   const reset = useGame((s) => s.reset);
   const recorderStartMatch = useRecorder((s) => s.startMatch);
   const recorderOnDelta = useRecorder((s) => s.onDelta);
@@ -554,7 +555,17 @@ export function TransportProvider({ children }: { children: ReactNode }) {
           for (const event of m.events) {
             if (event.t === 'discarded') playTileClick();
             else if (event.t === 'opened') playDiceRoll();
-            else if (event.t === 'claimsResolved' && event.result.kind === 'win') {
+            else if (event.t === 'drew') {
+              // Trigger the local user's draw popup + flip animation
+              // (DrawTileOverlay reads `useGame.drawAnimation`). Skip
+              // for spectators (no own seat) and for bot draws — they
+              // shouldn't get a face-down popup the user doesn't see
+              // the tile of.
+              const you = useGame.getState().you;
+              if (typeof you === 'number' && event.seat === you) {
+                flashDrawAnimation(event.tile);
+              }
+            } else if (event.t === 'claimsResolved' && event.result.kind === 'win') {
               // Only the meld-completing claims (chi/peng/gang) clack
               // a tile face-up. `hu` is handled separately if/when a
               // win-sting cue gets added.
@@ -618,6 +629,7 @@ export function TransportProvider({ children }: { children: ReactNode }) {
     pushChat,
     flashClaimMissed,
     flashClaimAnnouncement,
+    flashDrawAnimation,
     teardown,
     persistSoloIfActive,
     recorderStartMatch,

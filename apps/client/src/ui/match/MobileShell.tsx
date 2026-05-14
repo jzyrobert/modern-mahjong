@@ -18,6 +18,7 @@ import { WIND_GLYPH } from '../winds';
 import { ChatBubbles } from './ChatBubbles';
 import { ClaimAnnouncementToast } from './ClaimAnnouncementToast';
 import { ClaimMissedToast } from './ClaimMissedToast';
+import { DrawTileOverlay } from './DrawTileOverlay';
 import { GameStatusBar, WALL_LOW_THRESHOLD } from './GameStatusBar';
 import { MatchModals } from './MatchModals';
 import { MeldStrip } from './MeldStrip';
@@ -551,6 +552,7 @@ export function MobileShell(props: MobileShellProps) {
         <ChatBubbles seatToPosition={seatToPosition} />
         <ClaimMissedToast />
         <ClaimAnnouncementToast />
+        <DrawTileOverlay />
 
         {/* ResultPanel — between-hand summary. Lifted out of the
             scrollable middle so it can overlay the felt cleanly when
