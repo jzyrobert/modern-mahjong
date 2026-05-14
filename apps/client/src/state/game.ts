@@ -24,10 +24,9 @@ export interface UserSettings {
   autoSort: boolean;
   /** Override for the OS-level prefers-reduced-motion. true=motion on, false=reduced. */
   animations: boolean;
-  /** Sound effects toggle. The toggle is wired through to the
-   *  Settings panel; the underlying `sound.ts` module is a no-op
-   *  until the expo-audio port lands, so flipping this currently
-   *  has no audible effect. */
+  /** Sound effects toggle. Gates every cue in `sound.ts` — tile
+   *  clacks on discard/claim, dice roll on hand start, the shuffle
+   *  fade-in/fade-out during the between-hand ceremony. */
   sound: boolean;
   /** When true, on the user's discard turn (after they've drawn) the
    *  tile the heuristic ranker recommends discarding is highlighted in
@@ -61,7 +60,7 @@ const DEFAULT_SETTINGS: UserSettings = {
   tileBack: 'cream',
   autoSort: true,
   animations: true,
-  sound: false,
+  sound: true,
   discardHint: false,
   botSkills: ['heuristic', 'simple', 'passive'],
   autoRecordReplays: false,

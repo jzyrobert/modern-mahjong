@@ -38,6 +38,13 @@
       "expo-sqlite",
       "expo-asset",
       [
+        "expo-audio",
+        {
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ],
+      [
         "expo-build-properties",
         {
           "android": {

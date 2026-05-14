@@ -310,6 +310,17 @@ export function Lobby() {
               <LobbyPreview lobby={lobby} matchCode={null} />
             </View>
           ) : null}
+          <Text
+            style={{
+              marginTop: 24,
+              textAlign: 'center',
+              fontSize: 11,
+              color: COLORS.ink3,
+              fontWeight: '600',
+            }}
+          >
+            Sound by みんなの創作支援サイトＴスタ
+          </Text>
         </ScrollView>
         <JoinLanModal
           open={joinLanOpen}

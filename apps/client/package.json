@@ -25,6 +25,7 @@
     "@mahjong/protocol": "workspace:*",
     "expo": "~54.0.33",
     "expo-asset": "~12.0.13",
+    "expo-audio": "~1.1.1",
     "expo-build-properties": "^55.0.13",
     "expo-clipboard": "~8.0.8",
     "expo-constants": "~18.0.13",
