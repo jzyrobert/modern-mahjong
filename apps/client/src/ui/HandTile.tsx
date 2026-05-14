@@ -2,6 +2,7 @@ import type { Tile as MTile } from '@mahjong/game-logic';
 import { tileId } from '@mahjong/game-logic';
 import { useContext, useEffect, useRef, useState } from 'react';
 import { Animated, PanResponder, View } from 'react-native';
+import { useGame } from '../state/game';
 import { FlipBagContext } from './FlipBag';
 import { Tile } from './Tile';
 import { PULSE_TEMPO, usePulse } from './animations';
@@ -86,6 +87,28 @@ export function HandTile({
 }: HandTileProps) {
   const id = tileId(tile);
   const isDrawn = drawnTileId === id;
+  // True while the draw-popup overlay is animating *this* tile. The
+  // selector is cheap (returns `boolean` so zustand's strict-equality
+  // skips re-renders for every other tile when the animation fires) —
+  // when true we hide the tile face + report the slot's screen rect
+  // so `DrawTileOverlay` can fly into the exact destination.
+  const isAnimatingDraw = useGame(
+    (s) => s.drawAnimation !== null && tileId(s.drawAnimation.tile) === id,
+  );
+  const setDrawAnimationSlotRect = useGame((s) => s.setDrawAnimationSlotRect);
+  const containerRef = useRef<View>(null);
+  // Re-measure whenever this tile becomes the animation target. Layout
+  // is stable for the duration of one popup (the draw event has already
+  // resolved the new tile into the hand by the time `drawAnimation`
+  // ticks), so a single measure on transition is enough.
+  useEffect(() => {
+    if (!isAnimatingDraw || !containerRef.current) return;
+    // measureInWindow returns coords in viewport space — the same space
+    // `DrawTileOverlay` reads from when computing its fly translate.
+    containerRef.current.measureInWindow((x, y, w, h) => {
+      setDrawAnimationSlotRect({ x, y, width: w, height: h });
+    });
+  }, [isAnimatingDraw, setDrawAnimationSlotRect]);
   const [dragging, setDragging] = useState(false);
   const translateX = useRef(new Animated.Value(0)).current;
   // `dragY` follows the finger's vertical delta during drag; the lift
@@ -299,9 +322,15 @@ export function HandTile({
       style={{
         transform: [{ translateX }, { translateY }, { scale: liftedScale }],
         zIndex: dragging ? 10 : 0,
+        // Render the slot as an invisible placeholder while the draw-
+        // popup is animating this tile — the overlay carries the visual
+        // for the whole pop → flip → fly sequence and reveals the tile
+        // by landing on it. Opacity 0 (not display: none) keeps the
+        // slot's flex width so the row layout stays stable.
+        opacity: isAnimatingDraw ? 0 : 1,
       }}
     >
-      <View>
+      <View ref={containerRef} collapsable={false}>
         {recommended ? (
           <>
             <Animated.View

@@ -181,6 +181,15 @@ interface ClientGameStore {
    * cleared on `reset` / `handStarted`.
    */
   drawAnimation: { seq: number; tile: Tile } | null;
+  /**
+   * Screen-space rect of the just-drawn tile's slot inside the hand, in
+   * window coordinates (the same coord space `View.measureInWindow`
+   * emits). The matching `HandTile` writes this on layout while it's
+   * the animating tile; `DrawTileOverlay` reads it to land the fly
+   * phase on the exact destination slot. Cleared alongside
+   * `drawAnimation`.
+   */
+  drawAnimationSlotRect: { x: number; y: number; width: number; height: number } | null;
   setState: (state: GameState, you?: Seat | 'spectator') => void;
   setLobby: (l: LobbyState) => void;
   setShuffling: (shuffling: boolean) => void;
@@ -193,6 +202,9 @@ interface ClientGameStore {
   flashClaimAnnouncement: (a: { seat: Seat; kind: 'chi' | 'peng' | 'gang' }) => void;
   flashDrawAnimation: (tile: Tile) => void;
   clearDrawAnimation: () => void;
+  setDrawAnimationSlotRect: (
+    rect: { x: number; y: number; width: number; height: number } | null,
+  ) => void;
   reset: () => void;
 }
 
@@ -221,6 +233,7 @@ export const useGame = create<ClientGameStore>((set) => ({
   claimMissedSeq: 0,
   claimAnnouncement: null,
   drawAnimation: null,
+  drawAnimationSlotRect: null,
   setState: (state, you) => set((prev) => ({ state, you: you ?? prev.you })),
   setLobby: (lobby) => set({ lobby }),
   setShuffling: (shuffling) => set({ shuffling }),
@@ -251,7 +264,8 @@ export const useGame = create<ClientGameStore>((set) => ({
     set((prev) => ({
       drawAnimation: { tile, seq: (prev.drawAnimation?.seq ?? 0) + 1 },
     })),
-  clearDrawAnimation: () => set({ drawAnimation: null }),
+  clearDrawAnimation: () => set({ drawAnimation: null, drawAnimationSlotRect: null }),
+  setDrawAnimationSlotRect: (rect) => set({ drawAnimationSlotRect: rect }),
   appendEvents: (events) =>
     set((prev) => {
       if (events.length === 0) return prev;
@@ -304,6 +318,7 @@ export const useGame = create<ClientGameStore>((set) => ({
       claimMissedSeq: 0,
       claimAnnouncement: null,
       drawAnimation: null,
+      drawAnimationSlotRect: null,
     }),
 }));
 
