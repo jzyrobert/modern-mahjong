@@ -1,7 +1,7 @@
 import type { Action, GameState, Tile as MTile, Seat, Wind } from '@mahjong/game-logic';
 import { tileId } from '@mahjong/game-logic';
-import { type ReactNode, useMemo } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { type ReactNode, useMemo, useState } from 'react';
+import { Animated, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { LobbyState } from '../../state/game';
 import type { FeltSkin } from '../../state/game';
@@ -10,6 +10,7 @@ import { Hand } from '../Hand';
 import { ResultPanel } from '../ResultPanel';
 import { Scoreboard } from '../Scoreboard';
 import { Tile } from '../Tile';
+import { PULSE_TEMPO, usePulse } from '../animations';
 import { PrimaryButton } from '../buttons';
 import { COLORS } from '../colors';
 import { TutorialTarget } from '../tutorial/TargetRegistry';
@@ -491,7 +492,10 @@ export function MobileShell(props: MobileShellProps) {
                 flexWrap: 'wrap',
               }}
             >
-              <ReadyHandBadge waits={readyWaits} />
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                {myTurn ? <YourTurnBadge needsDraw={needsDraw} /> : null}
+                <ReadyHandBadge waits={readyWaits} />
+              </View>
               <View style={{ marginLeft: 'auto' }}>
                 <SortPicker mode={sortMode} onChange={onSortModeChange} />
               </View>
@@ -510,21 +514,31 @@ export function MobileShell(props: MobileShellProps) {
             }
           >
             <TutorialTarget id="own-hand">
-              <Hand
-                tiles={state.hands[seat]}
-                onTileClick={myTurn && state.hasDrawn ? onTileTap : undefined}
-                sortMode={sortMode}
-                drawnTileId={drawnTileId}
-                hintTileId={hintTileId}
-                drawCue={
-                  needsDraw && state.wall.length > 0
-                    ? {
-                        tile: state.wall[state.wall.length - 1]!,
-                        onPress: () => onAction({ t: 'draw', seat }),
-                      }
-                    : undefined
-                }
-              />
+              {/* Wrapper picks up the gold breathing halo when it's the
+                  user's turn — opponents already have this treatment
+                  (OppHandStrip.ActiveHalo) so the user's hand getting
+                  the same cue when active makes it obvious which seat
+                  is on the clock. `position: 'relative'` + 4 px padding
+                  give the absolute halo room to breathe outward by its
+                  GROWTH_PX without clipping. */}
+              <View style={{ position: 'relative', padding: 4 }}>
+                {myTurn ? <YourHandActiveHalo /> : null}
+                <Hand
+                  tiles={state.hands[seat]}
+                  onTileClick={myTurn && state.hasDrawn ? onTileTap : undefined}
+                  sortMode={sortMode}
+                  drawnTileId={drawnTileId}
+                  hintTileId={hintTileId}
+                  drawCue={
+                    needsDraw && state.wall.length > 0
+                      ? {
+                          tile: state.wall[state.wall.length - 1]!,
+                          onPress: () => onAction({ t: 'draw', seat }),
+                        }
+                      : undefined
+                  }
+                />
+              </View>
             </TutorialTarget>
             {isLandscape ? (
               <SortPicker mode={sortMode} onChange={onSortModeChange} compact />
@@ -1053,5 +1067,90 @@ function MenuPill({ onPress }: { onPress: () => void }) {
     >
       <Text style={{ fontSize: 16, fontWeight: '700', color: MENU_PILL_COLORS.ink }}>☰</Text>
     </Pressable>
+  );
+}
+
+/**
+ * Breathing gold halo painted over the user's hand row when it's their
+ * turn. Direct port of OppHandStrip's `ActiveHalo` — same tempo
+ * (`PULSE_TEMPO.state`), same GROWTH_PX-driven dual-axis scale so the
+ * halo grows uniformly on long + short edges. The opponents already
+ * surface the same active-turn cue; mirroring it on the user's own
+ * hand closes the gap that left the player relying on a 8-px red dot
+ * in the status pill to know they were on the clock.
+ */
+function YourHandActiveHalo() {
+  const t = usePulse({ durationMs: PULSE_TEMPO.state });
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+  const GROWTH_PX = 4;
+  const sx = size && size.w > 0 ? 1 + (GROWTH_PX * 2) / size.w : 1;
+  const sy = size && size.h > 0 ? 1 + (GROWTH_PX * 2) / size.h : 1;
+  const scaleX = t.interpolate({ inputRange: [0, 1], outputRange: [1, sx] });
+  const scaleY = t.interpolate({ inputRange: [0, 1], outputRange: [1, sy] });
+  const opacity = t.interpolate({ inputRange: [0, 1], outputRange: [0.25, 0.85] });
+  return (
+    <Animated.View
+      pointerEvents="none"
+      onLayout={(e) => {
+        const { width, height } = e.nativeEvent.layout;
+        setSize((prev) =>
+          prev && prev.w === width && prev.h === height ? prev : { w: width, h: height },
+        );
+      }}
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        borderRadius: 14,
+        borderWidth: 2,
+        borderColor: COLORS.gold,
+        opacity,
+        transform: [{ scaleX }, { scaleY }],
+      }}
+    />
+  );
+}
+
+/**
+ * Solid gold-on-ink pill rendered next to ReadyHandBadge when it's
+ * the user's turn — the declarative "YOUR TURN" label that the
+ * 8-px red dot in the status pill currently has to carry alone. Copy
+ * adapts to whether the user still needs to draw ("DRAW") vs. already
+ * drew and now needs to discard ("DISCARD") so the player gets a
+ * direct hint at what action is expected. Pulses on opacity to match
+ * the hand-halo cadence so the badge and halo read as one cue.
+ */
+function YourTurnBadge({ needsDraw }: { needsDraw: boolean }) {
+  const t = usePulse({ durationMs: PULSE_TEMPO.state });
+  const opacity = t.interpolate({ inputRange: [0, 1], outputRange: [0.78, 1] });
+  return (
+    <Animated.View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        borderRadius: 10,
+        backgroundColor: COLORS.gold,
+        borderColor: '#a87f24',
+        borderWidth: 1,
+        opacity,
+        boxShadow: '0px 2px 6px rgba(196,159,52,0.35)',
+      }}
+    >
+      <Text
+        style={{
+          fontSize: 10,
+          fontWeight: '900',
+          color: '#3a2c0d',
+          letterSpacing: 0.6,
+        }}
+      >
+        YOUR TURN {needsDraw ? '· DRAW' : '· DISCARD'}
+      </Text>
+    </Animated.View>
   );
 }
