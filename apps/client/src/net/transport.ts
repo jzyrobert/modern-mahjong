@@ -128,11 +128,19 @@ function helloFor(opts: MatchOptions): ClientMessage & { t: 'hello' } {
  * server" affordance in that case. Older servers (no `/lobbies`
  * endpoint) return a 404 → mapped to null so the lobby-browser UI
  * degrades gracefully.
+ *
+ * Accepts both http(s):// and ws(s):// hosts — the e2e test setup
+ * passes `ws://` via the `?serverUrl=…` override, so we rewrite to
+ * http(s) for the fetch (the test server exposes both protocols on
+ * the same port). Mirrors `createOnlineTransport`'s symmetric
+ * rewrite of http → ws on the WS upgrade URL.
  */
 export async function fetchLobbyList(host: string): Promise<ListLobbiesResponse | null> {
   try {
-    const url = new URL('/lobbies', host).toString();
-    const res = await fetch(url, { method: 'GET' });
+    const url = new URL('/lobbies', host);
+    if (url.protocol === 'ws:') url.protocol = 'http:';
+    else if (url.protocol === 'wss:') url.protocol = 'https:';
+    const res = await fetch(url.toString(), { method: 'GET' });
     if (!res.ok) return null;
     return (await res.json()) as ListLobbiesResponse;
   } catch {
