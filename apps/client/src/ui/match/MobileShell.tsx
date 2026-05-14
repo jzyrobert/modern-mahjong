@@ -1,6 +1,6 @@
 import type { Action, GameState, Tile as MTile, Seat, Wind } from '@mahjong/game-logic';
 import { tileId } from '@mahjong/game-logic';
-import type { ReactNode } from 'react';
+import { type ReactNode, useMemo } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { LobbyState } from '../../state/game';
@@ -16,7 +16,7 @@ import { TutorialTarget } from '../tutorial/TargetRegistry';
 import { WIND_GLYPH } from '../winds';
 import { ChatBubbles } from './ChatBubbles';
 import { ClaimMissedToast } from './ClaimMissedToast';
-import { GameStatusBar } from './GameStatusBar';
+import { GameStatusBar, WALL_LOW_THRESHOLD } from './GameStatusBar';
 import { MatchModals } from './MatchModals';
 import { MeldStrip } from './MeldStrip';
 import { OppDiscardColumn } from './OppDiscardColumn';
@@ -28,21 +28,37 @@ import type { SeatPlacement } from './seatPlacement';
 import type { FELT_SKINS } from './skins';
 
 // Shared chrome for every card that lives inside the landscape right
-// rail. The earlier rail mixed three different card styles (white
-// pill for the status row, cream pill for the claim bar, transparent
-// for the action buttons), which read as a stack of floating panels
-// instead of one cohesive sidebar. Pinning everything to the same
-// paper-cream skin gives the rail a single visual identity.
+// rail, so the column reads as one cohesive sidebar instead of a
+// stack of mismatched floating panels.
 const RAIL_CARD = {
-  backgroundColor: '#fbf8f0',
-  borderColor: '#cdc1ad',
+  backgroundColor: COLORS.paperHi,
+  borderColor: COLORS.hairline,
   borderWidth: 1,
   borderRadius: 12,
   boxShadow: '0px 4px 12px rgba(0,0,0,0.08)',
 } as const;
-const RAIL_INK = '#3a3328';
-const RAIL_INK3 = '#918275';
-const RAIL_RED = '#b14d3a';
+// Pre-composed style for the standard rail section (status, melds,
+// own-discards). Hoisted to module scope so React doesn't allocate a
+// fresh style object on every rail render.
+const RAIL_SECTION_STYLE = {
+  ...RAIL_CARD,
+  paddingVertical: 8,
+  paddingHorizontal: 10,
+} as const;
+
+type DiscardsBySeat = Record<Seat, GameState['discardOrder']>;
+
+/** Bucket the engine's chronological discard array by seat in a single pass.
+ *  All four landscape rail consumers (3 opp columns + own discards) would
+ *  otherwise re-filter the full list on every render. */
+function bucketDiscardsBySeat(discardOrder: GameState['discardOrder']): DiscardsBySeat {
+  const buckets = { 0: [], 1: [], 2: [], 3: [] } as DiscardsBySeat;
+  for (const entry of discardOrder) buckets[entry.from].push(entry);
+  return buckets;
+}
+
+/** Perimeter slots used for the landscape opp-columns row, left-to-right. */
+const LANDSCAPE_OPP_POSITIONS: readonly Position[] = ['left', 'top', 'right'];
 
 interface MobileShellProps {
   state: GameState;
@@ -176,31 +192,18 @@ export function MobileShell(props: MobileShellProps) {
     setMenuOpen,
   } = props;
 
-  // Mobile chrome: a single GameStatusBar pill that absorbs the LIVE
-  // indicator, optional match code, and ☰ menu button via the
-  // `trailing` slot. Two pills (GameStatusBar + standalone TopBar)
-  // wrapped onto separate rows on phone-class viewports — see
-  // `match-chrome-portrait.spec.ts`. Solo's matchCode is the
-  // placeholder string `'SOLO'`; we hide it here since #SOLO carries
-  // no info the user can act on (no one to share it with). For online
-  // / LAN matches the actual code stays visible.
+  // Solo's matchCode is the placeholder `'SOLO'`; hide it since the
+  // pill #CODE carries no info the user can act on (no one to share
+  // it with). Online / LAN matches keep the real code visible.
   const showCode = matchCode !== null && matchCode !== 'SOLO';
-  const chromeStatus = (
-    <GameStatusBar
-      prevailing={state.prevailingWind}
-      dealerName={dealerName}
-      wallCount={state.wall.length}
-      isMyTurn={myTurn}
-      turnCountdown={myTurn ? turnCountdown : null}
-      onPress={() => setPlayersOpen(true)}
-      trailing={
-        <ChromeTrailing
-          showCode={showCode}
-          matchCode={matchCode}
-          viewers={lobby?.viewers ?? null}
-        />
-      }
-    />
+  const viewers = lobby?.viewers ?? null;
+
+  // Per-seat discard buckets — three landscape opp columns plus the
+  // YOUR DISCARDS rail card would otherwise each re-filter the full
+  // `state.discardOrder` (up to 75 tiles) on every shell render.
+  const discardsBySeat = useMemo(
+    () => bucketDiscardsBySeat(state.discardOrder),
+    [state.discardOrder],
   );
   return (
     <View style={{ flex: 1, backgroundColor: felt.top }}>
@@ -213,17 +216,26 @@ export function MobileShell(props: MobileShellProps) {
               gap: 8,
               paddingHorizontal: 12,
               paddingTop: 12,
-              // Minimum gap below the chrome row so the first scrollable
-              // row (`SeatRow` / `OppHandStrip`) doesn't visually butt up
-              // against it. The ScrollView's own `padding: 12` adds more
-              // on top of this when content scrolls; this floor keeps the
-              // chrome → first-row separation honest at the no-scroll
-              // start state too.
+              // Floor for chrome → first-row separation at the no-scroll
+              // start state. The ScrollView's own `padding: 12` adds
+              // more on top of this when content scrolls.
               paddingBottom: 8,
               backgroundColor: felt.top,
             }}
           >
-            <View style={{ flex: 1, minWidth: 0 }}>{chromeStatus}</View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <GameStatusBar
+                prevailing={state.prevailingWind}
+                dealerName={dealerName}
+                wallCount={state.wall.length}
+                isMyTurn={myTurn}
+                turnCountdown={myTurn ? turnCountdown : null}
+                onPress={() => setPlayersOpen(true)}
+                trailing={
+                  <ChromeTrailing showCode={showCode} matchCode={matchCode} viewers={viewers} />
+                }
+              />
+            </View>
             <MenuPill onPress={() => setMenuOpen(true)} />
           </View>
         ) : null}
@@ -268,66 +280,44 @@ export function MobileShell(props: MobileShellProps) {
                       gap: 6,
                     }}
                   >
-                    <LandscapeOppColumn
-                      placement={byPosition.left}
-                      state={state}
-                      lobby={lobby}
-                      aboutToDraw={aboutToDraw && nextDrawerSeat === byPosition.left.seat}
-                      drawCountdown={
-                        aboutToDraw && nextDrawerSeat === byPosition.left.seat
-                          ? drawCountdown
-                          : null
-                      }
-                      turnCountdown={turnCountdown}
-                      latestDiscardId={latestDiscardId}
-                    />
-                    <LandscapeOppColumn
-                      placement={byPosition.top}
-                      state={state}
-                      lobby={lobby}
-                      aboutToDraw={aboutToDraw && nextDrawerSeat === byPosition.top.seat}
-                      drawCountdown={
-                        aboutToDraw && nextDrawerSeat === byPosition.top.seat ? drawCountdown : null
-                      }
-                      turnCountdown={turnCountdown}
-                      latestDiscardId={latestDiscardId}
-                    />
-                    <LandscapeOppColumn
-                      placement={byPosition.right}
-                      state={state}
-                      lobby={lobby}
-                      aboutToDraw={aboutToDraw && nextDrawerSeat === byPosition.right.seat}
-                      drawCountdown={
-                        aboutToDraw && nextDrawerSeat === byPosition.right.seat
-                          ? drawCountdown
-                          : null
-                      }
-                      turnCountdown={turnCountdown}
-                      latestDiscardId={latestDiscardId}
-                    />
+                    {LANDSCAPE_OPP_POSITIONS.map((pos) => {
+                      const placement = byPosition[pos];
+                      const seatAbout = aboutToDraw && nextDrawerSeat === placement.seat;
+                      return (
+                        <LandscapeOppColumn
+                          key={pos}
+                          placement={placement}
+                          state={state}
+                          lobby={lobby}
+                          aboutToDraw={seatAbout}
+                          drawCountdown={seatAbout ? drawCountdown : null}
+                          turnCountdown={turnCountdown}
+                          discards={discardsBySeat[placement.seat]}
+                          latestDiscardId={latestDiscardId}
+                        />
+                      );
+                    })}
                   </View>
                 </TutorialTarget>
               ) : null}
             </View>
-            {/* Right rail — chrome status card at the top (replacing
-                the portrait shell's full-width top bar), claim /
-                tsumo / melds in the middle, sort + own-discards at
-                the bottom. Every section shares the same rail-card
-                chrome so the column reads as one cohesive sidebar
-                rather than a stack of three different floating
-                panels. */}
+            {/* Right rail — status card, claim / tsumo / melds when
+                active, then a flex-grown YOUR DISCARDS card. Every
+                section shares `RAIL_CARD` chrome so the column reads
+                as one sidebar. */}
             <LandscapeActionRail
               state={state}
               seat={seat}
               myTurn={myTurn}
               turnCountdown={turnCountdown}
               matchCode={matchCode}
-              viewers={lobby?.viewers ?? null}
+              viewers={viewers}
               dealerName={dealerName}
               hasClaimOption={hasClaimOption}
               canTsumo={canTsumo}
               tsumoFaan={tsumoFaan}
               concealedGangTile={concealedGangTile}
+              ownDiscards={discardsBySeat[seat]}
               latestDiscardId={latestDiscardId}
               onAction={onAction}
               onOpenMenu={() => setMenuOpen(true)}
@@ -609,16 +599,15 @@ function SeatRow({
 }
 
 interface LandscapeOppColumnProps extends SeatRowProps {
+  discards: GameState['discardOrder'];
   latestDiscardId: number | null;
 }
 
 /**
- * Landscape opponent column — `OppHandStrip` header at the top with
- * this seat's own discard pile flex-grown below it. Three of these
- * sit side-by-side in the landscape flex middle (replacing the
- * shared centre discard pool), so opponent discards live spatially
- * next to the player who threw them — closer to a physical mahjong
- * table than the chronological centre pool.
+ * Landscape opponent column — `OppHandStrip` header on top, this
+ * seat's own discard pile flex-grown below. Three sit side-by-side in
+ * the landscape flex middle (replacing the shared centre pool), so
+ * opponent discards live spatially next to the player who threw them.
  */
 function LandscapeOppColumn({
   placement,
@@ -627,6 +616,7 @@ function LandscapeOppColumn({
   aboutToDraw,
   drawCountdown,
   turnCountdown,
+  discards,
   latestDiscardId,
 }: LandscapeOppColumnProps) {
   return (
@@ -641,9 +631,8 @@ function LandscapeOppColumn({
         compact
       />
       <OppDiscardColumn
-        seat={placement.seat}
         position={placement.position}
-        discardOrder={state.discardOrder}
+        discards={discards}
         latestId={latestDiscardId}
       />
     </View>
@@ -662,6 +651,7 @@ interface LandscapeActionRailProps {
   canTsumo: boolean;
   tsumoFaan: number | null;
   concealedGangTile: MTile | null;
+  ownDiscards: GameState['discardOrder'];
   latestDiscardId: number | null;
   onAction: (a: Action) => void;
   onOpenMenu: () => void;
@@ -670,13 +660,9 @@ interface LandscapeActionRailProps {
 
 /**
  * Landscape-only right rail. Hosts the chrome status card, claim bar,
- * tsumo/gang CTAs, own melds, sort picker, and own-discards mini
- * strip. Every section shares a single `RAIL_CARD` chrome style so the
- * column reads as one cohesive sidebar instead of a stack of mixed
- * floating panels — the rail used to mix three card styles plus a
- * stray "⇅ S" button dangling below the hand, which lacked visual
- * organisation. The own-discards strip at the bottom soaks up the
- * otherwise-empty rail space when no claim is active.
+ * tsumo/gang CTAs, own melds, and a flex-grown YOUR DISCARDS card.
+ * Every section shares `RAIL_CARD` chrome so the column reads as one
+ * cohesive sidebar.
  */
 function LandscapeActionRail({
   state,
@@ -690,6 +676,7 @@ function LandscapeActionRail({
   canTsumo,
   tsumoFaan,
   concealedGangTile,
+  ownDiscards,
   latestDiscardId,
   onAction,
   onOpenMenu,
@@ -711,20 +698,10 @@ function LandscapeActionRail({
         onOpenMenu={onOpenMenu}
       />
       {state.melds[seat].length > 0 ? (
-        <RailSection>
-          <Text
-            style={{
-              fontSize: 9,
-              fontWeight: '800',
-              color: RAIL_INK3,
-              letterSpacing: 0.6,
-              marginBottom: 4,
-            }}
-          >
-            YOUR MELDS
-          </Text>
+        <View style={RAIL_SECTION_STYLE}>
+          <Text style={RAIL_SECTION_LABEL_STYLE}>YOUR MELDS</Text>
           <MeldStrip melds={state.melds[seat]} tileWidth={14} tileHeight={20} />
-        </RailSection>
+        </View>
       ) : null}
       {hasClaimOption ? (
         <TutorialTarget id="claim-bar">
@@ -753,25 +730,18 @@ function LandscapeActionRail({
           </View>
         </TutorialTarget>
       ) : null}
-      {/* Own-discards card flex-grows to fill whatever vertical the
-          rail has left after the upper sections. The sort picker
-          lives alongside the hand in the bottom row, not here — the
-          rail bottoms out on the YOUR DISCARDS card. */}
-      <OwnDiscardsRail discardOrder={state.discardOrder} seat={seat} latestId={latestDiscardId} />
+      <OwnDiscardsRail tiles={ownDiscards} latestId={latestDiscardId} />
     </View>
   );
 }
 
-/**
- * Section card inside the right rail. Wraps arbitrary children in the
- * shared `RAIL_CARD` chrome so every section in the rail (status,
- * melds, own-discards) reads as the same visual element.
- */
-function RailSection({ children }: { children: ReactNode }) {
-  return (
-    <View style={{ ...RAIL_CARD, paddingVertical: 8, paddingHorizontal: 10 }}>{children}</View>
-  );
-}
+const RAIL_SECTION_LABEL_STYLE = {
+  fontSize: 9,
+  fontWeight: '800' as const,
+  color: COLORS.ink3,
+  letterSpacing: 0.6,
+  marginBottom: 4,
+};
 
 interface RailStatusCardProps {
   prevailing: Wind;
@@ -786,15 +756,29 @@ interface RailStatusCardProps {
   onOpenMenu: () => void;
 }
 
-const STATUS_WALL_LOW = 14;
+const RAIL_STATUS_CARD_STYLE = {
+  ...RAIL_CARD,
+  flexDirection: 'row' as const,
+  alignItems: 'center' as const,
+  paddingVertical: 6,
+  paddingLeft: 8,
+  paddingRight: 6,
+  gap: 6,
+};
+const RAIL_OWN_DISCARDS_STYLE = {
+  ...RAIL_CARD,
+  flex: 1,
+  minHeight: 0,
+  paddingVertical: 8,
+  paddingHorizontal: 10,
+};
+const STATUS_LOW_WALL_RED = '#b2503b';
 
 /**
  * Landscape-rail variant of `GameStatusBar`. Renders the same data
  * (prevailing wind, dealer name, wall count, your-turn dot, optional
  * #CODE / viewers, turn countdown) but in the shared rail card chrome
- * with the ☰ menu pill inline on the right edge — so the rail's
- * topmost element matches every other rail section instead of looking
- * like a floating white pill stuck on top.
+ * with the ☰ menu pill inline on the right edge.
  */
 function RailStatusCard({
   prevailing,
@@ -808,19 +792,9 @@ function RailStatusCard({
   onPress,
   onOpenMenu,
 }: RailStatusCardProps) {
-  const low = wallCount <= STATUS_WALL_LOW;
+  const low = wallCount <= WALL_LOW_THRESHOLD;
   return (
-    <View
-      style={{
-        ...RAIL_CARD,
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingVertical: 6,
-        paddingLeft: 8,
-        paddingRight: 6,
-        gap: 6,
-      }}
-    >
+    <View style={RAIL_STATUS_CARD_STYLE}>
       <Pressable
         onPress={onPress}
         accessibilityRole="button"
@@ -850,7 +824,7 @@ function RailStatusCard({
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text
-            style={{ fontSize: 11, fontWeight: '800', color: RAIL_INK, letterSpacing: 0.3 }}
+            style={{ fontSize: 11, fontWeight: '800', color: COLORS.ink, letterSpacing: 0.3 }}
             numberOfLines={1}
           >
             {dealerName}
@@ -860,7 +834,7 @@ function RailStatusCard({
               style={{
                 fontSize: 10,
                 fontWeight: '700',
-                color: low ? '#b2503b' : RAIL_INK3,
+                color: low ? STATUS_LOW_WALL_RED : COLORS.ink3,
                 letterSpacing: 0.4,
               }}
             >
@@ -871,7 +845,7 @@ function RailStatusCard({
                 style={{
                   fontSize: 10,
                   fontWeight: '800',
-                  color: RAIL_RED,
+                  color: COLORS.red,
                   letterSpacing: 1,
                 }}
                 numberOfLines={1}
@@ -880,7 +854,9 @@ function RailStatusCard({
               </Text>
             ) : null}
             {viewers && viewers > 0 ? (
-              <Text style={{ fontSize: 10, color: RAIL_INK3, fontWeight: '600' }}>👁 {viewers}</Text>
+              <Text style={{ fontSize: 10, color: COLORS.ink3, fontWeight: '600' }}>
+                👁 {viewers}
+              </Text>
             ) : null}
             {isMyTurn ? (
               <View
@@ -909,18 +885,18 @@ function RailStatusCard({
           paddingHorizontal: 10,
           paddingVertical: 6,
           borderRadius: 8,
-          backgroundColor: pressed ? '#ece4d3' : 'transparent',
+          backgroundColor: pressed ? COLORS.creamLow : 'transparent',
         })}
       >
-        <Text style={{ fontSize: 15, fontWeight: '700', color: RAIL_INK }}>☰</Text>
+        <Text style={{ fontSize: 15, fontWeight: '700', color: COLORS.ink }}>☰</Text>
       </Pressable>
     </View>
   );
 }
 
 interface OwnDiscardsRailProps {
-  discardOrder: GameState['discardOrder'];
-  seat: Seat;
+  /** Pre-filtered to the user's own seat by the parent shell. */
+  tiles: GameState['discardOrder'];
   latestId: number | null;
 }
 
@@ -928,40 +904,17 @@ const OWN_TILE_W = 18;
 const OWN_TILE_H = 24;
 
 /**
- * Mini strip of the user's own discards filling the bottom of the
- * right rail. Mostly informational — own discards are the least
- * strategically useful pile (the user threw them themselves), but
- * after the action zone collapses (no claim active) the rail had
- * ~120 px of empty felt below, and surfacing the player's own pile
- * here turns that into a useful "what have I been throwing?"
- * tracker. Flex-grows so the rail bottoms out flush with the hand
- * row.
+ * Mini strip of the user's own discards at the bottom of the rail.
+ * Mostly informational — own discards aren't strategically critical —
+ * but flex-grows to fill any otherwise-empty rail space below the
+ * action zone.
  */
-function OwnDiscardsRail({ discardOrder, seat, latestId }: OwnDiscardsRailProps) {
-  const tiles = discardOrder.filter((e) => e.from === seat);
+function OwnDiscardsRail({ tiles, latestId }: OwnDiscardsRailProps) {
   return (
-    <View
-      style={{
-        ...RAIL_CARD,
-        flex: 1,
-        minHeight: 0,
-        paddingVertical: 8,
-        paddingHorizontal: 10,
-      }}
-    >
-      <Text
-        style={{
-          fontSize: 9,
-          fontWeight: '800',
-          color: RAIL_INK3,
-          letterSpacing: 0.6,
-          marginBottom: 4,
-        }}
-      >
-        YOUR DISCARDS
-      </Text>
+    <View style={RAIL_OWN_DISCARDS_STYLE}>
+      <Text style={RAIL_SECTION_LABEL_STYLE}>YOUR DISCARDS</Text>
       {tiles.length === 0 ? (
-        <Text style={{ fontSize: 10, color: RAIL_INK3, fontStyle: 'italic' }}>none yet</Text>
+        <Text style={{ fontSize: 10, color: COLORS.ink3, fontStyle: 'italic' }}>none yet</Text>
       ) : (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 3 }}>
           {tiles.map((entry, i) => {

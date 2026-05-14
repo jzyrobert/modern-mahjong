@@ -1,4 +1,4 @@
-import type { GameState, Seat } from '@mahjong/game-logic';
+import type { GameState } from '@mahjong/game-logic';
 import { tileId } from '@mahjong/game-logic';
 import { ScrollView, Text, View } from 'react-native';
 import { Tile } from '../Tile';
@@ -6,9 +6,12 @@ import { DISCARD_HALO_STYLE } from './SeatDiscardPile';
 import { type Position, SEAT_COLOR } from './seatColor';
 
 interface OppDiscardColumnProps {
-  seat: Seat;
   position: Position;
-  discardOrder: GameState['discardOrder'];
+  /** Pre-filtered to this seat by the shell — the parent buckets the
+   *  full `discardOrder` once and hands the per-seat slice down so
+   *  the three landscape columns don't each re-filter the full list
+   *  on every render. */
+  discards: GameState['discardOrder'];
   latestId: number | null;
 }
 
@@ -19,17 +22,9 @@ const TILE_H = 28;
  * One opponent's discard pile rendered as a flex-grow column under
  * their `OppHandStrip` in landscape mobile. Tiles wrap left-to-right
  * inside the column and the whole column scrolls internally once the
- * pile grows past the available height. Filtered down to a single
- * seat — mirrors the `Player` view of `SharedDiscardPool` but laid
- * out next to the player it belongs to instead of in a centre pool.
+ * pile grows past the available height.
  */
-export function OppDiscardColumn({
-  seat,
-  position,
-  discardOrder,
-  latestId,
-}: OppDiscardColumnProps) {
-  const tiles = discardOrder.filter((e) => e.from === seat);
+export function OppDiscardColumn({ position, discards, latestId }: OppDiscardColumnProps) {
   return (
     <View
       style={{
@@ -48,7 +43,7 @@ export function OppDiscardColumn({
         contentContainerStyle={{ flexDirection: 'row', flexWrap: 'wrap', gap: 3 }}
         showsVerticalScrollIndicator={false}
       >
-        {tiles.length === 0 ? (
+        {discards.length === 0 ? (
           <Text
             style={{
               fontSize: 10,
@@ -59,7 +54,7 @@ export function OppDiscardColumn({
             no discards
           </Text>
         ) : (
-          tiles.map((entry, i) => {
+          discards.map((entry, i) => {
             const id = tileId(entry.tile);
             const live = id === latestId;
             return (
