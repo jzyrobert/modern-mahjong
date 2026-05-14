@@ -33,7 +33,10 @@ interface GameStatusBarProps {
   trailing?: ReactNode;
 }
 
-const LOW_THRESHOLD = 14;
+/** Wall depth at or below which the wall-count chip turns red — surfaced as
+ *  an exported constant so `MobileShell.tsx`'s landscape `RailStatusCard`
+ *  uses the same threshold instead of inlining its own. */
+export const WALL_LOW_THRESHOLD = 14;
 
 /**
  * Top-of-table status pill — prevailing wind glyph, round/dealer
@@ -50,7 +53,7 @@ export function GameStatusBar({
   onPress,
   trailing,
 }: GameStatusBarProps) {
-  const low = wallCount <= LOW_THRESHOLD;
+  const low = wallCount <= WALL_LOW_THRESHOLD;
   const Container = onPress ? Pressable : View;
   // Press surface is the status content itself, NOT the outer pill —
   // when `trailing` contains nested Pressables (the mobile chrome's ☰

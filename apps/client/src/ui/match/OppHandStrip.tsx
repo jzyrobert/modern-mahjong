@@ -37,6 +37,13 @@ interface OppHandStripProps {
    *  rendered as "Ns left" when this seat is the active turn. Null
    *  when the rule is off, in solo, or this seat isn't active. */
   turnCountdown?: number | null;
+  /** Landscape phones use this to trim ~30 px of vertical per strip —
+   *  shrinks the wind glyph ring, drops the bot-status chip
+   *  ("Bot (Easy)"), and tightens vertical padding so the per-opp
+   *  discard column underneath gets that height back. The chip's info
+   *  (bot difficulty) is still discoverable through the menu's
+   *  players sheet. */
+  compact?: boolean;
 }
 
 const COLORS = {
@@ -87,6 +94,7 @@ export function OppHandStrip({
   aboutToDraw = false,
   drawCountdown = null,
   turnCountdown = null,
+  compact = false,
 }: OppHandStripProps) {
   const player = lobby?.players.find((p) => p.seat === seat);
   const name = player?.displayName ?? `Seat ${seat}`;
@@ -98,6 +106,10 @@ export function OppHandStrip({
   // turn (it's the "next" seat). Active-turn cue takes priority.
   const cueBorder = !isActive && aboutToDraw;
 
+  const ringSize = compact ? 16 : 20;
+  const ringFontSize = compact ? 9 : 11;
+  const nameFontSize = compact ? 11 : 12;
+
   return (
     <View
       style={{
@@ -108,8 +120,8 @@ export function OppHandStrip({
         // and shifted the rows below it on a portrait phone.
         borderWidth: 2,
         borderRadius: 10,
-        paddingVertical: 6,
-        paddingHorizontal: 10,
+        paddingVertical: compact ? 3 : 6,
+        paddingHorizontal: compact ? 8 : 10,
         gap: melds.length > 0 ? 4 : 0,
         boxShadow: isActive
           ? `0px 4px 12px ${COLORS.redHot}73`
@@ -122,13 +134,20 @@ export function OppHandStrip({
       {/* Single-line header — wind glyph (small ring), name, bot
           status, and any active-turn / about-to-draw countdown. All
           inline so the card height collapses to the row height. */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: compact ? 6 : 8,
+          flexWrap: 'wrap',
+        }}
+      >
         <View
           style={{
-            width: 20,
-            height: 20,
-            borderRadius: 10,
-            borderWidth: 2,
+            width: ringSize,
+            height: ringSize,
+            borderRadius: ringSize / 2,
+            borderWidth: compact ? 1.5 : 2,
             // Stays seat-coloured even on the active red fill — the
             // three opponent palette entries (jade / mauve / sky) are
             // all distinct from `redHot`, and keeping the ring colour
@@ -142,8 +161,8 @@ export function OppHandStrip({
           <Text
             style={{
               fontFamily: 'Noto Serif TC',
-              fontSize: 11,
-              lineHeight: 13,
+              fontSize: ringFontSize,
+              lineHeight: ringFontSize + 2,
               color: isActive ? 'white' : COLORS.red,
               fontWeight: '700',
             }}
@@ -153,7 +172,7 @@ export function OppHandStrip({
         </View>
         <Text
           style={{
-            fontSize: 12,
+            fontSize: nameFontSize,
             fontWeight: '800',
             color: isActive ? 'white' : COLORS.ink,
             // Cap name width so a long human displayName doesn't push
@@ -167,7 +186,9 @@ export function OppHandStrip({
         >
           {name}
         </Text>
-        {botStatus ? (
+        {/* Bot-status chip drops in compact mode — the difficulty is
+            still discoverable in the players sheet. */}
+        {!compact && botStatus ? (
           <View
             style={{
               backgroundColor: isActive ? 'rgba(255,255,255,0.18)' : 'rgba(115,90,163,0.12)',
