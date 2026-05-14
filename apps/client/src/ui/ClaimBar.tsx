@@ -222,28 +222,28 @@ function CallButton({
       onPress={onPress}
       style={({ pressed }) => ({
         backgroundColor: pressed ? tone.pressed : tone.bg,
-        paddingVertical: 10,
-        paddingHorizontal: 18,
-        borderRadius: 14,
+        paddingVertical: 6,
+        paddingHorizontal: 12,
+        borderRadius: 10,
         borderWidth: isCream ? 1.5 : 0,
         borderColor: isCream ? '#cdc1ad' : 'transparent',
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 8,
-        boxShadow: isCream ? 'none' : '0px 4px 6px rgba(0,0,0,0.18)',
+        gap: 6,
+        boxShadow: isCream ? 'none' : '0px 2px 4px rgba(0,0,0,0.18)',
       })}
     >
       <Text
-        style={{ fontFamily: 'Noto Serif TC', fontSize: 18, fontWeight: '700', color: tone.fg }}
+        style={{ fontFamily: 'Noto Serif TC', fontSize: 14, fontWeight: '700', color: tone.fg }}
       >
         {meta.zh}
       </Text>
       <Text
         style={{
-          fontSize: 12,
+          fontSize: 10,
           fontWeight: '900',
           color: tone.fg,
-          letterSpacing: 0.6,
+          letterSpacing: 0.4,
           textTransform: 'uppercase',
         }}
       >
