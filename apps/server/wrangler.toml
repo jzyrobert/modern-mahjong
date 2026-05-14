@@ -17,4 +17,4 @@ new_sqlite_classes = ["MatchRoom"]
 
 [[migrations]]
 tag = "v2"
-new_classes = ["LobbyRegistry"]
+new_sqlite_classes = ["LobbyRegistry"]
