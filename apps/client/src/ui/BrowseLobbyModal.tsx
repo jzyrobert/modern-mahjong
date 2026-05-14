@@ -1,6 +1,6 @@
 import type { LobbySummary } from '@mahjong/protocol';
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { ScrollView, Text, View } from 'react-native';
 import { useTransport } from '../net/transport-context';
 import { Modal } from './Modal';
 import { GhostButton, PrimaryButton } from './buttons';
@@ -9,7 +9,7 @@ import { COLORS } from './colors';
 interface BrowseLobbyModalProps {
   open: boolean;
   onClose: () => void;
-  onJoin: (code: string) => void;
+  onJoin: (code: string, opts?: { asSpectator?: boolean }) => void;
 }
 
 type FetchStatus = 'idle' | 'loading' | 'error';
@@ -59,7 +59,8 @@ export function BrowseLobbyModal({ open, onClose, onJoin }: BrowseLobbyModalProp
           }}
         >
           <Text style={{ fontSize: 12, color: COLORS.ink3 }}>
-            Live online matches with at least one human host. Tap a row to join.
+            Live online matches with at least one human host. Tap Join to take a seat, or Watch to
+            spectate.
           </Text>
           <GhostButton onPress={refresh}>Refresh</GhostButton>
         </View>
@@ -71,6 +72,10 @@ export function BrowseLobbyModal({ open, onClose, onJoin }: BrowseLobbyModalProp
               lobby={l}
               onJoin={() => {
                 onJoin(l.code);
+                onClose();
+              }}
+              onWatch={() => {
+                onJoin(l.code, { asSpectator: true });
                 onClose();
               }}
             />
@@ -119,16 +124,20 @@ function StatusBanner({ status, hasLobbies }: StatusBannerProps) {
 interface LobbyRowProps {
   lobby: LobbySummary;
   onJoin: () => void;
+  onWatch: () => void;
 }
 
-function LobbyRow({ lobby, onJoin }: LobbyRowProps) {
+function LobbyRow({ lobby, onJoin, onWatch }: LobbyRowProps) {
   const seatsTaken = lobby.humanCount + lobby.botCount;
   const seatsOpen = lobby.totalSeats - seatsTaken;
+  const canJoin = seatsOpen > 0;
+  // The whole row is no longer a single Pressable — when both Join and
+  // Watch are available the outer press surface would have to pick one,
+  // which is ambiguous. Render as a non-interactive card and put the
+  // affordances on explicit buttons.
   return (
-    <Pressable
-      onPress={onJoin}
-      accessibilityLabel={`Join ${lobby.hostName ?? lobby.code}`}
-      style={({ pressed }) => ({
+    <View
+      style={{
         flexDirection: 'row',
         alignItems: 'center',
         gap: 12,
@@ -137,8 +146,8 @@ function LobbyRow({ lobby, onJoin }: LobbyRowProps) {
         borderRadius: 12,
         borderWidth: 1,
         borderColor: COLORS.hairline,
-        backgroundColor: pressed ? COLORS.cream : COLORS.paperHi,
-      })}
+        backgroundColor: COLORS.paperHi,
+      }}
     >
       <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -177,7 +186,10 @@ function LobbyRow({ lobby, onJoin }: LobbyRowProps) {
           {` · faan ≥ ${lobby.rules.faanMin}`}
         </Text>
       </View>
-      <PrimaryButton onPress={onJoin}>{seatsOpen > 0 ? 'Join' : 'Watch'}</PrimaryButton>
-    </Pressable>
+      <View style={{ flexDirection: 'row', gap: 6 }}>
+        {canJoin ? <PrimaryButton onPress={onJoin}>Join</PrimaryButton> : null}
+        <GhostButton onPress={onWatch}>Watch</GhostButton>
+      </View>
+    </View>
   );
 }

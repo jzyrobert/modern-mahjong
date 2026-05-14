@@ -28,6 +28,7 @@ import { orderHand } from './handSort';
 import { DesktopShell } from './match/DesktopShell';
 import { MobileShell } from './match/MobileShell';
 import type { SortMode } from './match/SortPicker';
+import { SpectatorView } from './match/SpectatorView';
 import type { Position } from './match/seatColor';
 import { type SeatPlacement, layoutFor } from './match/seatPlacement';
 import { FELT_SKINS } from './match/skins';
@@ -232,6 +233,23 @@ export function Match() {
   // both leave it undefined).
   const turnDeadline = state?.phase === 'turn' ? (state.turnDeadlineMs ?? null) : null;
   const turnCountdown = useSecondsUntil(turnDeadline);
+
+  // Spectator branch — `you === 'spectator'` means the server routed
+  // this connection into the viewer pool (either because seats were
+  // full at hello time, or the user explicitly opted to watch via the
+  // lobby browser). Render the read-only `SpectatorView` instead of
+  // the playing shell. Falls through to the stranded/waiting screen
+  // when state hasn't arrived yet.
+  if (you === 'spectator' && state) {
+    return (
+      <SpectatorView
+        state={state}
+        lobby={lobby}
+        matchCode={transport.matchCode}
+        onLeave={onLeave}
+      />
+    );
+  }
 
   if (!state || seat === null) {
     // Two reasons we can land here without a usable game:

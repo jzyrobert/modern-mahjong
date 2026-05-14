@@ -122,6 +122,26 @@ describe('MatchSession — hello + lobby', () => {
     const lobby = pickBroadcasts(out).find((m) => m.t === 'lobby');
     expect(lobby?.t === 'lobby' && lobby.viewers).toBe(0);
   });
+
+  it('honours an explicit spectate flag even when seats are open', () => {
+    const s = new MatchSession();
+    helloAs(s, 'c0', 'p0', 'Host');
+    // Intentional spectate: even though seats 1-3 are open, the
+    // server routes this connection into the viewer pool.
+    const out = s.applyClientMessage('c1', {
+      t: 'hello',
+      playerId: 'p1',
+      displayName: 'Watcher',
+      matchCode: 'X',
+      spectate: true,
+    });
+    expect(stateYouFor(out, 'c1')).toBe('spectator');
+    const lobby = pickBroadcasts(out).find((m) => m.t === 'lobby');
+    expect(lobby?.t === 'lobby' && lobby.viewers).toBe(1);
+    // Seat 1 stays empty so a subsequent non-spectator joiner gets it.
+    const next = helloAs(s, 'c2', 'p2', 'Player2');
+    expect(stateYouFor(next, 'c2')).toBe(1);
+  });
 });
 
 describe('MatchSession — bot-driven hand to completion', () => {

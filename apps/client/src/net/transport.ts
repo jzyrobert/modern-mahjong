@@ -74,6 +74,13 @@ interface MatchOptions {
   matchCode: string;
   playerId: string;
   displayName: string;
+  /**
+   * Force spectate mode on `hello` even when seats are open. The server
+   * skips seat assignment and routes the connection into the viewer
+   * pool, so the client lands on `you === 'spectator'`. Used by the
+   * lobby-browser "Watch" affordance.
+   */
+  spectate?: boolean;
 }
 
 /** Online transport via partysocket-routed WebSocket. */
@@ -111,6 +118,7 @@ function helloFor(opts: MatchOptions): ClientMessage & { t: 'hello' } {
     playerId: opts.playerId,
     displayName: opts.displayName,
     matchCode: opts.matchCode,
+    ...(opts.spectate ? { spectate: true } : {}),
   };
 }
 
