@@ -11,6 +11,8 @@
     "export-web": "expo export --platform web",
     "prebuild": "expo prebuild --no-install",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "e2e": "playwright test",
     "e2e:install": "playwright install --with-deps chromium",
     "lighthouse": "lhci autorun"
@@ -49,7 +51,9 @@
     "@types/react": "~19.1.0",
     "@types/ws": "^8.5.13",
     "babel-preset-expo": "54.0.10",
+    "jsdom": "^25.0.1",
     "typescript": "~5.9.2",
+    "vitest": "2.1.8",
     "ws": "^8.18.0"
   }
 }
