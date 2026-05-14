@@ -94,6 +94,30 @@ export function ukeire(input: UkeireInput): number {
   return count;
 }
 
+/**
+ * Wait tiles for a tenpai hand — the distinct tile faces that, when
+ * added to `hand`, complete it into a winning shape. Returns `[]` when
+ * the hand isn't tenpai (`shanten !== 0`).
+ *
+ * Same ~34 shanten calls as `ukeire`; memoise at the call site if
+ * invoked per render. Yakuhai / faan-min are NOT considered — this is
+ * a shape-only check, mirroring the rule sheet's definition of 聽牌.
+ */
+export function waitTiles(input: UkeireInput): Tile[] {
+  const { hand, exposedMelds = 0, allowSpecial = true } = input;
+  if (shanten({ hand, exposedMelds, allowSpecial }) !== 0) return [];
+  const out: Tile[] = [];
+  for (const face of ALL_FACES) {
+    let already = 0;
+    for (const t of hand) if (sameFace(t, face)) already++;
+    if (already >= 4) continue;
+    if (shanten({ hand: [...hand, face], exposedMelds, allowSpecial }) === -1) {
+      out.push(face);
+    }
+  }
+  return out;
+}
+
 export interface DiscardChoiceInput {
   hand: readonly Tile[];
   exposedMelds?: number;

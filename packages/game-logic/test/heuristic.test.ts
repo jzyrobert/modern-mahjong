@@ -4,8 +4,10 @@ import {
   type Tile,
   isYakuhaiFace,
   rankDiscards,
+  sameFace,
   seatWind,
   ukeire,
+  waitTiles,
   yakuhaiPairCount,
 } from '../src/index.js';
 
@@ -160,6 +162,99 @@ describe('ukeire', () => {
       SUIT_TILE('man', 5),
     ];
     expect(ukeire({ hand })).toBeGreaterThan(0);
+  });
+});
+
+describe('waitTiles', () => {
+  it('returns the pair-wait tile for a tanki tenpai hand', () => {
+    // 1m1m1m 4m5m6m 1p2p3p 7p8p9p 1s — tanki wait on 1s for the pair.
+    const hand = [
+      SUIT_TILE('man', 1),
+      SUIT_TILE('man', 1),
+      SUIT_TILE('man', 1),
+      SUIT_TILE('man', 4),
+      SUIT_TILE('man', 5),
+      SUIT_TILE('man', 6),
+      SUIT_TILE('pin', 1),
+      SUIT_TILE('pin', 2),
+      SUIT_TILE('pin', 3),
+      SUIT_TILE('pin', 7),
+      SUIT_TILE('pin', 8),
+      SUIT_TILE('pin', 9),
+      SUIT_TILE('sou', 1),
+    ];
+    const waits = waitTiles({ hand, allowSpecial: false });
+    expect(waits).toHaveLength(1);
+    expect(sameFace(waits[0]!, SUIT_TILE('sou', 1))).toBe(true);
+  });
+
+  it('returns both ends of a ryanmen wait', () => {
+    // 1m1m 2m3m 4m5m6m 7p8p9p 1s2s3s — completed runs except the 2m3m
+    // partial. Standard waits: 1m (pair becomes triplet → 1m1m1m,
+    // 2m3m incomplete) — no, let me reconsider. Easier example:
+    // pair 1m1m, complete run 4m5m6m 7p8p9p 1s2s3s, partial 2s3s — wait on 1s or 4s.
+    // Build: 1m1m 4m5m6m 7p8p9p 1s2s3s 5s6s — waits on 4s or 7s.
+    const hand = [
+      SUIT_TILE('man', 1),
+      SUIT_TILE('man', 1),
+      SUIT_TILE('man', 4),
+      SUIT_TILE('man', 5),
+      SUIT_TILE('man', 6),
+      SUIT_TILE('pin', 7),
+      SUIT_TILE('pin', 8),
+      SUIT_TILE('pin', 9),
+      SUIT_TILE('sou', 1),
+      SUIT_TILE('sou', 2),
+      SUIT_TILE('sou', 3),
+      SUIT_TILE('sou', 5),
+      SUIT_TILE('sou', 6),
+    ];
+    const waits = waitTiles({ hand, allowSpecial: false });
+    const set = waits.map((t) => (t.kind === 'suit' ? `${t.suit}${t.rank}` : t.honor));
+    expect(set).toContain('sou4');
+    expect(set).toContain('sou7');
+    expect(waits).toHaveLength(2);
+  });
+
+  it('returns an empty list when the hand is not tenpai', () => {
+    // 1-shanten — not tenpai → empty waits.
+    const hand = [
+      SUIT_TILE('man', 1),
+      SUIT_TILE('man', 2),
+      SUIT_TILE('man', 3),
+      SUIT_TILE('pin', 4),
+      SUIT_TILE('pin', 5),
+      SUIT_TILE('pin', 6),
+      SUIT_TILE('sou', 1),
+      SUIT_TILE('sou', 2),
+      SUIT_TILE('sou', 3),
+      SUIT_TILE('sou', 7),
+      SUIT_TILE('sou', 8),
+      SUIT_TILE('man', 5),
+      SUIT_TILE('man', 7),
+    ];
+    expect(waitTiles({ hand })).toEqual([]);
+  });
+
+  it('returns an empty list for a winning 14-tile hand', () => {
+    // Already winning → shanten === -1 → waitTiles returns [] by contract.
+    const hand = [
+      SUIT_TILE('man', 1),
+      SUIT_TILE('man', 1),
+      SUIT_TILE('man', 1),
+      SUIT_TILE('pin', 2),
+      SUIT_TILE('pin', 2),
+      SUIT_TILE('pin', 2),
+      SUIT_TILE('pin', 3),
+      SUIT_TILE('pin', 3),
+      SUIT_TILE('pin', 3),
+      SUIT_TILE('sou', 4),
+      SUIT_TILE('sou', 4),
+      SUIT_TILE('sou', 4),
+      SUIT_TILE('sou', 5),
+      SUIT_TILE('sou', 5),
+    ];
+    expect(waitTiles({ hand })).toEqual([]);
   });
 });
 
