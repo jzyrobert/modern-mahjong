@@ -86,7 +86,19 @@ export function ClaimBar({ onAction, seat }: ClaimBarProps) {
       }
     }
   }
-  const visible = ORDER.filter((k) => legal.has(k));
+  // When WIN is available, hide chi/peng/gang. Picking the lesser claim
+  // on a tile you could hu on leaves you stuck: `applyClaim` clears
+  // `lastDiscard` AND (for chi/peng) sets `drewThisTurn: false`, so on
+  // the resulting forced-discard turn neither `declareWin(selfDraw)`
+  // (needs a real draw) nor `declareWin(ron)` (needs `lastDiscard`) is
+  // reachable. In HK rules you'd always declare hu when you can, so
+  // collapsing to WIN + PASS removes the misclick without hiding any
+  // legitimately useful option.
+  const visible = ORDER.filter((k) => {
+    if (!legal.has(k)) return false;
+    if (legal.has('hu') && (k === 'chi' || k === 'peng' || k === 'gang')) return false;
+    return true;
+  });
   const discard = state?.lastDiscard?.tile ?? null;
   const chiOpts = state && discard ? chiOptions(state.hands[seat], discard) : [];
 

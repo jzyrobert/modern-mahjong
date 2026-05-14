@@ -940,6 +940,12 @@ const OWN_TILE_H = 24;
  * Mostly informational — own discards aren't strategically critical —
  * but flex-grows to fill any otherwise-empty rail space below the
  * action zone.
+ *
+ * The tile grid is wrapped in a ScrollView so it scrolls when the
+ * rail is compressed by tall siblings (e.g. YOUR MELDS wrapping to
+ * 2 rows with 3+ exposed melds, or an open ClaimBar). Without this,
+ * the rail's `flex: 1` clipped any overflow invisibly — late-hand
+ * discards past row 2 just disappeared with no way to reach them.
  */
 function OwnDiscardsRail({ tiles, latestId }: OwnDiscardsRailProps) {
   return (
@@ -948,25 +954,27 @@ function OwnDiscardsRail({ tiles, latestId }: OwnDiscardsRailProps) {
       {tiles.length === 0 ? (
         <Text style={{ fontSize: 10, color: COLORS.ink3, fontStyle: 'italic' }}>none yet</Text>
       ) : (
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 3 }}>
-          {tiles.map((entry, i) => {
-            const id = tileId(entry.tile);
-            return (
-              <View
-                // biome-ignore lint/suspicious/noArrayIndexKey: discard order is stable; composite with index
-                key={`${id}-${i}`}
-                style={{
-                  borderBottomColor: SEAT_COLOR.bottom,
-                  borderBottomWidth: 2,
-                  borderRadius: 2,
-                  opacity: id === latestId ? 0.65 : 1,
-                }}
-              >
-                <Tile tile={entry.tile} width={OWN_TILE_W} height={OWN_TILE_H} />
-              </View>
-            );
-          })}
-        </View>
+        <ScrollView style={{ flex: 1, minHeight: 0 }} showsVerticalScrollIndicator={false}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 3 }}>
+            {tiles.map((entry, i) => {
+              const id = tileId(entry.tile);
+              return (
+                <View
+                  // biome-ignore lint/suspicious/noArrayIndexKey: discard order is stable; composite with index
+                  key={`${id}-${i}`}
+                  style={{
+                    borderBottomColor: SEAT_COLOR.bottom,
+                    borderBottomWidth: 2,
+                    borderRadius: 2,
+                    opacity: id === latestId ? 0.65 : 1,
+                  }}
+                >
+                  <Tile tile={entry.tile} width={OWN_TILE_W} height={OWN_TILE_H} />
+                </View>
+              );
+            })}
+          </View>
+        </ScrollView>
       )}
     </View>
   );
