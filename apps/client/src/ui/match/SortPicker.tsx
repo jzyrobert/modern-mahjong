@@ -19,12 +19,6 @@ const OPTIONS: { id: SortMode; label: string }[] = [
   { id: 'manual', label: 'Manual' },
 ];
 
-const COMPACT_GLYPH: Record<SortMode, string> = {
-  suit: 'S',
-  num: '#',
-  manual: 'M',
-};
-
 const ORDER: readonly SortMode[] = ['suit', 'num', 'manual'];
 
 /**
@@ -67,7 +61,7 @@ export function SortPicker({ mode, onChange, compact = false }: SortPickerProps)
             letterSpacing: 0.4,
           }}
         >
-          {COMPACT_GLYPH[mode]}
+          {meta.label.toUpperCase()}
         </Text>
       </Pressable>
     );
