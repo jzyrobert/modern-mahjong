@@ -1,4 +1,5 @@
 import type { FaanBreakdown, HandResult, Tile as MTile } from '@mahjong/game-logic';
+import { sortHand } from '@mahjong/game-logic';
 import { ScrollView, Text, View } from 'react-native';
 import { Modal } from './Modal';
 import { Tile } from './Tile';
@@ -90,6 +91,13 @@ export function ScoringBreakdownModal({
 }
 
 function BreakdownRow({ entry }: { entry: FaanBreakdown }) {
+  // Sort the per-entry tiles into canonical hand-display order
+  // (man < pin < sou < honors; rank ascending within suit). The engine
+  // emits tiles in iteration order — concealed-then-exposed for full-
+  // hand patterns like 清一色 / 天糊, which surface unsorted runs that
+  // are hard for the user to read as "1-2-3, 4-5-6". Sorting here is
+  // purely cosmetic; the engine's data shape is unchanged.
+  const tiles = sortHand(entry.tiles);
   return (
     <View
       style={{
@@ -106,10 +114,10 @@ function BreakdownRow({ entry }: { entry: FaanBreakdown }) {
         </Text>
         <Text style={{ fontSize: 13, fontWeight: '900', color: COLORS.green }}>+{entry.faan}</Text>
       </View>
-      {entry.tiles.length > 0 ? (
+      {tiles.length > 0 ? (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 3 }}>
-          {entry.tiles.map((t: MTile, i: number) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: tile composition order is engine-defined; duplicates are intentional
+          {tiles.map((t: MTile, i: number) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: sorted tile order is positional; duplicates of the same face are intentional
             <Tile key={i} tile={t} width={20} height={28} />
           ))}
         </View>
