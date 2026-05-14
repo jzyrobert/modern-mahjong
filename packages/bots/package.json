@@ -17,7 +17,7 @@
     "@mahjong/game-logic": "workspace:*"
   },
   "devDependencies": {
-    "typescript": "5.6.3",
+    "typescript": "~5.9.2",
     "vitest": "2.1.8"
   }
 }
