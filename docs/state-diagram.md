@@ -1,7 +1,3 @@
-
-> @mahjong/game-logic@0.0.0 diagram C:\Users\jzyro\StudioProjects\modern-mahjong\packages\game-logic
-> tsx scripts/emit-diagram.ts
-
 # Engine state diagram
 
 ```mermaid
