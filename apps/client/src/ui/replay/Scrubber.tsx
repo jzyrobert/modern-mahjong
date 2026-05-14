@@ -17,7 +17,7 @@ const PIP_COLOR: Record<ReplayBookmarkKind, string> = {
  * speed picker + POV picker. Drives the `usePlayback` context. Tap a
  * bookmark pip to jump there; drag the track for fine-grained seek.
  */
-export function Scrubber() {
+export function Scrubber({ compact = false }: { compact?: boolean }) {
   const playback = usePlayback();
   const [trackWidth, setTrackWidth] = useState(0);
   const onTrackLayout = useCallback((e: LayoutChangeEvent) => {
@@ -41,9 +41,9 @@ export function Scrubber() {
         backgroundColor: COLORS.paperHi,
         borderTopColor: COLORS.hairline,
         borderTopWidth: 1,
-        paddingHorizontal: 12,
-        paddingVertical: 10,
-        gap: 8,
+        paddingHorizontal: compact ? 8 : 12,
+        paddingVertical: compact ? 6 : 10,
+        gap: compact ? 5 : 8,
       }}
     >
       {/* Track + pips */}
@@ -52,7 +52,7 @@ export function Scrubber() {
         onLayout={onTrackLayout}
         accessibilityLabel="Replay timeline"
         style={{
-          height: 22,
+          height: compact ? 18 : 22,
           justifyContent: 'center',
           paddingVertical: 4,
         }}
@@ -110,38 +110,51 @@ export function Scrubber() {
         style={{
           flexDirection: 'row',
           alignItems: 'center',
-          gap: 6,
+          gap: compact ? 3 : 6,
           flexWrap: 'wrap',
         }}
       >
-        <ControlButton onPress={playback.jumpPrevBookmark} label="⏮" hint="Previous bookmark" />
+        <ControlButton
+          onPress={playback.jumpPrevBookmark}
+          label="⏮"
+          hint="Previous bookmark"
+          compact={compact}
+        />
         <ControlButton
           onPress={() => playback.step(-1)}
           label="◀"
           hint="Step back"
           disabled={playback.cursor <= 0}
+          compact={compact}
         />
         <ControlButton
           onPress={playback.togglePlay}
           label={playback.isPlaying ? '⏸' : '▶'}
           hint={playback.isPlaying ? 'Pause' : 'Play'}
           primary
+          compact={compact}
         />
         <ControlButton
           onPress={() => playback.step(1)}
           label="▶"
           hint="Step forward"
           disabled={playback.cursor >= playback.totalFrames - 1}
+          compact={compact}
         />
-        <ControlButton onPress={playback.jumpNextBookmark} label="⏭" hint="Next bookmark" />
+        <ControlButton
+          onPress={playback.jumpNextBookmark}
+          label="⏭"
+          hint="Next bookmark"
+          compact={compact}
+        />
 
-        <SpeedPicker speed={playback.speed} onChange={playback.setSpeed} />
-        <PovPicker pov={playback.pov} onChange={playback.setPov} />
+        <SpeedPicker speed={playback.speed} onChange={playback.setSpeed} compact={compact} />
+        <PovPicker pov={playback.pov} onChange={playback.setPov} compact={compact} />
 
         <View style={{ flex: 1 }} />
         <Text
           style={{
-            fontSize: 11,
+            fontSize: compact ? 10 : 11,
             fontWeight: '700',
             color: COLORS.ink3,
             fontFamily: 'Courier',
@@ -200,22 +213,26 @@ function ControlButton({
   onPress,
   disabled,
   primary,
+  compact,
 }: {
   label: string;
   hint: string;
   onPress: () => void;
   disabled?: boolean;
   primary?: boolean;
+  compact?: boolean;
 }) {
+  const minWidth = primary ? (compact ? 40 : 48) : compact ? 28 : 36;
+  const heightDim = primary ? (compact ? 30 : 36) : compact ? 24 : 28;
   return (
     <Pressable
       onPress={onPress}
       accessibilityLabel={hint}
       disabled={disabled}
       style={({ pressed }) => ({
-        minWidth: primary ? 48 : 36,
-        height: primary ? 36 : 28,
-        paddingHorizontal: 10,
+        minWidth,
+        height: heightDim,
+        paddingHorizontal: compact ? 6 : 10,
         borderRadius: 6,
         alignItems: 'center',
         justifyContent: 'center',
@@ -235,7 +252,7 @@ function ControlButton({
     >
       <Text
         style={{
-          fontSize: primary ? 18 : 14,
+          fontSize: primary ? (compact ? 15 : 18) : compact ? 12 : 14,
           color: primary ? 'white' : COLORS.ink,
           fontWeight: '700',
         }}
@@ -251,9 +268,11 @@ const SPEEDS: ReadonlyArray<0.5 | 1 | 2 | 4> = [0.5, 1, 2, 4];
 function SpeedPicker({
   speed,
   onChange,
+  compact,
 }: {
   speed: 0.5 | 1 | 2 | 4;
   onChange: (rate: 0.5 | 1 | 2 | 4) => void;
+  compact?: boolean;
 }) {
   return (
     <View
@@ -272,8 +291,8 @@ function SpeedPicker({
           onPress={() => onChange(s)}
           accessibilityLabel={`Speed ${s}x`}
           style={({ pressed }) => ({
-            paddingHorizontal: 8,
-            paddingVertical: 4,
+            paddingHorizontal: compact ? 5 : 8,
+            paddingVertical: compact ? 3 : 4,
             borderRadius: 4,
             backgroundColor:
               speed === s
@@ -285,7 +304,7 @@ function SpeedPicker({
         >
           <Text
             style={{
-              fontSize: 11,
+              fontSize: compact ? 10 : 11,
               fontWeight: speed === s ? '900' : '700',
               color: speed === s ? COLORS.red : COLORS.ink2,
               fontFamily: 'Courier',
@@ -312,9 +331,11 @@ const POVS: readonly PlaybackPov[] = ['all', 0, 1, 2, 3];
 function PovPicker({
   pov,
   onChange,
+  compact,
 }: {
   pov: PlaybackPov;
   onChange: (pov: PlaybackPov) => void;
+  compact?: boolean;
 }) {
   return (
     <View
@@ -333,8 +354,8 @@ function PovPicker({
           onPress={() => onChange(p)}
           accessibilityLabel={`POV ${POV_LABELS[p]}`}
           style={({ pressed }) => ({
-            paddingHorizontal: 6,
-            paddingVertical: 4,
+            paddingHorizontal: compact ? 4 : 6,
+            paddingVertical: compact ? 3 : 4,
             borderRadius: 4,
             backgroundColor:
               pov === p ? COLORS.accentSalmonSwatch : pressed ? COLORS.creamPressed : 'transparent',
@@ -342,7 +363,7 @@ function PovPicker({
         >
           <Text
             style={{
-              fontSize: 10,
+              fontSize: compact ? 9 : 10,
               fontWeight: pov === p ? '900' : '700',
               color: pov === p ? COLORS.red : COLORS.ink2,
               fontFamily: 'Noto Serif TC',

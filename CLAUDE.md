@@ -53,17 +53,45 @@ Rules for these branches:
    serves `apps/client/dist/`, so skip `export-web` (or forget to rerun it
    after a merge) and you're testing a stale bundle. Pushing red-on-CI
    burns a CI cycle for nothing.
-2. After opening the PR, **poll the CI status every ~2 minutes** until every
-   check is green, then squash-merge. Webhook activity events for the
-   subscribed PR are unreliable — treat them as a hint, not a source of
-   truth, and always re-check via `mcp__github__pull_request_read` with
-   `method: 'get_check_runs'`.
+2. After opening the PR, **always poll the CI status every ~2 minutes**
+   until every check is green, then squash-merge — don't wait to be told.
+   The default is "open → poll → merge" as one continuous flow, not
+   three separate user-prompted steps. Stop only if the user explicitly
+   says to hold the merge (e.g. "wait for me to review", "don't merge
+   yet"). Webhook activity events for the subscribed PR are unreliable —
+   treat them as a hint, not a source of truth, and always re-check via
+   `mcp__github__pull_request_read` with `method: 'get_check_runs'`.
+   For PRs that came with a sidecar screenshot branch, delete that
+   branch immediately after the squash-merge lands (see "PR screenshots"
+   below).
 3. After merge, sync `main` (`git fetch origin main && git reset --hard
    origin/main` is fine on the working branch since it's just been
    incorporated) and branch off again for the next PR.
 4. Squash-merge by default. The repo's history reads cleanest with one
    commit per PR; the title format is `<change summary> (#NN)` (the GitHub
    default).
+
+## PR screenshots — host on a sidecar branch, never on `main`
+
+When a PR needs before/after screenshots (e.g. UI / layout changes),
+**do not** commit the PNGs to the PR branch — they'd land on `main` at
+squash-merge time and bloat the repo. Instead:
+
+1. Create a sidecar branch off `main` named
+   `claude/<pr-slug>-screenshots`, commit the PNGs there under
+   `docs/screenshots/<topic>/`, and push it.
+2. Reference the images in the PR body using absolute
+   `https://github.com/jzyrobert/modern-mahjong/raw/<sidecar-branch>/docs/screenshots/<topic>/<file>.png`
+   URLs so they render in the PR description without the screenshots
+   appearing in the PR's diff.
+3. After the PR squash-merges, delete the sidecar branch (`git push
+   origin --delete claude/<pr-slug>-screenshots`). The image links in
+   the merged PR body will 404, but that's fine — reviewers only need
+   them while the PR is open.
+
+The screenshot Playwright spec (`apps/client/e2e/replay-screenshots.spec.ts`
+and similar) writes to `apps/client/e2e-output/` which is gitignored,
+so the PNGs only exist on the sidecar branch until cleanup.
 
 ## Commit messages
 

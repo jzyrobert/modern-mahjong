@@ -23,6 +23,7 @@ coverage
 # Playwright outputs
 apps/client/test-results
 apps/client/playwright-report
+apps/client/e2e-output
 
 # Lighthouse CI outputs
 apps/client/.lighthouseci
