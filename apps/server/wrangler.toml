@@ -7,6 +7,14 @@ compatibility_flags = ["nodejs_compat"]
 name = "MatchRoom"
 class_name = "MatchRoom"
 
+[[durable_objects.bindings]]
+name = "LobbyRegistry"
+class_name = "LobbyRegistry"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["MatchRoom"]
+
+[[migrations]]
+tag = "v2"
+new_classes = ["LobbyRegistry"]

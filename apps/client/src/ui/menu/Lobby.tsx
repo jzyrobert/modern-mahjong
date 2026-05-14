@@ -16,6 +16,7 @@ import { startLanHostBridge, stopLanHostBridge } from '../../net/lan-host-bridge
 import { listHeaders } from '../../replay/storage';
 import { useGame } from '../../state/game';
 import { LESSONS, LESSON_ORDER } from '../../state/tutorial';
+import { BrowseLobbyModal } from '../BrowseLobbyModal';
 import { JoinLanModal } from '../JoinLanModal';
 import { GhostButton, PrimaryButton, TextField } from '../buttons';
 import { COLORS } from '../colors';
@@ -70,6 +71,7 @@ export function Lobby() {
   // null = idle, 'starting' = lanStart in flight, string = error blurb
   const [hostStatus, setHostStatus] = useState<null | 'starting' | string>(null);
   const [joinLanOpen, setJoinLanOpen] = useState(false);
+  const [browseLobbiesOpen, setBrowseLobbiesOpen] = useState(false);
   const [replayCount, setReplayCount] = useState(0);
 
   // Refresh replay count on mount and when the user comes back to the
@@ -202,6 +204,9 @@ export function Lobby() {
                 >
                   Create new match
                 </GhostButton>
+                <GhostButton onPress={() => setBrowseLobbiesOpen(true)}>
+                  Browse open lobbies
+                </GhostButton>
               </ButtonRow>
               <OnlineConnectionStatus />
             </ModeCard>
@@ -312,6 +317,13 @@ export function Lobby() {
           onJoin={(hostUrl, matchCode) => {
             setJoinLanOpen(false);
             transport.joinLan(hostUrl, matchCode);
+          }}
+        />
+        <BrowseLobbyModal
+          open={browseLobbiesOpen}
+          onClose={() => setBrowseLobbiesOpen(false)}
+          onJoin={(matchCode) => {
+            transport.joinOnline(matchCode);
           }}
         />
       </SafeAreaView>

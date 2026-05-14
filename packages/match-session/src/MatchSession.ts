@@ -13,6 +13,7 @@ import {
 } from '@mahjong/game-logic';
 import {
   type ClientMessage,
+  type LobbySummary,
   type PublicPlayer,
   type ServerMessage,
   parseClientMessage,
@@ -152,6 +153,42 @@ export class MatchSession {
 
   getState(): GameState {
     return this.state;
+  }
+
+  /**
+   * Public-safe snapshot for the lobby browser. Returns null when the
+   * session shouldn't be advertised — i.e. there's no host (an empty
+   * waiting room) or no humans at all (a pure-bot session). Adapters
+   * like `MatchRoom` call this after each lobby state change and ping
+   * a registry DO with the result; the registry serves `GET /lobbies`.
+   *
+   * Important: this intentionally excludes the engine state itself.
+   * Only metadata that should be visible to any potential joiner is
+   * exposed.
+   */
+  publicSummary(matchCode: string): LobbySummary | null {
+    if (this.hostPlayerId === null) return null;
+    let hostName: string | null = null;
+    let humanCount = 0;
+    let botCount = 0;
+    for (const seat of SEATS) {
+      const slot = this.seats[seat];
+      if (slot.bot !== null && slot.playerId === null) botCount++;
+      else if (slot.playerId !== null) {
+        humanCount++;
+        if (slot.playerId === this.hostPlayerId) hostName = slot.displayName;
+      }
+    }
+    if (humanCount === 0) return null;
+    return {
+      code: matchCode,
+      hostName,
+      humanCount,
+      botCount,
+      totalSeats: 4,
+      isInProgress: this.state.phase === 'turn' || this.state.phase === 'awaitingClaims',
+      rules: this.state.rules,
+    };
   }
 
   /** Test/seeding helper: place a bot in a specific seat. Defaults the
