@@ -17,7 +17,7 @@ import { AppState, type AppStateStatus } from 'react-native';
 import { getDisplayName, getPlayerId } from '../identity';
 import { stop as lanStop, unadvertise as lanUnadvertise } from '../native/lan-server';
 import { useRecorder } from '../replay/recorder';
-import { playDiscard } from '../sound';
+import { playDiceRoll, playTileClick } from '../sound';
 import { useGame } from '../state/game';
 import { type SoloSnapshot, clearSoloSnapshot, saveSoloSnapshot } from '../state/solo-persist';
 import { LESSONS, useTutorial } from '../state/tutorial';
@@ -551,7 +551,19 @@ export function TransportProvider({ children }: { children: ReactNode }) {
           appendEvents(m.events);
           recorderOnDelta(m.events, m.state);
           for (const event of m.events) {
-            if (event.t === 'discarded') playDiscard();
+            if (event.t === 'discarded') playTileClick();
+            else if (event.t === 'opened') playDiceRoll();
+            else if (event.t === 'claimsResolved' && event.result.kind === 'win') {
+              // Only the meld-completing claims (chi/peng/gang) clack
+              // a tile face-up. `hu` is handled separately if/when a
+              // win-sting cue gets added.
+              const kind = event.result.claim.kind;
+              if (kind === 'chi' || kind === 'peng' || kind === 'gang') playTileClick();
+            } else if (event.t === 'gangDeclared') {
+              // Concealed / promoted gangs don't flow through
+              // `claimsResolved` but still flip tiles into a meld.
+              playTileClick();
+            }
           }
           break;
         case 'lobby':

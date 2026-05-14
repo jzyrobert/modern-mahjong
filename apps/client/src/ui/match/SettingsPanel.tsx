@@ -48,7 +48,7 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
           />
           <ToggleRow
             label="Sound effects"
-            hint="Discard thud + win fanfare."
+            hint="Tile clack on discards + claims, dice roll, between-hand shuffle."
             value={settings.sound}
             onChange={(sound) => setSettings({ sound })}
           />

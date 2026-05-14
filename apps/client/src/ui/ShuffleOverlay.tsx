@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Text, View } from 'react-native';
+import { startShuffle } from '../sound';
 import { useGame } from '../state/game';
 import { useFadeInOut } from './animations';
 
@@ -45,6 +46,7 @@ export function ShuffleOverlay() {
     if (lastSeed.current !== undefined && lastSeed.current !== seed) {
       setActive(true);
       setShuffling(true);
+      const stopShuffleSound = startShuffle();
       const timer = setTimeout(() => {
         fadeOut(() => {
           setActive(false);
@@ -52,7 +54,13 @@ export function ShuffleOverlay() {
         });
       }, SHUFFLE_MS);
       lastSeed.current = seed;
-      return () => clearTimeout(timer);
+      return () => {
+        clearTimeout(timer);
+        // Fade the slice out early if the overlay tears down before
+        // the natural 2 s end (e.g. the user navigated away mid-
+        // shuffle). No-op once the slice has already retired.
+        stopShuffleSound();
+      };
     }
     lastSeed.current = seed;
   }, [seed, phase, setShuffling, fadeOut]);
