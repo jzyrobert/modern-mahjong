@@ -149,9 +149,13 @@ function WinningHand({ winner, winningTile }: { winner: Seat; winningTile: MTile
  * no way to reach Save. Surfacing it on the panel itself fixes that
  * without re-exposing the entire menu.
  *
- * Hidden when there's no active draft (no match in progress, e.g.
- * tutorials don't auto-record), and toggles between "save" and
- * "saved · tap to discard" on press to mirror the MenuSheet row.
+ * Hidden when:
+ *   - There's no active draft (no match in progress; tutorials +
+ *     spectator views never start one).
+ *   - `settings.autoRecordReplays` is on. Manual save is redundant
+ *     when finalize will auto-persist on teardown, and surfacing it
+ *     implies the save is opt-in when it's actually automatic — users
+ *     opt out via Settings → Auto-record to regain manual control.
  */
 function SaveReplayButton() {
   const draftActive = useRecorder((s) => s.draft !== null);
@@ -159,7 +163,8 @@ function SaveReplayButton() {
   const saveExplicit = useRecorder((s) => s.saveExplicit);
   const discardThisMatch = useRecorder((s) => s.discardThisMatch);
   const replayQuota = useGame((s) => s.settings.replayQuota);
-  if (!draftActive) return null;
+  const autoRecord = useGame((s) => s.settings.autoRecordReplays);
+  if (!draftActive || autoRecord) return null;
   const onPress = () => {
     if (savedThisMatch) discardThisMatch();
     else saveExplicit(replayQuota);
@@ -173,6 +178,10 @@ function SaveReplayButton() {
         position: 'absolute',
         top: 10,
         right: 10,
+        // RN-Web styles every View `position: relative`, so later
+        // siblings paint on top by document order and intercept taps
+        // on this absolute button — lift it above them.
+        zIndex: 2,
         paddingHorizontal: 10,
         paddingVertical: 6,
         borderRadius: 14,
