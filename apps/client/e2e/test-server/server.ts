@@ -1,4 +1,6 @@
+import { type IncomingMessage, createServer } from 'node:http';
 import { MatchSession, type Outbound } from '@mahjong/match-session';
+import type { ListLobbiesResponse } from '@mahjong/protocol';
 import { type WebSocket, WebSocketServer } from 'ws';
 
 /**
@@ -12,6 +14,13 @@ import { type WebSocket, WebSocketServer } from 'ws';
  * One `MatchSession` is allocated per match-code prefix in the URL.
  * Sessions live for the lifetime of the test server (no persistence —
  * tests should use a fresh server per test or per test file).
+ *
+ * Also exposes `GET /lobbies` over plain HTTP so the lobby-browser
+ * client path can be exercised against the same in-process sessions.
+ * Each room's `publicSummary(code)` is aggregated on every request;
+ * rooms with no human host return null and are filtered out. Lives on
+ * the same port as the WS upgrades via an explicit `http.Server` that
+ * the WSS attaches to in `noServer` mode.
  */
 interface RoomCtx {
   session: MatchSession;
@@ -34,7 +43,6 @@ export interface TestServerHandle {
 
 export function startTestServer(port = 0): Promise<TestServerHandle> {
   return new Promise((resolve, reject) => {
-    const wss = new WebSocketServer({ port, host: '127.0.0.1' });
     const rooms = new Map<string, RoomCtx>();
     let nextConnId = 1;
 
@@ -67,37 +75,67 @@ export function startTestServer(port = 0): Promise<TestServerHandle> {
       }
     };
 
-    wss.on('connection', (ws, req) => {
+    // Plain HTTP server hosts both the WS upgrade path and the
+    // `GET /lobbies` endpoint. The WSS attaches in `noServer` mode so
+    // we control the upgrade handler ourselves.
+    const httpServer = createServer((req, res) => {
+      const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+      if (req.method === 'GET' && url.pathname === '/lobbies') {
+        const lobbies = [];
+        for (const [code, ctx] of rooms) {
+          const summary = ctx.session.publicSummary(code);
+          if (summary !== null) lobbies.push(summary);
+        }
+        lobbies.sort((a, b) => a.code.localeCompare(b.code));
+        const body: ListLobbiesResponse = { lobbies };
+        res.writeHead(200, {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        });
+        res.end(JSON.stringify(body));
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+
+    const wss = new WebSocketServer({ noServer: true });
+    const acceptUpgrade = (req: IncomingMessage, matchCode: string) => {
+      wss.handleUpgrade(req, req.socket, Buffer.alloc(0), (ws) => {
+        const connectionId = `c${nextConnId++}`;
+        const ctx = getOrCreate(matchCode);
+        ctx.connections.set(connectionId, ws);
+
+        ws.on('message', (data) => {
+          let msg: unknown;
+          try {
+            msg = JSON.parse(data.toString());
+          } catch {
+            return;
+          }
+          dispatch(ctx, ctx.session.applyClientMessage(connectionId, msg));
+        });
+
+        ws.on('close', () => {
+          ctx.connections.delete(connectionId);
+          dispatch(ctx, ctx.session.detachConnection(connectionId, Date.now()));
+        });
+      });
+    };
+
+    httpServer.on('upgrade', (req, socket, _head) => {
       const url = new URL(req.url ?? '/', 'http://127.0.0.1');
       const m = /\/parties\/match-room\/([^/?]+)/.exec(url.pathname);
       if (!m) {
-        ws.close();
+        socket.destroy();
         return;
       }
-      const matchCode = m[1] ?? '';
-      const connectionId = `c${nextConnId++}`;
-      const ctx = getOrCreate(matchCode);
-      ctx.connections.set(connectionId, ws);
-
-      ws.on('message', (data) => {
-        let msg: unknown;
-        try {
-          msg = JSON.parse(data.toString());
-        } catch {
-          return;
-        }
-        dispatch(ctx, ctx.session.applyClientMessage(connectionId, msg));
-      });
-
-      ws.on('close', () => {
-        ctx.connections.delete(connectionId);
-        dispatch(ctx, ctx.session.detachConnection(connectionId, Date.now()));
-      });
+      acceptUpgrade(req, m[1] ?? '');
     });
 
-    wss.on('error', reject);
-    wss.on('listening', () => {
-      const addr = wss.address();
+    httpServer.on('error', reject);
+    httpServer.listen(port, '127.0.0.1', () => {
+      const addr = httpServer.address();
       if (typeof addr === 'object' && addr !== null) {
         resolve({
           port: addr.port,
@@ -107,11 +145,12 @@ export function startTestServer(port = 0): Promise<TestServerHandle> {
                 if (ctx.alarmTimer) clearTimeout(ctx.alarmTimer);
                 for (const ws of ctx.connections.values()) ws.terminate();
               }
-              wss.close(() => done());
+              wss.close();
+              httpServer.close(() => done());
             }),
         });
       } else {
-        reject(new Error('WebSocketServer.address() returned non-object'));
+        reject(new Error('http.Server.address() returned non-object'));
       }
     });
   });
