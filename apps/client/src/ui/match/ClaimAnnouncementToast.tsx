@@ -1,12 +1,11 @@
-import type { Seat } from '@mahjong/game-logic';
 import { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Text, View } from 'react-native';
-import { useGame } from '../../state/game';
+import { type ClaimMeldKind, nameForSeat, useGame } from '../../state/game';
 import { COLORS } from '../colors';
 
 const TOAST_DURATION_MS = 2_200;
 
-const KIND_LABEL: Record<'chi' | 'peng' | 'gang', { en: string; zh: string }> = {
+const KIND_LABEL: Record<ClaimMeldKind, { en: string; zh: string }> = {
   chi: { en: 'CHI', zh: '吃' },
   peng: { en: 'PENG', zh: '碰' },
   gang: { en: 'GANG', zh: '槓' },
@@ -70,7 +69,7 @@ export function ClaimAnnouncementToast() {
   }, [announcement, opacity]);
 
   if (!visible || !pinned) return null;
-  const seatName = nameForSeat(pinned.seat, lobby, youSeat);
+  const seatName = youSeat === pinned.seat ? 'You' : nameForSeat(lobby, pinned.seat);
   const label = KIND_LABEL[pinned.kind];
   return (
     <View
@@ -128,14 +127,4 @@ export function ClaimAnnouncementToast() {
       </Animated.View>
     </View>
   );
-}
-
-function nameForSeat(
-  seat: Seat,
-  lobby: ReturnType<typeof useGame.getState>['lobby'],
-  you: ReturnType<typeof useGame.getState>['you'],
-): string {
-  if (you === seat) return 'You';
-  const player = lobby?.players.find((p) => p.seat === seat);
-  return player?.displayName ?? `Seat ${seat}`;
 }
