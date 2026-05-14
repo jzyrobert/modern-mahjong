@@ -62,14 +62,18 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  e2e:
-    # Web Playwright spec, run against the Expo Web export. The
-    # multi-player spec exercises the server's room/coordination
-    # contract; kept on web because Detox doesn't do multi-instance
-    # well. Single-instance native e2e (Detox / Maestro) is a
-    # separate follow-up — see TODO.md.
+  # Per-shard runner for the Playwright suite. `e2e` below depends on
+  # this matrix and exists purely as a sync point so the "e2e" status
+  # check name stays stable for branch protection. The matrix expands
+  # to "e2e-shard (1)" / "(2)" / ... etc. and Playwright splits the
+  # spec list deterministically via `--shard=N/M`.
+  e2e-shard:
     runs-on: ubuntu-latest
-    needs: test
+    needs: [test, build-web]
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
@@ -89,30 +93,45 @@ jobs:
         if: steps.pw-cache.outputs.cache-hit == 'true'
         run: pnpm --filter @mahjong/client exec playwright install-deps chromium
 
-      - name: Export Expo Web bundle
-        run: pnpm --filter @mahjong/client export-web
+      - name: Download web bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: client-web-bundle
+          path: apps/client/dist
 
-      - name: Run e2e
-        run: pnpm --filter @mahjong/client e2e
+      - name: Run e2e shard ${{ matrix.shard }}/4
+        run: pnpm --filter @mahjong/client e2e --shard=${{ matrix.shard }}/4
 
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
+          name: playwright-report-shard-${{ matrix.shard }}
           path: apps/client/playwright-report/
           if-no-files-found: ignore
           retention-days: 7
 
+  # Aggregator: succeeds iff every shard succeeded. Lets branch
+  # protection keep requiring a single check named "e2e" without
+  # having to enumerate every matrix leg.
+  e2e:
+    runs-on: ubuntu-latest
+    needs: e2e-shard
+    steps:
+      - run: 'echo "All e2e shards passed"'
+
   lighthouse:
     runs-on: ubuntu-latest
-    needs: test
+    needs: [test, build-web]
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
 
-      - name: Export Expo Web bundle
-        run: pnpm --filter @mahjong/client export-web
+      - name: Download web bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: client-web-bundle
+          path: apps/client/dist
 
       # ubuntu-latest ships google-chrome-stable preinstalled at
       # /usr/bin/google-chrome, which lhci's Chrome-launcher auto-detects.
