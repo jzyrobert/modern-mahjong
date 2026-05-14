@@ -503,6 +503,11 @@ export function MobileShell(props: MobileShellProps) {
               </View>
             </View>
           ) : null}
+          {isLandscape && myTurn ? (
+            <View style={{ alignItems: 'center', marginBottom: 2 }}>
+              <YourTurnBadge needsDraw={needsDraw} />
+            </View>
+          ) : null}
           <View
             style={
               isLandscape
