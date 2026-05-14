@@ -23,7 +23,7 @@ const POPUP_TILE_HEIGHT = 88;
  *      doesn't render reliably without a 3D perspective ancestor —
  *      the squash reads as a flip and avoids the styling rabbit-hole.
  *   4. Fly: translate + scale to the exact destination slot rect that
- *      the matching `HandTile` wrote into `drawAnimationSlotRect` via
+ *      the matching `HandTile` wrote into `drawAnimation.slotRect` via
  *      `measureInWindow`. The slot is rendered with `opacity: 0`
  *      while this overlay is alive, so the fly phase visually "is"
  *      the tile arriving — when the overlay clears, the slot fades
@@ -35,7 +35,7 @@ const POPUP_TILE_HEIGHT = 88;
  */
 export function DrawTileOverlay() {
   const animation = useGame((s) => s.drawAnimation);
-  const slotRect = useGame((s) => s.drawAnimationSlotRect);
+  const slotRect = animation?.slotRect ?? null;
   const clear = useGame((s) => s.clearDrawAnimation);
   const animsEnabled = useGame((s) => s.settings.animations);
   const lastSeq = useRef(0);

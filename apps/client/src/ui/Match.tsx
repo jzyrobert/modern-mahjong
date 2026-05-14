@@ -19,7 +19,7 @@ import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { isSeatHost, useGame } from '../state/game';
+import { isSeatHost, nameForSeat, useGame } from '../state/game';
 import { randomSeed } from '../util';
 import { RulePanel } from './RulePanel';
 import { GhostButton, PrimaryButton } from './buttons';
@@ -233,6 +233,54 @@ export function Match() {
   // both leave it undefined).
   const turnDeadline = state?.phase === 'turn' ? (state.turnDeadlineMs ?? null) : null;
   const turnCountdown = useSecondsUntil(turnDeadline);
+
+  // Tsumo + concealed-gang derivations. Hoisted above the early returns
+  // below so the `useMemo` calls run unconditionally on every render
+  // (Rules of Hooks); guards inside return `null` when the engine state
+  // isn't a playing one. `tsumoFaan` previews the score on the Declare-
+  // win button; `concealedGangTile` toggles the Declare-gang button
+  // when the user holds four of a face on their draw turn. Both ran
+  // unmemoised on every Match render previously, paying O(n²) on the
+  // concealed-gang scan each WS delta.
+  const tsumoState = state && seat !== null ? state : null;
+  const tsumoSeat = seat;
+  const canTsumoMemo =
+    !!tsumoState &&
+    tsumoSeat !== null &&
+    state?.phase === 'turn' &&
+    state.turn === tsumoSeat &&
+    state.hasDrawn &&
+    state.drewThisTurn;
+  const tsumoFaan = useMemo<number | null>(() => {
+    if (!canTsumoMemo || !tsumoState || tsumoSeat === null) return null;
+    const allowSpecial = tsumoState.rules.allowSevenPairs || tsumoState.rules.allowThirteenOrphans;
+    if (
+      !isWinning({
+        hand: tsumoState.hands[tsumoSeat],
+        exposedMelds: tsumoState.melds[tsumoSeat].length,
+        allowSpecial,
+      })
+    ) {
+      return null;
+    }
+    const hand = tsumoState.hands[tsumoSeat];
+    const winningTile = hand[hand.length - 1];
+    if (!winningTile) return null;
+    return scoreHand({ state: tsumoState, winner: tsumoSeat, winningTile, selfDraw: true }).faan;
+  }, [canTsumoMemo, tsumoState, tsumoSeat]);
+  const concealedGangTile = useMemo<MTile | null>(() => {
+    if (!tsumoState || tsumoSeat === null) return null;
+    if (tsumoState.phase !== 'turn' || tsumoState.turn !== tsumoSeat || !tsumoState.hasDrawn) {
+      return null;
+    }
+    const hand = tsumoState.hands[tsumoSeat];
+    for (const candidate of hand) {
+      let count = 0;
+      for (const t of hand) if (sameFace(t, candidate)) count++;
+      if (count >= 4) return candidate;
+    }
+    return null;
+  }, [tsumoState, tsumoSeat]);
 
   // Spectator branch — `you === 'spectator'` means the server routed
   // this connection into the viewer pool (either because seats were
@@ -498,37 +546,8 @@ export function Match() {
       exposedMelds: state.melds[seat].length,
       allowSpecial,
     });
-
-  // Preview the faan the user would score by declaring tsumo right
-  // now — surfaced on the "Declare win" button label so they don't
-  // have to commit blind. `declareWin(selfDraw)` treats the most
-  // recently drawn tile (the last element of `state.hands[seat]`) as
-  // the winning tile, so the score reads off the same shape.
-  const tsumoFaan: number | null = (() => {
-    if (!canTsumo) return null;
-    const hand = state.hands[seat];
-    const winningTile = hand[hand.length - 1];
-    if (!winningTile) return null;
-    return scoreHand({ state, winner: seat, winningTile, selfDraw: true }).faan;
-  })();
-
-  // Concealed-gang candidate: any face the user has 4 copies of in
-  // their concealed hand. The engine accepts `declareGangConcealed`
-  // only on the user's turn after a draw — gate the button on the
-  // same precondition. If multiple quads exist (rare), pick the
-  // first found; the engine's `declareGangConcealed` takes a single
-  // tile argument identifying the face. A multi-pick UI can come
-  // later if anyone's hand ever has two quads on first draw.
-  const concealedGangTile: MTile | null = (() => {
-    if (!myTurn || !state.hasDrawn) return null;
-    const hand = state.hands[seat];
-    for (const candidate of hand) {
-      let count = 0;
-      for (const t of hand) if (sameFace(t, candidate)) count++;
-      if (count >= 4) return candidate;
-    }
-    return null;
-  })();
+  // `tsumoFaan` / `concealedGangTile` are memoised above the early
+  // returns — see `useMemo` block at ~L235.
 
   const latestDiscardId =
     state.phase === 'awaitingClaims' && state.lastDiscard ? tileId(state.lastDiscard.tile) : null;
@@ -539,8 +558,7 @@ export function Match() {
     }
   };
 
-  const dealerName =
-    lobby?.players.find((p) => p.seat === state.dealer)?.displayName ?? `Seat ${state.dealer}`;
+  const dealerName = nameForSeat(lobby, state.dealer);
 
   const sharedProps = {
     state,

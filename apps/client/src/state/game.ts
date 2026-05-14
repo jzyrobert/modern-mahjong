@@ -1,5 +1,5 @@
 import type { BotKind } from '@mahjong/bots';
-import type { Event as EngineEvent, GameState, Seat, Tile } from '@mahjong/game-logic';
+import type { Claim, Event as EngineEvent, GameState, Seat, Tile } from '@mahjong/game-logic';
 import { tileId } from '@mahjong/game-logic';
 import type { PublicPlayer, RuleConfig } from '@mahjong/protocol';
 import { create } from 'zustand';
@@ -170,26 +170,22 @@ interface ClientGameStore {
   claimAnnouncement: {
     seq: number;
     seat: Seat;
-    kind: 'chi' | 'peng' | 'gang';
+    kind: ClaimMeldKind;
   } | null;
   /**
    * The most recent local-seat `drew` event the user is still animating
-   * through — `seq` ticks up per draw so the `DrawTileOverlay` consumer
-   * can dedupe consecutive draws (e.g. rapid gang-replacement chains).
-   * The overlay reads `tile` to render face-down, flip, then fly toward
-   * the hand. Cleared by the overlay once its animation finishes; also
-   * cleared on `reset` / `handStarted`.
+   * through — `seq` ticks up per draw so `DrawTileOverlay` can dedupe
+   * consecutive draws (e.g. rapid gang-replacement chains). `slotRect`
+   * is the matching `HandTile`'s screen rect in window coordinates
+   * (filled in once the tile lays out); the overlay uses it to land
+   * the fly phase on the exact destination slot. Cleared on
+   * `clearDrawAnimation` / `reset`.
    */
-  drawAnimation: { seq: number; tile: Tile } | null;
-  /**
-   * Screen-space rect of the just-drawn tile's slot inside the hand, in
-   * window coordinates (the same coord space `View.measureInWindow`
-   * emits). The matching `HandTile` writes this on layout while it's
-   * the animating tile; `DrawTileOverlay` reads it to land the fly
-   * phase on the exact destination slot. Cleared alongside
-   * `drawAnimation`.
-   */
-  drawAnimationSlotRect: { x: number; y: number; width: number; height: number } | null;
+  drawAnimation: {
+    seq: number;
+    tile: Tile;
+    slotRect: { x: number; y: number; width: number; height: number } | null;
+  } | null;
   setState: (state: GameState, you?: Seat | 'spectator') => void;
   setLobby: (l: LobbyState) => void;
   setShuffling: (shuffling: boolean) => void;
@@ -199,7 +195,7 @@ interface ClientGameStore {
   pushChat: (entry: { from: Seat | 'spectator'; text: string; ts: number }) => void;
   dismissChat: (seq: number) => void;
   flashClaimMissed: () => void;
-  flashClaimAnnouncement: (a: { seat: Seat; kind: 'chi' | 'peng' | 'gang' }) => void;
+  flashClaimAnnouncement: (a: { seat: Seat; kind: ClaimMeldKind }) => void;
   flashDrawAnimation: (tile: Tile) => void;
   clearDrawAnimation: () => void;
   setDrawAnimationSlotRect: (
@@ -207,6 +203,12 @@ interface ClientGameStore {
   ) => void;
   reset: () => void;
 }
+
+/** chi / peng / gang — the three discard-claim kinds that announce a
+ *  visible meld. Excludes `pass` and `hu` (the latter has its own
+ *  WinCelebration cue). Sourced off the engine's `Claim` union so the
+ *  set stays in sync if the rules ever add another meld kind. */
+export type ClaimMeldKind = Exclude<Claim['kind'], 'pass' | 'hu'>;
 
 export interface ChatEntry {
   /** Local monotonic counter — used as the React key. */
@@ -233,7 +235,6 @@ export const useGame = create<ClientGameStore>((set) => ({
   claimMissedSeq: 0,
   claimAnnouncement: null,
   drawAnimation: null,
-  drawAnimationSlotRect: null,
   setState: (state, you) => set((prev) => ({ state, you: you ?? prev.you })),
   setLobby: (lobby) => set({ lobby }),
   setShuffling: (shuffling) => set({ shuffling }),
@@ -262,10 +263,33 @@ export const useGame = create<ClientGameStore>((set) => ({
     })),
   flashDrawAnimation: (tile) =>
     set((prev) => ({
-      drawAnimation: { tile, seq: (prev.drawAnimation?.seq ?? 0) + 1 },
+      drawAnimation: {
+        tile,
+        seq: (prev.drawAnimation?.seq ?? 0) + 1,
+        slotRect: null,
+      },
     })),
-  clearDrawAnimation: () => set({ drawAnimation: null, drawAnimationSlotRect: null }),
-  setDrawAnimationSlotRect: (rect) => set({ drawAnimationSlotRect: rect }),
+  clearDrawAnimation: () => set({ drawAnimation: null }),
+  setDrawAnimationSlotRect: (rect) =>
+    set((prev) => {
+      const a = prev.drawAnimation;
+      if (!a) return prev;
+      // Strict-equality guard so re-rendering the matching HandTile
+      // doesn't churn the slice (and the overlay's subscribers) when
+      // the rect didn't actually move.
+      const cur = a.slotRect;
+      if (
+        cur &&
+        rect &&
+        cur.x === rect.x &&
+        cur.y === rect.y &&
+        cur.width === rect.width &&
+        cur.height === rect.height
+      ) {
+        return prev;
+      }
+      return { drawAnimation: { ...a, slotRect: rect } };
+    }),
   appendEvents: (events) =>
     set((prev) => {
       if (events.length === 0) return prev;
@@ -318,7 +342,6 @@ export const useGame = create<ClientGameStore>((set) => ({
       claimMissedSeq: 0,
       claimAnnouncement: null,
       drawAnimation: null,
-      drawAnimationSlotRect: null,
     }),
 }));
 
