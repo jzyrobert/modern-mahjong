@@ -85,8 +85,25 @@ Rules for these branches:
    three separate user-prompted steps. Stop only if the user explicitly
    says to hold the merge (e.g. "wait for me to review", "don't merge
    yet"). Webhook activity events for the subscribed PR are unreliable —
-   treat them as a hint, not a source of truth, and always re-check via
-   `mcp__github__pull_request_read` with `method: 'get_check_runs'`.
+   treat them as a hint, not a source of truth, and always re-check
+   directly. From a web session, that's `mcp__github__pull_request_read`
+   with `method: 'get_check_runs'`. From a local checkout it's:
+
+   ```sh
+   until gh pr view <PR> --json statusCheckRollup --jq \
+     '[.statusCheckRollup[] | select(.status != "COMPLETED")] | length == 0' \
+     | grep -q true; do sleep 30; done
+   ```
+
+   The `ci` workflow expands into 5 separate check runs
+   (test → build-server / build-web / e2e-shard ×4 / lighthouse), so a
+   naive `gh pr view ... --jq '.[].status'` returns a multi-line string
+   and `[ "$status" = "COMPLETED" ]` never matches even when every check
+   is green. Use the "are any checks unfinished?" predicate above, not
+   a single-value equality on a named check. Don't suppress stderr on
+   the poll — that's how `gh pr checks --json` (an invalid flag) silently
+   turned past loops into infinite no-ops.
+
    For PRs that came with a sidecar screenshot branch, delete that
    branch immediately after the squash-merge lands (see "PR screenshots"
    below).
