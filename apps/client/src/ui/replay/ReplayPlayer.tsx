@@ -1,6 +1,6 @@
-import { type Seat, seatWindFor, tileId, tileLabel } from '@mahjong/game-logic';
+import { SEATS, type Seat, seatWindFor, tileId, tileLabel } from '@mahjong/game-logic';
 import { useMemo } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { type PlaybackPov, usePlayback } from '../../replay/playback';
 import { Hand } from '../Hand';
 import { Tile } from '../Tile';
@@ -10,25 +10,33 @@ import { type Position, SEAT_COLOR } from '../match/seatColor';
 import { SEAT_WIND_GLYPH, WIND_GLYPH } from '../winds';
 import { Scrubber } from './Scrubber';
 
-const SEATS: readonly Seat[] = [0, 1, 2, 3];
-
 /**
  * Read-only match shell rendered for a `ReplayRecord`'s current frame.
  * Mounts inside a `<PlaybackProvider>` so the cursor / pov / autoplay
  * state come from `usePlayback()`. No transport, no engine; everything
  * derives from the recorded `frames[cursor].state`.
  *
- * Layout: vertical stack of seat strips (name + melds + face-up hand)
- * with the local seat anchored to the bottom, a shared discard pool
- * row, the current frame's event log, and the `<Scrubber>` strip
- * pinned to the bottom of the screen.
+ * Layout adapts to viewport:
+ *   - Phone portrait (height ≥ width): single vertical stack
+ *     (header → discards → opponent seat rows → local seat → event
+ *     strip) sized to fit a 412×906 window without scrolling.
+ *   - Phone landscape (width > height, height < 540): two-column
+ *     split — left column holds the board (discards + seat rows),
+ *     right column holds the header / event strip stacked vertically.
+ *     The `<Scrubber>` is always pinned to the bottom across the
+ *     entire width.
+ *   - Wider viewports keep the legacy vertical stack with a slightly
+ *     looser tile size.
  */
 export function ReplayPlayer() {
   const playback = usePlayback();
+  const { width, height } = useWindowDimensions();
+  const isLandscape = width > height && height < 540;
+  const isCompactPortrait = !isLandscape && width < 480;
 
   // Order seats so the local player ends up at the bottom of the
-  // vertical stack — matches the live MobileShell convention. When the
-  // local seat is `'spectator'`, fall back to natural seat order
+  // vertical stack — matches the live MobileShell convention. When
+  // the local seat is `'spectator'`, fall back to natural seat order
   // (East → North).
   const localSeat = playback.header.localSeat;
   const pov = playback.pov;
@@ -48,14 +56,57 @@ export function ReplayPlayer() {
     };
   }, [pov, localSeat]);
 
+  const density: Density = isLandscape ? 'landscape' : isCompactPortrait ? 'portrait' : 'roomy';
+
+  if (isLandscape) {
+    return (
+      <View style={{ flex: 1, backgroundColor: COLORS.cream }}>
+        <View
+          style={{ flex: 1, flexDirection: 'row', paddingHorizontal: 6, paddingTop: 4, gap: 6 }}
+        >
+          {/* Left column: discards + seat rows */}
+          <ScrollView
+            style={{ flex: 3 }}
+            contentContainerStyle={{ gap: 4, paddingBottom: 4 }}
+            showsVerticalScrollIndicator={false}
+          >
+            <DiscardPool seatColor={seatColor} density={density} />
+            {orderedSeats.map((seat) => (
+              <SeatRow
+                key={seat}
+                seat={seat}
+                pov={pov}
+                isLocal={seat === localSeat}
+                seatColor={seatColor[seat]}
+                density={density}
+              />
+            ))}
+          </ScrollView>
+          {/* Right column: header + event strip */}
+          <View style={{ flex: 2, gap: 4 }}>
+            <Header density={density} />
+            <EventStrip density={density} />
+          </View>
+        </View>
+        <Scrubber compact />
+      </View>
+    );
+  }
+
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.cream }}>
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingBottom: 12, paddingHorizontal: 10, gap: 8 }}
+        contentContainerStyle={{
+          paddingBottom: 8,
+          paddingHorizontal: isCompactPortrait ? 6 : 10,
+          paddingTop: 4,
+          gap: isCompactPortrait ? 4 : 8,
+        }}
+        showsVerticalScrollIndicator={false}
       >
-        <Header />
-        <DiscardPool seatColor={seatColor} />
+        <Header density={density} />
+        <DiscardPool seatColor={seatColor} density={density} />
         {orderedSeats.map((seat) => (
           <SeatRow
             key={seat}
@@ -63,14 +114,17 @@ export function ReplayPlayer() {
             pov={pov}
             isLocal={seat === localSeat}
             seatColor={seatColor[seat]}
+            density={density}
           />
         ))}
-        <EventStrip />
+        <EventStrip density={density} />
       </ScrollView>
-      <Scrubber />
+      <Scrubber compact={isCompactPortrait} />
     </View>
   );
 }
+
+type Density = 'portrait' | 'landscape' | 'roomy';
 
 function useOrderedSeats(localSeat: Seat | 'spectator'): readonly Seat[] {
   if (localSeat === 'spectator') return SEATS;
@@ -79,59 +133,79 @@ function useOrderedSeats(localSeat: Seat | 'spectator'): readonly Seat[] {
   // furthest from the top so the user reads "their" hand last,
   // matching the live MobileShell layout convention.
   const others: Seat[] = SEATS.filter((s) => s !== localSeat);
-  // Order opponents in seat-order from the top down.
   return [...others, localSeat];
 }
 
-function Header() {
+function Header({ density }: { density: Density }) {
   const playback = usePlayback();
   const { header, state, cursor, totalFrames } = playback;
+  const compact = density !== 'roomy';
+  const padding = compact ? 6 : 12;
   return (
     <View
       style={{
         backgroundColor: COLORS.paperHi,
         borderColor: COLORS.hairline,
         borderWidth: 1,
-        borderRadius: 10,
-        padding: 12,
-        gap: 4,
+        borderRadius: 8,
+        padding,
+        gap: compact ? 2 : 4,
       }}
     >
-      <Text style={{ fontSize: 16, fontWeight: '900', color: COLORS.ink }}>
-        {playerLineFor(header)}
+      <Text
+        style={{
+          fontSize: compact ? 11 : 16,
+          fontWeight: '900',
+          color: COLORS.ink,
+        }}
+        numberOfLines={1}
+      >
+        {playerLineFor(header, compact)}
       </Text>
       <View
         style={{
           flexDirection: 'row',
           flexWrap: 'wrap',
           alignItems: 'center',
-          gap: 12,
+          gap: compact ? 8 : 12,
+          rowGap: 2,
         }}
       >
-        <Stat label="Phase" value={state.phase} />
-        <Stat label="Hand" value={`${header.handsPlayed > 0 ? header.handsPlayed : '—'}`} />
-        <Stat label="Wall" value={`${state.wall.length}`} />
+        <Stat label="Phase" value={state.phase} compact={compact} />
         <Stat
-          label="Round wind"
+          label="Hand"
+          value={`${header.handsPlayed > 0 ? header.handsPlayed : '—'}`}
+          compact={compact}
+        />
+        <Stat label="Wall" value={`${state.wall.length}`} compact={compact} />
+        <Stat
+          label="Wind"
           value={WIND_GLYPH[state.prevailingWind]}
           fontFamily="Noto Serif TC"
+          compact={compact}
         />
-        <Stat label="Frame" value={`${cursor + 1}/${totalFrames}`} />
+        <Stat label="Frame" value={`${cursor + 1}/${totalFrames}`} compact={compact} />
       </View>
-      <Text style={{ fontSize: 11, color: COLORS.ink3, fontWeight: '700' }}>
-        {new Date(header.startedAt).toLocaleString()} · {Math.round(header.durationMs / 1000)}s
-        played
-      </Text>
     </View>
   );
 }
 
-function Stat({ label, value, fontFamily }: { label: string; value: string; fontFamily?: string }) {
+function Stat({
+  label,
+  value,
+  fontFamily,
+  compact,
+}: {
+  label: string;
+  value: string;
+  fontFamily?: string;
+  compact?: boolean;
+}) {
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
+    <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 3 }}>
       <Text
         style={{
-          fontSize: 9,
+          fontSize: compact ? 8 : 9,
           fontWeight: '900',
           letterSpacing: 0.5,
           color: COLORS.ink3,
@@ -141,7 +215,7 @@ function Stat({ label, value, fontFamily }: { label: string; value: string; font
       </Text>
       <Text
         style={{
-          fontSize: 12,
+          fontSize: compact ? 10 : 12,
           fontWeight: '900',
           color: COLORS.ink,
           fontFamily,
@@ -153,21 +227,41 @@ function Stat({ label, value, fontFamily }: { label: string; value: string; font
   );
 }
 
-function playerLineFor(header: ReturnType<typeof usePlayback>['header']): string {
+function playerLineFor(header: ReturnType<typeof usePlayback>['header'], compact: boolean): string {
   const parts: string[] = [];
   for (const seat of SEATS) {
     const p = header.players[seat];
-    const youTag = seat === header.localSeat ? ' (you)' : '';
-    const name = p ? p.displayName : `Seat ${seat}`;
+    const youTag = seat === header.localSeat ? (compact ? '*' : ' (you)') : '';
+    const name = p ? p.displayName : `S${seat}`;
     parts.push(`${SEAT_WIND_GLYPH[seat]} ${name}${youTag}`);
   }
-  return parts.join('  ·  ');
+  return parts.join(compact ? ' · ' : '  ·  ');
 }
 
-function DiscardPool({ seatColor }: { seatColor: Record<Seat, string> }) {
+function tileSizeFor(density: Density): { w: number; h: number } {
+  if (density === 'portrait') return { w: 18, h: 24 };
+  if (density === 'landscape') return { w: 16, h: 22 };
+  return { w: 22, h: 30 };
+}
+
+function handTileSizeFor(density: Density): { w: number; h: number } {
+  if (density === 'portrait') return { w: 22, h: 30 };
+  if (density === 'landscape') return { w: 18, h: 26 };
+  return { w: 26, h: 36 };
+}
+
+function DiscardPool({
+  seatColor,
+  density,
+}: {
+  seatColor: Record<Seat, string>;
+  density: Density;
+}) {
   const playback = usePlayback();
   const state = playback.state;
   const order = state.discardOrder;
+  const compact = density !== 'roomy';
+  const padding = compact ? 6 : 8;
   if (order.length === 0) {
     return (
       <View
@@ -176,7 +270,7 @@ function DiscardPool({ seatColor }: { seatColor: Record<Seat, string> }) {
           borderColor: COLORS.hairline,
           borderWidth: 1,
           borderRadius: 8,
-          padding: 10,
+          padding,
         }}
       >
         <Text style={{ fontSize: 11, color: COLORS.ink3, fontWeight: '700' }}>No discards yet</Text>
@@ -187,6 +281,7 @@ function DiscardPool({ seatColor }: { seatColor: Record<Seat, string> }) {
   // in `state.lastDiscard`) so the viewer can see what was discarded
   // in this frame.
   const lastId = state.lastDiscard ? tileId(state.lastDiscard.tile) : null;
+  const size = tileSizeFor(density);
   return (
     <View
       style={{
@@ -194,7 +289,7 @@ function DiscardPool({ seatColor }: { seatColor: Record<Seat, string> }) {
         borderColor: COLORS.hairline,
         borderWidth: 1,
         borderRadius: 8,
-        padding: 8,
+        padding,
       }}
     >
       <Text
@@ -203,17 +298,17 @@ function DiscardPool({ seatColor }: { seatColor: Record<Seat, string> }) {
           fontWeight: '900',
           color: COLORS.ink3,
           letterSpacing: 0.6,
-          marginBottom: 4,
+          marginBottom: 3,
         }}
       >
         DISCARDS · {order.length}
       </Text>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 3 }}>
         {order.map((entry, i) => {
           const id = tileId(entry.tile);
           const isLast = id === lastId;
           return (
-            <View key={`${i}-${id}`} style={{ alignItems: 'center', gap: 2 }}>
+            <View key={`${i}-${id}`} style={{ alignItems: 'center', gap: 1 }}>
               <View
                 style={{
                   borderColor: isLast ? COLORS.red : 'transparent',
@@ -221,11 +316,11 @@ function DiscardPool({ seatColor }: { seatColor: Record<Seat, string> }) {
                   borderRadius: 4,
                 }}
               >
-                <Tile tile={entry.tile} width={22} height={30} />
+                <Tile tile={entry.tile} width={size.w} height={size.h} />
               </View>
               <View
                 style={{
-                  width: 18,
+                  width: size.w - 4,
                   height: 2,
                   borderRadius: 1,
                   backgroundColor: seatColor[entry.from],
@@ -260,11 +355,13 @@ function SeatRow({
   pov,
   isLocal,
   seatColor,
+  density,
 }: {
   seat: Seat;
   pov: PlaybackPov;
   isLocal: boolean;
   seatColor: string;
+  density: Density;
 }) {
   const playback = usePlayback();
   const state = playback.state;
@@ -281,23 +378,25 @@ function SeatRow({
   const isActive = state.phase === 'turn' && state.turn === seat;
   const isDealer = state.dealer === seat;
   const seatWind = seatWindFor(state.dealer, seat);
+  const compact = density !== 'roomy';
+  const handSize = handTileSizeFor(density);
   return (
     <View
       style={{
         backgroundColor: isLocal ? COLORS.paperHi : COLORS.creamLow,
         borderColor: isActive ? COLORS.red : COLORS.hairline,
         borderWidth: isActive ? 2 : 1,
-        borderRadius: 10,
-        padding: 8,
-        gap: 6,
+        borderRadius: 8,
+        padding: compact ? 5 : 8,
+        gap: compact ? 3 : 6,
       }}
     >
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
         <View
           style={{
-            width: 26,
-            height: 26,
-            borderRadius: 13,
+            width: compact ? 20 : 26,
+            height: compact ? 20 : 26,
+            borderRadius: compact ? 10 : 13,
             borderWidth: 2,
             borderColor: seatColor,
             alignItems: 'center',
@@ -307,7 +406,7 @@ function SeatRow({
           <Text
             style={{
               fontFamily: 'Noto Serif TC',
-              fontSize: 14,
+              fontSize: compact ? 11 : 14,
               color: COLORS.red,
               fontWeight: '700',
             }}
@@ -316,30 +415,50 @@ function SeatRow({
           </Text>
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 13, fontWeight: '900', color: COLORS.ink }}>
+          <Text
+            style={{
+              fontSize: compact ? 11 : 13,
+              fontWeight: '900',
+              color: COLORS.ink,
+            }}
+            numberOfLines={1}
+          >
             {name}
             {isLocal ? ' (you)' : ''}
             {isBot ? ' · BOT' : ''}
             {isDealer ? ' · DEALER' : ''}
           </Text>
-          <Text style={{ fontSize: 10, color: COLORS.ink3, fontWeight: '700' }}>
+          <Text
+            style={{
+              fontSize: compact ? 9 : 10,
+              color: COLORS.ink3,
+              fontWeight: '700',
+            }}
+          >
             {tiles.length} tile{tiles.length === 1 ? '' : 's'} · {score >= 0 ? `+${score}` : score}
           </Text>
         </View>
         {!faceUp ? (
-          <Text style={{ fontSize: 10, color: COLORS.ink3, fontWeight: '700' }}>HIDDEN</Text>
+          <Text style={{ fontSize: 9, color: COLORS.ink3, fontWeight: '700' }}>HIDDEN</Text>
         ) : null}
       </View>
       {melds.length > 0 ? <MeldStrip melds={melds} /> : null}
-      <Hand tiles={tiles} faceDown={!faceUp} sortMode="suit" tileWidth={26} tileHeight={36} />
+      <Hand
+        tiles={tiles}
+        faceDown={!faceUp}
+        sortMode="suit"
+        tileWidth={handSize.w}
+        tileHeight={handSize.h}
+      />
     </View>
   );
 }
 
-function EventStrip() {
+function EventStrip({ density }: { density: Density }) {
   const playback = usePlayback();
   const events = playback.events;
   if (events.length === 0) return null;
+  const compact = density !== 'roomy';
   return (
     <View
       style={{
@@ -347,8 +466,8 @@ function EventStrip() {
         borderColor: COLORS.hairline,
         borderWidth: 1,
         borderRadius: 8,
-        padding: 8,
-        gap: 4,
+        padding: compact ? 5 : 8,
+        gap: compact ? 2 : 4,
       }}
     >
       <Text
@@ -359,13 +478,14 @@ function EventStrip() {
           letterSpacing: 0.6,
         }}
       >
-        FRAME EVENTS
+        EVENTS
       </Text>
       {events.map((e, i) => (
         <Text
           // biome-ignore lint/suspicious/noArrayIndexKey: events array is stable per frame
           key={i}
-          style={{ fontSize: 12, color: COLORS.ink, lineHeight: 16 }}
+          style={{ fontSize: compact ? 10 : 12, color: COLORS.ink, lineHeight: compact ? 14 : 16 }}
+          numberOfLines={1}
         >
           • {describeEvent(e)}
         </Text>
