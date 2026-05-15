@@ -37,13 +37,19 @@ export function MobileDrawCue({ tile, onPress }: MobileDrawCueProps) {
   // Hide while `DrawTileOverlay` is in flight — the popup paints the
   // tile at the same screen position and takes over the visual cue.
   const animating = useGame((s) => s.drawAnimation !== null);
-  // `usePulse` must run on every render to keep the hook order stable;
-  // the halo it drives is cheap and `useNativeDriver: true` keeps the
-  // JS thread free even when the cue isn't visible. The early-return
-  // happens after the hook calls, never before them.
-  const pulse = usePulse({ durationMs: PULSE_TEMPO.urgent });
+  const visible = tile !== null && !animating;
+  // Gate the halo on visibility. Without the `enabled` toggle the
+  // underlying `Animated.loop` kept its native node attached across
+  // the cue's mount/unmount cycles, but react-native-web doesn't re-
+  // subscribe a freshly-mounted `Animated.View` to an already-running
+  // loop — the new view read the value's frozen-at-detach number
+  // forever, so the halo only pulsed on the *first* draw of the
+  // session and held still on every subsequent one. Toggling
+  // `enabled` makes `usePulse`'s effect tear down the loop on hide
+  // and start a fresh one on show.
+  const pulse = usePulse({ enabled: visible, durationMs: PULSE_TEMPO.urgent });
 
-  if (tile === null || animating) return null;
+  if (!visible) return null;
 
   const haloScale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1.05, 1.35] });
   const haloOpacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.85, 0.35] });
