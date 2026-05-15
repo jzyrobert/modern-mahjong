@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Animated, Dimensions, Easing, View } from 'react-native';
 import { useGame } from '../../state/game';
-import { Tile } from '../Tile';
+import { TILE_CORNER_RADIUS_RATIO, Tile } from '../Tile';
 
 /** Y-anchor for both the at-rest `MobileDrawCue` and the post-tap
  *  popup. 0.6 puts the tile inside the bottom-third "thumb zone" on a
@@ -206,6 +206,13 @@ export function DrawTileOverlay() {
           height: POPUP_TILE_HEIGHT,
           opacity: overlayOpacity,
           transform: [{ translateX }, { translateY }, { scale }, { scaleX }],
+          // Match `Tile.tsx`'s wrapper rounding (`TILE_CORNER_RADIUS_RATIO`)
+          // so both the gold glow and the dark drop shadow trace the
+          // tile's silhouette instead of squaring off at the corners.
+          // Visible here because the 8px gold blur is tight enough to
+          // expose the rectangular outline that the 24px dark blur
+          // was previously masking.
+          borderRadius: POPUP_TILE_WIDTH * TILE_CORNER_RADIUS_RATIO,
           // Drop shadow gives the popup felt-elevation while it's
           // floating; the gold glow is the visual handoff to the
           // landing slot. The second shadow matches `Tile`'s `raised`
