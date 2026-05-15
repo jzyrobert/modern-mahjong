@@ -3,6 +3,7 @@ import { type LayoutChangeEvent, Pressable, Text, View } from 'react-native';
 import { type PlaybackPov, usePlayback } from '../../replay/playback';
 import type { ReplayBookmark, ReplayBookmarkKind } from '../../replay/types';
 import { COLORS } from '../colors';
+import type { ReplayChapter } from './ReplayPlayer';
 
 const PIP_COLOR: Record<ReplayBookmarkKind, string> = {
   'hand-start': COLORS.ink2,
@@ -13,11 +14,25 @@ const PIP_COLOR: Record<ReplayBookmarkKind, string> = {
 };
 
 /**
- * Scrubber strip — a horizontal track + play/pause + step controls +
- * speed picker + POV picker. Drives the `usePlayback` context. Tap a
- * bookmark pip to jump there; drag the track for fine-grained seek.
+ * Scrubber strip — chapter strip + horizontal track + play/pause +
+ * step controls + speed picker + POV picker. Drives the `usePlayback`
+ * context.
+ *
+ * When `chapters` is passed, the rotated-square bookmark pips are
+ * replaced by a horizontally-flexed per-hand chapter strip above the
+ * track. Each chapter shows the round-wind glyph, hand label, and a
+ * one-line result (`Robert wins 5 faan` / `Drawn game` / `IN PROGRESS`
+ * / `Pending`). Taps seek to the chapter's first frame. When
+ * `chapters` is omitted, the legacy bookmark-pip overlay sits on top
+ * of the track instead.
  */
-export function Scrubber({ compact = false }: { compact?: boolean }) {
+export function Scrubber({
+  compact = false,
+  chapters,
+}: {
+  compact?: boolean;
+  chapters?: readonly ReplayChapter[] | undefined;
+}) {
   const playback = usePlayback();
   const [trackWidth, setTrackWidth] = useState(0);
   const onTrackLayout = useCallback((e: LayoutChangeEvent) => {
@@ -34,18 +49,23 @@ export function Scrubber({ compact = false }: { compact?: boolean }) {
   );
 
   const cursorRatio = playback.totalFrames > 1 ? playback.cursor / (playback.totalFrames - 1) : 0;
+  const showChapters = chapters && chapters.length > 0;
 
   return (
     <View
       style={{
-        backgroundColor: COLORS.paperHi,
+        backgroundColor: 'rgba(255,255,255,0.94)',
         borderTopColor: COLORS.hairline,
         borderTopWidth: 1,
-        paddingHorizontal: compact ? 8 : 12,
+        paddingHorizontal: compact ? 12 : 16,
         paddingVertical: compact ? 6 : 10,
         gap: compact ? 5 : 8,
       }}
     >
+      {showChapters ? (
+        <ChapterStrip chapters={chapters} compact={compact} onSeek={(seq) => playback.goto(seq)} />
+      ) : null}
+
       {/* Track + pips */}
       <Pressable
         onPress={onTrackPress}
@@ -77,15 +97,18 @@ export function Scrubber({ compact = false }: { compact?: boolean }) {
               borderRadius: 3,
             }}
           />
-          {/* Bookmark pips */}
-          {playback.bookmarks.map((b) => (
-            <BookmarkPip
-              key={`${b.seq}-${b.kind}`}
-              bookmark={b}
-              totalFrames={playback.totalFrames}
-              onPress={() => playback.goto(b.seq)}
-            />
-          ))}
+          {/* Bookmark pips — only when the chapter strip isn't already
+           *  carrying the hand boundaries. */}
+          {showChapters
+            ? null
+            : playback.bookmarks.map((b) => (
+                <BookmarkPip
+                  key={`${b.seq}-${b.kind}`}
+                  bookmark={b}
+                  totalFrames={playback.totalFrames}
+                  onPress={() => playback.goto(b.seq)}
+                />
+              ))}
           {/* Cursor knob */}
           <View
             pointerEvents="none"
@@ -98,7 +121,7 @@ export function Scrubber({ compact = false }: { compact?: boolean }) {
               borderRadius: 7,
               transform: [{ translateX: -7 }],
               backgroundColor: COLORS.red,
-              borderColor: COLORS.paperHi,
+              borderColor: 'white',
               borderWidth: 2,
             }}
           />
@@ -163,6 +186,95 @@ export function Scrubber({ compact = false }: { compact?: boolean }) {
           {playback.cursor + 1}/{playback.totalFrames}
         </Text>
       </View>
+    </View>
+  );
+}
+
+function ChapterStrip({
+  chapters,
+  compact,
+  onSeek,
+}: {
+  chapters: readonly ReplayChapter[];
+  compact: boolean;
+  onSeek: (seq: number) => void;
+}) {
+  // On the very narrow compact layout, only the current chapter shows
+  // its full label + result; the rest collapse to a wind-glyph cell so
+  // the strip fits without wrapping.
+  return (
+    <View style={{ flexDirection: 'row', gap: 2 }}>
+      {chapters.map((c) => {
+        const showFull = !compact || c.current;
+        return (
+          <Pressable
+            key={c.seq}
+            onPress={() => onSeek(c.seq)}
+            accessibilityLabel={`Chapter ${c.label}`}
+            style={({ pressed }) => ({
+              flex: Math.max(0.001, c.to - c.from) * (showFull && compact ? 3 : 1),
+              minWidth: 0,
+              paddingHorizontal: compact ? 6 : 8,
+              paddingVertical: compact ? 5 : 6,
+              borderRadius: 6,
+              borderWidth: 1,
+              borderColor: c.current
+                ? COLORS.accentSalmonEdge
+                : pressed
+                  ? COLORS.creamPressed
+                  : COLORS.hairline,
+              backgroundColor: c.current
+                ? COLORS.accentSalmonSwatch
+                : c.pending
+                  ? 'rgba(205,193,173,0.25)'
+                  : COLORS.creamLow,
+              opacity: c.pending ? 0.6 : 1,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 5,
+            })}
+          >
+            <Text
+              style={{
+                fontFamily: 'Noto Serif TC',
+                fontSize: compact ? 13 : 14,
+                fontWeight: '700',
+                color: c.current ? COLORS.red : COLORS.ink2,
+                lineHeight: compact ? 14 : 16,
+              }}
+            >
+              {c.wind}
+            </Text>
+            {showFull ? (
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text
+                  style={{
+                    fontSize: compact ? 9 : 9,
+                    fontWeight: '900',
+                    letterSpacing: 0.5,
+                    color: COLORS.ink,
+                  }}
+                  numberOfLines={1}
+                >
+                  {c.label}
+                </Text>
+                <Text
+                  style={{
+                    fontSize: compact ? 8 : 9,
+                    fontWeight: '700',
+                    color: COLORS.ink3,
+                  }}
+                  numberOfLines={1}
+                >
+                  {c.result}
+                </Text>
+              </View>
+            ) : (
+              <Text style={{ fontSize: 8, fontWeight: '800', color: COLORS.ink3 }}>{c.index}</Text>
+            )}
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
@@ -233,7 +345,7 @@ function ControlButton({
         minWidth,
         height: heightDim,
         paddingHorizontal: compact ? 6 : 10,
-        borderRadius: 6,
+        borderRadius: 8,
         alignItems: 'center',
         justifyContent: 'center',
         backgroundColor: disabled
@@ -244,7 +356,7 @@ function ControlButton({
               : COLORS.red
             : pressed
               ? COLORS.creamPressed
-              : COLORS.creamLow,
+              : 'white',
         borderColor: COLORS.hairline,
         borderWidth: 1,
         opacity: disabled ? 0.5 : 1,
@@ -326,6 +438,14 @@ const POV_LABELS: Record<PlaybackPov, string> = {
   3: 'N',
 };
 
+const POV_GLYPHS: Record<PlaybackPov, string> = {
+  all: 'All',
+  0: '東',
+  1: '南',
+  2: '西',
+  3: '北',
+};
+
 const POVS: readonly PlaybackPov[] = ['all', 0, 1, 2, 3];
 
 function PovPicker({
@@ -369,7 +489,7 @@ function PovPicker({
               fontFamily: 'Noto Serif TC',
             }}
           >
-            {POV_LABELS[p]}
+            {POV_GLYPHS[p]}
           </Text>
         </Pressable>
       ))}

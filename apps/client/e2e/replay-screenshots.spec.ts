@@ -80,3 +80,15 @@ test('replay screenshots: landscape', async ({ page }) => {
 
   await page.screenshot({ path: `${SHOT_DIR}/landscape.png`, fullPage: false });
 });
+
+test('replay screenshots: desktop', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await buildSampleReplay(page);
+
+  for (let i = 0; i < 8; i++) {
+    await page.getByLabel('Step forward').click();
+    await page.waitForTimeout(50);
+  }
+
+  await page.screenshot({ path: `${SHOT_DIR}/desktop.png`, fullPage: false });
+});
