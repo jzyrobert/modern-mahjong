@@ -4,7 +4,7 @@ import * as Clipboard from 'expo-clipboard';
 import { useEffect, useState } from 'react';
 import { Pressable, Text, View, useWindowDimensions } from 'react-native';
 import type { LobbyState } from '../../state/game';
-import { COLORS as SHARED_COLORS } from '../colors';
+import { COLORS as SHARED_COLORS, SUCCESS_PILL } from '../colors';
 import { SEAT_WIND_GLYPH } from '../winds';
 
 interface LobbyPreviewProps {
@@ -27,11 +27,11 @@ const WIDE_GRID_BREAKPOINT = 620;
 
 const COLORS = {
   ...SHARED_COLORS,
-  /** Lobby's "open / waiting" indicator dot — slightly bluer-green
-   *  than the shared `green` used for connection states elsewhere
-   *  so the two read as distinct cues (lobby room status vs
-   *  per-seat online state). */
-  lobbyDot: '#44ad60',
+  /** Lobby's "open / waiting" indicator dot — uses the shared
+   *  `success` token. Previously a one-off `#44ad60` literal that
+   *  drifted from the `success` hue used elsewhere; collapsed back
+   *  onto the token so a single tweak repaints both. */
+  lobbyDot: SHARED_COLORS.success,
 };
 
 /**
@@ -48,9 +48,14 @@ const COLORS = {
  * 9 px font size.
  */
 const STATUS_COLORS = {
-  bot: { color: '#735aa3', bg: '#e1d3ed', label: 'Bot' },
-  online: { color: '#2d8645', bg: '#c2e2c5', label: 'Online' },
-  offline: { color: COLORS.ink3, bg: COLORS.creamLow, label: 'Disconnected' },
+  bot: { color: '#735aa3', bg: '#e1d3ed', border: null, label: 'Bot' },
+  online: {
+    color: SUCCESS_PILL.fg,
+    bg: SUCCESS_PILL.bg,
+    border: SUCCESS_PILL.border,
+    label: 'Online',
+  },
+  offline: { color: COLORS.ink3, bg: COLORS.creamLow, border: null, label: 'Disconnected' },
 } as const;
 
 /**
@@ -127,11 +132,11 @@ export function LobbyPreview({ lobby, matchCode }: LobbyPreviewProps) {
               alignItems: 'center',
               gap: 8,
               backgroundColor: copied
-                ? STATUS_COLORS.online.bg
+                ? SUCCESS_PILL.bg
                 : pressed
                   ? COLORS.creamPressed
                   : COLORS.creamLow,
-              borderColor: copied ? STATUS_COLORS.online.color : COLORS.hairline,
+              borderColor: copied ? SUCCESS_PILL.border : COLORS.hairline,
               borderWidth: 1,
               borderRadius: 8,
               paddingVertical: 6,
@@ -154,7 +159,7 @@ export function LobbyPreview({ lobby, matchCode }: LobbyPreviewProps) {
                 fontSize: 10,
                 fontWeight: '800',
                 letterSpacing: 0.6,
-                color: copied ? STATUS_COLORS.online.color : COLORS.ink3,
+                color: copied ? SUCCESS_PILL.fg : COLORS.ink3,
               }}
             >
               {copied ? 'COPIED' : 'COPY'}
@@ -273,6 +278,7 @@ function StatusPill({ kind, botKind = null }: StatusPillProps) {
         paddingVertical: 2,
         paddingHorizontal: 6,
         alignSelf: 'flex-start',
+        ...(palette.border ? { borderWidth: 1, borderColor: palette.border } : null),
       }}
     >
       <Text

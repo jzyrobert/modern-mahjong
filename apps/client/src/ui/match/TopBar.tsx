@@ -1,5 +1,5 @@
 import { Pressable, Text, View } from 'react-native';
-import { COLORS } from '../colors';
+import { COLORS, PANEL_ON_FELT } from '../colors';
 
 interface TopBarProps {
   matchCode: string | null;
@@ -25,9 +25,7 @@ export function TopBar({ matchCode, viewers, onOpenMenu }: TopBarProps) {
         gap: 8,
         paddingVertical: 6,
         paddingHorizontal: 10,
-        borderRadius: 16,
-        backgroundColor: 'rgba(255,255,255,0.88)',
-        boxShadow: '0px 3px 12px rgba(0,0,0,0.08)',
+        ...PANEL_ON_FELT,
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>

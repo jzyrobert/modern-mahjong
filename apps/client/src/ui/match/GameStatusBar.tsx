@@ -1,7 +1,7 @@
 import type { Wind } from '@mahjong/game-logic';
 import type { ReactNode } from 'react';
 import { Pressable, Text, View } from 'react-native';
-import { COLORS } from '../colors';
+import { COLORS, PANEL_ON_FELT } from '../colors';
 import { WIND_GLYPH } from '../winds';
 
 interface GameStatusBarProps {
@@ -160,9 +160,7 @@ export function GameStatusBar({
         paddingVertical: 5,
         paddingLeft: 8,
         paddingRight: 10,
-        borderRadius: 14,
-        backgroundColor: 'rgba(255,255,255,0.88)',
-        boxShadow: '0px 4px 16px rgba(0,0,0,0.1)',
+        ...PANEL_ON_FELT,
       }}
     >
       {status}

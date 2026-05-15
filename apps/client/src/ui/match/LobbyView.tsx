@@ -10,7 +10,7 @@ import type { LobbyState } from '../../state/game';
 import { randomSeed } from '../../util';
 import { RulePanel } from '../RulePanel';
 import { GhostButton, PrimaryButton } from '../buttons';
-import { COLORS } from '../colors';
+import { COLORS, SUCCESS_PILL } from '../colors';
 import { LanInviteCard } from '../menu/LanInviteCard';
 import { LobbyPreview } from '../menu/LobbyPreview';
 import { SEAT_WIND_GLYPH } from '../winds';
@@ -126,11 +126,11 @@ export function LobbyView({
                 accessibilityLabel={joinUrlCopied ? 'Join URL copied' : 'Copy join URL'}
                 style={({ pressed }) => ({
                   backgroundColor: joinUrlCopied
-                    ? '#c2e2c5'
+                    ? SUCCESS_PILL.bg
                     : pressed
                       ? COLORS.creamPressed
                       : COLORS.creamLow,
-                  borderColor: joinUrlCopied ? '#2d8645' : COLORS.hairline,
+                  borderColor: joinUrlCopied ? SUCCESS_PILL.border : COLORS.hairline,
                   borderWidth: 1,
                   borderRadius: 8,
                   paddingVertical: 6,
@@ -142,7 +142,7 @@ export function LobbyView({
                     fontSize: 11,
                     fontWeight: '800',
                     letterSpacing: 0.6,
-                    color: joinUrlCopied ? '#2d8645' : COLORS.ink,
+                    color: joinUrlCopied ? SUCCESS_PILL.fg : COLORS.ink,
                   }}
                 >
                   {joinUrlCopied ? 'URL COPIED' : 'COPY JOIN URL'}

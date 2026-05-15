@@ -45,9 +45,19 @@ export const COLORS = {
   /** Brighter accent red — used for active / pulsing states (e.g.
    *  the YOUR TURN halo). */
   redHot: '#db5d4a',
-  /** Success green — used for connection indicators, valid-state
-   *  switches, and Scoreboard chip dots. */
-  green: '#58c280',
+  /** Success — semantic colour for "online / connected / valid /
+   *  win-positive". Use the token directly for dots, accents, and
+   *  switch tracks. For pill surfaces (text on a tinted bg with a
+   *  tinted border) use `SUCCESS_PILL` below.
+   *
+   *  Nudged from the old `#58c280` to `#3aa066` — slightly darker /
+   *  more saturated so it carries enough contrast to be used as fg
+   *  text on the pill bg without needing a separate `#2d8645`
+   *  literal. */
+  success: '#3aa066',
+  /** @deprecated Alias for `success` — kept for one release while
+   *  consumers migrate. */
+  green: '#3aa066',
   /** Soft gold — used for win badges, dealer ribbons, and "about to
    *  draw" cues. */
   gold: '#d8a85a',
@@ -60,3 +70,41 @@ export const COLORS = {
    *  (RECOMMENDED badge, destructive Leave item in MenuSheet). */
   accentSalmonEdge: '#d8b09f',
 };
+
+/**
+ * Pill recipe for status / state badges that mean "success" or
+ * "online" — bg is a 12 % tint of `success`, the border a 35 %
+ * tint, and the fg a darker shade tuned for text contrast on the
+ * bg. Reach for this whenever a control needs to communicate a
+ * positive / connected state via a tinted pill; keep brand-tone
+ * literals (e.g. the LAN match-kind badge in `ReplayLibrary`)
+ * separate so a future "tweak the success hue" task doesn't
+ * accidentally repaint LAN branding.
+ */
+export const SUCCESS_PILL = {
+  bg: 'rgba(58,160,102,0.12)',
+  border: 'rgba(58,160,102,0.35)',
+  fg: '#1f6a44',
+} as const;
+
+/**
+ * Floating-panel chrome — every white pill that floats over the
+ * felt table (status bar, top bar, portrait menu pill, replay
+ * status pill) shares this recipe. Spread into a View's `style`
+ * prop next to padding / flex props. The 0.92 alpha + tight
+ * 14-blur drop shadow + 1px inner-border shadow gives the panel
+ * enough definition to read on both light (sage) and dark (jade /
+ * ocean) felt skins without per-skin tweaks; the inner-border
+ * shadow replaces the manual `borderWidth: 1` some sites used
+ * before.
+ *
+ * For the `boxShadow:` shorthand RN ≥ 0.76 + react-native-web both
+ * accept this string; older RN targets would need the legacy
+ * shadowColor / shadowOffset / shadowOpacity / shadowRadius
+ * properties.
+ */
+export const PANEL_ON_FELT = {
+  backgroundColor: 'rgba(255,255,255,0.92)',
+  borderRadius: 12,
+  boxShadow: '0px 4px 14px rgba(0,0,0,0.14), 0px 0px 0px 1px rgba(0,0,0,0.04)',
+} as const;

@@ -2,7 +2,7 @@ import * as Clipboard from 'expo-clipboard';
 import * as Linking from 'expo-linking';
 import { useEffect, useMemo, useState } from 'react';
 import { Platform, Pressable, Share, Text, View } from 'react-native';
-import { COLORS } from '../colors';
+import { COLORS, SUCCESS_PILL } from '../colors';
 
 interface LanInviteCardProps {
   /** LAN host URL the embedded NanoHTTPD server is bound to, e.g.
@@ -177,8 +177,12 @@ function CopyableLink({ title, hint, url, canShare, shareLabel }: CopyableLinkPr
           accessibilityRole="button"
           accessibilityLabel={copied ? `${title} copied` : `Copy ${title.toLowerCase()}`}
           style={({ pressed }) => ({
-            backgroundColor: copied ? '#c2e2c5' : pressed ? COLORS.creamPressed : COLORS.creamLow,
-            borderColor: copied ? '#2d8645' : COLORS.hairline,
+            backgroundColor: copied
+              ? SUCCESS_PILL.bg
+              : pressed
+                ? COLORS.creamPressed
+                : COLORS.creamLow,
+            borderColor: copied ? SUCCESS_PILL.border : COLORS.hairline,
             borderWidth: 1,
             borderRadius: 8,
             paddingVertical: 6,
@@ -190,7 +194,7 @@ function CopyableLink({ title, hint, url, canShare, shareLabel }: CopyableLinkPr
               fontSize: 11,
               fontWeight: '800',
               letterSpacing: 0.6,
-              color: copied ? '#2d8645' : COLORS.ink,
+              color: copied ? SUCCESS_PILL.fg : COLORS.ink,
             }}
           >
             {copied ? 'COPIED' : 'COPY'}

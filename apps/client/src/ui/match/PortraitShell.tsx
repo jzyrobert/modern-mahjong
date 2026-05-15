@@ -7,7 +7,7 @@ import { ClaimBar } from '../ClaimBar';
 import { Hand } from '../Hand';
 import { Scoreboard } from '../Scoreboard';
 import { PrimaryButton } from '../buttons';
-import { COLORS } from '../colors';
+import { COLORS, PANEL_ON_FELT } from '../colors';
 import { TutorialTarget } from '../tutorial/TargetRegistry';
 import { GameStatusBar } from './GameStatusBar';
 import { MeldStrip } from './MeldStrip';
@@ -363,11 +363,6 @@ function ChromeTrailing({ showCode, matchCode, viewers }: ChromeTrailingProps) {
   );
 }
 
-const MENU_PILL_COLORS = {
-  ink: '#3a3328',
-  hairline: '#cdc1ad',
-};
-
 /**
  * Standalone ☰ pill rendered next to `GameStatusBar` on mobile.
  * Hosts its own background so it can sit outside the status pill
@@ -382,14 +377,11 @@ function MenuPill({ onPress }: { onPress: () => void }) {
       style={({ pressed }) => ({
         paddingHorizontal: 12,
         paddingVertical: 7,
-        borderRadius: 14,
-        backgroundColor: pressed ? COLORS.creamLow : 'rgba(255,255,255,0.88)',
-        borderColor: MENU_PILL_COLORS.hairline,
-        borderWidth: 1,
-        boxShadow: '0px 4px 16px rgba(0,0,0,0.1)',
+        ...PANEL_ON_FELT,
+        ...(pressed ? { backgroundColor: COLORS.creamLow } : null),
       })}
     >
-      <Text style={{ fontSize: 16, fontWeight: '700', color: MENU_PILL_COLORS.ink }}>☰</Text>
+      <Text style={{ fontSize: 16, fontWeight: '700', color: COLORS.ink }}>☰</Text>
     </Pressable>
   );
 }
