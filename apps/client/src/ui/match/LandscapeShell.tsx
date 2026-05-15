@@ -256,14 +256,6 @@ export function LandscapeShell({
                 sortMode={sortMode}
                 drawnTileId={drawnTileId}
                 hintTileId={hintTileId}
-                drawCue={
-                  needsDraw && state.wall.length > 0
-                    ? {
-                        tile: state.wall[state.wall.length - 1]!,
-                        onPress: () => onAction({ t: 'draw', seat }),
-                      }
-                    : undefined
-                }
               />
             </View>
           </TutorialTarget>
