@@ -206,7 +206,18 @@ export function DrawTileOverlay() {
           height: POPUP_TILE_HEIGHT,
           opacity: overlayOpacity,
           transform: [{ translateX }, { translateY }, { scale }, { scaleX }],
-          boxShadow: '0px 10px 24px rgba(0,0,0,0.35)',
+          // Drop shadow gives the popup felt-elevation while it's
+          // floating; the gold glow is the visual handoff to the
+          // landing slot. The second shadow matches `Tile`'s `raised`
+          // state byte-for-byte (`0px 0px 8px rgba(220,159,79,0.7)`),
+          // so the freshly-drawn `HandTile` — which lights up under
+          // exactly that glow once `drawnTileId` matches it — receives
+          // a tile that's already wearing the same halo. Without this,
+          // the cue's pulsing gold ring vanished hard the instant the
+          // popup mounted, then re-appeared at the landing as the
+          // hand-side halo; the gap in the middle read as "the gold
+          // came back from nowhere".
+          boxShadow: '0px 10px 24px rgba(0,0,0,0.35), 0px 0px 8px rgba(220,159,79,0.7)',
         }}
       >
         <Tile tile={tile} faceDown={!faceUp} width={POPUP_TILE_WIDTH} height={POPUP_TILE_HEIGHT} />
