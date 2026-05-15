@@ -170,11 +170,27 @@ When you do need one:
   process gets re-parented and keeps the port. Clean up with
   `Stop-Process -Force` or `taskkill /F /T /PID <pid>`.
 
-## PR screenshots — host on a sidecar branch, never on `main`
+## PR screenshots — required for UI changes, hosted on a sidecar branch
 
-When a PR needs before/after screenshots (e.g. UI / layout changes),
-**do not** commit the PNGs to the PR branch — they'd land on `main` at
-squash-merge time and bloat the repo. Instead:
+**Any PR that changes how the client renders MUST include before/after
+comparison screenshots in the PR body.** That means anything touching
+component output, layout, styling, copy, animation timing, or the
+match/replay/lobby shells. Logic-only, server, protocol, engine, copy-
+that-isn't-rendered-as-UI, or test-only PRs are exempt. When in doubt
+(refactor that *might* change rendering, theming-token edit, etc.),
+take the screenshot — the cost is one extra Playwright run.
+
+The screenshot driver lives in
+`apps/client/e2e/replay-screenshots.spec.ts` /
+`replay-library-screenshots.spec.ts` for the replay surfaces and as
+ad-hoc specs for match-shell shots (set viewport, drive to the state
+you want, `page.screenshot({ path: ... })`). Output lands in
+`apps/client/e2e-output/` (gitignored), so capturing at multiple
+commits is fine — switch HEAD, re-`export-web`, re-run the spec under
+a different `*_SHOT_LABEL` env, repeat.
+
+Hosting: **do not** commit the PNGs to the PR branch — they'd land on
+`main` at squash-merge time and bloat the repo. Instead:
 
 1. Create a sidecar branch off `main` named
    `claude/<pr-slug>-screenshots`, commit the PNGs there under
@@ -182,15 +198,16 @@ squash-merge time and bloat the repo. Instead:
 2. Reference the images in the PR body using absolute
    `https://github.com/jzyrobert/modern-mahjong/raw/<sidecar-branch>/docs/screenshots/<topic>/<file>.png`
    URLs so they render in the PR description without the screenshots
-   appearing in the PR's diff.
+   appearing in the PR's diff. A side-by-side markdown table
+   (`| Before | After |`) reads cleanest.
 3. After the PR squash-merges, delete the sidecar branch (`git push
    origin --delete claude/<pr-slug>-screenshots`). The image links in
    the merged PR body will 404, but that's fine — reviewers only need
    them while the PR is open.
 
-The screenshot Playwright spec (`apps/client/e2e/replay-screenshots.spec.ts`
-and similar) writes to `apps/client/e2e-output/` which is gitignored,
-so the PNGs only exist on the sidecar branch until cleanup.
+Any ad-hoc Playwright spec written purely to drive these shots stays
+untracked — it's a capture tool, not test coverage, and committing it
+clutters the suite. Stash or delete it after the shots are saved.
 
 ## Commit messages
 
