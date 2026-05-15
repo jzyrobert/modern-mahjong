@@ -3,6 +3,13 @@ import { Animated, Dimensions, Easing, View } from 'react-native';
 import { useGame } from '../../state/game';
 import { Tile } from '../Tile';
 
+/** Y-anchor for both the at-rest `MobileDrawCue` and the post-tap
+ *  popup. 0.6 puts the tile inside the bottom-third "thumb zone" on a
+ *  standard one-handed grip, above the user's hand row. Exported so
+ *  the cue and overlay stay in lockstep — desynchronising them would
+ *  reintroduce the cue→popup position jump. */
+export const DRAW_ANCHOR_Y_RATIO = 0.6;
+
 const HOLD_MS = 220;
 const FLIP_MS = 420;
 const FLY_MS = 360;
@@ -43,10 +50,15 @@ const POPUP_TILE_HEIGHT = 88;
  *
  * The overlay's resting position + size match `MobileDrawCue` exactly
  * (`POPUP_TILE_WIDTH` × `POPUP_TILE_HEIGHT` anchored at
- * `viewportW/2, viewportH*0.4`). The cue unmounts the same frame the
- * overlay mounts (both selectors flip on `drawAnimation` going non-
- * null), so the user perceives one continuous tile that holds → flips
- * → flies into their hand.
+ * `viewportW/2, viewportH * DRAW_ANCHOR_Y_RATIO`). The cue unmounts the
+ * same frame the overlay mounts (both selectors flip on `drawAnimation`
+ * going non-null), so the user perceives one continuous tile that
+ * holds → flips → flies into their hand. Rendering gates on
+ * `tile !== null` rather than a local `visible` state so the cue → popup
+ * handoff lands in a single commit — gating on a separate `useState`
+ * forced the overlay to wait for its effect to fire before painting,
+ * which left a 1-frame gap where neither the cue nor the popup was on
+ * screen.
  *
  * Slice-level subscriptions on purpose (`tile`, `slotRect`, `seq`
  * separately rather than the whole `drawAnimation` object): a slot-rect
@@ -67,9 +79,9 @@ export function DrawTileOverlay() {
   const slotRect = useGame((s) => s.drawAnimation?.slotRect ?? null);
   const seq = useGame((s) => s.drawAnimation?.seq ?? 0);
   const clear = useGame((s) => s.clearDrawAnimation);
+  const setPhase = useGame((s) => s.setDrawAnimationPhase);
   const animsEnabled = useGame((s) => s.settings.animations);
   const lastSeq = useRef(0);
-  const [visible, setVisible] = useState(false);
   const [faceUp, setFaceUp] = useState(false);
   const progress = useRef(new Animated.Value(0)).current;
 
@@ -81,24 +93,30 @@ export function DrawTileOverlay() {
       clear();
       return;
     }
-    setVisible(true);
     setFaceUp(false);
     progress.setValue(0);
 
-    // Drive the face-down → face-up swap off the native progress value
-    // crossing `FLIP_MID` rather than a wall-clock `setTimeout`. The
-    // `scaleX` squish runs on the native driver, so a JS-thread timer
-    // can drift relative to it — typically right after a `setState`
-    // lands the JS thread is busy and the face flips visibly off-centre,
-    // exposing the back face past the scaleX-zero midpoint. The
-    // listener stays in lockstep with the animation that's actually
-    // rendering on screen, which is what the user perceives as "the
-    // flip".
+    // The single progress listener drives two state transitions tied to
+    // visual milestones in the running animation:
+    //   - At `FLIP_MID` (scaleX-zero point of the squish), swap the
+    //     tile face from down to up. JS-thread setTimeout would drift
+    //     relative to the native-driven scaleX, exposing the back face
+    //     past the midpoint when the JS thread is busy.
+    //   - At `FLIP_END` (start of the fly), promote phase 'hold' →
+    //     'fly'. `Hand.tsx` reads this and stops filtering the newly-
+    //     drawn tile out of its rendered row, so siblings begin sliding
+    //     aside the same frame the popup begins descending — the gap
+    //     opens *while* the tile is moving in, not at t=0.
     let didFlip = false;
+    let didStartFly = false;
     const listenerId = progress.addListener(({ value }) => {
       if (!didFlip && value >= FLIP_MID) {
         didFlip = true;
         setFaceUp(true);
+      }
+      if (!didStartFly && value >= FLIP_END) {
+        didStartFly = true;
+        setPhase('fly');
       }
     });
     Animated.timing(progress, {
@@ -109,13 +127,12 @@ export function DrawTileOverlay() {
     }).start(({ finished }) => {
       progress.removeListener(listenerId);
       if (!finished) return;
-      setVisible(false);
       clear();
     });
     return () => progress.removeListener(listenerId);
-  }, [tile, seq, animsEnabled, clear, progress]);
+  }, [tile, seq, animsEnabled, clear, progress, setPhase]);
 
-  if (!visible || tile === null) return null;
+  if (tile === null || !animsEnabled) return null;
 
   // Viewport dimensions for the popup's initial centre-of-screen
   // anchor. `Dimensions.get('window')` on RN-Web reads the live inner
@@ -123,10 +140,11 @@ export function DrawTileOverlay() {
   // only read it once on render.
   const { width: viewportW, height: viewportH } = Dimensions.get('window');
   const popupCenterX = viewportW / 2;
-  // Popup floats roughly above the middle of the felt. Slightly
-  // above-centre reads better than dead-centre because the hand sits
-  // at the bottom — keeps the fly distance balanced.
-  const popupCenterY = viewportH * 0.4;
+  // Anchor inside the thumb-zone (~60% from top) so the cue that
+  // mounts at the same coordinates is reachable in a one-handed grip.
+  // The cue and overlay share `DRAW_ANCHOR_Y_RATIO`; changing one
+  // without the other would reintroduce a position jump on tap.
+  const popupCenterY = viewportH * DRAW_ANCHOR_Y_RATIO;
 
   // Fly target = the slot's centre in viewport coords. If the slot
   // hasn't measured yet (race with the first render after the draw

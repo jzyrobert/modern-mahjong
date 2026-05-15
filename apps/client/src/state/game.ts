@@ -185,6 +185,17 @@ interface ClientGameStore {
     seq: number;
     tile: Tile;
     slotRect: { x: number; y: number; width: number; height: number } | null;
+    /**
+     * `'hold'` for the popup's hold + flip phases (the tile is bouncing
+     * at the felt-centre cue position, face-down then flipping
+     * face-up). `'fly'` once the popup begins travelling toward the
+     * hand. `Hand.tsx` filters the freshly-drawn tile out of its
+     * rendered row while `phase === 'hold'` so siblings stay tight —
+     * the row only opens to receive the new tile when the popup is
+     * actually approaching, which is what the user perceives as the
+     * gap appearing "during the animation" rather than at t=0.
+     */
+    phase: 'hold' | 'fly';
   } | null;
   /**
    * Monotonic high-water mark for `drawAnimation.seq`. Persists across
@@ -212,6 +223,15 @@ interface ClientGameStore {
   setDrawAnimationSlotRect: (
     rect: { x: number; y: number; width: number; height: number } | null,
   ) => void;
+  /**
+   * Advance the draw animation's phase. `DrawTileOverlay` calls this
+   * once per animation when its `progress` value crosses `FLIP_END`,
+   * promoting the popup from `'hold'` (face-down → flip face-up at the
+   * cue position) to `'fly'` (descending into the hand). `Hand.tsx`
+   * keys its "is the freshly-drawn tile in the rendered row yet"
+   * decision on this — see `drawAnimation.phase` above.
+   */
+  setDrawAnimationPhase: (phase: 'hold' | 'fly') => void;
   reset: () => void;
 }
 
@@ -277,7 +297,7 @@ export const useGame = create<ClientGameStore>((set) => ({
     set((prev) => {
       const seq = prev.drawAnimationLastSeq + 1;
       return {
-        drawAnimation: { tile, seq, slotRect: null },
+        drawAnimation: { tile, seq, slotRect: null, phase: 'hold' },
         drawAnimationLastSeq: seq,
       };
     }),
@@ -301,6 +321,12 @@ export const useGame = create<ClientGameStore>((set) => ({
         return prev;
       }
       return { drawAnimation: { ...a, slotRect: rect } };
+    }),
+  setDrawAnimationPhase: (phase) =>
+    set((prev) => {
+      const a = prev.drawAnimation;
+      if (!a || a.phase === phase) return prev;
+      return { drawAnimation: { ...a, phase } };
     }),
   appendEvents: (events) =>
     set((prev) => {
