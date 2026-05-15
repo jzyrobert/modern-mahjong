@@ -47,6 +47,16 @@ const ELEVATION_SHADOW: Record<NonNullable<TileProps['elevation']>, string | nul
 };
 
 /**
+ * Tile corner radius as a fraction of the rendered width. Matches the
+ * SVG face's `rx` (so the rounded silhouette in vector + the rounded
+ * shadow / border around the wrapper are the same shape). Any element
+ * that draws a halo, border, or box-shadow around a tile body should
+ * trace `width * TILE_CORNER_RADIUS_RATIO`; otherwise the decoration
+ * squares off at the corners while the tile face stays rounded.
+ */
+export const TILE_CORNER_RADIUS_RATIO = 0.18;
+
+/**
  * Renders a single tile face or back as layered SVG with a
  * `<TileGlyph>` overlay. When `flipId` is set, the tile is wrapped in
  * a `<FlipView>` so the surrounding `FlipBagProvider` can animate it
@@ -90,10 +100,10 @@ function TileComponent({
   const wrapperStyle: ViewStyle = {
     width,
     height,
-    // Match the SVG face's rx (W * 0.18) so the cast shadow follows the
-    // tile silhouette rather than protruding past the rounded corners
-    // as square chunks. No-op visually when no shadow is rendered.
-    borderRadius: width * 0.18,
+    // Match the SVG face's rx so the cast shadow follows the tile
+    // silhouette rather than protruding past the rounded corners as
+    // square chunks. No-op visually when no shadow is rendered.
+    borderRadius: width * TILE_CORNER_RADIUS_RATIO,
     transform: [{ rotate: `${rotate ?? 0}deg` }, { translateY: lift }],
     opacity: dim ? 0.85 : 1,
     ...(shadows.length > 0 && { boxShadow: shadows.join(', ') }),
@@ -175,7 +185,7 @@ const TileBody = memo(function TileBody({
   // Reference geometry — the legacy Tile uses 36×50 with rx ≈ 18% of width.
   const W = 36;
   const H = 50;
-  const R = W * 0.18;
+  const R = W * TILE_CORNER_RADIUS_RATIO;
   // Stable gradient ids per render — they're scoped to this <Svg> so
   // duplicates across tiles don't conflict, but the ids must be unique
   // *within* the SVG element.

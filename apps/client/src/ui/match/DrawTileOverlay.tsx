@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Animated, Dimensions, Easing, View } from 'react-native';
 import { useGame } from '../../state/game';
-import { Tile } from '../Tile';
+import { TILE_CORNER_RADIUS_RATIO, Tile } from '../Tile';
 
 /** Y-anchor for both the at-rest `MobileDrawCue` and the post-tap
  *  popup. 0.6 puts the tile inside the bottom-third "thumb zone" on a
@@ -206,7 +206,25 @@ export function DrawTileOverlay() {
           height: POPUP_TILE_HEIGHT,
           opacity: overlayOpacity,
           transform: [{ translateX }, { translateY }, { scale }, { scaleX }],
-          boxShadow: '0px 10px 24px rgba(0,0,0,0.35)',
+          // Match `Tile.tsx`'s wrapper rounding (`TILE_CORNER_RADIUS_RATIO`)
+          // so both the gold glow and the dark drop shadow trace the
+          // tile's silhouette instead of squaring off at the corners.
+          // Visible here because the 8px gold blur is tight enough to
+          // expose the rectangular outline that the 24px dark blur
+          // was previously masking.
+          borderRadius: POPUP_TILE_WIDTH * TILE_CORNER_RADIUS_RATIO,
+          // Drop shadow gives the popup felt-elevation while it's
+          // floating; the gold glow is the visual handoff to the
+          // landing slot. The second shadow matches `Tile`'s `raised`
+          // state byte-for-byte (`0px 0px 8px rgba(220,159,79,0.7)`),
+          // so the freshly-drawn `HandTile` — which lights up under
+          // exactly that glow once `drawnTileId` matches it — receives
+          // a tile that's already wearing the same halo. Without this,
+          // the cue's pulsing gold ring vanished hard the instant the
+          // popup mounted, then re-appeared at the landing as the
+          // hand-side halo; the gap in the middle read as "the gold
+          // came back from nowhere".
+          boxShadow: '0px 10px 24px rgba(0,0,0,0.35), 0px 0px 8px rgba(220,159,79,0.7)',
         }}
       >
         <Tile tile={tile} faceDown={!faceUp} width={POPUP_TILE_WIDTH} height={POPUP_TILE_HEIGHT} />
