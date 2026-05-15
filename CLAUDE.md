@@ -4,6 +4,32 @@ Operational + architectural decisions worth carrying across sessions. Update
 this file (don't dump notes into PR descriptions) so the next session can pick
 up the rules without re-deriving them.
 
+## Repo at a glance
+
+Hong Kong mahjong client + server, monorepo via pnpm workspaces.
+
+- `packages/game-logic` — pure TS engine, XState v5 reducer with property
+  fuzzing. State, scoring, shanten, claims, openings.
+- `packages/protocol` — wire contract (`ServerMessage` / `ClientMessage`
+  unions + zod schemas).
+- `packages/bots` — opponent strategies.
+- `packages/match-session` — engine wrapper used by both the server and
+  the solo client transport; owns snapshot / restore.
+- `apps/server` — partyserver Durable Object on Cloudflare; thin shell
+  around `MatchSession`.
+- `apps/client` — Expo Router + Metro app (web + native). Two match
+  shells: `DesktopShell.tsx` (wide viewport) and `MobileShell.tsx`;
+  `Match.tsx` picks one by viewport. Sounds, animations, and recorder
+  hooks fan in through `transport-context.tsx` (universal, not
+  per-shell) — that's also where engine events (`drew`, `discarded`,
+  `opened`, `claimsResolved`, `gangDeclared`) are dispatched. Root-level
+  overlays (post-draw popup, claim-announcement banner, shuffle
+  ceremony) are mounted per shell — check both when adding one.
+
+When operating from a web session without a local checkout: lean on the
+GitHub MCP for code reads / PR ops, and be explicit about what you can
+and can't verify. Don't claim a local run you didn't actually do.
+
 ## Branching policy
 
 **Default: one PR = one new branch off `main`.**
@@ -71,6 +97,62 @@ Rules for these branches:
    commit per PR; the title format is `<change summary> (#NN)` (the GitHub
    default).
 
+The default flow is one continuous loop, not a series of user-prompted
+checkpoints: **simplify → branch off main → commit → push → open PR →
+poll → squash-merge → sync working tree → branch off again**. Don't
+commit straight to `main`. Don't park work as an uncommitted diff
+expecting the user to ship it manually. Don't skip the `simplify`
+sweep on the grounds that the diff is small. Diverge from the flow
+only when the user explicitly asks you to.
+
+## Local validation for client-touching PRs
+
+Any PR that touches the engine, transports, hooks, UI, or claim / turn
+flow must run the full Playwright suite locally before pushing:
+
+```sh
+pnpm --filter @mahjong/client export-web && pnpm --filter @mahjong/client e2e
+```
+
+CI is the final check, not the first signal. The suite runs in ~30s
+locally and ~2m on CI (sharded ×4 after #348). Don't burn a CI cycle
+on something a local run would have caught. To iterate on one spec:
+
+```sh
+pnpm --filter @mahjong/client exec playwright test e2e/solo-match.spec.ts
+```
+
+Pure logic, copy, or refactor PRs that don't reach the client can skip
+the e2e step.
+
+Add coverage in the same PR if the change isn't already exercised. Solo
+flows have two test hatches for determinism:
+
+- `__MAHJONG_TEST_GET_STATE__` — read the live engine state from the page.
+- `__MAHJONG_TEST_BOT_SCRIPTS__` — pin bot actions to a scripted sequence.
+
+## Dev server policy
+
+Don't start a dev server by default. Spin one up only when the PR
+genuinely needs a visual smoke test (UI layout, animation, skinning)
+that typecheck + lint + unit + e2e can't validate. Logic, copy, or
+refactor PRs don't warrant one.
+
+When you do need one:
+
+- One Expo web dev server per PR, always on port `8081`.
+- Reuse it across iterations of the PR; stop the process tree once the
+  PR merges.
+- Use plain `expo start` (or `pnpm --filter @mahjong/client start`).
+  **Never** start with `--web` or the `web` script — those auto-open
+  browser tabs that pile up. Press `w` only if you actually need a
+  browser; for scripted launches prefix with `BROWSER=none`.
+- Don't escalate to `8082+` if the port is in use; kill the prior
+  `8081` process tree and reclaim it.
+- On Windows, `TaskStop` only kills the wrapper bash — the Metro node
+  process gets re-parented and keeps the port. Clean up with
+  `Stop-Process -Force` or `taskkill /F /T /PID <pid>`.
+
 ## PR screenshots — host on a sidecar branch, never on `main`
 
 When a PR needs before/after screenshots (e.g. UI / layout changes),
@@ -130,11 +212,34 @@ sync with `main`:
   shouldn't survive a `reset()` need explicit clearing in the reset action.
   Anything that should outlive a tab refresh goes through
   `apps/client/src/native/preferences.ts` (lazy-loaded
-  `@capacitor/preferences` + localStorage mirror).
+  `@capacitor/preferences` + localStorage mirror). Settings (the
+  `useGame.settings` slice) round-trip via `loadSettings()` /
+  `persistSettings()` to localStorage; new settings default in
+  `DEFAULT_SETTINGS` and users with persisted overrides keep theirs.
 - **CSS-var skinning**: per-skin overrides (felt, tile-back) are applied as
   CSS vars on the `Match` container. Components like `Tile.tsx` and
   `Table.tsx` read `var(--token, fallback)` so they render correctly outside
   a Match too (e.g. inside `SettingsPanel`'s tile reference).
+
+## State that needs a synchronous external reset → put it in zustand
+
+If a component's state must be cleared by an action that runs outside the
+component's normal render cycle (e.g. a zustand store action fired
+several layers away), lift the state into the store. Don't fight React
+render timing with `useEffect` or render-time `setState` — those patterns
+can pass tests and still fail in production. Clear inside the store's
+`set(...)` call so the clear lands synchronously before any consumer
+renders.
+
+PRs #274 → #279 → #282 took three iterations to learn this for the
+tutorial overlay. Render-time `setState` ("Adjusting state based on
+props") is valid in React but fragile under concurrent / batched
+updates — reach for it only when there's no zustand-shaped alternative.
+`useEffect`-based clears are never sufficient when an open / visible
+predicate evaluates against the stale value, because effects run after
+commit. Note also that Playwright `page.goto('/')` is a hard reload that
+wipes in-memory state; for regressions that depend on root-mounted
+components surviving a soft nav, drive the in-app nav path instead.
 
 ## Animation primitives
 
