@@ -6,6 +6,7 @@ import { useGame } from '../../state/game';
 import { Hand } from '../Hand';
 import { TutorialTarget } from '../tutorial/TargetRegistry';
 import { MeldStrip } from './MeldStrip';
+import { YourHandActiveHalo, YourTurnBadge } from './MobileShellShared';
 import { PlayerBadge } from './PlayerBadge';
 import { ReadyHandBadge } from './ReadyHandBadge';
 import { SeatDiscardPile } from './SeatDiscardPile';
@@ -56,6 +57,10 @@ interface DesktopTableProps {
    *  attached when it's the user's turn before draw — otherwise the
    *  next-draw cell is decorative. */
   onDrawNext?: (() => void) | undefined;
+  /** True when it's the user's turn AND they haven't drawn yet. Drives
+   *  the YOUR TURN pill copy (`· DRAW` vs `· DISCARD`) above the user's
+   *  own hand. */
+  needsDraw: boolean;
   /** Seat that would draw next once claims resolve. Drives the gold
    *  "about to draw" halo on the matching badge. */
   nextDrawerSeat?: Seat | null;
@@ -152,6 +157,7 @@ export function DesktopTable({
   nextDrawTile,
   breakPosition,
   onDrawNext,
+  needsDraw,
   nextDrawerSeat,
   aboutToDraw,
   drawCountdown,
@@ -330,6 +336,7 @@ export function DesktopTable({
         score={scoreboard[byPos.bottom.seat]}
         lobby={lobby}
         isActive={turn === byPos.bottom.seat && phase === 'turn'}
+        needsDraw={needsDraw}
         aboutToDraw={aboutToDraw === true && nextDrawerSeat === byPos.bottom.seat}
         drawCountdown={
           aboutToDraw === true && nextDrawerSeat === byPos.bottom.seat
@@ -523,6 +530,9 @@ interface MyAreaProps {
   score: number;
   lobby: LobbyState | null;
   isActive: boolean;
+  /** True when it's the user's turn AND they haven't drawn yet — drives
+   *  the YOUR TURN pill copy. */
+  needsDraw: boolean;
   aboutToDraw: boolean;
   drawCountdown: number | null;
   turnCountdown: number | null;
@@ -541,6 +551,7 @@ function MyArea({
   score,
   lobby,
   isActive,
+  needsDraw,
   aboutToDraw,
   drawCountdown,
   turnCountdown,
@@ -562,15 +573,25 @@ function MyArea({
         />
         <SortPicker mode={sortMode} onChange={onSortModeChange} />
         <ReadyHandBadge waits={readyWaits} />
+        {isActive ? <YourTurnBadge needsDraw={needsDraw} /> : null}
       </View>
       <TutorialTarget id="own-hand">
-        <Hand
-          tiles={hand}
-          onTileClick={ownHandClickable}
-          sortMode={sortMode}
-          drawnTileId={drawnTileId}
-          hintTileId={hintTileId}
-        />
+        {/* Wrapper picks up the gold breathing halo when it's the user's
+            turn — opponents' `PlayerBadge` already gets the parallel
+            active-turn glow, so mirroring it on the user's own hand
+            closes the "which seat is on the clock" gap on desktop.
+            `position: 'relative'` + 4 px padding give the absolute halo
+            room to breathe outward by its GROWTH_PX without clipping. */}
+        <View style={{ position: 'relative', padding: 4 }}>
+          {isActive ? <YourHandActiveHalo /> : null}
+          <Hand
+            tiles={hand}
+            onTileClick={ownHandClickable}
+            sortMode={sortMode}
+            drawnTileId={drawnTileId}
+            hintTileId={hintTileId}
+          />
+        </View>
       </TutorialTarget>
     </View>
   );
