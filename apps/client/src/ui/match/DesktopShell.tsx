@@ -248,31 +248,60 @@ export function DesktopShell(props: DesktopShellProps) {
             <ChatBar onSend={onSendChat} />
           </View>
 
-          {state.lastResult ? (
-            <ResultPanel onAction={onAction} mySeat={seat} isHost={isHost} onLeave={onLeave} />
-          ) : null}
-
           <ChatBubbles seatToPosition={seatToPosition} />
           <ClaimMissedToast />
           <ClaimAnnouncementToast />
           <DrawTileOverlay />
-          <MatchModals
-            mySeat={seat}
-            settingsOpen={settingsOpen}
-            setSettingsOpen={setSettingsOpen}
-            logOpen={logOpen}
-            setLogOpen={setLogOpen}
-            referenceOpen={referenceOpen}
-            setReferenceOpen={setReferenceOpen}
-            scoringOpen={scoringOpen}
-            setScoringOpen={setScoringOpen}
-            playersOpen={playersOpen}
-            setPlayersOpen={setPlayersOpen}
-            menuOpen={menuOpen}
-            setMenuOpen={setMenuOpen}
-            onLeave={onLeave}
-          />
         </ScrollView>
+
+        {/* ResultPanel — between-hand summary, lifted out of the
+            ScrollView so it overlays the felt + chrome with a scrim
+            instead of sitting inline below the table. Same modal
+            treatment MobileShell uses; on tall desktop windows the
+            inline placement could otherwise put the "Start next
+            hand" controls below the fold without a clear cue that
+            interaction has paused. Wrapped in a ScrollView so a
+            long winning-hand summary (especially on narrow desktop
+            widths near the 768 px threshold) stays reachable. */}
+        {state.lastResult ? (
+          <ScrollView
+            style={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              top: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0,0,0,0.55)',
+            }}
+            contentContainerStyle={{
+              flexGrow: 1,
+              justifyContent: 'center',
+              padding: 16,
+            }}
+          >
+            <ResultPanel onAction={onAction} mySeat={seat} isHost={isHost} onLeave={onLeave} />
+          </ScrollView>
+        ) : null}
+
+        {/* MatchModals lives outside the ScrollView so its bottom
+            sheets z-order above the ResultPanel overlay — matches the
+            mobile-shell tree order. */}
+        <MatchModals
+          mySeat={seat}
+          settingsOpen={settingsOpen}
+          setSettingsOpen={setSettingsOpen}
+          logOpen={logOpen}
+          setLogOpen={setLogOpen}
+          referenceOpen={referenceOpen}
+          setReferenceOpen={setReferenceOpen}
+          scoringOpen={scoringOpen}
+          setScoringOpen={setScoringOpen}
+          playersOpen={playersOpen}
+          setPlayersOpen={setPlayersOpen}
+          menuOpen={menuOpen}
+          setMenuOpen={setMenuOpen}
+          onLeave={onLeave}
+        />
       </SafeAreaView>
     </View>
   );
