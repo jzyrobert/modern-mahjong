@@ -16,8 +16,60 @@ env:
   NODE_OPTIONS: --openssl-legacy-provider --max_old_space_size=4096
 
 jobs:
+  # Path-filter gate: emits flags for what changed so downstream jobs
+  # can `if:`-skip when their inputs didn't move. A skipped required
+  # status check still counts as success for branch protection, so
+  # docs-only PRs (CLAUDE.md, TODO.md, README, *.md, docs/**, .github
+  # screenshots, etc.) finish CI in ~10s with every heavyweight job
+  # marked "skipped".
+  #
+  # `code` — anything that should re-run typecheck / lint / unit tests.
+  # `client` — narrower subset that should additionally re-run the
+  #            Playwright suite and Lighthouse. Server-only changes
+  #            (apps/server/**) trip `code` but not `client`.
+  #
+  # Always-include paths in both filters: `ci.yml` itself, the shared
+  # `setup` composite action, and `pnpm-lock.yaml` — any of those moving
+  # means the CI environment / dep graph changed and the full pipeline
+  # has to run.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+      client: ${{ steps.filter.outputs.client }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            code:
+              - '.github/workflows/ci.yml'
+              - '.github/actions/setup/**'
+              - 'apps/**'
+              - 'packages/**'
+              - 'pnpm-lock.yaml'
+              - 'package.json'
+              - 'pnpm-workspace.yaml'
+              - 'tsconfig*.json'
+              - 'biome.json'
+            client:
+              - '.github/workflows/ci.yml'
+              - '.github/actions/setup/**'
+              - 'apps/client/**'
+              - 'packages/game-logic/**'
+              - 'packages/protocol/**'
+              - 'packages/bots/**'
+              - 'packages/match-session/**'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'tsconfig*.json'
+              - 'biome.json'
+
   test:
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
@@ -36,7 +88,8 @@ jobs:
 
   build-server:
     runs-on: ubuntu-latest
-    needs: test
+    needs: [changes, test]
+    if: needs.changes.outputs.code == 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
@@ -55,7 +108,8 @@ jobs:
   # than re-exporting in parallel (export is ~30 s).
   e2e-shard:
     runs-on: ubuntu-latest
-    needs: test
+    needs: [changes, test]
+    if: needs.changes.outputs.client == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -96,16 +150,19 @@ jobs:
 
   # Aggregator: succeeds iff every shard succeeded. Lets branch
   # protection keep requiring a single check named "e2e" without
-  # having to enumerate every matrix leg.
+  # having to enumerate every matrix leg. Skips along with the matrix
+  # when the path-filter says no client paths moved.
   e2e:
     runs-on: ubuntu-latest
-    needs: e2e-shard
+    needs: [changes, e2e-shard]
+    if: needs.changes.outputs.client == 'true'
     steps:
       - run: 'echo "All e2e shards passed"'
 
   lighthouse:
     runs-on: ubuntu-latest
-    needs: test
+    needs: [changes, test]
+    if: needs.changes.outputs.client == 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
