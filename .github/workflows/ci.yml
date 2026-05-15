@@ -44,32 +44,18 @@ jobs:
       - name: Dry-run server bundle
         run: pnpm --filter @mahjong/server build
 
-  build-web:
-    runs-on: ubuntu-latest
-    needs: test
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup
-
-      - name: Export Expo Web bundle
-        run: pnpm --filter @mahjong/client export-web
-
-      - name: Upload web bundle
-        uses: actions/upload-artifact@v4
-        with:
-          name: client-web-bundle
-          path: apps/client/dist
-          if-no-files-found: error
-          retention-days: 7
-
   # Per-shard runner for the Playwright suite. `e2e` below depends on
   # this matrix and exists purely as a sync point so the "e2e" status
   # check name stays stable for branch protection. The matrix expands
   # to "e2e-shard (1)" / "(2)" / ... etc. and Playwright splits the
-  # spec list deterministically via `--shard=N/M`.
+  # spec list deterministically via `--shard=N/M`. Each shard runs its
+  # own `export-web` so it can start immediately after `test`; a
+  # central build-web job would serialise the whole second tier behind
+  # a single 60 s artifact upload, which on this matrix is slower
+  # than re-exporting in parallel (export is ~30 s).
   e2e-shard:
     runs-on: ubuntu-latest
-    needs: [test, build-web]
+    needs: test
     strategy:
       fail-fast: false
       matrix:
@@ -93,11 +79,8 @@ jobs:
         if: steps.pw-cache.outputs.cache-hit == 'true'
         run: pnpm --filter @mahjong/client exec playwright install-deps chromium
 
-      - name: Download web bundle
-        uses: actions/download-artifact@v4
-        with:
-          name: client-web-bundle
-          path: apps/client/dist
+      - name: Export Expo Web bundle
+        run: pnpm --filter @mahjong/client export-web
 
       - name: Run e2e shard ${{ matrix.shard }}/4
         run: pnpm --filter @mahjong/client e2e --shard=${{ matrix.shard }}/4
@@ -122,16 +105,13 @@ jobs:
 
   lighthouse:
     runs-on: ubuntu-latest
-    needs: [test, build-web]
+    needs: test
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
 
-      - name: Download web bundle
-        uses: actions/download-artifact@v4
-        with:
-          name: client-web-bundle
-          path: apps/client/dist
+      - name: Export Expo Web bundle
+        run: pnpm --filter @mahjong/client export-web
 
       # ubuntu-latest ships google-chrome-stable preinstalled at
       # /usr/bin/google-chrome, which lhci's Chrome-launcher auto-detects.
