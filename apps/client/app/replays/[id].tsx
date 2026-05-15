@@ -2,7 +2,7 @@ import { exportRecordToClipboard } from '@/src/replay/exportImport';
 import { PlaybackProvider } from '@/src/replay/playback';
 import { deleteRecord, loadRecord } from '@/src/replay/storage';
 import type { ReplayRecord } from '@/src/replay/types';
-import { GhostButton, PrimaryButton } from '@/src/ui/buttons';
+import { PrimaryButton } from '@/src/ui/buttons';
 import { COLORS } from '@/src/ui/colors';
 import { ReplayPlayer } from '@/src/ui/replay/ReplayPlayer';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -88,7 +88,20 @@ export default function ReplayDetail() {
             paddingTop: 8,
           }}
         >
-          <GhostButton onPress={() => router.replace('/replays')}>← Library</GhostButton>
+          <Pressable
+            onPress={() => router.replace('/replays')}
+            accessibilityRole="button"
+            style={({ pressed }) => ({
+              paddingHorizontal: 10,
+              paddingVertical: 8,
+              borderRadius: 8,
+              borderColor: COLORS.hairline,
+              borderWidth: 1,
+              backgroundColor: pressed ? COLORS.cream : 'white',
+            })}
+          >
+            <Text style={{ fontSize: 12, fontWeight: '700', color: COLORS.ink }}>← Library</Text>
+          </Pressable>
           <View style={{ flex: 1 }} />
           {exportLabel ? (
             <View
