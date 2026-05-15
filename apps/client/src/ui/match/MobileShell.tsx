@@ -10,6 +10,7 @@ import { ClaimMissedToast } from './ClaimMissedToast';
 import { DrawTileOverlay } from './DrawTileOverlay';
 import { LandscapeShell } from './LandscapeShell';
 import { MatchModals } from './MatchModals';
+import { MobileDrawCue } from './MobileDrawCue';
 import { PortraitShell } from './PortraitShell';
 import type { SortMode } from './SortPicker';
 import type { Position } from './seatColor';
@@ -220,6 +221,16 @@ export function MobileShell(props: MobileShellProps) {
         <ChatBubbles seatToPosition={seatToPosition} />
         <ClaimMissedToast />
         <ClaimAnnouncementToast />
+        {/* Centre-of-felt draw cue + the post-tap flip/fly overlay.
+            Both anchor at the same screen rect (`viewportW/2`,
+            `viewportH*0.4`, 64×88), so the cue unmounts and the
+            popup mounts at the same coordinates — the tap reads as
+            "this tile flipped and flew into my hand" rather than
+            "I tapped over there and a thing happened in the middle". */}
+        <MobileDrawCue
+          tile={needsDraw && state.wall.length > 0 ? state.wall[state.wall.length - 1]! : null}
+          onPress={() => onAction({ t: 'draw', seat })}
+        />
         <DrawTileOverlay />
 
         {/* ResultPanel — between-hand summary. Lifted out of the

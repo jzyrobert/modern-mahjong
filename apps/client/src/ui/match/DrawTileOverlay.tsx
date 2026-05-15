@@ -3,19 +3,21 @@ import { Animated, Dimensions, Easing, View } from 'react-native';
 import { useGame } from '../../state/game';
 import { Tile } from '../Tile';
 
-const POP_MS = 160;
 const HOLD_MS = 220;
 const FLIP_MS = 420;
 const FLY_MS = 360;
 
-const TOTAL_MS = POP_MS + HOLD_MS + FLIP_MS + FLY_MS;
-// Normalised progress points (0..1) for the four phases — used by the
+const TOTAL_MS = HOLD_MS + FLIP_MS + FLY_MS;
+// Normalised progress points (0..1) for the three phases — used by the
 // interpolators below and to gate the face-up swap during the flip's
-// scaleX-zero midpoint.
-const POP_END = POP_MS / TOTAL_MS;
-const HOLD_END = (POP_MS + HOLD_MS) / TOTAL_MS;
-const FLIP_MID = (POP_MS + HOLD_MS + FLIP_MS / 2) / TOTAL_MS;
-const FLIP_END = (POP_MS + HOLD_MS + FLIP_MS) / TOTAL_MS;
+// scaleX-zero midpoint. The legacy pop-in phase is gone: the overlay
+// now mounts at the same screen rect where `MobileDrawCue` was
+// rendering the face-down tile a frame earlier, so there's nothing to
+// pop in from. Starting at scale 1 + opacity 1 makes the handoff
+// invisible.
+const HOLD_END = HOLD_MS / TOTAL_MS;
+const FLIP_MID = (HOLD_MS + FLIP_MS / 2) / TOTAL_MS;
+const FLIP_END = (HOLD_MS + FLIP_MS) / TOTAL_MS;
 
 const POPUP_TILE_WIDTH = 64;
 const POPUP_TILE_HEIGHT = 88;
@@ -24,19 +26,27 @@ const POPUP_TILE_HEIGHT = 88;
  * Centre-of-felt popup that plays when the local user draws a tile.
  *
  * Phases (driven by a single `Animated.timing` over `progress`):
- *   1. Pop-in: scale 0.4 → 1 over POP_MS.
- *   2. Hold face-down for HOLD_MS so the player registers the popup.
- *   3. Flip: scaleX 1 → 0 → 1 over FLIP_MS, with a `faceDown` swap at
+ *   1. Hold face-down for HOLD_MS so the player registers the tap (and,
+ *      on online matches, covers the latency between sending `draw` and
+ *      the server's `drew` event arriving).
+ *   2. Flip: scaleX 1 → 0 → 1 over FLIP_MS, with a `faceDown` swap at
  *      the scaleX-zero midpoint. We use a scaleX squish instead of
  *      RN-Web's `rotateY` + `backfaceVisibility` because that combo
  *      doesn't render reliably without a 3D perspective ancestor —
  *      the squash reads as a flip and avoids the styling rabbit-hole.
- *   4. Fly: translate + scale to the exact destination slot rect that
+ *   3. Fly: translate + scale to the exact destination slot rect that
  *      the matching `HandTile` wrote into `drawAnimation.slotRect` via
  *      `measureInWindow`. The slot is rendered with `opacity: 0`
  *      while this overlay is alive, so the fly phase visually "is"
  *      the tile arriving — when the overlay clears, the slot fades
  *      back to opacity 1 in the same screen position.
+ *
+ * The overlay's resting position + size match `MobileDrawCue` exactly
+ * (`POPUP_TILE_WIDTH` × `POPUP_TILE_HEIGHT` anchored at
+ * `viewportW/2, viewportH*0.4`). The cue unmounts the same frame the
+ * overlay mounts (both selectors flip on `drawAnimation` going non-
+ * null), so the user perceives one continuous tile that holds → flips
+ * → flies into their hand.
  *
  * Slice-level subscriptions on purpose (`tile`, `slotRect`, `seq`
  * separately rather than the whole `drawAnimation` object): a slot-rect
@@ -125,16 +135,18 @@ export function DrawTileOverlay() {
   const targetCenterY = slotRect ? slotRect.y + slotRect.height / 2 : popupCenterY + 200;
   const targetScale = slotRect ? slotRect.width / POPUP_TILE_WIDTH : 0.45;
 
-  // Pop-in scale (felt-centre) into 1 → fly into the slot's scale.
+  // Hold at scale 1 (the cue's size) through hold + flip → shrink into
+  // the slot's scale during the fly.
   const scale = progress.interpolate({
-    inputRange: [0, POP_END, FLIP_END, 1],
-    outputRange: [0.4, 1, 1, targetScale],
+    inputRange: [0, FLIP_END, 1],
+    outputRange: [1, 1, targetScale],
   });
-  // Stay opaque until the very last bit of the fly so the hand-side
-  // opacity reveal cross-fades cleanly with the landing.
+  // Opaque from the first frame (cue→popup handoff) until the very last
+  // bit of the fly, where it fades so the hand-side opacity reveal
+  // cross-fades cleanly with the landing.
   const overlayOpacity = progress.interpolate({
-    inputRange: [0, POP_END, FLIP_END, 0.94, 1],
-    outputRange: [0, 1, 1, 1, 0],
+    inputRange: [0, FLIP_END, 0.94, 1],
+    outputRange: [1, 1, 1, 0],
   });
   // Land at the slot — translate from felt centre to slot centre over
   // the fly phase. Outside the fly the popup sits at the felt centre.
