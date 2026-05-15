@@ -2,7 +2,6 @@ import { useTransport } from '@/src/net/transport-context';
 import {
   type Action,
   type Tile as MTile,
-  SEATS,
   type Seat,
   hasMeaningfulClaim,
   isWinning,
@@ -13,19 +12,16 @@ import {
   tileId,
   waitTiles,
 } from '@mahjong/game-logic';
-import { BOT_LABELS, type BotKind, type PublicPlayer } from '@mahjong/protocol';
-import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
+import { useMemo, useState } from 'react';
+import { Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { isSeatHost, nameForSeat, useGame } from '../state/game';
-import { randomSeed } from '../util';
-import { RulePanel } from './RulePanel';
-import { GhostButton, PrimaryButton } from './buttons';
+import { PrimaryButton } from './buttons';
 import { COLORS } from './colors';
 import { orderHand } from './handSort';
 import { DesktopShell } from './match/DesktopShell';
+import { LobbyView } from './match/LobbyView';
 import { MobileShell } from './match/MobileShell';
 import type { SortMode } from './match/SortPicker';
 import { SpectatorView } from './match/SpectatorView';
@@ -33,9 +29,6 @@ import type { Position } from './match/seatColor';
 import { type SeatPlacement, layoutFor } from './match/seatPlacement';
 import { FELT_SKINS } from './match/skins';
 import { useDeadlineCrossed, useSecondsUntil } from './match/useClaimCue';
-import { LanInviteCard } from './menu/LanInviteCard';
-import { LobbyPreview } from './menu/LobbyPreview';
-import { SEAT_WIND_GLYPH } from './winds';
 
 /**
  * Viewport thresholds above which the Match screen renders the
@@ -53,18 +46,20 @@ const DESKTOP_HEIGHT = 600;
 /**
  * Live-match orchestrator. Owns the per-match React state (modal
  * toggles, sort mode), validates `state` + `seat`, computes the
- * derived turn-flow flags, and hands everything off to one of two
- * shells:
+ * derived turn-flow flags, and hands everything off to one of three
+ * presentational shells:
  *
+ *   - `<SpectatorView>` when the server routed this connection into
+ *     the viewer pool (`you === 'spectator'`).
+ *   - `<LobbyView>` for the pre-game waiting room
+ *     (`state.phase === 'waiting'`).
  *   - `<DesktopShell>` (width ≥ DESKTOP_WIDTH, height ≥ DESKTOP_HEIGHT)
  *     — perimeter felt with seats around the edges.
- *   - `<MobileShell>` — vertical stack of opponent hand strips,
- *     shared discard pool, own hand. Picked for everything below
- *     the threshold.
+ *   - `<MobileShell>` — vertical stack of opponent hand strips, shared
+ *     discard pool, own hand. Picked for everything below the threshold.
  *
- * The pre-game `state.phase === 'waiting'` lobby and the stranded
- * "no active match" recovery screen are platform-agnostic and
- * rendered here directly.
+ * The stranded "no active match" recovery screen is rendered inline
+ * because it has no other natural home.
  */
 export function Match() {
   const router = useRouter();
@@ -96,18 +91,6 @@ export function Match() {
   const felt = FELT_SKINS[settings.felt];
   const seat = you !== null && you !== 'spectator' ? you : null;
   const isHost = isSeatHost(lobby, seat);
-
-  // "COPIED" pulse for the header-row Copy URL button used in the
-  // pre-game waiting room. Hoisted to the top of `Match` (rather than
-  // a subcomponent inside the waiting block) so the same hook order
-  // runs for every render regardless of `state.phase`. Unused outside
-  // the waiting phase, but the state is cheap.
-  const [joinUrlCopied, setJoinUrlCopied] = useState(false);
-  useEffect(() => {
-    if (!joinUrlCopied) return;
-    const t = setTimeout(() => setJoinUrlCopied(false), 1500);
-    return () => clearTimeout(t);
-  }, [joinUrlCopied]);
 
   // Seed `manualOrder` with the currently-displayed hand on the
   // suit/number → manual transition so the first render after the
@@ -363,149 +346,19 @@ export function Match() {
   }
 
   if (state.phase === 'waiting') {
-    const isLanHost = !!(
-      isHost &&
-      transport.joinInfo?.kind === 'lan' &&
-      transport.joinInfo.hostUrl &&
-      transport.matchCode
-    );
-    // Mirror `LanInviteCard`'s URL construction so the header-row copy
-    // button copies the same string guests would paste into a browser:
-    // `<host>/match?code=<CODE>`. Trailing slashes on the host URL are
-    // stripped to avoid `…//match?code=…`. Empty string when this user
-    // isn't the LAN host (button is hidden in that case).
-    const headerJoinUrl =
-      isLanHost && transport.joinInfo?.kind === 'lan'
-        ? `${transport.joinInfo.hostUrl.trim().replace(/\/$/, '')}/match?code=${encodeURIComponent(transport.matchCode ?? '')}`
-        : '';
-    const onCopyHeaderJoinUrl = async () => {
-      if (!headerJoinUrl) return;
-      try {
-        await Clipboard.setStringAsync(headerJoinUrl);
-        setJoinUrlCopied(true);
-      } catch {
-        // Clipboard access can be denied on non-HTTPS browsers or
-        // backgrounded apps — the LanInviteCard below renders the
-        // same URL with its own COPY/SHARE row as a fallback.
-      }
-    };
     return (
-      <View style={{ flex: 1, backgroundColor: COLORS.cream }}>
-        <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.cream }} edges={['top', 'bottom']}>
-          <ScrollView
-            style={{ flex: 1 }}
-            contentContainerStyle={{
-              padding: 24,
-              maxWidth: 760,
-              alignSelf: 'center',
-              width: '100%',
-            }}
-          >
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 12,
-                flexWrap: 'wrap',
-              }}
-            >
-              <Text
-                accessibilityRole="header"
-                style={{ fontSize: 28, fontWeight: '900', color: COLORS.ink }}
-              >
-                Lobby
-              </Text>
-              {/* Header-row quick-copy of the LAN join URL. Sits next to
-               * the title so it's the first share affordance the host
-               * sees on landing in the waiting room — the full
-               * `LanInviteCard` below still has per-link COPY/SHARE
-               * controls for the browser URL + native deep link. */}
-              {isLanHost ? (
-                <Pressable
-                  onPress={onCopyHeaderJoinUrl}
-                  accessibilityRole="button"
-                  accessibilityLabel={joinUrlCopied ? 'Join URL copied' : 'Copy join URL'}
-                  style={({ pressed }) => ({
-                    backgroundColor: joinUrlCopied
-                      ? '#c2e2c5'
-                      : pressed
-                        ? COLORS.creamPressed
-                        : COLORS.creamLow,
-                    borderColor: joinUrlCopied ? '#2d8645' : COLORS.hairline,
-                    borderWidth: 1,
-                    borderRadius: 8,
-                    paddingVertical: 6,
-                    paddingHorizontal: 12,
-                  })}
-                >
-                  <Text
-                    style={{
-                      fontSize: 11,
-                      fontWeight: '800',
-                      letterSpacing: 0.6,
-                      color: joinUrlCopied ? '#2d8645' : COLORS.ink,
-                    }}
-                  >
-                    {joinUrlCopied ? 'URL COPIED' : 'COPY JOIN URL'}
-                  </Text>
-                </Pressable>
-              ) : null}
-            </View>
-            <Text style={{ marginTop: 4, marginBottom: 12, fontSize: 13, color: COLORS.ink3 }}>
-              {isLanHost
-                ? 'Share the join URL with friends on the same Wi-Fi. Start when everyone is ready.'
-                : isHost
-                  ? 'Share the match code with friends. Start when everyone is ready.'
-                  : 'Waiting for the host to start the match.'}
-            </Text>
-            {/* Show the LAN invite URLs (with COPY/SHARE buttons) *above*
-             * the LobbyPreview so the host's first reflex on landing in
-             * the pre-game waiting room is to share the URL with guests
-             * — the lobby preview is useful but secondary while the
-             * other seats are still empty. */}
-            {isLanHost && transport.joinInfo?.kind === 'lan' ? (
-              <LanInviteCard
-                hostUrl={transport.joinInfo.hostUrl}
-                matchCode={transport.matchCode ?? ''}
-              />
-            ) : null}
-            {lobby ? <LobbyPreview lobby={lobby} matchCode={transport.matchCode} /> : null}
-            {lobby && isHost && seat !== null ? (
-              <LobbySeatControls
-                players={lobby.players}
-                mySeat={seat}
-                isSolo={transport.matchCode === 'SOLO'}
-                onSeat={transport.seatBot}
-                onUnseat={transport.unseatBot}
-              />
-            ) : null}
-            <RulePanel rules={state.rules} isHost={isHost} onAction={onAction} />
-            <View style={{ flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-              <PrimaryButton
-                // Mirror the server's all-seats-filled gate so the host
-                // gets a disabled button instead of a silent error.
-                disabled={!isHost || !allSeatsFilled(lobby)}
-                // No explicit dealer — engine derives it from the
-                // opening dice roll (highest sum wins; ties go to the
-                // lowest-indexed seat). Subsequent hands rotate via
-                // `nextDealer(state)` from `ResultPanel`'s "Start next
-                // hand" button. Hardcoding `dealer: 0` here was the bug
-                // that made the user always dealer regardless of dice.
-                onPress={() => onAction({ t: 'startHand', seed: randomSeed() })}
-              >
-                Start match
-              </PrimaryButton>
-              <GhostButton onPress={onLeave}>Leave</GhostButton>
-            </View>
-            {isHost && !allSeatsFilled(lobby) ? (
-              <Text style={{ marginTop: 6, fontSize: 12, color: COLORS.ink3 }}>
-                Fill every seat with a player or a bot before starting.
-              </Text>
-            ) : null}
-          </ScrollView>
-        </SafeAreaView>
-      </View>
+      <LobbyView
+        rules={state.rules}
+        lobby={lobby}
+        seat={seat}
+        isHost={isHost}
+        matchCode={transport.matchCode}
+        joinInfo={transport.joinInfo}
+        onAction={onAction}
+        onLeave={onLeave}
+        onSeatBot={transport.seatBot}
+        onUnseatBot={transport.unseatBot}
+      />
     );
   }
 
@@ -608,165 +461,5 @@ export function Match() {
 
   return (
     <MobileShell {...sharedProps} felt={felt} byPosition={byPosition} isLandscape={isLandscape} />
-  );
-}
-
-/** Mirrors the server's `startHand` SEATS gate. */
-function allSeatsFilled(lobby: { players: readonly PublicPlayer[] } | null): boolean {
-  if (!lobby) return false;
-  for (const seat of SEATS) {
-    const p = lobby.players.find((x) => x.seat === seat);
-    if (!p) return false;
-    if (!p.connected && !p.isBot) return false;
-  }
-  return true;
-}
-
-// Picker rows in lobby-row order (Easy → Standard → Smart). `label`
-// pulls from the canonical `BOT_LABELS` map in `@mahjong/protocol` so
-// it stays in lockstep with `botDisplayName(kind)` everywhere else.
-const BOT_KIND_OPTIONS: ReadonlyArray<{ kind: BotKind; label: string; hint: string }> = [
-  {
-    kind: 'passive',
-    label: BOT_LABELS.passive,
-    hint: 'Discards the last drawn tile, never claims.',
-  },
-  { kind: 'simple', label: BOT_LABELS.simple, hint: 'Drops the most isolated tile.' },
-  {
-    kind: 'heuristic',
-    label: BOT_LABELS.heuristic,
-    hint: 'Minimises shanten + claims to improve.',
-  },
-];
-
-interface LobbySeatControlsProps {
-  players: readonly PublicPlayer[];
-  mySeat: Seat;
-  isSolo: boolean;
-  onSeat: (seat: Seat, kind: BotKind) => void;
-  onUnseat: (seat: Seat) => void;
-}
-
-/**
- * Host's lobby controls — segmented Easy/Standard/Smart picker per
- * non-self, non-human-occupied seat, with a Remove button for online/LAN
- * (solo always has three bots in seats 1..3).
- */
-function LobbySeatControls({ players, mySeat, isSolo, onSeat, onUnseat }: LobbySeatControlsProps) {
-  // A bot reports `connected: true` (solo bots are "connected" to the
-  // in-process loop), so the human predicate is connected-and-not-bot.
-  const editable = players.filter(
-    (p) => p.seat !== null && p.seat !== mySeat && (p.isBot || !p.connected),
-  );
-  if (editable.length === 0) return null;
-  return (
-    <View
-      style={{
-        marginTop: 12,
-        backgroundColor: COLORS.paperHi,
-        borderColor: COLORS.hairline,
-        borderWidth: 1,
-        borderRadius: 14,
-        padding: 14,
-        gap: 10,
-      }}
-    >
-      <Text style={{ fontSize: 14, fontWeight: '900', color: COLORS.ink }}>Bot skill</Text>
-      <Text style={{ fontSize: 12, color: COLORS.ink3, marginTop: -4 }}>
-        {isSolo
-          ? "Tune each opponent's strategy. Saved across sessions."
-          : 'Fill empty seats with bots, or swap a bot’s strategy.'}
-      </Text>
-      {editable.map((p) => {
-        const seat = p.seat as Seat;
-        return (
-          <View
-            key={seat}
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 10,
-              flexWrap: 'wrap',
-            }}
-          >
-            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4, minWidth: 70 }}>
-              <Text
-                style={{
-                  fontFamily: 'Noto Serif TC',
-                  fontSize: 16,
-                  color: '#b14d3a',
-                  fontWeight: '700',
-                }}
-              >
-                {SEAT_WIND_GLYPH[seat]}
-              </Text>
-              <Text style={{ fontSize: 11, fontWeight: '800', color: COLORS.ink3 }}>
-                SEAT {seat}
-              </Text>
-            </View>
-            <View
-              style={{
-                flexDirection: 'row',
-                flex: 1,
-                minWidth: 220,
-                backgroundColor: COLORS.creamLow,
-                borderRadius: 8,
-                padding: 2,
-              }}
-            >
-              {BOT_KIND_OPTIONS.map((opt) => {
-                const active = p.botKind === opt.kind;
-                return (
-                  <Pressable
-                    key={opt.kind}
-                    onPress={() => onSeat(seat, opt.kind)}
-                    accessibilityLabel={`Set seat ${seat} to ${opt.label}`}
-                    style={({ pressed }) => ({
-                      flex: 1,
-                      paddingVertical: 6,
-                      borderRadius: 6,
-                      alignItems: 'center',
-                      backgroundColor: active
-                        ? COLORS.accentSalmonSwatch
-                        : pressed
-                          ? COLORS.creamPressed
-                          : 'transparent',
-                    })}
-                  >
-                    <Text
-                      style={{
-                        fontSize: 12,
-                        fontWeight: active ? '900' : '600',
-                        color: active ? COLORS.red : COLORS.ink,
-                        letterSpacing: 0.4,
-                      }}
-                    >
-                      {opt.label.toUpperCase()}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-            {!isSolo && p.isBot ? (
-              <Pressable
-                onPress={() => onUnseat(seat)}
-                accessibilityLabel={`Remove bot from seat ${seat}`}
-                hitSlop={8}
-                style={({ pressed }) => ({
-                  paddingVertical: 10,
-                  paddingHorizontal: 14,
-                  borderRadius: 6,
-                  borderWidth: 1,
-                  borderColor: COLORS.hairline,
-                  backgroundColor: pressed ? COLORS.creamPressed : 'transparent',
-                })}
-              >
-                <Text style={{ fontSize: 12, fontWeight: '800', color: COLORS.ink3 }}>REMOVE</Text>
-              </Pressable>
-            ) : null}
-          </View>
-        );
-      })}
-    </View>
   );
 }
