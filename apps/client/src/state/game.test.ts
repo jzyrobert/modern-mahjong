@@ -251,4 +251,31 @@ describe('useGame.flashDrawAnimation', () => {
     useGame.getState().setDrawAnimationSlotRect({ ...rect });
     expect(useGame.getState().drawAnimation).toBe(after);
   });
+
+  it("starts in phase 'hold' and advances to 'fly' on setDrawAnimationPhase", () => {
+    // Phase plumbing the centre-of-felt popup uses to time the
+    // hand-row gap. Default must be 'hold' (siblings tight); the
+    // overlay flips to 'fly' at FLIP_END (siblings shift to receive
+    // the descending tile).
+    useGame.getState().flashDrawAnimation(TILE_1M);
+    expect(useGame.getState().drawAnimation?.phase).toBe('hold');
+    useGame.getState().setDrawAnimationPhase('fly');
+    expect(useGame.getState().drawAnimation?.phase).toBe('fly');
+  });
+
+  it('setDrawAnimationPhase preserves object identity when the phase is unchanged', () => {
+    // Defensive: a redundant setDrawAnimationPhase('hold') call must
+    // not produce a fresh drawAnimation object or HandTile and the
+    // overlay would both re-render for nothing.
+    useGame.getState().flashDrawAnimation(TILE_1M);
+    const beforeRedundant = useGame.getState().drawAnimation;
+    useGame.getState().setDrawAnimationPhase('hold');
+    expect(useGame.getState().drawAnimation).toBe(beforeRedundant);
+  });
+
+  it('setDrawAnimationPhase is a no-op when no animation is in flight', () => {
+    expect(useGame.getState().drawAnimation).toBeNull();
+    useGame.getState().setDrawAnimationPhase('fly');
+    expect(useGame.getState().drawAnimation).toBeNull();
+  });
 });

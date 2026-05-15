@@ -51,18 +51,36 @@ export function Hand({
 }: HandProps) {
   const manualOrder = useGame((s) => s.manualOrder);
   const setManualOrder = useGame((s) => s.setManualOrder);
+  // While the centre-of-felt draw popup is in its hold/flip phases the
+  // freshly-drawn tile is in `state.hands[you]` (the engine put it
+  // there as soon as the `drew` event arrived) but shouldn't appear in
+  // the rendered row yet — otherwise the row instantly widens to make
+  // space, which the user perceives as the gap opening "too early". By
+  // filtering the matching `tileId` out of `ordered` while
+  // `drawAnimation.phase === 'hold'`, siblings stay tight; when the
+  // overlay's progress listener flips phase to `'fly'` at FLIP_END,
+  // the tile re-enters `ordered`, the row re-flows, FlipBag slides
+  // siblings aside, and the popup begins descending into the gap
+  // that's opening to receive it.
+  const holdingTileId = useGame((s) =>
+    s.drawAnimation && s.drawAnimation.phase === 'hold' ? tileId(s.drawAnimation.tile) : null,
+  );
   const [containerWidth, setContainerWidth] = useState<number | null>(null);
   const onLayout = useCallback((e: LayoutChangeEvent) => {
     setContainerWidth(e.nativeEvent.layout.width);
   }, []);
 
   const ordered = useMemo(() => {
-    if (faceDown) return [...tiles];
-    if (sortMode === 'manual' && manualOrder.length > 0) {
-      return manualOrderHand(tiles, manualOrder);
+    let base: MTile[];
+    if (faceDown) base = [...tiles];
+    else if (sortMode === 'manual' && manualOrder.length > 0)
+      base = manualOrderHand(tiles, manualOrder);
+    else base = orderHand(tiles, sortMode);
+    if (holdingTileId !== null) {
+      return base.filter((t) => tileId(t) !== holdingTileId);
     }
-    return orderHand(tiles, sortMode);
-  }, [tiles, faceDown, sortMode, manualOrder]);
+    return base;
+  }, [tiles, faceDown, sortMode, manualOrder, holdingTileId]);
 
   const orderedIds = useMemo(() => ordered.map((t) => tileId(t)), [ordered]);
 

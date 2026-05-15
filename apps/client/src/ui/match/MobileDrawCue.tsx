@@ -3,6 +3,7 @@ import { Animated, Dimensions, Pressable, View } from 'react-native';
 import { useGame } from '../../state/game';
 import { Tile } from '../Tile';
 import { PULSE_TEMPO, usePulse } from '../animations';
+import { DRAW_ANCHOR_Y_RATIO } from './DrawTileOverlay';
 
 const TILE_W = 64;
 const TILE_H = 88;
@@ -48,13 +49,14 @@ export function MobileDrawCue({ tile, onPress }: MobileDrawCueProps) {
   const haloOpacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.85, 0.35] });
   const radius = TILE_W * 0.18;
 
-  // Same anchor the overlay uses — viewport centre on X, slightly
-  // above-centre on Y so the fly-to-hand path is balanced once the
-  // user taps. `Dimensions.get('window')` is fine to read at render
-  // time on RN-Web (live viewport).
+  // Same anchor the overlay uses — viewport centre on X, in the
+  // bottom-third thumb zone on Y (`DRAW_ANCHOR_Y_RATIO`). Both
+  // components reference the same constant so a tap doesn't snap
+  // between two cy values. `Dimensions.get('window')` is fine to read
+  // at render time on RN-Web (live viewport).
   const { width: viewportW, height: viewportH } = Dimensions.get('window');
   const cx = viewportW / 2;
-  const cy = viewportH * 0.4;
+  const cy = viewportH * DRAW_ANCHOR_Y_RATIO;
 
   return (
     <View
