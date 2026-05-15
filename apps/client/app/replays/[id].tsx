@@ -85,7 +85,7 @@ export default function ReplayDetail() {
             alignItems: 'center',
             gap: 8,
             paddingHorizontal: 12,
-            paddingTop: 8,
+            paddingVertical: 8,
           }}
         >
           <Pressable
