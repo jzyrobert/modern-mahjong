@@ -7,7 +7,7 @@ import { deleteRecord, listHeaders } from '../../replay/storage';
 import type { ReplayHeader } from '../../replay/types';
 import { useGame } from '../../state/game';
 import { GhostButton, PrimaryButton } from '../buttons';
-import { COLORS } from '../colors';
+import { COLORS, SUCCESS_PILL } from '../colors';
 import { type Position, SEAT_COLOR } from '../match/seatColor';
 import { LobbyWatermark } from '../menu/LobbyWatermark';
 import { WindEmblem } from '../menu/WindEmblem';
@@ -586,7 +586,7 @@ function ScoreChip({
             fontFamily: 'Courier',
             fontWeight: '800',
             fontSize: 10,
-            color: isWinner ? 'white' : score >= 0 ? '#2d8645' : COLORS.red,
+            color: isWinner ? 'white' : score >= 0 ? SUCCESS_PILL.fg : COLORS.red,
           }}
         >
           {sign}

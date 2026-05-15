@@ -7,7 +7,7 @@ import { useGame } from '../../state/game';
 import { Hand } from '../Hand';
 import { Tile } from '../Tile';
 import { PULSE_TEMPO, usePulse } from '../animations';
-import { COLORS } from '../colors';
+import { COLORS, PANEL_ON_FELT, SUCCESS_PILL } from '../colors';
 import { MeldStrip } from '../match/MeldStrip';
 import { type Position, SEAT_COLOR } from '../match/seatColor';
 import { FELT_SKINS } from '../match/skins';
@@ -200,9 +200,7 @@ function StatusPill({ density }: { density: Density }) {
           flexWrap: 'wrap',
           paddingHorizontal: compact ? 10 : 14,
           paddingVertical: compact ? 5 : 6,
-          borderRadius: 16,
-          backgroundColor: 'rgba(255,255,255,0.88)',
-          boxShadow: '0px 4px 16px rgba(0,0,0,0.18)',
+          ...PANEL_ON_FELT,
         }}
       >
         <View
@@ -596,7 +594,7 @@ function MiniOppPill({
             paddingHorizontal: 4,
             borderRadius: 3,
             backgroundColor: isActive ? 'rgba(255,255,255,0.18)' : COLORS.creamLow,
-            color: isActive ? 'white' : score >= 0 ? '#2d8645' : COLORS.red,
+            color: isActive ? 'white' : score >= 0 ? SUCCESS_PILL.fg : COLORS.red,
           }}
         >
           {sign}
