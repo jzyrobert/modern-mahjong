@@ -186,6 +186,17 @@ interface ClientGameStore {
     tile: Tile;
     slotRect: { x: number; y: number; width: number; height: number } | null;
   } | null;
+  /**
+   * Monotonic high-water mark for `drawAnimation.seq`. Persists across
+   * `clearDrawAnimation` (which nulls `drawAnimation` but leaves this
+   * counter alone) so every subsequent `flashDrawAnimation` gets a
+   * strictly increasing seq — the consumer (`DrawTileOverlay`) dedupes
+   * via this seq, and a per-object counter that reset to 1 after each
+   * clear would alias the second-and-onward draw of every match,
+   * silently swallowing the popup. Cleared on `reset` so a fresh
+   * lobby → match transition starts the seq at 0 again.
+   */
+  drawAnimationLastSeq: number;
   setState: (state: GameState, you?: Seat | 'spectator') => void;
   setLobby: (l: LobbyState) => void;
   setShuffling: (shuffling: boolean) => void;
@@ -235,6 +246,7 @@ export const useGame = create<ClientGameStore>((set) => ({
   claimMissedSeq: 0,
   claimAnnouncement: null,
   drawAnimation: null,
+  drawAnimationLastSeq: 0,
   setState: (state, you) => set((prev) => ({ state, you: you ?? prev.you })),
   setLobby: (lobby) => set({ lobby }),
   setShuffling: (shuffling) => set({ shuffling }),
@@ -262,13 +274,13 @@ export const useGame = create<ClientGameStore>((set) => ({
       },
     })),
   flashDrawAnimation: (tile) =>
-    set((prev) => ({
-      drawAnimation: {
-        tile,
-        seq: (prev.drawAnimation?.seq ?? 0) + 1,
-        slotRect: null,
-      },
-    })),
+    set((prev) => {
+      const seq = prev.drawAnimationLastSeq + 1;
+      return {
+        drawAnimation: { tile, seq, slotRect: null },
+        drawAnimationLastSeq: seq,
+      };
+    }),
   clearDrawAnimation: () => set({ drawAnimation: null }),
   setDrawAnimationSlotRect: (rect) =>
     set((prev) => {
@@ -342,6 +354,7 @@ export const useGame = create<ClientGameStore>((set) => ({
       claimMissedSeq: 0,
       claimAnnouncement: null,
       drawAnimation: null,
+      drawAnimationLastSeq: 0,
     }),
 }));
 

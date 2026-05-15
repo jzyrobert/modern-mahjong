@@ -67,21 +67,40 @@ test('after the first round-trip, the highlighted draw-tile pulls a new tile', a
   // invisible forever. Total overlay duration is ~1160ms; allow a wide
   // margin so flake from animation scheduling doesn't false-fail.
   await expect
-    .poll(
-      async () =>
-        page.getByTestId('own-hand-tile').evaluateAll((nodes) =>
-          nodes.every((n) => {
-            const op = Number.parseFloat(window.getComputedStyle(n).opacity);
-            return Number.isFinite(op) && op > 0.5;
-          }),
-        ),
-      {
-        timeout: 4_000,
-        message: 'A drawn hand tile stayed invisible — DrawTileOverlay never cleared drawAnimation',
-      },
-    )
+    .poll(allOwnTilesVisible.bind(null, page), {
+      timeout: 4_000,
+      message: 'A drawn hand tile stayed invisible — DrawTileOverlay never cleared drawAnimation',
+    })
+    .toBe(true);
+
+  // Round-trip a SECOND time. Pre-fix, `flashDrawAnimation`'s seq
+  // counter reset to 1 on every `clearDrawAnimation`, so the second
+  // draw alias-matched the overlay's `lastSeq` ref and the popup never
+  // ran — leaving the matching HandTile stuck at opacity 0 because
+  // `drawAnimation` itself was never cleared. This step exercises that
+  // path: discard the just-drawn tile, wait for the cue again, click
+  // draw, and re-check that every hand tile recovers.
+  await page.getByTestId('own-hand-tile').first().click();
+  await waitForUserDrawCue(page, 30_000);
+  await drawTile.click();
+  await expect(drawTile).toBeHidden();
+  await expect
+    .poll(allOwnTilesVisible.bind(null, page), {
+      timeout: 4_000,
+      message:
+        'A second-draw hand tile stayed invisible — flashDrawAnimation seq counter regressed',
+    })
     .toBe(true);
 });
+
+async function allOwnTilesVisible(page: Page): Promise<boolean> {
+  return page.getByTestId('own-hand-tile').evaluateAll((nodes) =>
+    nodes.every((n) => {
+      const op = Number.parseFloat(window.getComputedStyle(n).opacity);
+      return Number.isFinite(op) && op > 0.5;
+    }),
+  );
+}
 
 async function readWallCount(page: Page): Promise<number> {
   const text = await page.getByText(/\d+ left/).innerText();

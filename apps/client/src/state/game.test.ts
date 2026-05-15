@@ -182,3 +182,73 @@ describe('useGame.appendEvents', () => {
     expect(after.manualOrder).toEqual([tileId(TILE_2M)]);
   });
 });
+
+describe('useGame.flashDrawAnimation', () => {
+  beforeEach(() => {
+    // Reset the seq counter and any in-flight draw animation so each
+    // test starts from a known baseline. Don't pass `replace: true` —
+    // that would strip the action methods off the store.
+    useGame.setState({ drawAnimation: null, drawAnimationLastSeq: 0 });
+  });
+
+  it('issues a monotonically increasing seq across clearDrawAnimation', () => {
+    // This is the regression guard for the "popup only fires once per
+    // overlay mount" bug. Pre-fix, `flashDrawAnimation` computed seq as
+    // `(prev.drawAnimation?.seq ?? 0) + 1`, so the cleared-and-reflashed
+    // second draw got seq=1 — the same value the previous successful
+    // draw left in DrawTileOverlay's `lastSeq` ref. The overlay's
+    // dedupe `if (seq === lastSeq.current) return` swallowed every
+    // subsequent draw, leaving the hand slot stuck at opacity 0
+    // because no animation ever ran to clear `drawAnimation`.
+    useGame.getState().flashDrawAnimation(TILE_1M);
+    const afterFirst = useGame.getState().drawAnimation;
+    expect(afterFirst?.seq).toBe(1);
+
+    useGame.getState().clearDrawAnimation();
+    expect(useGame.getState().drawAnimation).toBeNull();
+    // The high-water-mark counter persists across clear so the next
+    // flash gets seq=2, not seq=1.
+    expect(useGame.getState().drawAnimationLastSeq).toBe(1);
+
+    useGame.getState().flashDrawAnimation(TILE_2M);
+    const afterSecond = useGame.getState().drawAnimation;
+    expect(afterSecond?.seq).toBe(2);
+    expect(useGame.getState().drawAnimationLastSeq).toBe(2);
+
+    useGame.getState().clearDrawAnimation();
+    useGame.getState().flashDrawAnimation(TILE_3M);
+    expect(useGame.getState().drawAnimation?.seq).toBe(3);
+  });
+
+  it('still increments when flashed back-to-back without an intervening clear', () => {
+    // Gang-replacement chains can fire two `flashDrawAnimation` calls
+    // before the first popup completes; the seq must still increase so
+    // DrawTileOverlay restarts the timeline cleanly.
+    useGame.getState().flashDrawAnimation(TILE_1M);
+    expect(useGame.getState().drawAnimation?.seq).toBe(1);
+    useGame.getState().flashDrawAnimation(TILE_2M);
+    expect(useGame.getState().drawAnimation?.seq).toBe(2);
+    expect(useGame.getState().drawAnimation?.tile).toEqual(TILE_2M);
+  });
+
+  it('resets drawAnimationLastSeq to 0 on store reset', () => {
+    useGame.getState().flashDrawAnimation(TILE_1M);
+    useGame.getState().flashDrawAnimation(TILE_2M);
+    expect(useGame.getState().drawAnimationLastSeq).toBe(2);
+    useGame.getState().reset();
+    expect(useGame.getState().drawAnimationLastSeq).toBe(0);
+    expect(useGame.getState().drawAnimation).toBeNull();
+  });
+
+  it('preserves the slotRect identity guard while the same draw is in flight', () => {
+    // Once a HandTile has measured its slot, repeated measurements with
+    // the same rect must not produce a new drawAnimation object — that
+    // would re-fire the overlay's effect on every layout pass.
+    useGame.getState().flashDrawAnimation(TILE_1M);
+    const rect = { x: 100, y: 200, width: 36, height: 50 };
+    useGame.getState().setDrawAnimationSlotRect(rect);
+    const after = useGame.getState().drawAnimation;
+    useGame.getState().setDrawAnimationSlotRect({ ...rect });
+    expect(useGame.getState().drawAnimation).toBe(after);
+  });
+});

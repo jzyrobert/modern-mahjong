@@ -8,6 +8,15 @@ const HOLD_MS = 220;
 const FLIP_MS = 420;
 const FLY_MS = 360;
 
+const TOTAL_MS = POP_MS + HOLD_MS + FLIP_MS + FLY_MS;
+// Normalised progress points (0..1) for the four phases — used by the
+// interpolators below and to gate the face-up swap during the flip's
+// scaleX-zero midpoint.
+const POP_END = POP_MS / TOTAL_MS;
+const HOLD_END = (POP_MS + HOLD_MS) / TOTAL_MS;
+const FLIP_MID = (POP_MS + HOLD_MS + FLIP_MS / 2) / TOTAL_MS;
+const FLIP_END = (POP_MS + HOLD_MS + FLIP_MS) / TOTAL_MS;
+
 const POPUP_TILE_WIDTH = 64;
 const POPUP_TILE_HEIGHT = 88;
 
@@ -29,13 +38,24 @@ const POPUP_TILE_HEIGHT = 88;
  *      the tile arriving — when the overlay clears, the slot fades
  *      back to opacity 1 in the same screen position.
  *
- * Each fresh `flashDrawAnimation` bumps the store's `seq`, so a back-
- * to-back draw (e.g. a self-draw immediately after a chi window
- * closes) restarts the sequence cleanly.
+ * Slice-level subscriptions on purpose (`tile`, `slotRect`, `seq`
+ * separately rather than the whole `drawAnimation` object): a slot-rect
+ * update from `HandTile.measureInWindow` produces a fresh
+ * `drawAnimation` object reference but doesn't change `tile` or `seq`.
+ * If the effect depended on the whole object it would re-run on every
+ * slot-rect update — its cleanup would tear down the in-flight progress
+ * listener, the body would see the same `seq` and early-return, and the
+ * flip would never fire (the user would see the back of the tile for
+ * the whole pop → hold → flip → fly cycle).
+ *
+ * The seq counter the store hands us is strictly monotonic across the
+ * overlay's mount-lifetime (see `flashDrawAnimation` for why we hold a
+ * separate counter rather than `(prev.drawAnimation?.seq ?? 0) + 1`).
  */
 export function DrawTileOverlay() {
-  const animation = useGame((s) => s.drawAnimation);
-  const slotRect = animation?.slotRect ?? null;
+  const tile = useGame((s) => s.drawAnimation?.tile ?? null);
+  const slotRect = useGame((s) => s.drawAnimation?.slotRect ?? null);
+  const seq = useGame((s) => s.drawAnimation?.seq ?? 0);
   const clear = useGame((s) => s.clearDrawAnimation);
   const animsEnabled = useGame((s) => s.settings.animations);
   const lastSeq = useRef(0);
@@ -44,9 +64,9 @@ export function DrawTileOverlay() {
   const progress = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    if (!animation) return;
-    if (animation.seq === lastSeq.current) return;
-    lastSeq.current = animation.seq;
+    if (tile === null || seq === 0) return;
+    if (seq === lastSeq.current) return;
+    lastSeq.current = seq;
     if (!animsEnabled) {
       clear();
       return;
@@ -54,23 +74,38 @@ export function DrawTileOverlay() {
     setVisible(true);
     setFaceUp(false);
     progress.setValue(0);
-    const flipMidMs = POP_MS + HOLD_MS + FLIP_MS / 2;
-    const flipTimer = setTimeout(() => setFaceUp(true), flipMidMs);
+
+    // Drive the face-down → face-up swap off the native progress value
+    // crossing `FLIP_MID` rather than a wall-clock `setTimeout`. The
+    // `scaleX` squish runs on the native driver, so a JS-thread timer
+    // can drift relative to it — typically right after a `setState`
+    // lands the JS thread is busy and the face flips visibly off-centre,
+    // exposing the back face past the scaleX-zero midpoint. The
+    // listener stays in lockstep with the animation that's actually
+    // rendering on screen, which is what the user perceives as "the
+    // flip".
+    let didFlip = false;
+    const listenerId = progress.addListener(({ value }) => {
+      if (!didFlip && value >= FLIP_MID) {
+        didFlip = true;
+        setFaceUp(true);
+      }
+    });
     Animated.timing(progress, {
       toValue: 1,
-      duration: POP_MS + HOLD_MS + FLIP_MS + FLY_MS,
+      duration: TOTAL_MS,
       easing: Easing.linear,
       useNativeDriver: true,
     }).start(({ finished }) => {
-      clearTimeout(flipTimer);
+      progress.removeListener(listenerId);
       if (!finished) return;
       setVisible(false);
       clear();
     });
-    return () => clearTimeout(flipTimer);
-  }, [animation, animsEnabled, clear, progress]);
+    return () => progress.removeListener(listenerId);
+  }, [tile, seq, animsEnabled, clear, progress]);
 
-  if (!visible || !animation) return null;
+  if (!visible || tile === null) return null;
 
   // Viewport dimensions for the popup's initial centre-of-screen
   // anchor. `Dimensions.get('window')` on RN-Web reads the live inner
@@ -90,21 +125,15 @@ export function DrawTileOverlay() {
   const targetCenterY = slotRect ? slotRect.y + slotRect.height / 2 : popupCenterY + 200;
   const targetScale = slotRect ? slotRect.width / POPUP_TILE_WIDTH : 0.45;
 
-  const total = POP_MS + HOLD_MS + FLIP_MS + FLY_MS;
-  const popEnd = POP_MS / total;
-  const holdEnd = (POP_MS + HOLD_MS) / total;
-  const flipMid = (POP_MS + HOLD_MS + FLIP_MS / 2) / total;
-  const flipEnd = (POP_MS + HOLD_MS + FLIP_MS) / total;
-
   // Pop-in scale (felt-centre) into 1 → fly into the slot's scale.
   const scale = progress.interpolate({
-    inputRange: [0, popEnd, flipEnd, 1],
+    inputRange: [0, POP_END, FLIP_END, 1],
     outputRange: [0.4, 1, 1, targetScale],
   });
   // Stay opaque until the very last bit of the fly so the hand-side
   // opacity reveal cross-fades cleanly with the landing.
   const overlayOpacity = progress.interpolate({
-    inputRange: [0, popEnd, flipEnd, 0.94, 1],
+    inputRange: [0, POP_END, FLIP_END, 0.94, 1],
     outputRange: [0, 1, 1, 1, 0],
   });
   // Land at the slot — translate from felt centre to slot centre over
@@ -112,17 +141,17 @@ export function DrawTileOverlay() {
   const dx = targetCenterX - popupCenterX;
   const dy = targetCenterY - popupCenterY;
   const translateX = progress.interpolate({
-    inputRange: [0, flipEnd, 1],
+    inputRange: [0, FLIP_END, 1],
     outputRange: [0, 0, dx],
   });
   const translateY = progress.interpolate({
-    inputRange: [0, flipEnd, 1],
+    inputRange: [0, FLIP_END, 1],
     outputRange: [0, 0, dy],
   });
   // scaleX squish during the flip — 1 → 0 across the first half, then
   // 0 → 1 across the second half. Outside the flip phase scaleX is 1.
   const scaleX = progress.interpolate({
-    inputRange: [0, holdEnd, flipMid, flipEnd, 1],
+    inputRange: [0, HOLD_END, FLIP_MID, FLIP_END, 1],
     outputRange: [1, 1, 0, 1, 1],
   });
 
@@ -150,12 +179,7 @@ export function DrawTileOverlay() {
           boxShadow: '0px 10px 24px rgba(0,0,0,0.35)',
         }}
       >
-        <Tile
-          tile={animation.tile}
-          faceDown={!faceUp}
-          width={POPUP_TILE_WIDTH}
-          height={POPUP_TILE_HEIGHT}
-        />
+        <Tile tile={tile} faceDown={!faceUp} width={POPUP_TILE_WIDTH} height={POPUP_TILE_HEIGHT} />
       </Animated.View>
     </View>
   );
