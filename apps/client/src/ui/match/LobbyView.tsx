@@ -1,12 +1,12 @@
 import type { Action, Seat } from '@mahjong/game-logic';
-import { SEATS } from '@mahjong/game-logic';
+import { DEFAULT_RULES, SEATS } from '@mahjong/game-logic';
 import { BOT_LABELS, type BotKind, type PublicPlayer, type RuleConfig } from '@mahjong/protocol';
 import * as Clipboard from 'expo-clipboard';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { JoinInfo } from '../../net/join-info';
-import type { LobbyState } from '../../state/game';
+import { type LobbyState, useGame } from '../../state/game';
 import { randomSeed } from '../../util';
 import { RulePanel } from '../RulePanel';
 import { GhostButton, PrimaryButton } from '../buttons';
@@ -74,6 +74,43 @@ export function LobbyView({
     const t = setTimeout(() => setJoinUrlCopied(false), 1500);
     return () => clearTimeout(t);
   }, [joinUrlCopied]);
+
+  // Apply the user's persisted lobby rule preferences once per mount,
+  // host-only. The server / solo transport always boots with
+  // `DEFAULT_RULES`, so the first time the host lands in the lobby the
+  // user's last-chosen faanMin + turnTimeoutMs need to be re-applied
+  // via `setRules`. After that, any manual edit in the RulePanel both
+  // updates the engine and writes back to `lobbyRulePrefs` (see
+  // `RulePanel.set`), so a reload-then-remount re-reads the same prefs
+  // and the `applied` ref makes the dispatch a no-op when state already
+  // matches.
+  //
+  // `looksFresh` gates the dispatch: only apply prefs when state.rules
+  // still reads as the engine defaults. If anything (a test override
+  // like `__MAHJONG_TEST_TURN_TIMEOUT_MS__`, a host's manual setRules
+  // earlier in this match, a reload-restored non-default state) has
+  // already moved state.rules off DEFAULT, leave it alone — otherwise
+  // an e2e that explicitly arms a 800ms timer would get stomped back
+  // to 0 the moment the lobby mounts, and the test loses its hatch.
+  const lobbyPrefs = useGame((s) => s.settings.lobbyRulePrefs);
+  const prefsApplied = useRef(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally fire-once on mount as host. Including `rules` / `lobbyPrefs` here would re-dispatch every time the user edits a rule in RulePanel, which both updates the engine state and writes back to lobbyPrefs — that would race with the manual edit and overwrite it.
+  useEffect(() => {
+    if (!isHost || prefsApplied.current) return;
+    prefsApplied.current = true;
+    const looksFresh =
+      rules.faanMin === DEFAULT_RULES.faanMin &&
+      rules.turnTimeoutMs === DEFAULT_RULES.turnTimeoutMs;
+    if (!looksFresh) return;
+    const drift =
+      rules.faanMin !== lobbyPrefs.faanMin || rules.turnTimeoutMs !== lobbyPrefs.turnTimeoutMs;
+    if (drift) {
+      onAction({
+        t: 'setRules',
+        rules: { faanMin: lobbyPrefs.faanMin, turnTimeoutMs: lobbyPrefs.turnTimeoutMs },
+      });
+    }
+  }, [isHost]);
 
   const onCopyHeaderJoinUrl = async () => {
     if (!headerJoinUrl) return;

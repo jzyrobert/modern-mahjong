@@ -3,6 +3,7 @@ import {
   DEFAULT_RULES,
   type GameState,
   IllegalActionError,
+  type RuleConfig,
   SEATS,
   type Seat,
   type Tile,
@@ -12,11 +13,17 @@ import {
   sameFace,
 } from '../src/index.js';
 
-function startedHand(seed = 1): GameState {
-  const init = emptyState(DEFAULT_RULES);
+function startedHand(seed = 1, rules: RuleConfig = DEFAULT_RULES): GameState {
+  const init = emptyState(rules);
   const { state } = reduce(init, { t: 'startHand', seed, dealer: 0 });
   return state;
 }
+
+// Rules with the per-turn timer explicitly armed. `DEFAULT_RULES`
+// now ships with `turnTimeoutMs: 0` (timer off) for casual play, so
+// any test that wants to exercise the "deadline gets stamped" path
+// has to dial it back on explicitly.
+const TIMER_ON_RULES: RuleConfig = { ...DEFAULT_RULES, turnTimeoutMs: 20_000 };
 
 /**
  * Find a tile in seat 0's hand that some other seat could PENG against
@@ -66,21 +73,23 @@ describe('reducer — startHand', () => {
 });
 
 describe('reducer — turn deadline', () => {
-  it('startHand stamps turnDeadlineMs when the rule is on (DEFAULT_RULES)', () => {
+  it('startHand stamps turnDeadlineMs when the rule is on', () => {
     const before = Date.now();
-    const s = startedHand();
+    const s = startedHand(1, TIMER_ON_RULES);
     const after = Date.now();
     expect(s.turnDeadlineMs).toBeDefined();
     // Deadline lands somewhere in the [before, after] window plus the
-    // 20s default; widen the upper bound by a few ms for slow CI.
+    // armed timeout; widen the upper bound by a few ms for slow CI.
     if (s.turnDeadlineMs !== undefined) {
-      expect(s.turnDeadlineMs).toBeGreaterThanOrEqual(before + DEFAULT_RULES.turnTimeoutMs);
-      expect(s.turnDeadlineMs).toBeLessThanOrEqual(after + DEFAULT_RULES.turnTimeoutMs + 5);
+      expect(s.turnDeadlineMs).toBeGreaterThanOrEqual(before + TIMER_ON_RULES.turnTimeoutMs);
+      expect(s.turnDeadlineMs).toBeLessThanOrEqual(after + TIMER_ON_RULES.turnTimeoutMs + 5);
     }
   });
 
-  it('startHand leaves turnDeadlineMs undefined when the rule is disabled', () => {
-    const init = emptyState({ ...DEFAULT_RULES, turnTimeoutMs: 0 });
+  it('startHand leaves turnDeadlineMs undefined when the rule is disabled (DEFAULT_RULES)', () => {
+    // DEFAULT_RULES now ships with `turnTimeoutMs: 0`, so the
+    // deadline should be undefined off the bat.
+    const init = emptyState(DEFAULT_RULES);
     const { state } = reduce(init, { t: 'startHand', seed: 1, dealer: 0 });
     expect(state.turnDeadlineMs).toBeUndefined();
   });
@@ -101,8 +110,9 @@ describe('reducer — turn deadline', () => {
     // Use a peng-able discard so the engine keeps the claim window
     // open through the declareClaim → resolveClaims cascade. With an
     // unclaimable discard the engine auto-resolves at discard time
-    // and `declareClaim`s would throw PHASE.
-    let s = startedHand();
+    // and `declareClaim`s would throw PHASE. Timer rules pinned on so
+    // the engine actually stamps `turnDeadlineMs` to check.
+    let s = startedHand(1, TIMER_ON_RULES);
     const { tile, pengSeat } = pickPengableDiscard(s);
     s = reduce(s, { t: 'discard', seat: 0, tile }).state;
     for (const seat of SEATS) {
@@ -120,10 +130,10 @@ describe('reducer — turn deadline', () => {
     const before = Date.now();
     // The deadline was stamped during the auto-resolve at the last
     // declareClaim, not at `before` — so just verify the field is
-    // present and lands inside the default window relative to `now`.
+    // present and lands inside the armed window relative to `now`.
     expect(s.turnDeadlineMs).toBeDefined();
     expect(s.turnDeadlineMs!).toBeGreaterThanOrEqual(before - 50);
-    expect(s.turnDeadlineMs!).toBeLessThanOrEqual(before + DEFAULT_RULES.turnTimeoutMs + 50);
+    expect(s.turnDeadlineMs!).toBeLessThanOrEqual(before + TIMER_ON_RULES.turnTimeoutMs + 50);
   });
 });
 

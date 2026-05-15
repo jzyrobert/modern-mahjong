@@ -41,10 +41,17 @@ export interface RuleConfig {
 }
 
 export const DEFAULT_RULES: RuleConfig = {
-  faanMin: 3,
+  // `faanMin: 0` lets every structurally-valid winning shape win,
+  // which is what new players expect. The 3-faan HK floor used to be
+  // the default but routinely rejected first-match wins and confused
+  // beginners; the user can dial it back up in the lobby's RulePanel.
+  faanMin: 0,
   allowSevenPairs: true,
   allowThirteenOrphans: true,
-  turnTimeoutMs: 20_000,
+  // `0` = no per-turn timer (the engine leaves `turnDeadlineMs`
+  // unset). Most casual + practice play wants this off; the user can
+  // dial in a positive value via the lobby for competitive play.
+  turnTimeoutMs: 0,
   claimWindowMs: 3_000,
   claimSoftWindowMs: 8_000,
   claimHardWindowMs: 12_000,

@@ -10,9 +10,8 @@ interface SettingsPanelProps {
 }
 
 /**
- * In-match preferences modal. v1 covers the controls that
- * actually affect the active match: felt skin picker, tile-back skin
- * picker, auto-sort toggle, sound toggle, animations toggle. Turn-timer
+ * In-match preferences modal: felt skin picker, tile-back skin picker,
+ * sound toggle, animations toggle, discard-hint toggle. Turn-timer
  * editor, GameLog button, and the 136-tile reference grid are deferred
  * (turn-timer needs `state.rules` round-trip; the tile reference is
  * decorative).
@@ -40,12 +39,6 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
         </Section>
 
         <Section title="Behaviour">
-          <ToggleRow
-            label="Auto-sort hand"
-            hint="Re-sort by suit on every state update."
-            value={settings.autoSort}
-            onChange={(autoSort) => setSettings({ autoSort })}
-          />
           <ToggleRow
             label="Sound effects"
             hint="Tile clack on discards + claims, dice roll, between-hand shuffle."

@@ -80,8 +80,12 @@ export function Match() {
   // strips into a single horizontal row so the discard pane gets real
   // vertical real estate.
   const isLandscape = !isDesktop && viewportWidth > viewportHeight;
-  const initialSort: SortMode = settings.autoSort ? 'suit' : 'manual';
-  const [sortMode, setSortMode] = useState<SortMode>(initialSort);
+  // Always start a fresh match in suit-sorted mode. The SortPicker is
+  // visible immediately so the user can flip to NUMBER / MANUAL the
+  // moment they want a different order — no need for a separate "auto
+  // sort" setting whose only effect was choosing between this default
+  // and an initial MANUAL.
+  const [sortMode, setSortMode] = useState<SortMode>('suit');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
   const [referenceOpen, setReferenceOpen] = useState(false);

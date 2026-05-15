@@ -20,8 +20,6 @@ export type TileBackSkin = 'cream' | 'blue' | 'plum' | 'mint';
 export interface UserSettings {
   felt: FeltSkin;
   tileBack: TileBackSkin;
-  /** When true, the user's hand always comes back sorted on every state update. */
-  autoSort: boolean;
   /** Override for the OS-level prefers-reduced-motion. true=motion on, false=reduced. */
   animations: boolean;
   /** Sound effects toggle. Gates every cue in `sound.ts` — tile
@@ -53,12 +51,22 @@ export interface UserSettings {
    *  row. Lessons are append-only; ids never get removed once they
    *  land here. */
   tutorialsCompleted: string[];
+  /** Persisted defaults for the lobby's RulePanel — `LobbyView`'s
+   *  host-side effect dispatches `setRules` to the engine on first
+   *  mount so the user sees their last-chosen values, and the
+   *  RulePanel writes back here on every change. Keeps the user's
+   *  preferred faan floor + turn-timer setting sticky across matches
+   *  instead of resetting to the engine defaults each time. */
+  lobbyRulePrefs: {
+    faanMin: 0 | 1 | 3 | 5;
+    /** ms, with `0` representing "no turn timer" (∞). */
+    turnTimeoutMs: number;
+  };
 }
 
 const DEFAULT_SETTINGS: UserSettings = {
   felt: 'sage',
   tileBack: 'cream',
-  autoSort: true,
   animations: true,
   sound: true,
   discardHint: false,
@@ -66,6 +74,13 @@ const DEFAULT_SETTINGS: UserSettings = {
   autoRecordReplays: false,
   replayQuota: 50,
   tutorialsCompleted: [],
+  // Mirrors the new `DEFAULT_RULES` floor (faan 0, timer off) — the
+  // user opts in to higher floors / armed timers via the lobby
+  // RulePanel and the change persists here.
+  lobbyRulePrefs: {
+    faanMin: 0,
+    turnTimeoutMs: 0,
+  },
 };
 
 const SETTINGS_STORAGE_KEY = 'mj.settings.v1';

@@ -86,7 +86,7 @@ function TileComponent({
 }: TileProps) {
   // Subscribe to the user's tile-back skin so face-down tiles repaint
   // when the SettingsPanel changes it. The selector returns a string id
-  // so unrelated settings changes (felt, autoSort) don't re-render every
+  // so unrelated settings changes (felt, sound) don't re-render every
   // tile — only flips of `tileBack` itself trigger a re-render.
   const tileBackId = useGame((s) => s.settings.tileBack);
   const lift = selected ? -10 : raised ? -4 : 0;
