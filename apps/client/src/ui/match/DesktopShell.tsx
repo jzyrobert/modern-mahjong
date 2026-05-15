@@ -231,6 +231,7 @@ export function DesktopShell(props: DesktopShellProps) {
             nextDrawTile={state.wall.length > 0 ? state.wall[state.wall.length - 1]! : null}
             breakPosition={state.openingRolls?.breakPosition}
             onDrawNext={needsDraw ? () => onAction({ t: 'draw', seat }) : undefined}
+            needsDraw={needsDraw}
             nextDrawerSeat={nextDrawerSeat}
             aboutToDraw={aboutToDraw}
             drawCountdown={drawCountdown}
