@@ -97,18 +97,37 @@ export function HandTile({
   );
   const setDrawAnimationSlotRect = useGame((s) => s.setDrawAnimationSlotRect);
   const containerRef = useRef<View>(null);
-  // Re-measure whenever this tile becomes the animation target. Layout
-  // is stable for the duration of one popup (the draw event has already
-  // resolved the new tile into the hand by the time `drawAnimation`
-  // ticks), so a single measure on transition is enough.
+  // Safety net for the slot's opacity-0 hide. The overlay drives the
+  // visible animation and is responsible for clearing the store's
+  // `drawAnimation`; if that lifecycle gets interrupted (e.g. the
+  // shell unmounts mid-animation when the viewport flips across the
+  // desktop / mobile threshold), `isAnimatingDraw` could stay true
+  // indefinitely. Force-reveal after the max overlay duration so a
+  // stuck animation can never leave a blank slot.
+  const [forceReveal, setForceReveal] = useState(false);
+  useEffect(() => {
+    if (!isAnimatingDraw) {
+      setForceReveal(false);
+      return;
+    }
+    const t = setTimeout(() => setForceReveal(true), 1500);
+    return () => clearTimeout(t);
+  }, [isAnimatingDraw]);
+  // Re-measure on every settled layout — the Hand auto-fits its tile
+  // width once the container's measured width arrives, so the slot
+  // typically reaches its final position over two render passes
+  // (first at default size, then at auto-fit size). Depending only
+  // on `isAnimatingDraw` would freeze slotRect at the first-pass
+  // position. `index`, `width`, `step` deps re-fire the effect on
+  // every layout change. measureInWindow returns viewport coords —
+  // same space `DrawTileOverlay` reads from for its fly translate.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: width and step are props that change once auto-fit settles; they're valid layout triggers even though biome flags them as outer-scope values.
   useEffect(() => {
     if (!isAnimatingDraw || !containerRef.current) return;
-    // measureInWindow returns coords in viewport space — the same space
-    // `DrawTileOverlay` reads from when computing its fly translate.
     containerRef.current.measureInWindow((x, y, w, h) => {
       setDrawAnimationSlotRect({ x, y, width: w, height: h });
     });
-  }, [isAnimatingDraw, setDrawAnimationSlotRect]);
+  }, [isAnimatingDraw, setDrawAnimationSlotRect, index, width, step, id]);
   const [dragging, setDragging] = useState(false);
   const translateX = useRef(new Animated.Value(0)).current;
   // `dragY` follows the finger's vertical delta during drag; the lift
@@ -324,10 +343,12 @@ export function HandTile({
         zIndex: dragging ? 10 : 0,
         // Render the slot as an invisible placeholder while the draw-
         // popup is animating this tile — the overlay carries the visual
-        // for the whole pop → flip → fly sequence and reveals the tile
-        // by landing on it. Opacity 0 (not display: none) keeps the
-        // slot's flex width so the row layout stays stable.
-        opacity: isAnimatingDraw ? 0 : 1,
+        // for the whole rise → flip → fly sequence and reveals the
+        // tile by landing on it. Opacity 0 (not display: none) keeps
+        // the slot's flex width so the row layout stays stable. The
+        // `forceReveal` safety latch above brings the tile back even
+        // if the overlay's clear path never fires.
+        opacity: isAnimatingDraw && !forceReveal ? 0 : 1,
       }}
     >
       <View ref={containerRef} collapsable={false}>
