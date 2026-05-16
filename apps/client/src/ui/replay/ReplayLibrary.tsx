@@ -144,12 +144,13 @@ function Hero({
   );
 
   if (phone) {
-    // Phone layout: ← Lobby and Import side by side on the top
-    // action row (`space-between` keeps them anchored to opposite
-    // edges so neither button feels pinned to the title), then the
-    // big "Replays" heading + summary on its own block below. The
-    // title's `flex: 1` is fine in this column layout — there are
-    // no siblings competing for horizontal space.
+    // Phone layout: ← Lobby (auto width) on the left, Import
+    // stretching across the remaining row via `flex: 1` so the CTA
+    // reads as substantial on a 412 px viewport instead of pinning
+    // narrow to the right edge. The Import button uses the full
+    // "Import replays" label + `size='lg'` for the same reason it
+    // does in the wider layout — they should feel like the same
+    // control at different widths.
     return (
       <View
         style={{
@@ -163,12 +164,15 @@ function Hero({
           style={{
             flexDirection: 'row',
             alignItems: 'center',
-            justifyContent: 'space-between',
             gap: 12,
           }}
         >
           <GhostButton onPress={onBack}>← Lobby</GhostButton>
-          <PrimaryButton onPress={onImport}>Import…</PrimaryButton>
+          <View style={{ flex: 1 }}>
+            <PrimaryButton onPress={onImport} size="lg" full>
+              Import replays
+            </PrimaryButton>
+          </View>
         </View>
         {title}
       </View>
