@@ -14,7 +14,7 @@ import { type SortMode, SortPicker } from './SortPicker';
 import { WallEdge } from './WallEdge';
 import type { Position } from './seatColor';
 import { type SeatPlacement, layoutFor } from './seatPlacement';
-import { FELT_SKINS } from './skins';
+import { FELT_SKINS, TILE_BACK_SKINS } from './skins';
 import { LIVE_WALL_TILES, computeWallLayout } from './wallLayout';
 
 interface DesktopTableProps {
@@ -76,15 +76,12 @@ interface DesktopTableProps {
 
 const COLORS = {
   feltEdge: 'rgba(216,168,90,0.45)',
-  // Mahjong-back blue for the visible top of an opponent's hand tile —
-  // same hex as `WallEdge`'s TopFace so the felt reads as one cohesive
-  // top-down view with consistent surface tone across walls + hands.
-  back1: '#7fa9c1',
-  back2: '#5a8cb0',
-  backEdge: 'rgba(50,80,100,0.6)',
   // Cream/bone side face — the strip pinned to the player-facing edge
   // of each opp hand tile, suggesting the tile's vertical depth in
-  // the same way `WallEdge` uses it for wall stacks.
+  // the same way `WallEdge` uses it for wall stacks. Always cream
+  // regardless of the user's tile-back skin (the side of a real
+  // mahjong tile is the same cream colour whatever the back's
+  // painted with).
   sideFace: '#d6c290',
   sideEdge: '#8a6e3c',
   // Pinned bevel bands — the rounded lid edge catching reflected light
@@ -95,6 +92,10 @@ const COLORS = {
   backFar: 'rgba(0,0,0,0.18)',
   sideTop: 'rgba(255,255,255,0.16)',
   sideBottom: 'rgba(0,0,0,0.20)',
+  // Neutral darker border for the top face — neutral so the silhouette
+  // outline tracks any tile-back skin without picking up an off-tone
+  // halo.
+  topBorder: 'rgba(0,0,0,0.28)',
 };
 
 /** Thickness of the cream side strip pinned to each opp tile's player-
@@ -165,6 +166,12 @@ export function DesktopTable({
 }: DesktopTableProps) {
   const feltSkin = useGame((s) => s.settings.felt);
   const felt = FELT_SKINS[feltSkin];
+  // Tile-back skin's lighter stop, threaded down to opponent
+  // `FaceDownTile`s so the face-down lid colour tracks the user's
+  // setting. (`WallEdge` reads `tileBack` itself for its own lids;
+  // doing it twice is cheap and keeps the wiring local.)
+  const tileBackId = useGame((s) => s.settings.tileBack);
+  const tileBackSurface = TILE_BACK_SKINS[tileBackId].top;
   const { width: viewportWidth } = useWindowDimensions();
   const dims = dimsForViewport(viewportWidth);
   const placements = layoutFor(mySeat, dealer);
@@ -250,6 +257,7 @@ export function DesktopTable({
         drawCountdown={isNextDrawer ? (drawCountdown ?? null) : null}
         turnCountdown={isActive ? (turnCountdown ?? null) : null}
         dims={dims}
+        tileBackSurface={tileBackSurface}
       />
     );
   };
@@ -473,6 +481,9 @@ interface OpponentAreaProps {
   drawCountdown: number | null;
   turnCountdown: number | null;
   dims: DesktopDims;
+  /** Lid surface colour — the top stop of the user's tile-back skin.
+   *  Threaded through to each `FaceDownTile`. */
+  tileBackSurface: string;
 }
 
 function OpponentArea({
@@ -487,6 +498,7 @@ function OpponentArea({
   drawCountdown,
   turnCountdown,
   dims,
+  tileBackSurface,
 }: OpponentAreaProps) {
   return (
     <View
@@ -507,7 +519,13 @@ function OpponentArea({
         drawCountdown={drawCountdown}
         turnCountdown={turnCountdown}
       />
-      <FaceDownStrip count={handCount} orient={orient} dims={dims} position={placement.position} />
+      <FaceDownStrip
+        count={handCount}
+        orient={orient}
+        dims={dims}
+        position={placement.position}
+        tileBackSurface={tileBackSurface}
+      />
       {melds.length > 0 ? (
         <View style={{ alignSelf: 'center' }}>
           <MeldStrip melds={melds} tileWidth={dims.oppMeldTileW} tileHeight={dims.oppMeldTileH} />
@@ -605,9 +623,11 @@ interface FaceDownStripProps {
    *  the side strip pins to so the cream face always sits between the
    *  tile's top face and the player at the bottom seat. */
   position: Position;
+  /** Lid surface colour — threaded through to each `FaceDownTile`. */
+  tileBackSurface: string;
 }
 
-function FaceDownStrip({ count, orient, dims, position }: FaceDownStripProps) {
+function FaceDownStrip({ count, orient, dims, position, tileBackSurface }: FaceDownStripProps) {
   const W = orient === 'horizontal' ? dims.oppFaceDownH.w : dims.oppFaceDownV.w;
   const H = orient === 'horizontal' ? dims.oppFaceDownH.h : dims.oppFaceDownV.h;
   // Each opp tile sits on its short edge in the strip, back facing the
@@ -644,6 +664,7 @@ function FaceDownStrip({ count, orient, dims, position }: FaceDownStripProps) {
           height={H}
           playerFacingEdge={playerFacingEdge}
           orient={orient}
+          backSurface={tileBackSurface}
         />
       ))}
     </View>
@@ -655,18 +676,21 @@ interface FaceDownTileProps {
   height: number;
   playerFacingEdge: Position;
   orient: 'horizontal' | 'vertical';
+  /** Lid surface colour — the top stop of the user's tile-back skin. */
+  backSurface: string;
 }
 
 /**
  * One face-down opponent tile, rendered as a `WallEdge`-style top face
- * + side strip composition. The top face is the blue tile-back as seen
- * from above; the cream side strip pins to the player-facing edge to
- * suggest the tile has vertical depth (it's standing on its short
- * edge in the opp's hand, not laying flat). Two pinned bevel bands on
- * each face sell the rounded edge under the same NE-light direction
- * the wall + in-hand `Tile.tsx` already commit to.
+ * + side strip composition. The top face wears the user's tile-back
+ * skin colour (cream / blue / plum / mint); the cream side strip
+ * pins to the player-facing edge to suggest the tile has vertical
+ * depth (it's standing on its short edge in the opp's hand, not
+ * laying flat). Two pinned bevel bands on each face sell the rounded
+ * edge under the same NE-light direction the wall + in-hand
+ * `Tile.tsx` already commit to.
  */
-function FaceDownTile({ width, height, playerFacingEdge, orient }: FaceDownTileProps) {
+function FaceDownTile({ width, height, playerFacingEdge, orient, backSurface }: FaceDownTileProps) {
   const SIDE = OPP_TILE_SIDE_THICK;
   const isHorizontal = orient === 'horizontal';
   // Cell extent: top face + side strip stacked along the player-facing
@@ -695,8 +719,8 @@ function FaceDownTile({ width, height, playerFacingEdge, orient }: FaceDownTileP
           width,
           height,
           borderRadius: 2,
-          backgroundColor: COLORS.back1,
-          borderColor: COLORS.backEdge,
+          backgroundColor: backSurface,
+          borderColor: COLORS.topBorder,
           borderWidth: 0.5,
           overflow: 'hidden',
         }}

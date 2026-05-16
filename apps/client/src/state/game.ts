@@ -66,7 +66,7 @@ export interface UserSettings {
 
 const DEFAULT_SETTINGS: UserSettings = {
   felt: 'sage',
-  tileBack: 'cream',
+  tileBack: 'blue',
   animations: true,
   sound: true,
   discardHint: false,
@@ -201,16 +201,41 @@ interface ClientGameStore {
     tile: Tile;
     slotRect: { x: number; y: number; width: number; height: number } | null;
     /**
-     * `'hold'` for the popup's hold + flip phases (the tile is bouncing
-     * at the felt-centre cue position, face-down then flipping
-     * face-up). `'fly'` once the popup begins travelling toward the
-     * hand. `Hand.tsx` filters the freshly-drawn tile out of its
-     * rendered row while `phase === 'hold'` so siblings stay tight —
-     * the row only opens to receive the new tile when the popup is
-     * actually approaching, which is what the user perceives as the
-     * gap appearing "during the animation" rather than at t=0.
+     * `'hold'` for the popup's rise + flip + hold phases (face-down →
+     * flip face-up at the cue / wall position). `'fly'` once the popup
+     * begins travelling toward the hand. `Hand.tsx` filters the
+     * freshly-drawn tile out of its rendered row while `phase === 'hold'`
+     * so siblings stay tight — the row only opens to receive the new
+     * tile when the popup is actually approaching, which is what the
+     * user perceives as the gap appearing "during the animation"
+     * rather than at t=0.
      */
     phase: 'hold' | 'fly';
+    /** Wall slot the tile is rising from — snapshotted from
+     *  `wallSourceContext` at the moment of the draw so the rise
+     *  phase originates from the physical wall position even though
+     *  the wall layout has already mutated by the time the snapshot
+     *  fires. Null on mobile (no wall rendered) → the overlay falls
+     *  back to the thumb-zone cue anchor. */
+    sourceRect: { x: number; y: number; width: number; height: number } | null;
+    /** `true` for east / west wall draws — the wall tile is rendered
+     *  rotated 90°, so the overlay starts at that rotation and
+     *  reorients to portrait during the rise. */
+    sourceLandscape: boolean;
+  } | null;
+  /**
+   * Live screen rect of the wall's next-to-draw slot, kept up to date
+   * by `WallEdge` as the next-draw cursor moves around the felt. Reads
+   * are one-shot: `flashDrawAnimation` snapshots whatever's here into
+   * `drawAnimation.sourceRect/.sourceLandscape` and the field can go
+   * stale afterwards — by the time the snapshot fires the wall slot
+   * has already disappeared (the tile is now in the hand). `landscape`
+   * is true for left/right walls (where the wall tile is rendered
+   * rotated 90°).
+   */
+  wallSourceContext: {
+    rect: { x: number; y: number; width: number; height: number };
+    landscape: boolean;
   } | null;
   /**
    * Monotonic high-water mark for `drawAnimation.seq`. Persists across
@@ -240,13 +265,20 @@ interface ClientGameStore {
   ) => void;
   /**
    * Advance the draw animation's phase. `DrawTileOverlay` calls this
-   * once per animation when its `progress` value crosses `FLIP_END`,
-   * promoting the popup from `'hold'` (face-down → flip face-up at the
-   * cue position) to `'fly'` (descending into the hand). `Hand.tsx`
-   * keys its "is the freshly-drawn tile in the rendered row yet"
-   * decision on this — see `drawAnimation.phase` above.
+   * once per animation when its `progress` value crosses the fly
+   * threshold, promoting the popup from `'hold'` (rise + flip + hold
+   * face-up at the source position) to `'fly'` (descending into the
+   * hand). `Hand.tsx` keys its "is the freshly-drawn tile in the
+   * rendered row yet" decision on this — see `drawAnimation.phase`
+   * above.
    */
   setDrawAnimationPhase: (phase: 'hold' | 'fly') => void;
+  setWallSourceContext: (
+    ctx: {
+      rect: { x: number; y: number; width: number; height: number };
+      landscape: boolean;
+    } | null,
+  ) => void;
   reset: () => void;
 }
 
@@ -282,6 +314,7 @@ export const useGame = create<ClientGameStore>((set) => ({
   claimAnnouncement: null,
   drawAnimation: null,
   drawAnimationLastSeq: 0,
+  wallSourceContext: null,
   setState: (state, you) => set((prev) => ({ state, you: you ?? prev.you })),
   setLobby: (lobby) => set({ lobby }),
   setShuffling: (shuffling) => set({ shuffling }),
@@ -312,11 +345,35 @@ export const useGame = create<ClientGameStore>((set) => ({
     set((prev) => {
       const seq = prev.drawAnimationLastSeq + 1;
       return {
-        drawAnimation: { tile, seq, slotRect: null, phase: 'hold' },
+        drawAnimation: {
+          tile,
+          seq,
+          slotRect: null,
+          phase: 'hold',
+          sourceRect: prev.wallSourceContext?.rect ?? null,
+          sourceLandscape: prev.wallSourceContext?.landscape ?? false,
+        },
         drawAnimationLastSeq: seq,
       };
     }),
   clearDrawAnimation: () => set({ drawAnimation: null }),
+  setWallSourceContext: (ctx) =>
+    set((prev) => {
+      const cur = prev.wallSourceContext;
+      if (!cur && !ctx) return prev;
+      if (
+        cur &&
+        ctx &&
+        cur.landscape === ctx.landscape &&
+        cur.rect.x === ctx.rect.x &&
+        cur.rect.y === ctx.rect.y &&
+        cur.rect.width === ctx.rect.width &&
+        cur.rect.height === ctx.rect.height
+      ) {
+        return prev;
+      }
+      return { wallSourceContext: ctx };
+    }),
   setDrawAnimationSlotRect: (rect) =>
     set((prev) => {
       const a = prev.drawAnimation;
@@ -396,6 +453,7 @@ export const useGame = create<ClientGameStore>((set) => ({
       claimAnnouncement: null,
       drawAnimation: null,
       drawAnimationLastSeq: 0,
+      wallSourceContext: null,
     }),
 }));
 

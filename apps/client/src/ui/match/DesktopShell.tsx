@@ -251,8 +251,17 @@ export function DesktopShell(props: DesktopShellProps) {
           <ChatBubbles seatToPosition={seatToPosition} />
           <ClaimMissedToast />
           <ClaimAnnouncementToast />
-          <DrawTileOverlay />
         </ScrollView>
+
+        {/* DrawTileOverlay lives OUTSIDE the ScrollView so its
+            absolute-positioned wrapper anchors to the SafeAreaView at
+            viewport (0, 0), not to the ScrollView's centered content
+            area (which on wide viewports is offset by ((vw - 1320) /
+            2) px). The overlay's translateX/Y values come from
+            `measureInWindow` (viewport coords) — they have to be
+            applied in a coord system that matches, otherwise the
+            popup lands offset by the content-area's left padding. */}
+        <DrawTileOverlay />
 
         {/* ResultPanel — between-hand summary, lifted out of the
             ScrollView so it overlays the felt + chrome with a scrim

@@ -1,9 +1,11 @@
 import { type Tile as MTile, type Seat, tileId } from '@mahjong/game-logic';
-import { useEffect, useRef } from 'react';
-import { Animated, Easing, Pressable, Text, View } from 'react-native';
+import { useCallback, useEffect, useRef } from 'react';
+import { Animated, Easing, type LayoutChangeEvent, Pressable, Text, View } from 'react-native';
+import { useGame } from '../../state/game';
 import { Tile } from '../Tile';
 import { PULSE_TEMPO, usePulse } from '../animations';
 import type { Position } from './seatColor';
+import { TILE_BACK_SKINS } from './skins';
 import type { WallSlot } from './wallLayout';
 
 /**
@@ -67,13 +69,12 @@ interface WallEdgeProps {
 }
 
 const COLORS = {
-  back1: '#7fa9c1',
-  back2: '#5a8cb0',
-  backEdge: 'rgba(50,80,100,0.6)',
   // Cream/bone tone for the side face — matches the natural side of
   // an unfinished mahjong tile. Slightly desaturated so it reads as a
-  // vertical face in indirect light vs. the blue top face in direct
-  // light.
+  // vertical face in indirect light vs. the top face in direct light.
+  // Independent of the tile-back skin: a real mahjong tile's side is
+  // always the same cream regardless of which back skin's painted on
+  // the top face.
   sideFace: '#d6c290',
   sideEdge: '#8a6e3c',
   sideSeam: 'rgba(40,30,15,0.4)',
@@ -88,6 +89,10 @@ const COLORS = {
   backFar: 'rgba(0,0,0,0.18)',
   sideTop: 'rgba(255,255,255,0.16)',
   sideBottom: 'rgba(0,0,0,0.20)',
+  // Neutral darker border for the top face — derived once per render
+  // from the active tile-back skin's bottom stop so the silhouette
+  // outline tracks the user's chosen back colour.
+  topBorder: 'rgba(0,0,0,0.28)',
 };
 
 /** Side-face strip thickness for a full 2-tile stack — sized so the
@@ -117,6 +122,12 @@ export function WallEdge({
 }: WallEdgeProps) {
   const ordered = reverse ? [...slots].reverse() : slots;
   const stackDir = orient === 'row' ? 'column' : 'row';
+  // Single subscription per wall so the lid surface tracks the user's
+  // tile-back skin. Threaded down to each `SlotCell` → `TopFace` (and
+  // `NextDrawSlot`'s `TopFace`) as a prop, so the 17 leaves don't each
+  // re-subscribe to the store.
+  const tileBackId = useGame((s) => s.settings.tileBack);
+  const backSurface = TILE_BACK_SKINS[tileBackId].top;
   return (
     <View style={{ alignItems: 'center', gap: 4 }}>
       <View
@@ -142,6 +153,7 @@ export function WallEdge({
             nextDrawTile={slot.isNextDraw ? (nextDrawTile ?? null) : null}
             onPress={slot.isNextDraw ? onDrawNext : undefined}
             enableDrawTestId={enableDrawTestId === true && slot.isNextDraw}
+            backSurface={backSurface}
           />
         ))}
       </View>
@@ -178,6 +190,10 @@ interface SlotCellProps {
   nextDrawTile: MTile | null;
   onPress?: (() => void) | undefined;
   enableDrawTestId: boolean;
+  /** Lid surface colour — the top stop of the user's tile-back skin.
+   *  Threaded down from `WallEdge` so all 17 cells share a single
+   *  store subscription. */
+  backSurface: string;
 }
 
 function SlotCell({
@@ -189,6 +205,7 @@ function SlotCell({
   nextDrawTile,
   onPress,
   enableDrawTestId,
+  backSurface,
 }: SlotCellProps) {
   const isEmpty = slot.tiles === 0;
   const isFull = slot.tiles === 2;
@@ -305,57 +322,30 @@ function SlotCell({
 
   if (slot.isNextDraw && nextDrawTile) {
     return (
-      <Pressable
+      <NextDrawSlot
+        nextDrawTile={nextDrawTile}
+        containerStyle={containerStyle}
+        flexDirection={flexDirection}
+        outerPadStyle={outerPadStyle}
+        tileW={tileW}
+        tileH={tileH}
+        feltEdge={feltEdge}
+        lidEdge={lidEdge}
+        landscape={landscape}
+        stackDir={stackDir}
+        sideExtentAnim={sideExtentAnim}
+        seamOpacity={seamOpacity}
         onPress={onPress}
-        testID={enableDrawTestId ? 'wall-draw-next' : undefined}
-        style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
-      >
-        <PulseHalo width={containerStyle.width} height={containerStyle.height}>
-          <View style={{ ...containerStyle, flexDirection }}>
-            <Animated.View style={outerPadStyle} />
-            <View style={{ width: tileW, height: tileH }}>
-              <TopFace width={tileW} height={tileH} feltEdge={feltEdge} />
-              <View
-                style={{
-                  position: 'absolute',
-                  left: 0,
-                  top: 0,
-                  width: tileW,
-                  height: tileH,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  opacity: 0,
-                  pointerEvents: 'none',
-                }}
-              >
-                <View style={landscape ? { transform: [{ rotate: '90deg' }] } : undefined}>
-                  <Tile
-                    tile={nextDrawTile}
-                    flipId={`tile-${tileId(nextDrawTile)}`}
-                    faceDown
-                    width={landscape ? tileH : tileW}
-                    height={landscape ? tileW : tileH}
-                  />
-                </View>
-              </View>
-            </View>
-            <SideFace
-              stackDir={stackDir}
-              extent={sideExtentAnim}
-              long={tileLong(stackDir, tileW, tileH)}
-              seamOpacity={seamOpacity}
-              lidEdge={lidEdge}
-            />
-          </View>
-        </PulseHalo>
-      </Pressable>
+        enableDrawTestId={enableDrawTestId}
+        backSurface={backSurface}
+      />
     );
   }
 
   return (
     <View style={{ ...containerStyle, flexDirection }}>
       <Animated.View style={outerPadStyle} />
-      <TopFace width={tileW} height={tileH} feltEdge={feltEdge} />
+      <TopFace width={tileW} height={tileH} feltEdge={feltEdge} backSurface={backSurface} />
       <SideFace
         stackDir={stackDir}
         extent={sideExtentAnim}
@@ -370,6 +360,120 @@ function SlotCell({
 /** Long-axis length of the side-face strip — perpendicular to the
  *  stack direction. For column stacks the strip runs across the
  *  tile width; for row stacks it runs across the tile height. */
+interface NextDrawSlotProps {
+  nextDrawTile: MTile;
+  containerStyle: { width: number; height: number };
+  flexDirection: 'row' | 'row-reverse' | 'column' | 'column-reverse';
+  outerPadStyle: {
+    width: number | Animated.AnimatedInterpolation<number>;
+    height: number | Animated.AnimatedInterpolation<number>;
+  };
+  tileW: number;
+  tileH: number;
+  feltEdge: Position;
+  lidEdge: Position;
+  landscape: boolean;
+  stackDir: 'row' | 'column';
+  sideExtentAnim: Animated.AnimatedInterpolation<number>;
+  seamOpacity: Animated.AnimatedInterpolation<number>;
+  onPress: (() => void) | undefined;
+  enableDrawTestId: boolean;
+  backSurface: string;
+}
+
+/**
+ * Next-to-draw slot — extracted from `SlotCell` so the wall→hand draw
+ * animation has a single owner for publishing the wall's source rect.
+ * Whenever the lid lays out, `measureInWindow` captures its viewport
+ * rect and writes it (along with `landscape`, which marks left/right
+ * walls where the wall tile is rendered rotated 90°) to
+ * `useGame.wallSourceContext`. `flashDrawAnimation` snapshots that
+ * field at the moment of the draw so `DrawTileOverlay` can rise from
+ * the physical wall position even though the wall has already mutated
+ * by the time the snapshot fires.
+ */
+function NextDrawSlot({
+  nextDrawTile,
+  containerStyle,
+  flexDirection,
+  outerPadStyle,
+  tileW,
+  tileH,
+  feltEdge,
+  lidEdge,
+  landscape,
+  stackDir,
+  sideExtentAnim,
+  seamOpacity,
+  onPress,
+  enableDrawTestId,
+  backSurface,
+}: NextDrawSlotProps) {
+  const setWallSourceContext = useGame((s) => s.setWallSourceContext);
+  const lidRef = useRef<View>(null);
+  const onLayout = useCallback(
+    (_e: LayoutChangeEvent) => {
+      const node = lidRef.current;
+      if (!node) return;
+      node.measureInWindow((x, y, w, h) => {
+        setWallSourceContext({ rect: { x, y, width: w, height: h }, landscape });
+      });
+    },
+    [setWallSourceContext, landscape],
+  );
+  return (
+    <Pressable
+      onPress={onPress}
+      testID={enableDrawTestId ? 'wall-draw-next' : undefined}
+      style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
+    >
+      <PulseHalo width={containerStyle.width} height={containerStyle.height}>
+        <View style={{ ...containerStyle, flexDirection }}>
+          <Animated.View style={outerPadStyle} />
+          <View
+            ref={lidRef}
+            onLayout={onLayout}
+            collapsable={false}
+            style={{ width: tileW, height: tileH }}
+          >
+            <TopFace width={tileW} height={tileH} feltEdge={feltEdge} backSurface={backSurface} />
+            <View
+              style={{
+                position: 'absolute',
+                left: 0,
+                top: 0,
+                width: tileW,
+                height: tileH,
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: 0,
+                pointerEvents: 'none',
+              }}
+            >
+              <View style={landscape ? { transform: [{ rotate: '90deg' }] } : undefined}>
+                <Tile
+                  tile={nextDrawTile}
+                  flipId={`tile-${tileId(nextDrawTile)}`}
+                  faceDown
+                  width={landscape ? tileH : tileW}
+                  height={landscape ? tileW : tileH}
+                />
+              </View>
+            </View>
+          </View>
+          <SideFace
+            stackDir={stackDir}
+            extent={sideExtentAnim}
+            long={tileLong(stackDir, tileW, tileH)}
+            seamOpacity={seamOpacity}
+            lidEdge={lidEdge}
+          />
+        </View>
+      </PulseHalo>
+    </Pressable>
+  );
+}
+
 function tileLong(stackDir: 'row' | 'column', tileW: number, tileH: number): number {
   return stackDir === 'column' ? tileW : tileH;
 }
@@ -434,15 +538,16 @@ function TopFace({
   width,
   height,
   feltEdge,
-}: { width: number; height: number; feltEdge: Position }) {
+  backSurface,
+}: { width: number; height: number; feltEdge: Position; backSurface: string }) {
   return (
     <View
       style={{
         width,
         height,
         borderRadius: 3,
-        backgroundColor: COLORS.back1,
-        borderColor: COLORS.backEdge,
+        backgroundColor: backSurface,
+        borderColor: COLORS.topBorder,
         borderWidth: 0.5,
         overflow: 'hidden',
       }}
