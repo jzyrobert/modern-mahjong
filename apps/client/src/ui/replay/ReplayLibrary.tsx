@@ -14,6 +14,7 @@ import { LobbyWatermark } from '../menu/LobbyWatermark';
 import { WindEmblem } from '../menu/WindEmblem';
 import { SEAT_WIND_GLYPH } from '../winds';
 import { ReplayImportModal } from './ReplayImportModal';
+import { summarise, summaryLine } from './summary';
 
 /**
  * Replay library — "Trophy shelf" redesign. Each saved match shows
@@ -203,32 +204,6 @@ function Hero({
       </View>
     </View>
   );
-}
-
-function summaryLine(
-  count: number,
-  summary: { wins: number; losses: number; draws: number; streak: number },
-): string {
-  if (count === 0) return 'No replays saved yet.';
-  const matchWord = count === 1 ? 'match' : 'matches';
-  // Combine wins, losses, and draws into one comma-separated phrase.
-  // Each segment is only emitted when its count is > 0 so a player
-  // with zero draws still reads "N wins, M losses".
-  const segments: string[] = [];
-  if (summary.wins > 0) {
-    segments.push(`${summary.wins} win${summary.wins === 1 ? '' : 's'}`);
-  }
-  if (summary.losses > 0) {
-    segments.push(`${summary.losses} loss${summary.losses === 1 ? '' : 'es'}`);
-  }
-  if (summary.draws > 0) {
-    segments.push(`${summary.draws} draw${summary.draws === 1 ? '' : 's'}`);
-  }
-  const winsLossesPart = segments.length === 0 ? null : segments.join(', ');
-  const streakPart = summary.streak >= 2 ? `longest streak ${summary.streak}` : null;
-  return [`${count} saved ${matchWord}`, winsLossesPart, streakPart]
-    .filter((s): s is string => s !== null)
-    .join(' · ');
 }
 
 // ─── Auto-record ribbon ────────────────────────────────────────────
@@ -751,41 +726,6 @@ function positionMapFor(localSeat: Seat | 'spectator'): Record<Seat, Position> {
     2: POSITION_CYCLE[(2 - anchor + 4) % 4]!,
     3: POSITION_CYCLE[(3 - anchor + 4) % 4]!,
   };
-}
-
-function summarise(headers: readonly ReplayHeader[]): {
-  wins: number;
-  losses: number;
-  draws: number;
-  streak: number;
-} {
-  let wins = 0;
-  let losses = 0;
-  let draws = 0;
-  let bestStreak = 0;
-  let currentStreak = 0;
-  // headers come back from listHeaders() most-recent-first; walk in
-  // chronological order so the streak counter counts consecutive wins.
-  const chrono = [...headers].reverse();
-  for (const h of chrono) {
-    if (h.localSeat === 'spectator') continue;
-    const winner = winnerOf(h);
-    if (winner === null) {
-      // No-winner matches don't count toward wins OR losses — they
-      // also break a winning streak (a draw isn't a win), matching
-      // how most sports-style trackers handle ties.
-      draws++;
-      currentStreak = 0;
-    } else if (winner.seat === h.localSeat) {
-      wins++;
-      currentStreak++;
-      if (currentStreak > bestStreak) bestStreak = currentStreak;
-    } else {
-      losses++;
-      currentStreak = 0;
-    }
-  }
-  return { wins, losses, draws, streak: bestStreak };
 }
 
 function formatDuration(ms: number): string {

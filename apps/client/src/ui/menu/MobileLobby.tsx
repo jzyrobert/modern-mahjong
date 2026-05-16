@@ -23,7 +23,6 @@ import {
 import { startLanHostBridge, stopLanHostBridge } from '../../net/lan-host-bridge';
 import { listHeaders } from '../../replay/storage';
 import type { ReplayHeader } from '../../replay/types';
-import { winnerOf } from '../../replay/winner';
 import { useGame } from '../../state/game';
 import { LESSONS, LESSON_ORDER } from '../../state/tutorial';
 import { BrowseLobbyModal } from '../BrowseLobbyModal';
@@ -34,6 +33,7 @@ import { useIsLandscape } from '../useOrientation';
 import { LobbyPreview } from './LobbyPreview';
 import { WindEmblem } from './WindEmblem';
 import { BotIcon, BoxIcon, GlobeIcon, PlayIcon, TutorialIcon, WifiIcon } from './icons';
+import { replaySubtitleFor, summariseReplays } from './replaySubtitle';
 
 /**
  * Mobile-only lobby — replaces the legacy `<Lobby>`'s hero + 280-px
@@ -1065,41 +1065,6 @@ function ProgressDots({ done, total }: { done: number; total: number }) {
  * replay-library implementation detail; the function below is the
  * mobile-lobby's subtitle formatter only.
  */
-function summariseReplays(headers: readonly ReplayHeader[]): { wins: number; streak: number } {
-  let wins = 0;
-  let currentStreak = 0;
-  let bestStreak = 0;
-  const chrono = [...headers].reverse();
-  for (const h of chrono) {
-    if (h.localSeat === 'spectator') continue;
-    const winner = winnerOf(h);
-    // No-winner matches (every hand drawn or a tied top score) are
-    // neither a win nor a loss — they break the streak just like
-    // losses do, but they don't increment `wins`.
-    if (winner !== null && winner.seat === h.localSeat) {
-      wins++;
-      currentStreak++;
-      if (currentStreak > bestStreak) bestStreak = currentStreak;
-    } else {
-      currentStreak = 0;
-    }
-  }
-  return { wins, streak: bestStreak };
-}
-
-function replaySubtitleFor(
-  count: number,
-  wins: number,
-  streak: number,
-  isLandscape: boolean,
-): string {
-  if (count === 0) return 'No saved matches yet';
-  if (isLandscape) return `${count} saved · ${wins} wins`;
-  const parts = [`${count} saved`, `${wins} wins`];
-  if (streak >= 2) parts.push(`longest streak ${streak}`);
-  return parts.join(' · ');
-}
-
 // ─── Online connection status (carried over from Lobby.tsx) ─────────
 
 function OnlineConnectionStatus() {
