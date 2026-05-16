@@ -1,12 +1,23 @@
-import type { Wind } from '@mahjong/game-logic';
 import type { ReactNode } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { COLORS, PANEL_ON_FELT } from '../colors';
-import { WIND_GLYPH } from '../winds';
 
 interface GameStatusBarProps {
-  prevailing: Wind;
-  dealerName: string;
+  /** Wind glyph (東/南/西/北) to render in the leading circle. The
+   *  caller picks which wind to surface — active-player shells pass
+   *  the user's own seat wind so the pill mirrors the user's identity;
+   *  the spectator view passes the prevailing round wind. */
+  windGlyph: string;
+  /** Background colour of the wind circle — the user's seat colour for
+   *  active players (coral, since the user is always bottom-position),
+   *  or a neutral cream for spectators. */
+  windBg: string;
+  /** Glyph text colour. White-on-coral for the user identity; brand red
+   *  on cream for the spectator/dealer fallback. */
+  windFg: string;
+  /** Name shown next to the wind circle — the user's display name when
+   *  surfacing identity, the dealer name for spectator views. */
+  name: string;
   wallCount: number;
   isMyTurn: boolean;
   /** Whole seconds remaining until `state.turnDeadlineMs` for the
@@ -39,14 +50,18 @@ interface GameStatusBarProps {
 export const WALL_LOW_THRESHOLD = 14;
 
 /**
- * Top-of-table status pill — prevailing wind glyph, round/dealer
- * label, live wall depletion bar, and a "YOUR TURN" indicator when
- * on the move. The legacy backdrop-filter blur becomes a plain
- * semi-opaque background; expo-blur can replace it later.
+ * Top-of-table status pill — wind glyph in a seat-coloured circle, the
+ * player's name, live wall depletion bar, and a "YOUR TURN" indicator
+ * when on the move. Active-match shells fill the identity slot with the
+ * user's own seat wind + colour + display name so the pill mirrors the
+ * "you" identity; the spectator view repurposes the same slot for the
+ * prevailing round wind + dealer name.
  */
 export function GameStatusBar({
-  prevailing,
-  dealerName,
+  windGlyph,
+  windBg,
+  windFg,
+  name,
   wallCount,
   isMyTurn,
   turnCountdown = null,
@@ -81,7 +96,7 @@ export function GameStatusBar({
           width: 22,
           height: 22,
           borderRadius: 11,
-          backgroundColor: '#ecd9b8',
+          backgroundColor: windBg,
           alignItems: 'center',
           justifyContent: 'center',
         }}
@@ -91,10 +106,10 @@ export function GameStatusBar({
             fontFamily: 'Noto Serif TC',
             fontSize: 12,
             fontWeight: '700',
-            color: COLORS.red,
+            color: windFg,
           }}
         >
-          {WIND_GLYPH[prevailing]}
+          {windGlyph}
         </Text>
       </View>
       <Text
@@ -108,7 +123,7 @@ export function GameStatusBar({
         }}
         numberOfLines={1}
       >
-        {dealerName}
+        {name}
       </Text>
       <Text style={{ opacity: 0.3, color: COLORS.ink, fontSize: 10 }}>│</Text>
       <Text

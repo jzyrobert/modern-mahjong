@@ -36,7 +36,10 @@ interface PortraitShellProps {
   drawCountdown: number | null;
   turnCountdown: number | null;
   latestDiscardId: number | null;
-  dealerName: string;
+  userName: string;
+  userWindGlyph: string;
+  userWindBg: string;
+  userWindFg: string;
   drawnTileId: number | null;
   hintTileId: number | null;
   readyWaits: readonly MTile[];
@@ -79,7 +82,10 @@ export function PortraitShell({
   drawCountdown,
   turnCountdown,
   latestDiscardId,
-  dealerName,
+  userName,
+  userWindGlyph,
+  userWindBg,
+  userWindFg,
   drawnTileId,
   hintTileId,
   readyWaits,
@@ -115,8 +121,10 @@ export function PortraitShell({
       >
         <View style={{ flex: 1, minWidth: 0 }}>
           <GameStatusBar
-            prevailing={state.prevailingWind}
-            dealerName={dealerName}
+            windGlyph={userWindGlyph}
+            windBg={userWindBg}
+            windFg={userWindFg}
+            name={userName}
             wallCount={state.wall.length}
             isMyTurn={myTurn}
             turnCountdown={myTurn ? turnCountdown : null}

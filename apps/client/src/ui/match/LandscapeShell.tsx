@@ -1,4 +1,4 @@
-import type { Action, GameState, Tile as MTile, Seat, Wind } from '@mahjong/game-logic';
+import type { Action, GameState, Tile as MTile, Seat } from '@mahjong/game-logic';
 import { tileId } from '@mahjong/game-logic';
 import { type ReactNode, useMemo } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
@@ -11,7 +11,6 @@ import { Tile } from '../Tile';
 import { PrimaryButton } from '../buttons';
 import { COLORS } from '../colors';
 import { TutorialTarget } from '../tutorial/TargetRegistry';
-import { WIND_GLYPH } from '../winds';
 import { WALL_LOW_THRESHOLD } from './GameStatusBar';
 import { MeldStrip } from './MeldStrip';
 import { SeatRow, YourHandActiveHalo, YourTurnBadge } from './MobileShellShared';
@@ -72,7 +71,10 @@ interface LandscapeShellProps {
   drawCountdown: number | null;
   turnCountdown: number | null;
   latestDiscardId: number | null;
-  dealerName: string;
+  userName: string;
+  userWindGlyph: string;
+  userWindBg: string;
+  userWindFg: string;
   drawnTileId: number | null;
   hintTileId: number | null;
   readyWaits: readonly MTile[];
@@ -114,7 +116,10 @@ export function LandscapeShell({
   drawCountdown,
   turnCountdown,
   latestDiscardId,
-  dealerName,
+  userName,
+  userWindGlyph,
+  userWindBg,
+  userWindFg,
   drawnTileId,
   hintTileId,
   readyWaits,
@@ -199,7 +204,10 @@ export function LandscapeShell({
           turnCountdown={turnCountdown}
           matchCode={matchCode}
           viewers={viewers}
-          dealerName={dealerName}
+          userName={userName}
+          userWindGlyph={userWindGlyph}
+          userWindBg={userWindBg}
+          userWindFg={userWindFg}
           hasClaimOption={hasClaimOption}
           canTsumo={canTsumo}
           tsumoFaan={tsumoFaan}
@@ -320,7 +328,10 @@ interface LandscapeActionRailProps {
   turnCountdown: number | null;
   matchCode: string | null;
   viewers: number | null;
-  dealerName: string;
+  userName: string;
+  userWindGlyph: string;
+  userWindBg: string;
+  userWindFg: string;
   hasClaimOption: boolean;
   canTsumo: boolean;
   tsumoFaan: number | null;
@@ -347,7 +358,10 @@ function LandscapeActionRail({
   turnCountdown,
   matchCode,
   viewers,
-  dealerName,
+  userName,
+  userWindGlyph,
+  userWindBg,
+  userWindFg,
   hasClaimOption,
   canTsumo,
   tsumoFaan,
@@ -363,8 +377,10 @@ function LandscapeActionRail({
   return (
     <View style={{ width: 200, gap: 6 }}>
       <RailStatusCard
-        prevailing={state.prevailingWind}
-        dealerName={dealerName}
+        windGlyph={userWindGlyph}
+        windBg={userWindBg}
+        windFg={userWindFg}
+        name={userName}
         wallCount={state.wall.length}
         isMyTurn={myTurn}
         turnCountdown={myTurn ? turnCountdown : null}
@@ -422,8 +438,10 @@ const RAIL_SECTION_LABEL_STYLE = {
 };
 
 interface RailStatusCardProps {
-  prevailing: Wind;
-  dealerName: string;
+  windGlyph: string;
+  windBg: string;
+  windFg: string;
+  name: string;
   wallCount: number;
   isMyTurn: boolean;
   turnCountdown: number | null;
@@ -454,13 +472,15 @@ const STATUS_LOW_WALL_RED = '#b2503b';
 
 /**
  * Landscape-rail variant of `GameStatusBar`. Renders the same data
- * (prevailing wind, dealer name, wall count, your-turn dot, optional
- * #CODE / viewers, turn countdown) but in the shared rail card chrome
- * with the ☰ menu pill inline on the right edge.
+ * (wind glyph + name in a seat-coloured pill, wall count, your-turn
+ * dot, optional #CODE / viewers, turn countdown) but in the shared
+ * rail card chrome with the ☰ menu pill inline on the right edge.
  */
 function RailStatusCard({
-  prevailing,
-  dealerName,
+  windGlyph,
+  windBg,
+  windFg,
+  name,
   wallCount,
   isMyTurn,
   turnCountdown,
@@ -484,7 +504,7 @@ function RailStatusCard({
             width: 22,
             height: 22,
             borderRadius: 11,
-            backgroundColor: '#ecd9b8',
+            backgroundColor: windBg,
             alignItems: 'center',
             justifyContent: 'center',
           }}
@@ -494,10 +514,10 @@ function RailStatusCard({
               fontFamily: 'Noto Serif TC',
               fontSize: 12,
               fontWeight: '700',
-              color: COLORS.red,
+              color: windFg,
             }}
           >
-            {WIND_GLYPH[prevailing]}
+            {windGlyph}
           </Text>
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
@@ -505,7 +525,7 @@ function RailStatusCard({
             style={{ fontSize: 11, fontWeight: '800', color: COLORS.ink, letterSpacing: 0.3 }}
             numberOfLines={1}
           >
-            {dealerName}
+            {name}
           </Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 1 }}>
             <Text
