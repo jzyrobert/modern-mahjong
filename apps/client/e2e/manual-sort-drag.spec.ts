@@ -107,8 +107,8 @@ test('switching from SUIT to MANUAL keeps the visible order', async ({ page }) =
   await dismissOpeningRolls(page);
   await expect(page.getByText(/\d+ tiles/)).toBeVisible({ timeout: 10_000 });
 
-  // Capture the SUIT-sorted hand. SUIT is the default for users with
-  // autoSort on (the pristine settings default), so no toggle needed.
+  // Capture the SUIT-sorted hand. SUIT is the default initial sort
+  // mode for every match, so no toggle needed.
   const suitOrder = await readHandSignatures(page);
   expect(suitOrder.length).toBeGreaterThan(2);
 

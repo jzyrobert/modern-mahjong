@@ -138,7 +138,7 @@ function PlayerRow({
               style={{
                 fontSize: 9,
                 fontWeight: '900',
-                color: COLORS.green,
+                color: COLORS.success,
                 letterSpacing: 0.6,
               }}
             >

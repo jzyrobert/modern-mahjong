@@ -81,7 +81,9 @@ export function ScoringBreakdownModal({
               }}
             >
               <Text style={{ fontSize: 14, fontWeight: '900', color: COLORS.ink }}>Total</Text>
-              <Text style={{ fontSize: 14, fontWeight: '900', color: COLORS.green }}>+{faan}</Text>
+              <Text style={{ fontSize: 14, fontWeight: '900', color: COLORS.success }}>
+                +{faan}
+              </Text>
             </View>
           </>
         )}
@@ -112,7 +114,9 @@ function BreakdownRow({ entry }: { entry: FaanBreakdown }) {
         <Text style={{ fontSize: 11, color: COLORS.ink3, fontWeight: '600', flex: 1 }}>
           {entry.english}
         </Text>
-        <Text style={{ fontSize: 13, fontWeight: '900', color: COLORS.green }}>+{entry.faan}</Text>
+        <Text style={{ fontSize: 13, fontWeight: '900', color: COLORS.success }}>
+          +{entry.faan}
+        </Text>
       </View>
       {tiles.length > 0 ? (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 3 }}>

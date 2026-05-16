@@ -178,7 +178,7 @@ function DiscoveryList({ hosts, onPick, currentUrl }: DiscoveryListProps) {
               paddingHorizontal: 12,
               borderRadius: 10,
               backgroundColor: pressed ? COLORS.creamLow : COLORS.cream,
-              borderColor: selected ? COLORS.green : COLORS.hairline,
+              borderColor: selected ? COLORS.success : COLORS.hairline,
               borderWidth: selected ? 2 : 1,
             })}
           >
@@ -187,7 +187,7 @@ function DiscoveryList({ hosts, onPick, currentUrl }: DiscoveryListProps) {
                 width: 8,
                 height: 8,
                 borderRadius: 4,
-                backgroundColor: COLORS.green,
+                backgroundColor: COLORS.success,
               }}
             />
             <View style={{ flex: 1 }}>

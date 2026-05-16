@@ -1,7 +1,7 @@
 import type { Tile as MTile } from '@mahjong/game-logic';
 import { Animated, Dimensions, Pressable, View } from 'react-native';
 import { useGame } from '../../state/game';
-import { Tile } from '../Tile';
+import { TILE_CORNER_RADIUS_RATIO, Tile } from '../Tile';
 import { PULSE_TEMPO, usePulse } from '../animations';
 import { DRAW_ANCHOR_Y_RATIO } from './DrawTileOverlay';
 
@@ -53,7 +53,7 @@ export function MobileDrawCue({ tile, onPress }: MobileDrawCueProps) {
 
   const haloScale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1.05, 1.35] });
   const haloOpacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.85, 0.35] });
-  const radius = TILE_W * 0.18;
+  const radius = TILE_W * TILE_CORNER_RADIUS_RATIO;
 
   // Same anchor the overlay uses — viewport centre on X, in the
   // bottom-third thumb zone on Y (`DRAW_ANCHOR_Y_RATIO`). Both

@@ -222,7 +222,7 @@ function AutoRecordRibbon({
           width: 34,
           height: 18,
           borderRadius: 9,
-          backgroundColor: enabled ? COLORS.green : COLORS.creamLow,
+          backgroundColor: enabled ? COLORS.success : COLORS.creamLow,
           borderColor: COLORS.hairline,
           borderWidth: 1,
           padding: 1,

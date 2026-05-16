@@ -96,7 +96,6 @@ test.describe('tutorial: basics', () => {
         JSON.stringify({
           felt: 'sage',
           tileBack: 'cream',
-          autoSort: true,
           animations: true,
           sound: false,
           discardHint: false,
@@ -212,7 +211,6 @@ test.describe('tutorial: basics', () => {
         JSON.stringify({
           felt: 'sage',
           tileBack: 'cream',
-          autoSort: true,
           animations: true,
           sound: false,
           discardHint: false,
@@ -240,7 +238,6 @@ test.describe('tutorial: basics', () => {
         JSON.stringify({
           felt: 'sage',
           tileBack: 'cream',
-          autoSort: true,
           animations: true,
           sound: false,
           discardHint: false,
@@ -269,7 +266,6 @@ test.describe('tutorial: basics', () => {
         JSON.stringify({
           felt: 'sage',
           tileBack: 'cream',
-          autoSort: true,
           animations: true,
           sound: false,
           discardHint: false,

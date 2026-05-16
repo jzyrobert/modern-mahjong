@@ -55,9 +55,6 @@ export const COLORS = {
    *  text on the pill bg without needing a separate `#2d8645`
    *  literal. */
   success: '#3aa066',
-  /** @deprecated Alias for `success` — kept for one release while
-   *  consumers migrate. */
-  green: '#3aa066',
   /** Soft gold — used for win badges, dealer ribbons, and "about to
    *  draw" cues. */
   gold: '#d8a85a',

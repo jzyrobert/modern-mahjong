@@ -120,7 +120,13 @@ export function DrawTileOverlay() {
       if (!finished) return;
       clear();
     });
-    return () => progress.removeListener(listenerId);
+    return () => {
+      // Explicit cancellation: stop the timing before tearing the listener.
+      // The next effect run's `progress.setValue(0)` would also cancel as a
+      // side-effect, but spelling it out keeps the cleanup robust to refactors.
+      progress.stopAnimation();
+      progress.removeListener(listenerId);
+    };
   }, [tile, seq, animsEnabled, clear, progress, setPhase]);
 
   if (tile === null || !animsEnabled) return null;
