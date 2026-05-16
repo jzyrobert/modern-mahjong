@@ -29,8 +29,7 @@ Live tracker for queued and out-of-scope work. The full design lives in [`docs/P
 
 ### Code-review follow-ups (from the #377–#390 batch review)
 
-- [ ] E2E for the discard-sort survives a real component remount during match play (the #390 unit test reads the store directly with no component lifecycle). Needs a scenario that forces `SharedDiscardPool` to unmount + remount mid-match — viewport breakpoint flip is the most reachable trigger.
-- [ ] Extract `HOST_PORT` + `onHostLan` + `OnlineConnectionStatus` + `LessonRow` out of `MobileLobby.tsx` / `Lobby.tsx` once the `Lobby.tsx` retirement lands (the in-file comment at `MobileLobby.tsx:108` flags this as temporary). Premature dedup ahead of the planned deletion would just be churn.
+- [ ] Extract `HOST_PORT` + `onHostLan` + `OnlineConnectionStatus` + `LessonRow` (small visual delta — 18 vs 22 px circle) out of `MobileLobby.tsx` / `Lobby.tsx` into a shared module. The original deferral cited "retirement of `Lobby.tsx`" as the blocker, but the investigation found that `Lobby.tsx` is the active phone-vs-desktop dispatcher (not legacy) and its inline `DesktopLobby` is the tablet/desktop surface — there is no retirement plan. A `useLanHost(transport)` hook + a shared `LessonRow` with a `compact` prop is the cleanest shape.
 
 ### Future (post-MVP)
 

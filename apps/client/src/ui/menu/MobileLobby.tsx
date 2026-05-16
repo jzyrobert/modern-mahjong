@@ -106,11 +106,16 @@ export function MobileLobby({ isLandscape }: MobileLobbyProps) {
 
   const canHostLan = Platform.OS !== 'web' && isLanServerAvailable();
 
-  // Host handler — identical to `Lobby.tsx`. Kept inline since
-  // duplicating it is cheaper than extracting a shared module that
-  // both lobbies pull from (the legacy one is going away once this
-  // ships everywhere, but until then the redesign and the desktop
-  // path can diverge cleanly).
+  // Host handler — identical to the `DesktopLobby` copy in
+  // `Lobby.tsx`. `Lobby.tsx` itself stays as the phone-vs-desktop
+  // dispatcher (it forwards phone viewports here and renders the
+  // tablet/desktop layout inline as `DesktopLobby`) — there is no
+  // active plan to retire it, so the two copies will keep co-existing
+  // until someone extracts a `useLanHost(transport)` hook for both
+  // paths. The duplication is small enough (this handler +
+  // `HOST_PORT` + `OnlineConnectionStatus` + `LessonRow`) that it
+  // hasn't become load-bearing — a bug fix here should be mirrored
+  // into `Lobby.tsx` until the extraction lands.
   const onHostLan = async () => {
     if (hostStatus === 'starting') return;
     setHostStatus('starting');
