@@ -3,7 +3,7 @@ import { DEFAULT_RULES, SEATS } from '@mahjong/game-logic';
 import { BOT_LABELS, type BotKind, type PublicPlayer, type RuleConfig } from '@mahjong/protocol';
 import * as Clipboard from 'expo-clipboard';
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { JoinInfo } from '../../net/join-info';
 import { type LobbyState, useGame } from '../../state/game';
@@ -14,6 +14,15 @@ import { COLORS, SUCCESS_PILL } from '../colors';
 import { LanInviteCard } from '../menu/LanInviteCard';
 import { LobbyPreview } from '../menu/LobbyPreview';
 import { SEAT_WIND_GLYPH } from '../winds';
+import { LobbyAccordion } from './LobbyAccordion';
+
+// Phone-class viewport gate, kept in sync with `Match.tsx`'s shell
+// switch so the lobby + the live match agree on what counts as
+// "phone". Either dimension falling short routes here — catches both
+// portrait (393×852, height >= 600 but width < 768) and landscape
+// (852×393, width >= 768 but height < 600).
+const DESKTOP_WIDTH = 768;
+const DESKTOP_HEIGHT = 600;
 
 interface LobbyViewProps {
   rules: RuleConfig;
@@ -40,7 +49,20 @@ interface LobbyViewProps {
  * mounts this component, so the hook order stays stable from `Match`'s
  * perspective.
  */
-export function LobbyView({
+export function LobbyView(props: LobbyViewProps) {
+  // Run the host-side prefs-apply effect once per mount regardless of
+  // which layout renders below. Tracking it here means the dispatcher
+  // is the single source of truth: a phone-vs-desktop flip during
+  // mount (e.g. orientation change just as the lobby first appears)
+  // doesn't fire a second setRules dispatch.
+  useLobbyPrefsApply(props.isHost, props.rules, props.onAction);
+  const { width, height } = useWindowDimensions();
+  const isPhone = width < DESKTOP_WIDTH || height < DESKTOP_HEIGHT;
+  if (isPhone) return <LobbyAccordion {...props} />;
+  return <DesktopLobbyView {...props} />;
+}
+
+function DesktopLobbyView({
   rules,
   lobby,
   seat,
@@ -74,53 +96,6 @@ export function LobbyView({
     const t = setTimeout(() => setJoinUrlCopied(false), 1500);
     return () => clearTimeout(t);
   }, [joinUrlCopied]);
-
-  // Apply the user's persisted lobby rule preferences once per mount,
-  // host-only. The server / solo transport always boots with
-  // `DEFAULT_RULES`, so the first time the host lands in the lobby the
-  // user's last-chosen faanMin + turnTimeoutMs need to be re-applied
-  // via `setRules`. After that, any manual edit in the RulePanel both
-  // updates the engine and writes back to `lobbyRulePrefs` (see
-  // `RulePanel.set`), so a reload-then-remount re-reads the same prefs
-  // and the `applied` ref makes the dispatch a no-op when state already
-  // matches.
-  //
-  // `looksFresh` gates the dispatch: only apply prefs when state.rules
-  // still reads as the engine defaults. If anything (a test override
-  // like `__MAHJONG_TEST_TURN_TIMEOUT_MS__`, a host's manual setRules
-  // earlier in this match, a reload-restored non-default state) has
-  // already moved state.rules off DEFAULT, leave it alone — otherwise
-  // an e2e that explicitly arms a 800ms timer would get stomped back
-  // to 0 the moment the lobby mounts, and the test loses its hatch.
-  const lobbyPrefs = useGame((s) => s.settings.lobbyRulePrefs);
-  const prefsApplied = useRef(false);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally fire-once on mount as host. Including `rules` / `lobbyPrefs` here would re-dispatch every time the user edits a rule in RulePanel, which both updates the engine state and writes back to lobbyPrefs — that would race with the manual edit and overwrite it.
-  useEffect(() => {
-    if (!isHost || prefsApplied.current) return;
-    prefsApplied.current = true;
-    // Read live rules from the store at effect-run time rather than
-    // from the captured-at-render `rules` prop. The window between
-    // React commit and the effect callback is small but real — a
-    // remote `delta` carrying `setRules` (online / LAN) can land in
-    // it. Reading live state here resolves `looksFresh` against the
-    // post-delta value so we don't stomp a just-arrived rule change
-    // with the host's persisted prefs. Falls back to the prop when
-    // the engine state isn't populated yet (mid-bootstrap).
-    const liveRules = useGame.getState().state?.rules ?? rules;
-    const looksFresh =
-      liveRules.faanMin === DEFAULT_RULES.faanMin &&
-      liveRules.turnTimeoutMs === DEFAULT_RULES.turnTimeoutMs;
-    if (!looksFresh) return;
-    const drift =
-      liveRules.faanMin !== lobbyPrefs.faanMin ||
-      liveRules.turnTimeoutMs !== lobbyPrefs.turnTimeoutMs;
-    if (drift) {
-      onAction({
-        t: 'setRules',
-        rules: { faanMin: lobbyPrefs.faanMin, turnTimeoutMs: lobbyPrefs.turnTimeoutMs },
-      });
-    }
-  }, [isHost]);
 
   const onCopyHeaderJoinUrl = async () => {
     if (!headerJoinUrl) return;
@@ -249,6 +224,62 @@ export function LobbyView({
       </SafeAreaView>
     </View>
   );
+}
+
+/**
+ * Apply the user's persisted lobby rule preferences once per mount,
+ * host-only. The server / solo transport always boots with
+ * `DEFAULT_RULES`, so the first time the host lands in the lobby the
+ * user's last-chosen `faanMin` + `turnTimeoutMs` need to be re-applied
+ * via `setRules`. After that, any manual edit in `RulePanel` /
+ * `LobbyAccordion`'s rule chips both updates the engine and writes
+ * back to `lobbyRulePrefs`, so a reload-then-remount re-reads the
+ * same prefs and the `applied` ref makes the dispatch a no-op when
+ * state already matches.
+ *
+ * `looksFresh` gates the dispatch: only apply prefs when `state.rules`
+ * still reads as the engine defaults. If anything (a test override
+ * like `__MAHJONG_TEST_TURN_TIMEOUT_MS__`, a host's manual `setRules`
+ * earlier in this match, a reload-restored non-default state) has
+ * already moved `state.rules` off DEFAULT, leave it alone — otherwise
+ * an e2e that explicitly arms a 800 ms timer would get stomped back
+ * to 0 the moment the lobby mounts, and the test loses its hatch.
+ *
+ * Hoisted out of the original `LobbyView` body so the phone / desktop
+ * dispatch in `LobbyView` can run it exactly once before deciding
+ * which layout to render. Re-running it inside each branch would
+ * dispatch `setRules` twice on an orientation flip while the lobby
+ * was mounting.
+ */
+function useLobbyPrefsApply(
+  isHost: boolean,
+  rules: RuleConfig,
+  onAction: (a: Action) => void,
+): void {
+  const lobbyPrefs = useGame((s) => s.settings.lobbyRulePrefs);
+  const prefsApplied = useRef(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally fire-once on mount as host. Including `rules` / `lobbyPrefs` here would re-dispatch every time the user edits a rule in the rule editor (which both updates the engine state and writes back to lobbyPrefs) — that would race with the manual edit and overwrite it.
+  useEffect(() => {
+    if (!isHost || prefsApplied.current) return;
+    prefsApplied.current = true;
+    // Read live rules from the store at effect-run time rather than
+    // the captured-at-render `rules` prop — see the call site above
+    // for the live-vs-captured rationale.
+    const liveRules = useGame.getState().state?.rules ?? rules;
+    const looksFresh =
+      liveRules.faanMin === DEFAULT_RULES.faanMin &&
+      liveRules.turnTimeoutMs === DEFAULT_RULES.turnTimeoutMs;
+    if (!looksFresh) return;
+    const drift =
+      liveRules.faanMin !== lobbyPrefs.faanMin ||
+      liveRules.turnTimeoutMs !== lobbyPrefs.turnTimeoutMs;
+    if (drift) {
+      onAction({
+        t: 'setRules',
+        rules: { faanMin: lobbyPrefs.faanMin, turnTimeoutMs: lobbyPrefs.turnTimeoutMs },
+      });
+    }
+  }, [isHost]);
 }
 
 /** Mirrors the server's `startHand` SEATS gate. */
