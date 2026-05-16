@@ -1,4 +1,5 @@
 import type { Tile as MTile } from '@mahjong/game-logic';
+import { useEffect, useRef } from 'react';
 import { Animated, Dimensions, Pressable, View } from 'react-native';
 import { useGame } from '../../state/game';
 import { TILE_CORNER_RADIUS_RATIO, Tile } from '../Tile';
@@ -49,6 +50,18 @@ export function MobileDrawCue({ tile, onPress }: MobileDrawCueProps) {
   // and start a fresh one on show.
   const pulse = usePulse({ enabled: visible, durationMs: PULSE_TEMPO.urgent });
 
+  // Latch the tap so a fast double-tap during the engine round-trip
+  // (between the user's first tap and the `drawAnimation` becoming
+  // non-null) doesn't submit a second `draw` action — solo's engine
+  // would reject it with a PHASE error and other transports vary.
+  // The cue is unmounted (`!visible`) once the round-trip lands, so
+  // the local ref is reset by the effect below whenever the cue
+  // becomes visible again for the next user turn.
+  const tapInFlight = useRef(false);
+  useEffect(() => {
+    if (visible) tapInFlight.current = false;
+  }, [visible]);
+
   if (!visible) return null;
 
   const haloScale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1.05, 1.35] });
@@ -80,7 +93,11 @@ export function MobileDrawCue({ tile, onPress }: MobileDrawCueProps) {
       }}
     >
       <Pressable
-        onPress={onPress}
+        onPress={() => {
+          if (tapInFlight.current) return;
+          tapInFlight.current = true;
+          onPress();
+        }}
         testID="wall-draw-next"
         accessibilityLabel="Draw next tile"
         accessibilityRole="button"
