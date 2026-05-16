@@ -204,6 +204,15 @@ function SecondsInput({ label, disabled, ms, min, max, onCommit }: SecondsInputP
           onBlur={commit}
           editable={!disabled}
           keyboardType="numeric"
+          // The Text label sits as a sibling, not a `labelFor` parent —
+          // screen readers and Playwright's `getByLabel` wouldn't pick
+          // it up without an explicit `accessibilityLabel`. Without
+          // this, an agent driving the rule panel has to fall back to
+          // positional selectors (`nth(0)`) which break when the
+          // panel grows new fields. The label gets the unit suffix
+          // ("seconds") to disambiguate from any future ms-input.
+          accessibilityLabel={`${label} (seconds)`}
+          testID="turn-timeout-seconds"
           style={{
             width: 64,
             paddingVertical: 6,
