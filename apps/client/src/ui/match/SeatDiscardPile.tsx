@@ -79,6 +79,20 @@ export function SeatDiscardPile({
       {tiles.map((t, i) => {
         const id = tileId(t);
         const isLatest = latestId === id;
+        // Every rotated pile (top opp + both side opps) flips the side
+        // strip in tile space so the pseudo-3D thickness lands on the
+        // OUTER-of-the-rotation edge — i.e., toward the felt centre
+        // for the side opps and on the screen-bottom edge for the top
+        // opp. Without this:
+        //   - Top opp (180°): strip points UP (away from the player).
+        //   - Left opp (90°): strip points LEFT (away from the felt
+        //                     centre, toward the opp's own seat).
+        //   - Right opp (-90°): strip points RIGHT (same, mirrored).
+        // The bottom seat (0°) keeps `'bottom'` so the player's own
+        // discards still cast their thickness toward the player. The
+        // rect/face/bevel re-anchor + the gradient direction are
+        // handled inside `Tile` — see `TileProps.shadowEdge`.
+        const shadowEdge: 'bottom' | 'top' = rotate === 0 ? 'bottom' : 'top';
         // Vertical piles: the wrapper takes the rotated bounds and the
         // unrotated Tile sits absolutely inside. Without this the
         // wrapper would consume tileH of column-flex stride for a tile
@@ -112,6 +126,7 @@ export function SeatDiscardPile({
                   elevation="discard"
                   width={tileW}
                   height={tileH}
+                  shadowEdge={shadowEdge}
                 />
               </View>
             </View>
@@ -126,7 +141,14 @@ export function SeatDiscardPile({
               ...(isLatest && DISCARD_HALO_STYLE),
             }}
           >
-            <Tile tile={t} flipId={`tile-${id}`} elevation="discard" width={tileW} height={tileH} />
+            <Tile
+              tile={t}
+              flipId={`tile-${id}`}
+              elevation="discard"
+              width={tileW}
+              height={tileH}
+              shadowEdge={shadowEdge}
+            />
           </View>
         );
       })}

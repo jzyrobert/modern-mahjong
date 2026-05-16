@@ -484,14 +484,23 @@ function tileLong(stackDir: 'row' | 'column', tileW: number, tileH: number): num
  * absolute-positioned so the halo doesn't add to the wrapper's layout
  * box; the fixed-size cell would otherwise overflow into adjacent
  * cells when the stack fills it.
+ *
+ * The pulsing fill grows out by `HALO_PAD` from the cell edge and then
+ * scales another `HALO_MAX_SCALE`× on top — both turned up vs. the
+ * baseline so the cue reads at desktop viewing distance (the wall
+ * tiles themselves are only ~18×26 px on a 1280 viewport; a tight 1.18×
+ * pulse on something that small barely registers across the felt).
  */
+const HALO_PAD = 5;
+const HALO_MAX_SCALE = 1.6;
+
 function PulseHalo({
   width,
   height,
   children,
 }: { width: number; height: number; children: React.ReactNode }) {
   const t = usePulse({ durationMs: PULSE_TEMPO.urgent });
-  const scale = t.interpolate({ inputRange: [0, 1], outputRange: [1, 1.18] });
+  const scale = t.interpolate({ inputRange: [0, 1], outputRange: [1, HALO_MAX_SCALE] });
   const opacity = t.interpolate({ inputRange: [0, 1], outputRange: [0.6, 0] });
   return (
     <View>
@@ -511,11 +520,11 @@ function PulseHalo({
       <Animated.View
         style={{
           position: 'absolute',
-          top: 0,
-          left: 0,
-          width,
-          height,
-          borderRadius: 4,
+          top: -HALO_PAD,
+          left: -HALO_PAD,
+          width: width + HALO_PAD * 2,
+          height: height + HALO_PAD * 2,
+          borderRadius: 4 + HALO_PAD,
           backgroundColor: COLORS.drawHalo,
           opacity,
           transform: [{ scale }],
