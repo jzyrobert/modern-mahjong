@@ -91,20 +91,17 @@ export function LobbyAccordion(props: LobbyAccordionProps) {
   return isLandscape ? <LandscapeBody {...props} /> : <PortraitBody {...props} />;
 }
 
-// ─── Portrait layout ────────────────────────────────────────────────
-
-function PortraitBody({
-  rules,
-  lobby,
-  seat: mySeat,
-  isHost,
-  matchCode,
-  joinInfo,
-  onAction,
-  onLeave,
-  onSeatBot,
-  onUnseatBot,
-}: LobbyAccordionProps) {
+/**
+ * Per-body derived state shared between `PortraitBody` and
+ * `LandscapeBody`. Each body renders a structurally different layout
+ * but consumes the same predicates and counts; hoisting the
+ * derivation here keeps the two layouts in lockstep and makes the
+ * "what's the same" / "what's different" boundary visible to a
+ * reader. Only one body renders at a time so the hook is called at
+ * most once per `LobbyAccordion` render.
+ */
+function useLobbyAccordionState(props: LobbyAccordionProps) {
+  const { rules, lobby, matchCode, isHost, joinInfo, onAction } = props;
   const isSolo = matchCode === 'SOLO';
   const isLanHost = !!(isHost && joinInfo?.kind === 'lan' && joinInfo.hostUrl && matchCode);
   const players = lobby?.players ?? [];
@@ -113,8 +110,48 @@ function PortraitBody({
   const botCount = players.filter((p) => p.isBot).length;
   const timerSecs = rules.turnTimeoutMs === 0 ? null : Math.round(rules.turnTimeoutMs / 1000);
   const set = useRuleSetter(onAction);
-
   const { isOpen, toggleSection } = usePersistedOpenSections();
+  return {
+    isSolo,
+    isLanHost,
+    players,
+    allFilled,
+    humanCount,
+    botCount,
+    timerSecs,
+    set,
+    isOpen,
+    toggleSection,
+  };
+}
+
+// ─── Portrait layout ────────────────────────────────────────────────
+
+function PortraitBody(props: LobbyAccordionProps) {
+  const {
+    rules,
+    lobby,
+    seat: mySeat,
+    isHost,
+    matchCode,
+    joinInfo,
+    onAction,
+    onLeave,
+    onSeatBot,
+    onUnseatBot,
+  } = props;
+  const {
+    isSolo,
+    isLanHost,
+    players,
+    allFilled,
+    humanCount,
+    botCount,
+    timerSecs,
+    set,
+    isOpen,
+    toggleSection,
+  } = useLobbyAccordionState(props);
 
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.cream }}>
@@ -192,29 +229,32 @@ function PortraitBody({
 
 // ─── Landscape layout ───────────────────────────────────────────────
 
-function LandscapeBody({
-  rules,
-  lobby,
-  seat: mySeat,
-  isHost,
-  matchCode,
-  joinInfo,
-  onAction,
-  onLeave,
-  onSeatBot,
-  onUnseatBot,
-}: LobbyAccordionProps) {
+function LandscapeBody(props: LobbyAccordionProps) {
+  const {
+    rules,
+    lobby,
+    seat: mySeat,
+    isHost,
+    matchCode,
+    joinInfo,
+    onAction,
+    onLeave,
+    onSeatBot,
+    onUnseatBot,
+  } = props;
   const { width } = useWindowDimensions();
-  const isSolo = matchCode === 'SOLO';
-  const isLanHost = !!(isHost && joinInfo?.kind === 'lan' && joinInfo.hostUrl && matchCode);
-  const players = lobby?.players ?? [];
-  const allFilled = isAllSeatsFilled(lobby);
-  const humanCount = players.filter((p) => !p.isBot && p.connected).length;
-  const botCount = players.filter((p) => p.isBot).length;
-  const timerSecs = rules.turnTimeoutMs === 0 ? null : Math.round(rules.turnTimeoutMs / 1000);
-  const set = useRuleSetter(onAction);
-
-  const { isOpen, toggleSection } = usePersistedOpenSections();
+  const {
+    isSolo,
+    isLanHost,
+    players,
+    allFilled,
+    humanCount,
+    botCount,
+    timerSecs,
+    set,
+    isOpen,
+    toggleSection,
+  } = useLobbyAccordionState(props);
 
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.cream }}>
