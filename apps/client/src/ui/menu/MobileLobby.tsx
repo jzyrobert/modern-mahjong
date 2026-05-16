@@ -1,5 +1,4 @@
 import { useTransport } from '@/src/net/transport-context';
-import { SEATS, type Seat } from '@mahjong/game-logic';
 import { BOT_LABELS, generateMatchCode } from '@mahjong/protocol';
 import { useRouter } from 'expo-router';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
@@ -24,6 +23,7 @@ import {
 import { startLanHostBridge, stopLanHostBridge } from '../../net/lan-host-bridge';
 import { listHeaders } from '../../replay/storage';
 import type { ReplayHeader } from '../../replay/types';
+import { winnerOf } from '../../replay/winner';
 import { useGame } from '../../state/game';
 import { LESSONS, LESSON_ORDER } from '../../state/tutorial';
 import { BrowseLobbyModal } from '../BrowseLobbyModal';
@@ -1073,8 +1073,11 @@ function summariseReplays(headers: readonly ReplayHeader[]): { wins: number; str
   const chrono = [...headers].reverse();
   for (const h of chrono) {
     if (h.localSeat === 'spectator') continue;
-    const winnerSeat = winnerSeatOf(h);
-    if (winnerSeat === h.localSeat) {
+    const winner = winnerOf(h);
+    // No-winner matches (every hand drawn or a tied top score) are
+    // neither a win nor a loss — they break the streak just like
+    // losses do, but they don't increment `wins`.
+    if (winner !== null && winner.seat === h.localSeat) {
       wins++;
       currentStreak++;
       if (currentStreak > bestStreak) bestStreak = currentStreak;
@@ -1083,24 +1086,6 @@ function summariseReplays(headers: readonly ReplayHeader[]): { wins: number; str
     }
   }
   return { wins, streak: bestStreak };
-}
-
-/** Seat with the highest final score for a replay header. Mirrors
- *  the local `winnerOf` in `ReplayLibrary.tsx`; the two surfaces
- *  agreeing matters more than DRY here — replays don't change
- *  often, and a shared module would couple a menu screen to the
- *  library's implementation. */
-function winnerSeatOf(header: ReplayHeader): Seat {
-  let bestSeat: Seat = 0;
-  let bestScore = header.finalScoreboard[0] ?? 0;
-  for (const seat of SEATS) {
-    const score = header.finalScoreboard[seat] ?? 0;
-    if (score > bestScore) {
-      bestSeat = seat;
-      bestScore = score;
-    }
-  }
-  return bestSeat;
 }
 
 function replaySubtitleFor(
