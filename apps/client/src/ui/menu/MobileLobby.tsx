@@ -472,9 +472,26 @@ function AppBar({ name, onChangeName }: AppBarProps) {
   // underlying input. Without this the pill was a decorative no-op.
   const nameInputRef = useRef<TextInput>(null);
   const [nameFocused, setNameFocused] = useState(false);
-  const togglePillPress = () => {
-    if (nameFocused) nameInputRef.current?.blur();
-    else nameInputRef.current?.focus();
+  // On web the pill renders as a real `<button>` (via
+  // `accessibilityRole`), and mousedown on a button shifts focus to
+  // it as a browser default — which blurs the TextInput before
+  // `onPress` ever fires. Without this guard, a tap on DONE blurs the
+  // input via the focus shift, then `onPress` reads the post-blur
+  // state and re-focuses, making the pill look stuck on DONE.
+  // `onMouseDown` preventDefault is the canonical fix: it suppresses
+  // the focus shift so `onPress` sees the input's true focus state.
+  // RN-Web forwards `onMouseDown` to the rendered DOM element; native
+  // builds ignore the prop.
+  const webBlurGuard =
+    Platform.OS === 'web'
+      ? { onMouseDown: (e: { preventDefault?: () => void }) => e?.preventDefault?.() }
+      : {};
+  const onPillPress = () => {
+    if (nameInputRef.current?.isFocused()) {
+      nameInputRef.current.blur();
+    } else {
+      nameInputRef.current?.focus();
+    }
   };
   return (
     <View
@@ -537,7 +554,8 @@ function AppBar({ name, onChangeName }: AppBarProps) {
           }}
         />
         <Pressable
-          onPress={togglePillPress}
+          {...(webBlurGuard as object)}
+          onPress={onPillPress}
           accessibilityRole="button"
           accessibilityLabel={nameFocused ? 'Done editing display name' : 'Edit display name'}
           style={({ pressed }) => ({
