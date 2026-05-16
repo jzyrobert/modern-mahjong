@@ -7,12 +7,20 @@ import { useGame } from '../../state/game';
 import { Scoreboard } from '../Scoreboard';
 import { GhostButton } from '../buttons';
 import { COLORS } from '../colors';
+import { WIND_GLYPH } from '../winds';
 import { GameStatusBar } from './GameStatusBar';
 import { OppHandStrip } from './OppHandStrip';
 import { SharedDiscardPool } from './SharedDiscardPool';
 import type { Position } from './seatColor';
 import { type SeatPlacement, layoutFor } from './seatPlacement';
 import { FELT_SKINS } from './skins';
+
+/** Spectator's identity slot — neutral cream + brand-red glyph, since
+ *  the watcher has no seat colour of their own. Surfaces the prevailing
+ *  round wind + dealer name (the "front of the table" cues a spectator
+ *  uses to orient themselves). */
+const SPECTATOR_WIND_BG = '#ecd9b8';
+const SPECTATOR_WIND_FG = COLORS.red;
 
 interface SpectatorViewProps {
   /** Engine state at the latest delta. */
@@ -81,8 +89,10 @@ export function SpectatorView({ state, lobby, matchCode, onLeave }: SpectatorVie
         >
           <View style={{ flex: 1, minWidth: 0 }}>
             <GameStatusBar
-              prevailing={state.prevailingWind}
-              dealerName={dealerName}
+              windGlyph={WIND_GLYPH[state.prevailingWind]}
+              windBg={SPECTATOR_WIND_BG}
+              windFg={SPECTATOR_WIND_FG}
+              name={dealerName}
               wallCount={state.wall.length}
               isMyTurn={false}
               trailing={<WatchingBadge code={showCode ? matchCode : null} viewers={viewers} />}

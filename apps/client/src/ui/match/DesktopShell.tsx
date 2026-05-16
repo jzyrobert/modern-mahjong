@@ -53,7 +53,10 @@ interface DesktopShellProps {
    *  outside `phase: 'turn'`. */
   turnCountdown: number | null;
   latestDiscardId: number | null;
-  dealerName: string;
+  userName: string;
+  userWindGlyph: string;
+  userWindBg: string;
+  userWindFg: string;
   drawnTileId: number | null;
   /** When non-null, the user's hand highlights the matching `tileId`
    *  as the heuristic ranker's recommended discard. */
@@ -115,7 +118,10 @@ export function DesktopShell(props: DesktopShellProps) {
     drawCountdown,
     turnCountdown,
     latestDiscardId,
-    dealerName,
+    userName,
+    userWindGlyph,
+    userWindBg,
+    userWindFg,
     drawnTileId,
     hintTileId,
     readyWaits,
@@ -194,8 +200,10 @@ export function DesktopShell(props: DesktopShellProps) {
             }}
           >
             <GameStatusBar
-              prevailing={state.prevailingWind}
-              dealerName={dealerName}
+              windGlyph={userWindGlyph}
+              windBg={userWindBg}
+              windFg={userWindFg}
+              name={userName}
               wallCount={state.wall.length}
               isMyTurn={myTurn}
               onPress={() => setPlayersOpen(true)}

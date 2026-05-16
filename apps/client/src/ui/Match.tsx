@@ -9,6 +9,7 @@ import {
   rankDiscards,
   sameFace,
   scoreHand,
+  seatWindFor,
   tileId,
   waitTiles,
 } from '@mahjong/game-logic';
@@ -25,10 +26,11 @@ import { LobbyView } from './match/LobbyView';
 import { MobileShell } from './match/MobileShell';
 import type { SortMode } from './match/SortPicker';
 import { SpectatorView } from './match/SpectatorView';
-import type { Position } from './match/seatColor';
+import { type Position, SEAT_COLOR } from './match/seatColor';
 import { type SeatPlacement, layoutFor } from './match/seatPlacement';
 import { FELT_SKINS } from './match/skins';
 import { useDeadlineCrossed, useSecondsUntil } from './match/useClaimCue';
+import { WIND_GLYPH } from './winds';
 
 /**
  * Viewport thresholds above which the Match screen renders the
@@ -415,7 +417,17 @@ export function Match() {
     }
   };
 
-  const dealerName = nameForSeat(lobby, state.dealer);
+  // Identity rendered in the GameStatusBar pill — the user's own
+  // display name, seat-relative wind glyph, and seat colour. The user
+  // is always rendered at the bottom-position seat slot, so the
+  // accent colour is fixed to `SEAT_COLOR.bottom`; the glyph rotates
+  // with dealer changes (`seatWindFor` returns the user's wind
+  // relative to whoever currently sits East). White-on-coral keeps
+  // the glyph legible against the user's accent.
+  const userName = nameForSeat(lobby, seat);
+  const userWindGlyph = WIND_GLYPH[seatWindFor(state.dealer, seat)];
+  const userWindBg = SEAT_COLOR.bottom;
+  const userWindFg = 'white';
 
   const sharedProps = {
     state,
@@ -434,7 +446,10 @@ export function Match() {
     drawCountdown,
     turnCountdown,
     latestDiscardId,
-    dealerName,
+    userName,
+    userWindGlyph,
+    userWindBg,
+    userWindFg,
     drawnTileId,
     hintTileId,
     readyWaits,

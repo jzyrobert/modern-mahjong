@@ -48,7 +48,13 @@ interface MobileShellProps {
    *  `null` when the rule is off, in solo, or outside `phase: 'turn'`. */
   turnCountdown: number | null;
   latestDiscardId: number | null;
-  dealerName: string;
+  /** Identity surfaced in the GameStatusBar pill — pre-computed in
+   *  `Match.tsx` (user's own name + seat wind glyph + accent colour);
+   *  the shells just forward it through. */
+  userName: string;
+  userWindGlyph: string;
+  userWindBg: string;
+  userWindFg: string;
   drawnTileId: number | null;
   /** When non-null, `Hand` highlights the matching `tileId` as the
    *  heuristic ranker's recommended discard. */
@@ -124,7 +130,10 @@ export function MobileShell(props: MobileShellProps) {
     drawCountdown,
     turnCountdown,
     latestDiscardId,
-    dealerName,
+    userName,
+    userWindGlyph,
+    userWindBg,
+    userWindFg,
     drawnTileId,
     hintTileId,
     readyWaits,
@@ -172,7 +181,10 @@ export function MobileShell(props: MobileShellProps) {
             drawCountdown={drawCountdown}
             turnCountdown={turnCountdown}
             latestDiscardId={latestDiscardId}
-            dealerName={dealerName}
+            userName={userName}
+            userWindGlyph={userWindGlyph}
+            userWindBg={userWindBg}
+            userWindFg={userWindFg}
             drawnTileId={drawnTileId}
             hintTileId={hintTileId}
             readyWaits={readyWaits}
@@ -202,7 +214,10 @@ export function MobileShell(props: MobileShellProps) {
             drawCountdown={drawCountdown}
             turnCountdown={turnCountdown}
             latestDiscardId={latestDiscardId}
-            dealerName={dealerName}
+            userName={userName}
+            userWindGlyph={userWindGlyph}
+            userWindBg={userWindBg}
+            userWindFg={userWindFg}
             drawnTileId={drawnTileId}
             hintTileId={hintTileId}
             readyWaits={readyWaits}
