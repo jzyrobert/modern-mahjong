@@ -85,13 +85,42 @@ const DEFAULT_SETTINGS: UserSettings = {
 
 const SETTINGS_STORAGE_KEY = 'mj.settings.v1';
 
-function loadSettings(): UserSettings {
+/**
+ * Read the persisted UserSettings out of localStorage, with each
+ * sub-field falling back to `DEFAULT_SETTINGS` when missing.
+ *
+ * The merge is intentionally one-level-deep for `lobbyRulePrefs`: a
+ * persisted blob whose `lobbyRulePrefs` is partial (e.g. only
+ * `faanMin` because a future migration added a third field, or a
+ * hand-edited devtools value) would otherwise replace the whole
+ * sub-object via the top-level spread, leaving sub-fields `undefined`
+ * even though the type declares them required. The downstream
+ * `setRules` dispatch in `LobbyView` would then send `undefined` into
+ * the engine as a typed `number`, breaking turn-deadline scheduling.
+ *
+ * Other top-level sub-objects (`botSkills`, `tutorialsCompleted`) are
+ * arrays and don't suffer the same partial-shape risk — a missing
+ * array key still inherits the default via the top-level spread; a
+ * persisted array fully replaces the default by design (the user's
+ * recorded bot picks should win over the seed mix).
+ *
+ * Exported so unit tests can pin migration behaviour directly without
+ * round-tripping through the zustand factory.
+ */
+export function loadSettings(): UserSettings {
   if (typeof localStorage === 'undefined') return DEFAULT_SETTINGS;
   try {
     const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
     if (!raw) return DEFAULT_SETTINGS;
     const parsed = JSON.parse(raw) as Partial<UserSettings>;
-    return { ...DEFAULT_SETTINGS, ...parsed };
+    return {
+      ...DEFAULT_SETTINGS,
+      ...parsed,
+      lobbyRulePrefs: {
+        ...DEFAULT_SETTINGS.lobbyRulePrefs,
+        ...parsed.lobbyRulePrefs,
+      },
+    };
   } catch {
     return DEFAULT_SETTINGS;
   }
