@@ -1,7 +1,7 @@
 import type { GameState, Seat } from '@mahjong/game-logic';
 import { SEATS, tileId } from '@mahjong/game-logic';
-import { useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
+import { useGame } from '../../state/game';
 import { Tile } from '../Tile';
 import { DISCARD_HALO_STYLE } from './SeatDiscardPile';
 import { type Position, SEAT_COLOR } from './seatColor';
@@ -43,13 +43,21 @@ const TILE_H = 32;
  * to keep the row centred. Without this, every discard nudged every
  * prior tile by half a column, which made it impossible to track which
  * tile was the live claim target.
+ *
+ * `sortMode` is read from zustand, not local `useState`. The pool used
+ * to lose the user's `'player'` pick whenever its host `View` got torn
+ * down and remounted (orientation flips and a few transient layout
+ * states inside `PortraitShell` could do this on an opponent's
+ * discard); keeping the toggle in the store means a remount picks the
+ * value back up instead of snapping to `'order'`.
  */
 export function SharedDiscardPool({
   discardOrder,
   seatToPosition,
   latestId,
 }: SharedDiscardPoolProps) {
-  const [sortMode, setSortMode] = useState<SortMode>('order');
+  const sortMode = useGame((s) => s.discardSortMode);
+  const setSortMode = useGame((s) => s.setDiscardSortMode);
 
   // Pre-discard we still render the header + an empty body so the
   // mobile shell's flex middle stays the same height before vs. after
