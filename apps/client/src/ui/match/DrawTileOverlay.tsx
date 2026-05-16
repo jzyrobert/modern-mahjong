@@ -88,46 +88,73 @@ export function DrawTileOverlay() {
   const animsEnabled = useGame((s) => s.settings.animations);
   const lastSeq = useRef(0);
   const progress = useRef(new Animated.Value(0)).current;
+  // JS-side mirror of `progress`. The listener keeps it in sync each
+  // native frame so a slotRect-driven re-run can resume from the live
+  // value without an async `stopAnimation(callback)` round-trip.
+  const progressJs = useRef(0);
 
+  // `slotRect` is in the effect's deps so the popup re-targets when
+  // `HandTile.measureInWindow` writes the landing slot mid-flight
+  // (which usually happens just after `setPhase('fly')` mounts the
+  // `HandTile` for the drawn tile). On those re-runs we DON'T reset
+  // `progress` to 0 — the cleanup `stopAnimation()` left the native
+  // value where the user could see it, so we resume from there with
+  // the new render's freshly-baked interpolators (which now close
+  // over the live `slotRect`). Without this re-target the fly phase
+  // would land at the `slotRect:null` fallback geometry every time.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: slotRect isn't read inside the effect body, but its identity drives the re-run that re-bakes the fly-phase interpolators on the native side. Dropping it would re-introduce the stale-target bug.
   useEffect(() => {
     if (tile === null || seq === 0) return;
-    if (seq === lastSeq.current) return;
-    lastSeq.current = seq;
+    const isNewDraw = seq !== lastSeq.current;
+
     if (!animsEnabled) {
-      clear();
+      if (isNewDraw) {
+        lastSeq.current = seq;
+        clear();
+      }
       return;
     }
-    progress.setValue(0);
+
+    if (isNewDraw) {
+      lastSeq.current = seq;
+      progressJs.current = 0;
+      progress.setValue(0);
+    }
 
     // Native-driver listener promotes phase 'hold' → 'fly' at the
     // start of the fly phase so `Hand.tsx` opens the gap as the popup
     // begins descending. The face-up swap is handled by interpolating
-    // opacity below (no listener-vs-setTimeout race to manage).
+    // opacity below (no listener-vs-setTimeout race to manage). Also
+    // mirrors the value into `progressJs` so a future re-run can read
+    // it synchronously.
     let didStartFly = false;
     const listenerId = progress.addListener(({ value }) => {
+      progressJs.current = value;
       if (!didStartFly && value >= HOLD_END) {
         didStartFly = true;
         setPhase('fly');
       }
     });
+    const remainingMs = Math.max(0, (1 - progressJs.current) * TOTAL_MS);
     Animated.timing(progress, {
       toValue: 1,
-      duration: TOTAL_MS,
+      duration: remainingMs,
       easing: Easing.linear,
       useNativeDriver: true,
     }).start(({ finished }) => {
-      progress.removeListener(listenerId);
       if (!finished) return;
       clear();
     });
     return () => {
       // Explicit cancellation: stop the timing before tearing the listener.
-      // The next effect run's `progress.setValue(0)` would also cancel as a
-      // side-effect, but spelling it out keeps the cleanup robust to refactors.
+      // The native side freezes `progress` at its current value (mirrored
+      // into `progressJs` by the listener on the prior frame) so the next
+      // effect run — typically a slotRect-driven re-target — can pick up
+      // from there rather than snapping back to 0.
       progress.stopAnimation();
       progress.removeListener(listenerId);
     };
-  }, [tile, seq, animsEnabled, clear, progress, setPhase]);
+  }, [tile, seq, slotRect, animsEnabled, clear, progress, setPhase]);
 
   if (tile === null || !animsEnabled) return null;
 
