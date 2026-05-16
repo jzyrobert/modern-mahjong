@@ -49,7 +49,11 @@ async function buildSampleReplay(page: import('@playwright/test').Page): Promise
     timeout: 10_000,
   });
 
-  await page.getByRole('button', { name: 'Open library' }).click();
+  // Phone-class viewports (412×906 portrait, 906×412 landscape)
+  // route to `MobileLobby`, which renders Replays as a tappable
+  // SecondaryRow ("Replays") instead of an "Open library" button.
+  // Desktop keeps the button; this OR locator works at both sizes.
+  await page.getByRole('button', { name: /^(Open library|Replays)$/ }).click();
   await expect(page.getByRole('heading', { name: 'Replays' })).toBeVisible();
   await page.getByText('SOLO', { exact: true }).first().click();
   await expect(page.getByLabel('Replay timeline')).toBeVisible();

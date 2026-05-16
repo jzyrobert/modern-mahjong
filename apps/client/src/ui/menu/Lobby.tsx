@@ -23,6 +23,7 @@ import { COLORS } from '../colors';
 import { LobbyHeader } from './LobbyHeader';
 import { LobbyPreview } from './LobbyPreview';
 import { LobbyWatermark } from './LobbyWatermark';
+import { MobileLobby, useIsPhoneViewport } from './MobileLobby';
 import { ModeCard, ModeGrid } from './ModeCard';
 import { ScatteredTiles } from './ScatteredTiles';
 import { BotIcon, BoxIcon, GlobeIcon, PlayIcon, TutorialIcon, WifiIcon } from './icons';
@@ -52,6 +53,17 @@ const HOST_PORT = 7777;
  * pre-game waiting room.
  */
 export function Lobby() {
+  // Phone-class viewports (either dimension ≤ 480 px) get the
+  // denser app-bar-led `<MobileLobby>` redesign. Tablets and
+  // desktops fall through to the legacy hero + ModeGrid layout.
+  // Classification is made by `useIsPhoneViewport()` so the
+  // breakpoint logic lives next to the consumer.
+  const { isPhone, isLandscape } = useIsPhoneViewport();
+  if (isPhone) return <MobileLobby isLandscape={isLandscape} />;
+  return <DesktopLobby />;
+}
+
+function DesktopLobby() {
   const router = useRouter();
   const transport = useTransport();
   const lobby = useGame((s) => s.lobby);
