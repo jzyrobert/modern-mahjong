@@ -413,6 +413,7 @@ describe('loadSettings (persisted-shape migration)', () => {
       replayQuota: 50,
       tutorialsCompleted: [],
       lobbyRulePrefs: { faanMin: 0, turnTimeoutMs: 0 },
+      lobbyAccordionOpen: ['bots'],
     });
   });
 });
