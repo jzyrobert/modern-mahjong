@@ -8,6 +8,12 @@ import { DRAW_ANCHOR_Y_RATIO } from './DrawTileOverlay';
 
 const TILE_W = 64;
 const TILE_H = 88;
+/** Max time the tap latch holds before auto-clearing. Picks up after a
+ *  partyserver drop / network blip so the draw button isn't dead for
+ *  the rest of the turn — generous enough that a normal engine
+ *  round-trip (sub-second) lands first and the latch is reset via the
+ *  `visible` flip without this fallback ever firing. */
+const TAP_LATCH_TIMEOUT_MS = 5000;
 
 interface MobileDrawCueProps {
   /** Next tile off the wall, rendered face-down inside the cue. When
@@ -57,10 +63,23 @@ export function MobileDrawCue({ tile, onPress }: MobileDrawCueProps) {
   // The cue is unmounted (`!visible`) once the round-trip lands, so
   // the local ref is reset by the effect below whenever the cue
   // becomes visible again for the next user turn.
+  //
+  // Safety valve: if the round-trip never lands (LAN server drop,
+  // partyserver restart mid-draw), the cue would stay visible
+  // indefinitely with the latch held — silently dead button, no
+  // recovery short of leaving the match. Clear the latch after a
+  // generous timeout so the user can retry if the server ever comes
+  // back. Solo's engine is synchronous so the timeout never fires there.
   const tapInFlight = useRef(false);
+  const tapResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (visible) tapInFlight.current = false;
   }, [visible]);
+  useEffect(() => {
+    return () => {
+      if (tapResetTimer.current !== null) clearTimeout(tapResetTimer.current);
+    };
+  }, []);
 
   if (!visible) return null;
 
@@ -96,6 +115,11 @@ export function MobileDrawCue({ tile, onPress }: MobileDrawCueProps) {
         onPress={() => {
           if (tapInFlight.current) return;
           tapInFlight.current = true;
+          if (tapResetTimer.current !== null) clearTimeout(tapResetTimer.current);
+          tapResetTimer.current = setTimeout(() => {
+            tapInFlight.current = false;
+            tapResetTimer.current = null;
+          }, TAP_LATCH_TIMEOUT_MS);
           onPress();
         }}
         testID="wall-draw-next"

@@ -25,6 +25,7 @@ import { type LobbyState, useGame } from '../../state/game';
 import { randomSeed } from '../../util';
 import { GhostButton, PrimaryButton } from '../buttons';
 import { COLORS, SUCCESS_PILL } from '../colors';
+import { useIsLandscape } from '../useOrientation';
 import { SEAT_WIND_GLYPH } from '../winds';
 
 /**
@@ -81,8 +82,12 @@ interface LobbyAccordionProps {
 }
 
 export function LobbyAccordion(props: LobbyAccordionProps) {
-  const { width, height } = useWindowDimensions();
-  const isLandscape = width > height;
+  // `useIsLandscape` reads `matchMedia('(orientation: landscape)')` on
+  // web so the Android soft keyboard's `innerHeight` shrink doesn't
+  // flip the orientation guard mid-tap and unmount the focused subtree
+  // — see the hook's comment for the wider rationale and PR #389's
+  // matching fix in `MobileLobby`.
+  const isLandscape = useIsLandscape();
   return isLandscape ? <LandscapeBody {...props} /> : <PortraitBody {...props} />;
 }
 
@@ -591,9 +596,12 @@ interface BotsBodyProps {
 function BotsBody({ players, mySeat, isSolo, onSeat, onUnseat, compact }: BotsBodyProps) {
   // Same predicate the legacy `LobbySeatControls` uses: my seat is
   // never editable, human-connected seats stay frozen so the host
-  // can't kick a guest, but bot or open seats are tunable.
+  // can't kick a guest, but bot or open seats are tunable. The
+  // predicate is typed as a type guard so the post-filter rows can
+  // address `p.seat` as `Seat` without a downstream cast.
   const editable = players.filter(
-    (p) => p.seat !== null && p.seat !== mySeat && (p.isBot || !p.connected),
+    (p): p is PublicPlayer & { seat: Seat } =>
+      p.seat !== null && p.seat !== mySeat && (p.isBot || !p.connected),
   );
   if (editable.length === 0) {
     return <Text style={{ fontSize: 11, color: COLORS.ink3 }}>No bot seats.</Text>;
@@ -601,7 +609,7 @@ function BotsBody({ players, mySeat, isSolo, onSeat, onUnseat, compact }: BotsBo
   return (
     <View style={{ gap: compact ? 6 : 8 }}>
       {editable.map((p) => {
-        const seat = p.seat as Seat;
+        const seat = p.seat;
         return (
           <View
             key={seat}
@@ -1107,17 +1115,23 @@ function usePersistedOpenSections(): {
  *  host's choice persists across matches (same effect the legacy
  *  `RulePanel` had — without this the lobby's mount-time
  *  pref-apply effect would have nothing to re-apply on the next
- *  match). */
+ *  match).
+ *
+ *  Reads `lobbyRulePrefs` live via `useGame.getState()` inside the
+ *  returned setter rather than capturing the render-time selector
+ *  value. Two same-tick chip taps (e.g. faanMin then timer) would
+ *  otherwise spread onto the same stale snapshot and the second write
+ *  would clobber the first. Mirrors the fix `RulePanel` got in #384. */
 function useRuleSetter(onAction: (a: Action) => void) {
   const setSettings = useGame((s) => s.setSettings);
-  const lobbyPrefs = useGame((s) => s.settings.lobbyRulePrefs);
   return (patch: Partial<RuleConfig>) => {
     onAction({ t: 'setRules', rules: patch });
-    const prefsPatch: Partial<typeof lobbyPrefs> = {};
+    const livePrefs = useGame.getState().settings.lobbyRulePrefs;
+    const prefsPatch: Partial<typeof livePrefs> = {};
     if (patch.faanMin !== undefined) prefsPatch.faanMin = patch.faanMin;
     if (patch.turnTimeoutMs !== undefined) prefsPatch.turnTimeoutMs = patch.turnTimeoutMs;
     if (Object.keys(prefsPatch).length > 0) {
-      setSettings({ lobbyRulePrefs: { ...lobbyPrefs, ...prefsPatch } });
+      setSettings({ lobbyRulePrefs: { ...livePrefs, ...prefsPatch } });
     }
   };
 }
