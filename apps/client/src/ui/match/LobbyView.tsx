@@ -256,27 +256,29 @@ function useLobbyPrefsApply(
   rules: RuleConfig,
   onAction: (a: Action) => void,
 ): void {
-  const lobbyPrefs = useGame((s) => s.settings.lobbyRulePrefs);
   const prefsApplied = useRef(false);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally fire-once on mount as host. Including `rules` / `lobbyPrefs` here would re-dispatch every time the user edits a rule in the rule editor (which both updates the engine state and writes back to lobbyPrefs) — that would race with the manual edit and overwrite it.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally fire-once on mount as host. Including `rules` here would re-dispatch every time the user edits a rule in the rule editor (which both updates the engine state and writes back to lobbyPrefs) — that would race with the manual edit and overwrite it. `lobbyPrefs` is read live inside the effect for the same reason.
   useEffect(() => {
     if (!isHost || prefsApplied.current) return;
     prefsApplied.current = true;
-    // Read live rules from the store at effect-run time rather than
-    // the captured-at-render `rules` prop — see the call site above
-    // for the live-vs-captured rationale.
+    // Read both `rules` and `lobbyPrefs` live from the store at
+    // effect-run time rather than the captured-at-render values. A
+    // render between the host gaining `isHost` and this effect running
+    // could otherwise miss a freshly-written pref or compare against
+    // stale engine rules.
     const liveRules = useGame.getState().state?.rules ?? rules;
+    const livePrefs = useGame.getState().settings.lobbyRulePrefs;
     const looksFresh =
       liveRules.faanMin === DEFAULT_RULES.faanMin &&
       liveRules.turnTimeoutMs === DEFAULT_RULES.turnTimeoutMs;
     if (!looksFresh) return;
     const drift =
-      liveRules.faanMin !== lobbyPrefs.faanMin ||
-      liveRules.turnTimeoutMs !== lobbyPrefs.turnTimeoutMs;
+      liveRules.faanMin !== livePrefs.faanMin ||
+      liveRules.turnTimeoutMs !== livePrefs.turnTimeoutMs;
     if (drift) {
       onAction({
         t: 'setRules',
-        rules: { faanMin: lobbyPrefs.faanMin, turnTimeoutMs: lobbyPrefs.turnTimeoutMs },
+        rules: { faanMin: livePrefs.faanMin, turnTimeoutMs: livePrefs.turnTimeoutMs },
       });
     }
   }, [isHost]);

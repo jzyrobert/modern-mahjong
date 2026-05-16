@@ -275,6 +275,73 @@ commit. Note also that Playwright `page.goto('/')` is a hard reload that
 wipes in-memory state; for regressions that depend on root-mounted
 components surviving a soft nav, drive the in-app nav path instead.
 
+### `useRef` dedup guards have the same remount-reset trap
+
+A `useRef(initialValue)` re-runs its initialiser on every mount, same as
+`useState`. When a ref is used as a dedupe guard against a monotonic
+counter on the store (e.g. `lastSeq` in `ClaimMissedToast` /
+`ClaimAnnouncementToast`), a hard-coded `0` seed will treat any
+already-fired event as fresh after a remount and re-fire the toast.
+Seed from the live store value at construction:
+
+```ts
+// Good — survives a remount mid-match without re-firing.
+const lastSeq = useRef(announcement?.seq ?? -1);
+```
+
+Use a sentinel that can't alias a real seq (the store starts at 1, so
+`?? 0` is fine in practice but `?? -1` documents the intent). PR #390
+fixed `ClaimAnnouncementToast` after a multiplayer game showed the
+PENG toast popping up on every move once one claim had fired.
+
+## Live-read from `useGame.getState()` inside callbacks that read-modify-write
+
+When a callback reads a store slice, applies a patch, and writes it back,
+do not close over the render-time selector value — read live inside the
+callback:
+
+```ts
+// Bad — two same-tick chip taps clobber each other.
+const lobbyPrefs = useGame((s) => s.settings.lobbyRulePrefs);
+return (patch) => setSettings({ lobbyRulePrefs: { ...lobbyPrefs, ...patch } });
+
+// Good — second tap merges onto the first's persisted value.
+return (patch) => {
+  const livePrefs = useGame.getState().settings.lobbyRulePrefs;
+  setSettings({ lobbyRulePrefs: { ...livePrefs, ...patch } });
+};
+```
+
+The render-time variant looks correct in isolation, but two callback
+calls fired in the same React batch each see the same pre-batch
+snapshot — the second write silently drops the first. Lives are fixed
+in `RulePanel` (PR #384) and `LobbyAccordion.useRuleSetter` (follow-up
+to #384's review). Applies to *any* read-modify-write pattern against a
+store slice: settings, lobby prefs, accordion-open sections,
+hand-local UI state that's been lifted. Selectors are still the right
+choice for plain *reads* (rendered values); the live-read rule is
+specifically about the write path.
+
+## Orientation: use `matchMedia`, not `width > height`
+
+Deriving `isLandscape` from `useWindowDimensions().width > height` on
+web is a soft-keyboard hazard. Android Chrome shrinks
+`window.innerHeight` when the soft keyboard opens, which can flip the
+comparison mid-tap on phone-class viewports. Any subtree conditionally
+rendered on that boolean unmounts — taking a focused `TextInput` (and
+the keyboard) with it.
+
+Use the shared `useIsLandscape` hook in
+`apps/client/src/ui/useOrientation.ts` instead, which reads
+`matchMedia('(orientation: landscape)')` on web and falls back to
+`width > height` on native (where `useWindowDimensions` reflects the
+stable layout viewport and matchMedia isn't available). PR #389 hit
+this in `MobileLobby` (the home lobby) and the follow-up extended it
+to `LobbyAccordion` (the in-match waiting room). The same rule applies
+to any *other* dimension-derived boolean that gates which subtree
+mounts — phone-vs-tablet width gates can flip the same way if the
+short edge is near the breakpoint and the keyboard opens.
+
 ## Animation primitives
 
 - The `FlipBag` context (`apps/client/src/ui/FlipBag.tsx`) does most of

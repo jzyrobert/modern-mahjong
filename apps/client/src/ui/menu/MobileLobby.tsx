@@ -30,6 +30,7 @@ import { BrowseLobbyModal } from '../BrowseLobbyModal';
 import { JoinLanModal } from '../JoinLanModal';
 import { Modal } from '../Modal';
 import { COLORS as SHARED_COLORS } from '../colors';
+import { useIsLandscape } from '../useOrientation';
 import { LobbyPreview } from './LobbyPreview';
 import { WindEmblem } from './WindEmblem';
 import { BotIcon, BoxIcon, GlobeIcon, PlayIcon, TutorialIcon, WifiIcon } from './icons';
@@ -482,10 +483,8 @@ function AppBar({ name, onChangeName }: AppBarProps) {
   // the focus shift so `onPress` sees the input's true focus state.
   // RN-Web forwards `onMouseDown` to the rendered DOM element; native
   // builds ignore the prop.
-  const webBlurGuard =
-    Platform.OS === 'web'
-      ? { onMouseDown: (e: { preventDefault?: () => void }) => e?.preventDefault?.() }
-      : {};
+  const webBlurGuard: { onMouseDown?: (e: { preventDefault?: () => void }) => void } =
+    Platform.OS === 'web' ? { onMouseDown: (e) => e?.preventDefault?.() } : {};
   const onPillPress = () => {
     if (nameInputRef.current?.isFocused()) {
       nameInputRef.current.blur();
@@ -554,7 +553,7 @@ function AppBar({ name, onChangeName }: AppBarProps) {
           }}
         />
         <Pressable
-          {...(webBlurGuard as object)}
+          {...webBlurGuard}
           onPress={onPillPress}
           accessibilityRole="button"
           accessibilityLabel={nameFocused ? 'Done editing display name' : 'Edit display name'}
@@ -1137,38 +1136,16 @@ function OnlineConnectionStatus() {
  * short=393) phones; tablets and desktops fall to the legacy
  * `<Lobby>` layout.
  *
- * `isLandscape` on web reads `matchMedia('(orientation: landscape)')`
- * rather than `width > height` because Android Chrome shrinks
- * `window.innerHeight` when the soft keyboard opens — on small phones
- * that flips a dimension-based check mid-tap, causing the
- * portrait/landscape conditional in `<MobileLobby>` to swap subtrees
- * and unmount the focused match-code input before the user can type.
- * The media query stays pinned to the device's physical orientation
- * regardless of the keyboard. Native targets keep the dimension check
- * since `useWindowDimensions` reflects the (stable) layout viewport
- * there and matchMedia isn't available outside RN-Web.
+ * `isLandscape` comes from the shared `useIsLandscape` hook so the
+ * orientation classification stays consistent with `LobbyAccordion`'s
+ * portrait/landscape body split — see that hook's comment for the
+ * soft-keyboard rationale.
  *
  * Hook lives here so the dispatch site in `Lobby.tsx` stays a single
  * import — the viewport classification is a presentational concern.
  */
 export function useIsPhoneViewport(): { isPhone: boolean; isLandscape: boolean } {
   const { width, height } = useWindowDimensions();
-  const [webLandscape, setWebLandscape] = useState<boolean>(() => readWebLandscape());
-  useEffect(() => {
-    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
-    const mq = window.matchMedia('(orientation: landscape)');
-    setWebLandscape(mq.matches);
-    const onChange = () => setWebLandscape(mq.matches);
-    mq.addEventListener('change', onChange);
-    return () => mq.removeEventListener('change', onChange);
-  }, []);
-  return {
-    isPhone: Math.min(width, height) <= 480,
-    isLandscape: Platform.OS === 'web' ? webLandscape : width > height,
-  };
-}
-
-function readWebLandscape(): boolean {
-  if (Platform.OS !== 'web' || typeof window === 'undefined') return false;
-  return window.matchMedia('(orientation: landscape)').matches;
+  const isLandscape = useIsLandscape();
+  return { isPhone: Math.min(width, height) <= 480, isLandscape };
 }

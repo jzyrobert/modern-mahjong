@@ -27,6 +27,13 @@ Live tracker for queued and out-of-scope work. The full design lives in [`docs/P
 
 ## Open
 
+### Code-review follow-ups (from the #377–#390 batch review)
+
+- [ ] Unit tests for `summarise()` / `summaryLine()` in `apps/client/src/ui/replay/ReplayLibrary.tsx` and `summariseReplays()` / `replaySubtitleFor()` in `apps/client/src/ui/menu/MobileLobby.tsx`. Both consume `winnerOf`; the draw / streak branches are pure-function-testable and currently uncovered.
+- [ ] E2E for the discard-sort survives a real component remount during match play (the #390 unit test reads the store directly with no component lifecycle).
+- [ ] Unit test for the `ClaimAnnouncementToast` lastSeq mount seeding (mount with a non-null pre-existing announcement, assert no re-flash).
+- [ ] Dedup pass: hoist shared derived state out of `LobbyAccordion`'s `PortraitBody` / `LandscapeBody` (currently they redeclare the same seven selectors), and extract `HOST_PORT` + `onHostLan` + `OnlineConnectionStatus` + `LessonRow` out of `MobileLobby.tsx` / `Lobby.tsx` once the Lobby.tsx retirement lands (the in-file comment at `MobileLobby.tsx:108` flags this as temporary).
+
 ### Future (post-MVP)
 
 - Maestro / UIAutomator UI driving so the Android lifecycle smoke can drive a match into mid-hand, background it, and assert the snapshot really did restore (the current smoke only catches crash-on-resume, not state loss).
