@@ -98,12 +98,22 @@ export function LobbyView({
   useEffect(() => {
     if (!isHost || prefsApplied.current) return;
     prefsApplied.current = true;
+    // Read live rules from the store at effect-run time rather than
+    // from the captured-at-render `rules` prop. The window between
+    // React commit and the effect callback is small but real — a
+    // remote `delta` carrying `setRules` (online / LAN) can land in
+    // it. Reading live state here resolves `looksFresh` against the
+    // post-delta value so we don't stomp a just-arrived rule change
+    // with the host's persisted prefs. Falls back to the prop when
+    // the engine state isn't populated yet (mid-bootstrap).
+    const liveRules = useGame.getState().state?.rules ?? rules;
     const looksFresh =
-      rules.faanMin === DEFAULT_RULES.faanMin &&
-      rules.turnTimeoutMs === DEFAULT_RULES.turnTimeoutMs;
+      liveRules.faanMin === DEFAULT_RULES.faanMin &&
+      liveRules.turnTimeoutMs === DEFAULT_RULES.turnTimeoutMs;
     if (!looksFresh) return;
     const drift =
-      rules.faanMin !== lobbyPrefs.faanMin || rules.turnTimeoutMs !== lobbyPrefs.turnTimeoutMs;
+      liveRules.faanMin !== lobbyPrefs.faanMin ||
+      liveRules.turnTimeoutMs !== lobbyPrefs.turnTimeoutMs;
     if (drift) {
       onAction({
         t: 'setRules',
