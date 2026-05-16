@@ -6,6 +6,7 @@ import { playDiceRoll, playTileClick } from '../sound';
 import { useGame } from '../state/game';
 import { saveSoloSnapshot } from '../state/solo-persist';
 import { useTutorial } from '../state/tutorial';
+import { detectAutoDiscardSeats } from './auto-discard';
 import { type JoinInfo, matchCodeFor } from './join-info';
 import type { Transport } from './transport';
 
@@ -111,21 +112,36 @@ export function useWireRouter({
           }
           break;
         }
-        case 'delta':
+        case 'delta': {
           setState(m.state);
           appendEvents(m.events);
           recorderOnDelta(m.events, m.state);
+          // Suppress the draw popup for any seat whose `drew` is
+          // immediately followed by their own `discarded` in the same
+          // batch — that's the auto-discard signature
+          // (`solo-transport.ts` and `MatchSession.forceTurnAutoDiscard`
+          // both produce it). Without this guard the popup would fire
+          // for a tile that never reached `HandTile`, so
+          // `measureInWindow` couldn't capture a `slotRect` and the
+          // overlay would fly into fallback geometry over an empty
+          // slot. See `auto-discard.ts` for the detection contract.
+          const autoDiscardSeats = detectAutoDiscardSeats(m.events);
           for (const event of m.events) {
             if (event.t === 'discarded') playTileClick();
             else if (event.t === 'opened') playDiceRoll();
             else if (event.t === 'drew') {
               // Trigger the local user's draw popup + flip animation
               // (DrawTileOverlay reads `useGame.drawAnimation`). Skip
-              // for spectators (no own seat) and for bot draws — they
-              // shouldn't get a face-down popup the user doesn't see
-              // the tile of.
+              // for spectators (no own seat), for bot draws (no
+              // face-down popup the user doesn't see the tile of),
+              // and for auto-discarded draws (see autoDiscardSeats
+              // above).
               const you = useGame.getState().you;
-              if (typeof you === 'number' && event.seat === you) {
+              if (
+                typeof you === 'number' &&
+                event.seat === you &&
+                !autoDiscardSeats.has(event.seat)
+              ) {
                 flashDrawAnimation(event.tile);
               }
             } else if (event.t === 'claimsResolved' && event.result.kind === 'win') {
@@ -144,6 +160,7 @@ export function useWireRouter({
             }
           }
           break;
+        }
         case 'lobby':
           setLobby(m);
           recorderOnLobby(m);
