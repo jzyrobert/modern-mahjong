@@ -290,6 +290,15 @@ interface ClientGameStore {
    * lobby → match transition starts the seq at 0 again.
    */
   drawAnimationLastSeq: number;
+  /**
+   * Sort mode for `SharedDiscardPool`. Lifted out of the component's
+   * local React state so the user's `'player'` pick survives a
+   * remount — re-flowing the felt-area `View` siblings (or a brief
+   * orientation flip) was occasionally tearing the pool down on an
+   * opponent's discard and snapping the toggle back to `'order'`.
+   * Cleared on `reset`; persists across hands inside one match.
+   */
+  discardSortMode: 'order' | 'player';
   setState: (state: GameState, you?: Seat | 'spectator') => void;
   setLobby: (l: LobbyState) => void;
   setShuffling: (shuffling: boolean) => void;
@@ -321,6 +330,7 @@ interface ClientGameStore {
       landscape: boolean;
     } | null,
   ) => void;
+  setDiscardSortMode: (mode: 'order' | 'player') => void;
   reset: () => void;
 }
 
@@ -357,6 +367,7 @@ export const useGame = create<ClientGameStore>((set) => ({
   drawAnimation: null,
   drawAnimationLastSeq: 0,
   wallSourceContext: null,
+  discardSortMode: 'order',
   setState: (state, you) => set((prev) => ({ state, you: you ?? prev.you })),
   setLobby: (lobby) => set({ lobby }),
   setShuffling: (shuffling) => set({ shuffling }),
@@ -442,6 +453,8 @@ export const useGame = create<ClientGameStore>((set) => ({
       if (!a || a.phase === phase) return prev;
       return { drawAnimation: { ...a, phase } };
     }),
+  setDiscardSortMode: (mode) =>
+    set((prev) => (prev.discardSortMode === mode ? prev : { discardSortMode: mode })),
   appendEvents: (events) =>
     set((prev) => {
       if (events.length === 0) return prev;
@@ -496,6 +509,7 @@ export const useGame = create<ClientGameStore>((set) => ({
       drawAnimation: null,
       drawAnimationLastSeq: 0,
       wallSourceContext: null,
+      discardSortMode: 'order',
     }),
 }));
 

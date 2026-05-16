@@ -37,7 +37,15 @@ export function ClaimAnnouncementToast() {
   const [pinned, setPinned] = useState<typeof announcement>(null);
   const opacity = useRef(new Animated.Value(0)).current;
   const dismissHandle = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastSeq = useRef(0);
+  // Seed from the current announcement seq so a remount after a claim
+  // has already fired doesn't re-flash the same toast on the next
+  // store notification. With a hard-coded `0` seed, any non-null
+  // `claimAnnouncement` (i.e. a peng that already happened earlier in
+  // the hand) would re-fire the moment React mounted this component
+  // again — the symptom users saw was the PENG toast popping back up
+  // on every subsequent move once one claim had landed. Mirrors the
+  // `ClaimMissedToast.lastSeq` pattern in the sibling file.
+  const lastSeq = useRef(announcement?.seq ?? 0);
 
   useEffect(() => {
     if (!announcement) return;

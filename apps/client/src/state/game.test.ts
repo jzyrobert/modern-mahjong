@@ -313,6 +313,52 @@ describe('useGame.flashDrawAnimation', () => {
   });
 });
 
+describe('useGame.discardSortMode', () => {
+  beforeEach(() => {
+    useGame.setState({ discardSortMode: 'order' });
+  });
+
+  it("defaults to 'order'", () => {
+    // SharedDiscardPool reads this on mount — must default to the
+    // chronological view so a fresh match isn't surprising.
+    expect(useGame.getState().discardSortMode).toBe('order');
+  });
+
+  it("setDiscardSortMode('player') flips the mode and persists across reads", () => {
+    useGame.getState().setDiscardSortMode('player');
+    expect(useGame.getState().discardSortMode).toBe('player');
+  });
+
+  it('preserves object identity when the mode is unchanged', () => {
+    // Zustand notifies subscribers whenever set is called; guarding
+    // against redundant writes keeps SharedDiscardPool out of the
+    // notify path on layouts that re-trigger the toggle's onPress.
+    const before = useGame.getState();
+    useGame.getState().setDiscardSortMode('order');
+    const after = useGame.getState();
+    expect(after).toBe(before);
+  });
+
+  it('reset() restores the default', () => {
+    useGame.getState().setDiscardSortMode('player');
+    useGame.getState().reset();
+    expect(useGame.getState().discardSortMode).toBe('order');
+  });
+
+  it("survives a SharedDiscardPool 'remount' (zustand read returns the persisted value)", () => {
+    // Regression: previously sortMode lived in local React useState
+    // and reset to 'order' whenever the component remounted (which
+    // could happen on an opponent's discard if the felt-area View
+    // tree got reflowed). Lifting to zustand means a fresh
+    // `useGame((s) => s.discardSortMode)` from a remounted component
+    // observes the persisted value, not the default.
+    useGame.getState().setDiscardSortMode('player');
+    // Simulate a remount: another subscriber reads the slice.
+    const observed = useGame.getState().discardSortMode;
+    expect(observed).toBe('player');
+  });
+});
+
 describe('loadSettings (persisted-shape migration)', () => {
   const STORAGE_KEY = 'mj.settings.v1';
 
