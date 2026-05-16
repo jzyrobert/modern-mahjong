@@ -131,10 +131,12 @@ describe('claim resolution', () => {
     // Seat 2's 13-tile hand completes on a 7p with the canonical 1-faan
     // 平和 shape (all sequences, non-yakuhai pair):
     //   1m2m3m 2m3m4m 4p5p6p 7s8s9s + 7p7p (pair completed by discard)
-    // Default `faanMin` is 3, so the hu would be silently demoted by
-    // `canFinalizeHu`. The bar must not render — otherwise the user
-    // sees CLAIM? with PASS as the only option (a forced no-op).
-    // Seat 2 (not next after the discarder at seat 0) so the
+    // We dial the floor up to 3 explicitly — `DEFAULT_RULES` now ships
+    // with `faanMin: 0` so every shape-win passes, but this test's
+    // whole point is to verify the bar is suppressed when the floor
+    // would silently demote the hu via `canFinalizeHu`. Otherwise
+    // the user sees CLAIM? with PASS as the only option (a forced
+    // no-op). Seat 2 (not next after the discarder at seat 0) so the
     // 5-6-7p chi isn't legal — otherwise the legal-claim branch
     // would short-circuit before the faan check matters.
     const t = (suit: 'man' | 'pin' | 'sou', rank: number, copy = 0): Tile => ({
@@ -144,7 +146,7 @@ describe('claim resolution', () => {
       copy: copy as 0,
     });
     const sevenP = t('pin', 7);
-    const state = pseudoAwaitingClaims({
+    const baseline = pseudoAwaitingClaims({
       hand: [
         t('man', 1),
         t('man', 2),
@@ -163,6 +165,7 @@ describe('claim resolution', () => {
       lastDiscard: { tile: sevenP, from: 0 },
       seat: 2,
     });
+    const state = { ...baseline, rules: { ...baseline.rules, faanMin: 3 as const } };
     expect(hasMeaningfulClaim(state, 2, sevenP)).toBe(false);
   });
 

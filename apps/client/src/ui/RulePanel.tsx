@@ -2,6 +2,7 @@ import { FAAN_OPTIONS } from '@mahjong/game-logic';
 import type { Action, RuleConfig } from '@mahjong/protocol';
 import { useState } from 'react';
 import { Pressable, Switch, Text, TextInput, View } from 'react-native';
+import { useGame } from '../state/game';
 import { COLORS } from './colors';
 
 interface RulePanelProps {
@@ -15,14 +16,33 @@ const TURN_TIMER_DEFAULT_MS = 20_000;
 
 /**
  * Match-rules editor.
- * Faan-min becomes a row of selectable chips, the boolean rule flags
- * become RN `Switch`es, and the seconds inputs become numeric
- * `TextInput`s — there's no native `<select>` / `<input type="number">`
- * on RN, and pulling in `@react-native-picker/picker` for one
- * three-option enum is overkill.
+ * Faan-min becomes a row of selectable chips and turn-timer surfaces
+ * as a switch + seconds input. Seven-pairs and thirteen-orphans no
+ * longer have their own toggles — both shapes are always legal — and
+ * the auto-sort behaviour setting is gone too (initial sort is always
+ * `'suit'`; the SortPicker overrides immediately if the user wants
+ * something else).
+ *
+ * Every host-side edit also writes faanMin + turnTimeoutMs into
+ * `settings.lobbyRulePrefs` via `setSettings`, so the user's chosen
+ * values stick across matches — the lobby's `useEffect` re-applies
+ * them via `setRules` on the next match's first paint.
  */
 export function RulePanel({ rules, isHost, onAction }: RulePanelProps) {
-  const set = (patch: Partial<RuleConfig>) => onAction({ t: 'setRules', rules: patch });
+  const setSettings = useGame((s) => s.setSettings);
+  const lobbyPrefs = useGame((s) => s.settings.lobbyRulePrefs);
+  const set = (patch: Partial<RuleConfig>) => {
+    onAction({ t: 'setRules', rules: patch });
+    // Mirror the persisted lobby prefs whenever the host edits a
+    // field the prefs care about. Anything else (claim windows,
+    // allow* flags) is per-match and doesn't need to stick.
+    const prefsPatch: Partial<typeof lobbyPrefs> = {};
+    if (patch.faanMin !== undefined) prefsPatch.faanMin = patch.faanMin;
+    if (patch.turnTimeoutMs !== undefined) prefsPatch.turnTimeoutMs = patch.turnTimeoutMs;
+    if (Object.keys(prefsPatch).length > 0) {
+      setSettings({ lobbyRulePrefs: { ...lobbyPrefs, ...prefsPatch } });
+    }
+  };
   const disabled = !isHost;
   const turnTimerOff = rules.turnTimeoutMs === TURN_TIMER_OFF;
 
@@ -87,18 +107,6 @@ export function RulePanel({ rules, isHost, onAction }: RulePanelProps) {
         </View>
       </Row>
 
-      <ToggleRow
-        label="Allow 七對 (seven pairs)"
-        value={rules.allowSevenPairs}
-        onChange={(v) => set({ allowSevenPairs: v })}
-        disabled={disabled}
-      />
-      <ToggleRow
-        label="Allow 十三幺 (thirteen orphans)"
-        value={rules.allowThirteenOrphans}
-        onChange={(v) => set({ allowThirteenOrphans: v })}
-        disabled={disabled}
-      />
       <ToggleRow
         label="No turn timer (∞)"
         value={turnTimerOff}

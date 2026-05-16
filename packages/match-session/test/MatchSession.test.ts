@@ -293,10 +293,22 @@ describe('MatchSession — explicit leave', () => {
 });
 
 describe('MatchSession — per-turn timeout', () => {
+  // `DEFAULT_RULES.turnTimeoutMs` now ships as `0` (no timer) for
+  // casual play — these tests have to arm the timer explicitly via
+  // `setRules` before `startHand` so the engine actually stamps a
+  // `turnDeadlineMs` for the alarm scheduling path to fire on.
+  const armTimer = (s: MatchSession): void => {
+    s.applyClientMessage('cHost', {
+      t: 'action',
+      action: { t: 'setRules', rules: { turnTimeoutMs: 20_000 } },
+    });
+  };
+
   it('schedules an alarm at state.turnDeadlineMs when the active seat is a connected human', () => {
     const s = new MatchSession({ botPaceMs: 0 });
     helloAs(s, 'cHost', 'p-host');
     seatPassiveBots(s, [1, 2, 3]);
+    armTimer(s);
     const start = s.applyClientMessage('cHost', {
       t: 'action',
       action: { t: 'startHand', seed: 1, dealer: 0 },
@@ -312,6 +324,7 @@ describe('MatchSession — per-turn timeout', () => {
     const s = new MatchSession({ botPaceMs: 0 });
     helloAs(s, 'cHost', 'p-host');
     seatPassiveBots(s, [1, 2, 3]);
+    armTimer(s);
     s.applyClientMessage('cHost', {
       t: 'action',
       action: { t: 'startHand', seed: 1, dealer: 0 },

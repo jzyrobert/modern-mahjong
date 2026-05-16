@@ -372,9 +372,19 @@ describe('engine — win-on-discard flow', () => {
     // Strip the soft + hard claim windows (mirrors solo's rule patch
     // in `apps/client/src/net/solo-transport.ts`) so resolveAndApply
     // fires the moment every non-discarder seat is in `submitted`.
-    // `faanMin` keeps the default value of 3 so the demotion path
-    // actually runs.
-    const { claimSoftWindowMs: _omitSoft, claimHardWindowMs: _omitHard, ...rules } = DEFAULT_RULES;
+    // `faanMin` is dialed up to 3 explicitly — `DEFAULT_RULES` ships
+    // with `faanMin: 0` (so beginner wins are accepted), but this
+    // test's whole point is to exercise the "demote a below-floor hu
+    // submission" path, which only triggers when the floor is high
+    // enough that the test's 1-faan hand fails it.
+    const {
+      claimSoftWindowMs: _omitSoft,
+      claimHardWindowMs: _omitHard,
+      ...rules
+    } = {
+      ...DEFAULT_RULES,
+      faanMin: 3 as const,
+    };
     void _omitSoft;
     void _omitHard;
     expect(rules.faanMin).toBe(3);

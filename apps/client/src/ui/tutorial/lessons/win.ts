@@ -12,10 +12,12 @@ import type { Lesson } from '../types';
  *   + sou: 3s-4s-5s, 6s-7s-8s
  *   = 4 melds + 1 pair → standard winning shape.
  *
- * Tutorials run with `faanMin: 0` (set in `joinSoloTutorial`)
- * so this faan-0 win is legal. In a real ruleset (faanMin: 3) the
- * engine would reject it, but the lesson's purpose is to show the
- * shape of "winning a hand", not to model HK scoring constraints.
+ * Tutorials pin `faanMin: 0` explicitly in `joinSoloTutorial` so this
+ * faan-0 win is always legal regardless of the user's lobby
+ * preferences. A user who's dialed the floor up via the RulePanel
+ * (e.g. `faanMin: 3`) would otherwise see this lesson's winning shape
+ * rejected — the lesson's job is to show the shape, not to enforce
+ * any specific HK ruleset.
  */
 export const winLesson: Lesson = {
   id: 'win',
