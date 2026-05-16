@@ -274,11 +274,19 @@ function SortToggleButton({
   onPress: () => void;
 }) {
   return (
+    // `aria-pressed` is the canonical ARIA attribute for toggle
+    // buttons; `accessibilityState.selected` covers the same intent on
+    // native (iOS / Android assistive tech) but RN-Web strips it for
+    // button-role elements, so the explicit `aria-pressed` is what
+    // surfaces the active/inactive state to a screen reader or an
+    // agent driving the page on web. The styling already reflects the
+    // state visually.
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={`Sort discards by ${label.toLowerCase()}`}
       accessibilityState={{ selected: active }}
+      aria-pressed={active}
       style={({ pressed }) => ({
         paddingVertical: 3,
         paddingHorizontal: 8,
