@@ -62,6 +62,15 @@ export interface UserSettings {
     /** ms, with `0` representing "no turn timer" (∞). */
     turnTimeoutMs: number;
   };
+  /** Which accordion sections the user last left open in the
+   *  phone-class `LobbyAccordion`. Persisted so the lobby feels
+   *  "remembered" across matches — a user who collapses Bots after
+   *  picking a mix shouldn't have to collapse it again next match.
+   *  Sections only render in contexts where they're meaningful
+   *  (Bots = host, Invite = LAN host), so persisting a key that
+   *  doesn't apply to the next match's role is harmless — the row
+   *  just won't render. */
+  lobbyAccordionOpen: ReadonlyArray<'bots' | 'rules' | 'invite'>;
 }
 
 const DEFAULT_SETTINGS: UserSettings = {
@@ -81,6 +90,10 @@ const DEFAULT_SETTINGS: UserSettings = {
     faanMin: 0,
     turnTimeoutMs: 0,
   },
+  // Mirrors `LobbyAccordion`'s former first-paint default: hosts land
+  // with Bots open (single most-actionable knob in a fresh lobby).
+  // The user's manual toggles overwrite this and stick from then on.
+  lobbyAccordionOpen: ['bots'],
 };
 
 const SETTINGS_STORAGE_KEY = 'mj.settings.v1';

@@ -9,7 +9,7 @@ import {
 } from '@mahjong/protocol';
 import * as Clipboard from 'expo-clipboard';
 import * as Linking from 'expo-linking';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Platform,
   Pressable,
@@ -109,27 +109,7 @@ function PortraitBody({
   const timerSecs = rules.turnTimeoutMs === 0 ? null : Math.round(rules.turnTimeoutMs / 1000);
   const set = useRuleSetter(onAction);
 
-  // Accordion sections open independently. Hosts always land with
-  // Bots expanded — for solo it's the only knob worth seeing
-  // (rules persist across matches; nothing to share), and for online
-  // hosts an unfilled match needs bots before Start enables. LAN hosts
-  // additionally get Invite open so the join URL is one tap away.
-  // Non-hosts land with everything collapsed — the lobby is read-only
-  // until the host starts.
-  const [openSet, setOpenSet] = useState<Set<AccordionSection>>(() => {
-    const initial = new Set<AccordionSection>();
-    if (isHost) initial.add('bots');
-    if (isLanHost) initial.add('invite');
-    return initial;
-  });
-  const isOpen = (k: AccordionSection) => openSet.has(k);
-  const toggleSection = (k: AccordionSection) =>
-    setOpenSet((prev) => {
-      const next = new Set(prev);
-      if (next.has(k)) next.delete(k);
-      else next.add(k);
-      return next;
-    });
+  const { isOpen, toggleSection } = usePersistedOpenSections();
 
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.cream }}>
@@ -229,20 +209,7 @@ function LandscapeBody({
   const timerSecs = rules.turnTimeoutMs === 0 ? null : Math.round(rules.turnTimeoutMs / 1000);
   const set = useRuleSetter(onAction);
 
-  const [openSet, setOpenSet] = useState<Set<AccordionSection>>(() => {
-    const initial = new Set<AccordionSection>();
-    if (isHost) initial.add('bots');
-    if (isLanHost) initial.add('invite');
-    return initial;
-  });
-  const isOpen = (k: AccordionSection) => openSet.has(k);
-  const toggleSection = (k: AccordionSection) =>
-    setOpenSet((prev) => {
-      const next = new Set(prev);
-      if (next.has(k)) next.delete(k);
-      else next.add(k);
-      return next;
-    });
+  const { isOpen, toggleSection } = usePersistedOpenSections();
 
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.cream }}>
@@ -1095,6 +1062,44 @@ function isAllSeatsFilled(lobby: LobbyState | null): boolean {
     if (!p.connected && !p.isBot) return false;
   }
   return true;
+}
+
+/**
+ * Reads / writes the persisted "which accordion sections are open"
+ * set from `settings.lobbyAccordionOpen`. Returning a stable
+ * `toggleSection` callback (via `useCallback`) keeps `AccordionRow`'s
+ * props referentially stable across renders that don't actually
+ * change the set — small win, but it keeps the Pressable inside
+ * `AccordionRow` from re-rendering for unrelated state changes.
+ *
+ * The hook works for any section render policy: rendering Bots only
+ * for hosts (or Invite only for LAN hosts) means a persisted key
+ * that doesn't apply to the current role just stays in the set
+ * harmlessly until the user is in a context where the row renders.
+ */
+function usePersistedOpenSections(): {
+  isOpen: (k: AccordionSection) => boolean;
+  toggleSection: (k: AccordionSection) => void;
+} {
+  const persisted = useGame((s) => s.settings.lobbyAccordionOpen);
+  const setSettings = useGame((s) => s.setSettings);
+  // Derive a Set for O(1) membership checks. New reference only when
+  // the persisted array reference changes (i.e. after a toggle).
+  const openSet = useMemo(() => new Set<AccordionSection>(persisted), [persisted]);
+  const isOpen = useCallback((k: AccordionSection) => openSet.has(k), [openSet]);
+  const toggleSection = useCallback(
+    (k: AccordionSection) => {
+      // Read live to avoid a stale closure if two toggles fire in the
+      // same tick — `setSettings` is set-via-reducer in zustand so a
+      // patch built from a stale `persisted` snapshot would overwrite
+      // an in-flight earlier toggle.
+      const live = useGame.getState().settings.lobbyAccordionOpen;
+      const next = live.includes(k) ? live.filter((x) => x !== k) : [...live, k];
+      setSettings({ lobbyAccordionOpen: next });
+    },
+    [setSettings],
+  );
+  return { isOpen, toggleSection };
 }
 
 /** Wraps `onAction({ t: 'setRules', ... })` and additionally mirrors
