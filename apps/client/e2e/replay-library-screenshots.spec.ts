@@ -48,7 +48,11 @@ async function buildOneReplay(page: import('@playwright/test').Page): Promise<vo
 }
 
 async function openLibrary(page: import('@playwright/test').Page): Promise<void> {
-  await page.getByRole('button', { name: 'Open library' }).click();
+  // Phone-class viewports (412×906) route to `MobileLobby`, which
+  // demotes Replays from an "Open library" CTA to a tappable
+  // SecondaryRow ("Replays"). Match either so portrait + desktop
+  // both work.
+  await page.getByRole('button', { name: /^(Open library|Replays)$/ }).click();
   await expect(page.getByRole('heading', { name: 'Replays' })).toBeVisible();
 }
 

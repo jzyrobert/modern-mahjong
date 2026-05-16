@@ -48,7 +48,12 @@ test('replay: save from menu → library lists row → player opens with hands v
     timeout: 10_000,
   });
 
-  await page.getByRole('button', { name: 'Open library' }).click();
+  // Mobile lobby (`MobileLobby`) demotes Replays from a primary
+  // ModeCard with an "Open library" CTA to a tappable
+  // `SecondaryRow` whose accessible name is just "Replays". Match
+  // either so this spec works at both phone-width (412×906 here)
+  // and desktop widths without forking.
+  await page.getByRole('button', { name: /^(Open library|Replays)$/ }).click();
   await expect(page.getByRole('heading', { name: 'Replays' })).toBeVisible();
 
   // The freshly-saved row carries a SOLO join-kind badge — unambiguous
