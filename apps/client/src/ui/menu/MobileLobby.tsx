@@ -2,7 +2,7 @@ import { useTransport } from '@/src/net/transport-context';
 import { SEATS, type Seat } from '@mahjong/game-logic';
 import { BOT_LABELS, generateMatchCode } from '@mahjong/protocol';
 import { useRouter } from 'expo-router';
-import { type ReactNode, useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import {
   Platform,
   Pressable,
@@ -340,6 +340,17 @@ export function MobileLobby({ isLandscape }: MobileLobbyProps) {
                 </View>
               </View>
               {lobby ? <LobbyPreview lobby={lobby} matchCode={null} /> : null}
+              <Text
+                style={{
+                  fontSize: 11,
+                  color: COLORS.ink3,
+                  fontWeight: '600',
+                  textAlign: 'center',
+                  marginTop: 8,
+                }}
+              >
+                Sound by みんなの創作支援サイトＴスタ
+              </Text>
             </View>
           ) : (
             <View style={{ padding: 12, gap: 10 }}>
@@ -389,14 +400,14 @@ export function MobileLobby({ isLandscape }: MobileLobbyProps) {
               {lobby ? <LobbyPreview lobby={lobby} matchCode={null} /> : null}
               <Text
                 style={{
-                  fontSize: 10,
+                  fontSize: 11,
                   color: COLORS.ink3,
                   fontWeight: '600',
                   textAlign: 'center',
-                  marginTop: 4,
+                  marginTop: 12,
                 }}
               >
-                Hong Kong rules · 136 tiles
+                Sound by みんなの創作支援サイトＴスタ
               </Text>
             </View>
           )}
@@ -455,6 +466,16 @@ interface AppBarProps {
  */
 function AppBar({ name, onChangeName }: AppBarProps) {
   const initials = (name || '?').slice(0, 2).toUpperCase();
+  // Ref so the EDIT pill (and the avatar) can pull the TextInput into
+  // focus — the input itself is always editable, but the EDIT
+  // affordance only does something if a tap actually reaches the
+  // underlying input. Without this the pill was a decorative no-op.
+  const nameInputRef = useRef<TextInput>(null);
+  const [nameFocused, setNameFocused] = useState(false);
+  const togglePillPress = () => {
+    if (nameFocused) nameInputRef.current?.blur();
+    else nameInputRef.current?.focus();
+  };
   return (
     <View
       style={{
@@ -474,7 +495,7 @@ function AppBar({ name, onChangeName }: AppBarProps) {
           alignItems: 'center',
           gap: 7,
           backgroundColor: COLORS.paperHi,
-          borderColor: COLORS.hairline,
+          borderColor: nameFocused ? COLORS.red : COLORS.hairline,
           borderWidth: 1,
           borderRadius: 8,
           paddingVertical: 4,
@@ -497,10 +518,14 @@ function AppBar({ name, onChangeName }: AppBarProps) {
           <Text style={{ color: 'white', fontWeight: '800', fontSize: 11 }}>{initials}</Text>
         </View>
         <TextInput
+          ref={nameInputRef}
           value={name}
           onChangeText={onChangeName}
+          onFocus={() => setNameFocused(true)}
+          onBlur={() => setNameFocused(false)}
           placeholder="Display name"
           placeholderTextColor={COLORS.ink3}
+          accessibilityLabel="Display name"
           style={{
             fontFamily: 'Nunito',
             fontSize: 13,
@@ -511,25 +536,28 @@ function AppBar({ name, onChangeName }: AppBarProps) {
             padding: 0,
           }}
         />
-        <View
-          style={{
-            backgroundColor: COLORS.creamLow,
+        <Pressable
+          onPress={togglePillPress}
+          accessibilityRole="button"
+          accessibilityLabel={nameFocused ? 'Done editing display name' : 'Edit display name'}
+          style={({ pressed }) => ({
+            backgroundColor: nameFocused ? COLORS.red : pressed ? COLORS.cream : COLORS.creamLow,
             borderRadius: 4,
             paddingHorizontal: 6,
             paddingVertical: 2,
-          }}
+          })}
         >
           <Text
             style={{
               fontSize: 10,
               fontWeight: '800',
-              color: COLORS.ink3,
+              color: nameFocused ? 'white' : COLORS.ink3,
               letterSpacing: 0.4,
             }}
           >
-            EDIT
+            {nameFocused ? 'DONE' : 'EDIT'}
           </Text>
-        </View>
+        </Pressable>
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
         <WindEmblem wind="東" size={22} />
