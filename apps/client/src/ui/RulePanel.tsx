@@ -30,17 +30,25 @@ const TURN_TIMER_DEFAULT_MS = 20_000;
  */
 export function RulePanel({ rules, isHost, onAction }: RulePanelProps) {
   const setSettings = useGame((s) => s.setSettings);
-  const lobbyPrefs = useGame((s) => s.settings.lobbyRulePrefs);
   const set = (patch: Partial<RuleConfig>) => {
     onAction({ t: 'setRules', rules: patch });
     // Mirror the persisted lobby prefs whenever the host edits a
     // field the prefs care about. Anything else (claim windows,
     // allow* flags) is per-match and doesn't need to stick.
-    const prefsPatch: Partial<typeof lobbyPrefs> = {};
+    //
+    // Read live `lobbyRulePrefs` here rather than from a render-time
+    // closure: two same-frame edits (e.g. faanMin chip + turn-timer
+    // toggle clicked in quick succession) would otherwise each merge
+    // their patch onto the same stale snapshot and the second write
+    // would clobber the first. `useGame.getState()` returns the most
+    // recent store value synchronously, so the second `set` sees the
+    // first's persisted result and composes correctly.
+    const prefsPatch: Partial<{ faanMin: RuleConfig['faanMin']; turnTimeoutMs: number }> = {};
     if (patch.faanMin !== undefined) prefsPatch.faanMin = patch.faanMin;
     if (patch.turnTimeoutMs !== undefined) prefsPatch.turnTimeoutMs = patch.turnTimeoutMs;
     if (Object.keys(prefsPatch).length > 0) {
-      setSettings({ lobbyRulePrefs: { ...lobbyPrefs, ...prefsPatch } });
+      const liveLobbyPrefs = useGame.getState().settings.lobbyRulePrefs;
+      setSettings({ lobbyRulePrefs: { ...liveLobbyPrefs, ...prefsPatch } });
     }
   };
   const disabled = !isHost;
