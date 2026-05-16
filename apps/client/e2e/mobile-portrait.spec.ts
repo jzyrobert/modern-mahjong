@@ -100,6 +100,52 @@ test('mobile: draw-cue → tap-to-discard cycle hands turn back to bots', async 
     .toBeLessThan(wallStart);
 });
 
+test('mobile: draw cue reappears on a second draw cycle and is still tappable', async ({
+  page,
+}) => {
+  // Regression guard for #370. `MobileDrawCue` renders a pulsing
+  // gold halo via `Animated.loop`; the underlying view unmounts
+  // when the cue hides (between draws) and re-mounts when the next
+  // user turn arrives. react-native-web doesn't re-subscribe a
+  // re-mounted `Animated.View` to an already-running loop, so
+  // without `usePulse({ enabled: visible })` the halo froze on the
+  // detached value after the first draw. The visible symptom that
+  // a Playwright test can catch is broader than the halo itself —
+  // if the cue's mount/unmount cycle regresses, the testID
+  // becomes hidden permanently or fails to re-show on cycle 2.
+  // This spec exercises the same `flashDrawAnimation` →
+  // `clearDrawAnimation` → re-show flow twice to lock it in.
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Play vs bots' }).click();
+  await page.getByRole('button', { name: 'Start match' }).click();
+  await dismissOpeningRolls(page);
+  await expect(page.getByText(/\d+ tiles/)).toBeVisible();
+
+  const drawCue = page.getByTestId('wall-draw-next');
+
+  // Discard once to give the turn to seat 1 and let bots play around.
+  await page.getByTestId('own-hand-tile').first().click();
+
+  // Cycle 1 — turn comes back, cue mounts, tap to draw.
+  await waitForUserDrawCue(page, 30_000);
+  await expect(drawCue).toBeVisible();
+  await drawCue.click();
+  await expect(drawCue).toBeHidden();
+
+  // Hand turn back so the next cycle has somewhere to come from.
+  await page.getByTestId('own-hand-tile').first().click();
+
+  // Cycle 2 — cue must remount cleanly, be visible AND tappable.
+  // Without the halo-restart fix the cue still renders here (so
+  // visibility alone would pass), but a regression that drops the
+  // re-mount entirely or leaves the cue in a broken interactive
+  // state shows up as a stuck click.
+  await waitForUserDrawCue(page, 30_000);
+  await expect(drawCue).toBeVisible();
+  await drawCue.click();
+  await expect(drawCue).toBeHidden();
+});
+
 async function dismissOpeningRolls(page: Page) {
   // The DiceCeremony auto-dismisses after ~3.5s, but tapping the
   // backdrop is faster + matches what a real user does. Tolerate the
