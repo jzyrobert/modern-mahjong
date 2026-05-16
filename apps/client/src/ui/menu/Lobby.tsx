@@ -384,7 +384,7 @@ function LessonRow({ title, blurb, done, onPress }: LessonRowProps) {
           borderRadius: 11,
           alignItems: 'center',
           justifyContent: 'center',
-          backgroundColor: done ? COLORS.green : 'transparent',
+          backgroundColor: done ? COLORS.success : 'transparent',
           borderWidth: done ? 0 : 1,
           borderColor: COLORS.hairline,
         }}

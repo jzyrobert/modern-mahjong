@@ -10,7 +10,7 @@ const PIP_COLOR: Record<ReplayBookmarkKind, string> = {
   gang: COLORS.red,
   'robbed-gang': '#a64ad9',
   win: COLORS.gold,
-  draw: COLORS.green,
+  draw: COLORS.success,
 };
 
 /**

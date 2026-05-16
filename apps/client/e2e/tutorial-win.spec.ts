@@ -14,7 +14,6 @@ test.beforeEach(async ({ page }) => {
       JSON.stringify({
         felt: 'sage',
         tileBack: 'cream',
-        autoSort: true,
         animations: true,
         sound: false,
         discardHint: false,

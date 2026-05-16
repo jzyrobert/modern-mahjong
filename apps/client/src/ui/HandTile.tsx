@@ -4,7 +4,7 @@ import { useContext, useEffect, useRef, useState } from 'react';
 import { Animated, PanResponder, View } from 'react-native';
 import { useGame } from '../state/game';
 import { FlipBagContext } from './FlipBag';
-import { Tile } from './Tile';
+import { TILE_CORNER_RADIUS_RATIO, Tile } from './Tile';
 import { PULSE_TEMPO, usePulse } from './animations';
 
 interface HandTileProps {
@@ -363,7 +363,7 @@ export function HandTile({
                 height,
                 // Match the tile's rendered SVG rx so the halo reads
                 // as "around the tile" rather than a square frame.
-                borderRadius: width * 0.18,
+                borderRadius: width * TILE_CORNER_RADIUS_RATIO,
                 backgroundColor: '#3aa999',
                 opacity: haloOpacity,
                 transform: [{ scale: haloScale }],
@@ -378,7 +378,7 @@ export function HandTile({
                 left: 0,
                 width,
                 height,
-                borderRadius: width * 0.18,
+                borderRadius: width * TILE_CORNER_RADIUS_RATIO,
                 borderWidth: 3,
                 borderColor: '#2dd4bf',
                 pointerEvents: 'none',

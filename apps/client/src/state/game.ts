@@ -58,7 +58,7 @@ export interface UserSettings {
    *  preferred faan floor + turn-timer setting sticky across matches
    *  instead of resetting to the engine defaults each time. */
   lobbyRulePrefs: {
-    faanMin: 0 | 1 | 3 | 5;
+    faanMin: RuleConfig['faanMin'];
     /** ms, with `0` representing "no turn timer" (∞). */
     turnTimeoutMs: number;
   };

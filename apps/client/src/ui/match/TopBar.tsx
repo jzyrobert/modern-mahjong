@@ -29,7 +29,7 @@ export function TopBar({ matchCode, viewers, onOpenMenu }: TopBarProps) {
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.green }} />
+        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.success }} />
         <Text style={{ fontSize: 10, fontWeight: '800', color: COLORS.ink, letterSpacing: 0.4 }}>
           LIVE
         </Text>

@@ -74,7 +74,7 @@ export function RulePanel({ rules, isHost, onAction }: RulePanelProps) {
               <Pressable
                 key={n}
                 disabled={disabled}
-                onPress={() => set({ faanMin: n as RuleConfig['faanMin'] })}
+                onPress={() => set({ faanMin: n })}
                 accessibilityRole="radio"
                 accessibilityLabel={`Minimum faan: ${n}`}
                 accessibilityState={{ selected: active, disabled }}
@@ -162,7 +162,7 @@ function ToggleRow({
         disabled={disabled}
         accessibilityLabel={label}
         accessibilityState={{ checked: value, disabled }}
-        trackColor={{ true: COLORS.green, false: COLORS.hairline }}
+        trackColor={{ true: COLORS.success, false: COLORS.hairline }}
       />
     </View>
   );

@@ -1010,7 +1010,7 @@ type EventKindBucket = 'gang' | 'claim' | 'draw' | 'discard' | 'other';
 const EVENT_BORDER: Record<EventKindBucket, string> = {
   gang: '#a64ad9',
   claim: COLORS.gold,
-  draw: COLORS.green,
+  draw: COLORS.success,
   discard: COLORS.creamLow,
   other: COLORS.creamLow,
 };
