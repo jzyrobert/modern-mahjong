@@ -1,7 +1,7 @@
 import type { Event as EngineEvent, OpeningRolls, Tile } from '@mahjong/game-logic';
 import { tileId } from '@mahjong/game-logic';
-import { beforeEach, describe, expect, it } from 'vitest';
-import { useGame } from './game';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { loadSettings, useGame } from './game';
 
 // Re-derivation of LOG_CAPACITY from the module under test — kept
 // here so the tests double-check the value rather than coupling to a
@@ -277,5 +277,142 @@ describe('useGame.flashDrawAnimation', () => {
     expect(useGame.getState().drawAnimation).toBeNull();
     useGame.getState().setDrawAnimationPhase('fly');
     expect(useGame.getState().drawAnimation).toBeNull();
+  });
+
+  describe('setDrawAnimationSlotRect(null)', () => {
+    it('clears slotRect to null while keeping the rest of the animation intact', () => {
+      // The null-rect path covers the HandTile unmount/cleanup case
+      // (e.g. the drawn tile is filtered out of `Hand` during the
+      // hold phase, then `measureInWindow` returns no rect on the
+      // re-mount). The animation object must survive so the overlay
+      // can keep running.
+      useGame.getState().flashDrawAnimation(TILE_1M);
+      const rect = { x: 100, y: 200, width: 36, height: 50 };
+      useGame.getState().setDrawAnimationSlotRect(rect);
+      expect(useGame.getState().drawAnimation?.slotRect).toEqual(rect);
+
+      useGame.getState().setDrawAnimationSlotRect(null);
+      const after = useGame.getState().drawAnimation;
+      expect(after?.slotRect).toBeNull();
+      // The other slice fields (tile, seq, phase) must persist.
+      expect(after?.tile).toEqual(TILE_1M);
+      expect(after?.phase).toBe('hold');
+      expect(after?.seq).toBe(1);
+    });
+
+    it('is a no-op when no animation is in flight', () => {
+      // Stale `measureInWindow` callbacks can fire after the popup
+      // has cleared. The guard ensures they don't resurrect a phantom
+      // drawAnimation object with only `slotRect` set.
+      expect(useGame.getState().drawAnimation).toBeNull();
+      useGame.getState().setDrawAnimationSlotRect({ x: 0, y: 0, width: 1, height: 1 });
+      expect(useGame.getState().drawAnimation).toBeNull();
+      useGame.getState().setDrawAnimationSlotRect(null);
+      expect(useGame.getState().drawAnimation).toBeNull();
+    });
+  });
+});
+
+describe('loadSettings (persisted-shape migration)', () => {
+  const STORAGE_KEY = 'mj.settings.v1';
+
+  beforeEach(() => {
+    if (typeof localStorage !== 'undefined') localStorage.removeItem(STORAGE_KEY);
+  });
+
+  afterEach(() => {
+    if (typeof localStorage !== 'undefined') localStorage.removeItem(STORAGE_KEY);
+  });
+
+  it('returns DEFAULT_SETTINGS when no value is persisted', () => {
+    const s = loadSettings();
+    expect(s.lobbyRulePrefs).toEqual({ faanMin: 0, turnTimeoutMs: 0 });
+    expect(s.felt).toBe('sage');
+  });
+
+  it('backfills lobbyRulePrefs when the persisted shape is pre-#372 (key absent)', () => {
+    // Existing user upgrading past #372: their persisted settings
+    // omit `lobbyRulePrefs` entirely. The shallow-merge fallback used
+    // to handle this correctly, but only because no sub-field was
+    // half-persisted. The new deep-merge keeps the same behaviour.
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        felt: 'jade',
+        tileBack: 'plum',
+        animations: true,
+        sound: false,
+        discardHint: false,
+        botSkills: ['simple', 'simple', 'simple'],
+        autoRecordReplays: true,
+        replayQuota: 25,
+        tutorialsCompleted: ['basics'],
+      }),
+    );
+    const s = loadSettings();
+    expect(s.felt).toBe('jade');
+    expect(s.lobbyRulePrefs).toEqual({ faanMin: 0, turnTimeoutMs: 0 });
+  });
+
+  it('deep-merges a partial lobbyRulePrefs against DEFAULT_SETTINGS', () => {
+    // Devtools edit or a future migration that writes only some
+    // sub-fields. The top-level spread alone would replace the whole
+    // sub-object with `{ faanMin: 3 }`, leaving `turnTimeoutMs:
+    // undefined` despite the type claim that it's `number`. The deep
+    // merge backfills the missing field from DEFAULT_SETTINGS.
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        lobbyRulePrefs: { faanMin: 3 },
+      }),
+    );
+    const s = loadSettings();
+    expect(s.lobbyRulePrefs.faanMin).toBe(3);
+    expect(s.lobbyRulePrefs.turnTimeoutMs).toBe(0);
+  });
+
+  it('preserves a fully-specified lobbyRulePrefs end-to-end', () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        lobbyRulePrefs: { faanMin: 5, turnTimeoutMs: 30_000 },
+      }),
+    );
+    const s = loadSettings();
+    expect(s.lobbyRulePrefs).toEqual({ faanMin: 5, turnTimeoutMs: 30_000 });
+  });
+
+  it('ignores stale keys (e.g. the dead `autoSort` from pre-#372 fixtures)', () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        autoSort: true,
+        felt: 'ocean',
+        lobbyRulePrefs: { faanMin: 1, turnTimeoutMs: 0 },
+      }),
+    );
+    const s = loadSettings();
+    // The stale key is harmlessly spread into the returned object at
+    // the JS level; TypeScript declares the type without it. The
+    // important behaviour is that the known fields survive intact.
+    expect(s.felt).toBe('ocean');
+    expect(s.lobbyRulePrefs).toEqual({ faanMin: 1, turnTimeoutMs: 0 });
+  });
+
+  it('falls back to DEFAULT_SETTINGS on JSON parse error', () => {
+    localStorage.setItem(STORAGE_KEY, '}{ not json');
+    const s = loadSettings();
+    expect(s).toEqual({
+      felt: 'sage',
+      tileBack: 'blue',
+      animations: true,
+      sound: true,
+      discardHint: false,
+      botSkills: ['heuristic', 'simple', 'passive'],
+      autoRecordReplays: false,
+      replayQuota: 50,
+      tutorialsCompleted: [],
+      lobbyRulePrefs: { faanMin: 0, turnTimeoutMs: 0 },
+    });
   });
 });
