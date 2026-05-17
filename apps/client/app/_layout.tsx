@@ -3,6 +3,7 @@ import '@/src/polyfills';
 import { TransportProvider } from '@/src/net/transport-context';
 import { DiceCeremony } from '@/src/ui/DiceCeremony';
 import { FlipBagProvider } from '@/src/ui/FlipBag';
+import { FullscreenPrompt } from '@/src/ui/FullscreenPrompt';
 import { ShuffleOverlay } from '@/src/ui/ShuffleOverlay';
 import { WinCelebration } from '@/src/ui/WinCelebration';
 import { TargetRegistryProvider } from '@/src/ui/tutorial/TargetRegistry';
@@ -48,6 +49,7 @@ export default function RootLayout() {
               <DiceCeremony />
               <WinCelebration />
               <TutorialOverlay />
+              <FullscreenPrompt />
             </TargetRegistryProvider>
           </FlipBagProvider>
         </TransportProvider>
