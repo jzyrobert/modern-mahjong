@@ -5,7 +5,7 @@ import { type LobbyState, nameForSeat, playerForSeat, useGame } from '../../stat
 import { computeInitials } from '../../util';
 import { Modal } from '../Modal';
 import { COLORS } from '../colors';
-import { WIND_GLYPH } from '../winds';
+import { WIND_GLYPH, WIND_NAME } from '../winds';
 
 interface PlayersSheetProps {
   open: boolean;
@@ -15,8 +15,6 @@ interface PlayersSheetProps {
    *  pass `null`. */
   mySeat: Seat | null;
 }
-
-const WIND_NAME: Record<Wind, string> = { E: 'East', S: 'South', W: 'West', N: 'North' };
 
 // Seat colours mirror the perimeter layout (`PlayerBadge.SEAT_COLOR`):
 // the player at the bottom of the table is red-orange, opponents

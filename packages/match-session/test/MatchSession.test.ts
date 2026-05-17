@@ -836,55 +836,70 @@ describe('MatchSession — bot pacing', () => {
   }
 
   it('paces a bot discard via the alarm scheduler (draw immediate, discard deferred)', () => {
-    const PACE = 3_000;
-    const s = new MatchSession({ botPaceMs: PACE });
-    helloAs(s, 'c0', 'p0', 'Host');
-    seatPassiveBots(s, [1, 2, 3]);
-    const softFloor = Date.now() + 5_000; // somewhere past the soft floor
+    // Pin Math.random to the pass branch (<0.5) so the passive bots'
+    // coin-flip pickClaim deterministically returns pass — otherwise
+    // a claimed peng/gang would route around the discard-pacing path
+    // we're trying to assert on. try/finally guarantees a failed
+    // expect() still restores the spy.
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.1);
+    try {
+      const PACE = 3_000;
+      const s = new MatchSession({ botPaceMs: PACE });
+      helloAs(s, 'c0', 'p0', 'Host');
+      seatPassiveBots(s, [1, 2, 3]);
+      const softFloor = Date.now() + 5_000; // somewhere past the soft floor
 
-    const { drawAlarm } = discardThenAdvanceToBotPace(s, softFloor);
-    // After resolving the claim window, seat 1's draw fires + the bot
-    // discard is deferred. The next alarm should be armed for
-    // `softFloor + PACE`.
-    expect(drawAlarm).not.toBeNull();
-    expect(drawAlarm!).toBeGreaterThanOrEqual(softFloor + PACE - 100);
-    expect(drawAlarm!).toBeLessThanOrEqual(softFloor + PACE + 200);
+      const { drawAlarm } = discardThenAdvanceToBotPace(s, softFloor);
+      // After resolving the claim window, seat 1's draw fires + the bot
+      // discard is deferred. The next alarm should be armed for
+      // `softFloor + PACE`.
+      expect(drawAlarm).not.toBeNull();
+      expect(drawAlarm!).toBeGreaterThanOrEqual(softFloor + PACE - 100);
+      expect(drawAlarm!).toBeLessThanOrEqual(softFloor + PACE + 200);
 
-    // Firing the alarm at that deadline produces the deferred discard.
-    const after = s.fireAlarm(drawAlarm! + 50);
-    const events: string[] = [];
-    for (const o of after) {
-      if (o.kind === 'broadcast' && o.msg.t === 'delta') {
-        for (const e of o.msg.events) events.push(e.t);
+      // Firing the alarm at that deadline produces the deferred discard.
+      const after = s.fireAlarm(drawAlarm! + 50);
+      const events: string[] = [];
+      for (const o of after) {
+        if (o.kind === 'broadcast' && o.msg.t === 'delta') {
+          for (const e of o.msg.events) events.push(e.t);
+        }
       }
+      expect(events.some((t) => t === 'discarded')).toBe(true);
+    } finally {
+      randomSpy.mockRestore();
     }
-    expect(events.some((t) => t === 'discarded')).toBe(true);
   });
 
   it('snapshot round-trips a pending botActionDeadline so hibernation resumes pacing', () => {
-    const PACE = 3_000;
-    const a = new MatchSession({ botPaceMs: PACE });
-    helloAs(a, 'c0', 'p0', 'Host');
-    seatPassiveBots(a, [1, 2, 3]);
-    const softFloor = Date.now() + 5_000;
-    discardThenAdvanceToBotPace(a, softFloor);
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.1);
+    try {
+      const PACE = 3_000;
+      const a = new MatchSession({ botPaceMs: PACE });
+      helloAs(a, 'c0', 'p0', 'Host');
+      seatPassiveBots(a, [1, 2, 3]);
+      const softFloor = Date.now() + 5_000;
+      discardThenAdvanceToBotPace(a, softFloor);
 
-    const snapAny = JSON.parse(JSON.stringify(a.snapshot())) as {
-      botActionDeadline?: number | null;
-    };
-    expect(typeof snapAny.botActionDeadline).toBe('number');
-    const deadline = snapAny.botActionDeadline!;
+      const snapAny = JSON.parse(JSON.stringify(a.snapshot())) as {
+        botActionDeadline?: number | null;
+      };
+      expect(typeof snapAny.botActionDeadline).toBe('number');
+      const deadline = snapAny.botActionDeadline!;
 
-    const b = new MatchSession({ botPaceMs: PACE });
-    b.restore(snapAny as Parameters<MatchSession['restore']>[0]);
-    const out = b.fireAlarm(deadline + 50);
-    const events: string[] = [];
-    for (const o of out) {
-      if (o.kind === 'broadcast' && o.msg.t === 'delta') {
-        for (const e of o.msg.events) events.push(e.t);
+      const b = new MatchSession({ botPaceMs: PACE });
+      b.restore(snapAny as Parameters<MatchSession['restore']>[0]);
+      const out = b.fireAlarm(deadline + 50);
+      const events: string[] = [];
+      for (const o of out) {
+        if (o.kind === 'broadcast' && o.msg.t === 'delta') {
+          for (const e of o.msg.events) events.push(e.t);
+        }
       }
+      expect(events.some((t) => t === 'discarded')).toBe(true);
+    } finally {
+      randomSpy.mockRestore();
     }
-    expect(events.some((t) => t === 'discarded')).toBe(true);
   });
 });
 
@@ -918,79 +933,90 @@ describe('MatchSession — bots stay out of the claim timer', () => {
   });
 
   it('drains bot claims synchronously when only bots have meaningful claims (no soft-floor wait)', () => {
-    // Repro of the user-reported bug: 1 human host + 3 bots (any
-    // skill — passive in particular passes ~half the time and
-    // claims the rest, so we pin `Math.random` < 0.5 here to force
-    // the pass branch deterministically. Host discards a tile that
-    // one of the bots could legally peng/gang. Pre-fix, the bot's
-    // claim was deferred to the soft-floor alarm 3s later — and
-    // with passive picking pass, the alarm would just record a
-    // pass that could have happened immediately. Post-fix, the
-    // claim drains inside `runBots` synchronously, so the round
-    // resolves at discard time and the next bot's turn begins
-    // immediately.
+    // Repro of the user-reported bug: 1 human host + 3 bots. The
+    // passive bot's claim now flips a coin (50/50 pass vs walk the
+    // priority chain), so we pin `Math.random` < 0.5 deterministically
+    // to force the pass branch. Host discards a tile that one of
+    // the bots could legally peng/gang. Pre-fix, the bot's claim
+    // was deferred to the soft-floor alarm 3s later — and with the
+    // pinned pass branch, the alarm would just record a pass that
+    // could have happened immediately. Post-fix, the claim drains
+    // inside `runBots` synchronously, so the round resolves at
+    // discard time and the next bot's turn begins immediately. The
+    // try/finally guarantees the spy is restored even if any
+    // expect() below throws — otherwise a regression here would
+    // poison sibling tests' Math.random.
     const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.1);
-    const s = new MatchSession({ botPaceMs: 0 });
-    helloAs(s, 'c0', 'p0', 'Host');
-    // Seat all three opponents as easy/passive bots — passive's
-    // `pickClaim` always returns pass, so any meaningful claim
-    // ends in an all-pass resolution.
-    s.applyClientMessage('c0', { t: 'seatBot', seat: 1, kind: 'passive' });
-    s.applyClientMessage('c0', { t: 'seatBot', seat: 2, kind: 'passive' });
-    s.applyClientMessage('c0', { t: 'seatBot', seat: 3, kind: 'passive' });
-    s.applyClientMessage('c0', {
-      t: 'action',
-      action: { t: 'startHand', seed: 11, dealer: 0 },
-    });
-    // Find a tile in the host's hand that some other seat could
-    // peng on (≥ 2 copies in that seat's hand). If no such tile
-    // exists for this seed, fall back to the first tile (the test
-    // is still meaningful: every-seat-pre-passed also exercises
-    // the engine's new auto-resolve fast path).
-    const hand0 = s.getState().hands[0];
-    let discard = hand0[0]!;
-    let pengSeat: 1 | 2 | 3 | null = null;
-    for (const t of hand0) {
-      for (const seat of [1, 2, 3] as const) {
-        const copies = s
-          .getState()
-          .hands[seat].filter(
-            (h) =>
-              (h.kind === 'suit' && t.kind === 'suit' && h.suit === t.suit && h.rank === t.rank) ||
-              (h.kind === 'honor' && t.kind === 'honor' && h.honor === t.honor),
-          ).length;
-        if (copies >= 2) {
-          discard = t;
-          pengSeat = seat;
-          break;
+    try {
+      const s = new MatchSession({ botPaceMs: 0 });
+      helloAs(s, 'c0', 'p0', 'Host');
+      // Seat all three opponents as easy/passive bots — `Math.random`
+      // is pinned to 0.1 above so every coin-flip lands on the pass
+      // branch, which means any meaningful claim ends in an all-pass
+      // resolution.
+      s.applyClientMessage('c0', { t: 'seatBot', seat: 1, kind: 'passive' });
+      s.applyClientMessage('c0', { t: 'seatBot', seat: 2, kind: 'passive' });
+      s.applyClientMessage('c0', { t: 'seatBot', seat: 3, kind: 'passive' });
+      s.applyClientMessage('c0', {
+        t: 'action',
+        action: { t: 'startHand', seed: 11, dealer: 0 },
+      });
+      // Find a tile in the host's hand that some other seat could
+      // peng on (≥ 2 copies in that seat's hand). If no such tile
+      // exists for this seed, fall back to the first tile (the test
+      // is still meaningful: every-seat-pre-passed also exercises
+      // the engine's new auto-resolve fast path).
+      const hand0 = s.getState().hands[0];
+      let discard = hand0[0]!;
+      let pengSeat: 1 | 2 | 3 | null = null;
+      for (const t of hand0) {
+        for (const seat of [1, 2, 3] as const) {
+          const copies = s
+            .getState()
+            .hands[seat].filter(
+              (h) =>
+                (h.kind === 'suit' &&
+                  t.kind === 'suit' &&
+                  h.suit === t.suit &&
+                  h.rank === t.rank) ||
+                (h.kind === 'honor' && t.kind === 'honor' && h.honor === t.honor),
+            ).length;
+          if (copies >= 2) {
+            discard = t;
+            pengSeat = seat;
+            break;
+          }
         }
+        if (pengSeat) break;
       }
-      if (pengSeat) break;
-    }
 
-    const out = s.applyClientMessage('c0', {
-      t: 'action',
-      action: { t: 'discard', seat: 0, tile: discard },
-    });
-    // Pre-fix: state would be `phase: 'awaitingClaims'` with the
-    // peng-able bot still pending, parked there for the soft
-    // floor. Post-fix: the bot's pass drains in-line and the
-    // engine auto-resolves to the next seat's turn. (Also covers
-    // the all-pre-passed case where pengSeat is null — that one
-    // resolved in the engine itself.)
-    expect(s.getState().phase).not.toBe('awaitingClaims');
-    // And no alarm should be armed at the soft floor: there's
-    // nothing left to resolve.
-    const claimAlarms = out
-      .filter((o): o is { kind: 'scheduleAlarm'; deadlineMs: number } => o.kind === 'scheduleAlarm')
-      .map((o) => o.deadlineMs);
-    // Any scheduled alarm should be a turn/bot-pace deadline, not
-    // the stale soft-floor we'd have armed under the old gate.
-    // We can't easily distinguish those here without instrumenting
-    // the deadline source, so just sanity-check we're past
-    // 'awaitingClaims' — that proves no claim alarm is needed.
-    void claimAlarms;
-    randomSpy.mockRestore();
+      const out = s.applyClientMessage('c0', {
+        t: 'action',
+        action: { t: 'discard', seat: 0, tile: discard },
+      });
+      // Pre-fix: state would be `phase: 'awaitingClaims'` with the
+      // peng-able bot still pending, parked there for the soft
+      // floor. Post-fix: the bot's pass drains in-line and the
+      // engine auto-resolves to the next seat's turn. (Also covers
+      // the all-pre-passed case where pengSeat is null — that one
+      // resolved in the engine itself.)
+      expect(s.getState().phase).not.toBe('awaitingClaims');
+      // And no alarm should be armed at the soft floor: there's
+      // nothing left to resolve.
+      const claimAlarms = out
+        .filter(
+          (o): o is { kind: 'scheduleAlarm'; deadlineMs: number } => o.kind === 'scheduleAlarm',
+        )
+        .map((o) => o.deadlineMs);
+      // Any scheduled alarm should be a turn/bot-pace deadline, not
+      // the stale soft-floor we'd have armed under the old gate.
+      // We can't easily distinguish those here without instrumenting
+      // the deadline source, so just sanity-check we're past
+      // 'awaitingClaims' — that proves no claim alarm is needed.
+      void claimAlarms;
+    } finally {
+      randomSpy.mockRestore();
+    }
   });
 
   it('human submission triggers resolution + bot-claim polling without waiting on bots', () => {

@@ -11,10 +11,15 @@ import { Tile } from '../Tile';
 import { PrimaryButton } from '../buttons';
 import { COLORS, PANEL_ON_FELT } from '../colors';
 import { TutorialTarget } from '../tutorial/TargetRegistry';
-import { WIND_GLYPH } from '../winds';
-import { WALL_LOW_THRESHOLD } from './GameStatusBar';
+import { WIND_GLYPH, WIND_NAME } from '../winds';
+import { STATUS_LOW_WALL_RED, WALL_LOW_THRESHOLD } from './GameStatusBar';
 import { MeldStrip } from './MeldStrip';
-import { DenseOppRow, YourHandActiveHalo, YourTurnBadge } from './MobileShellShared';
+import {
+  DenseOppRow,
+  OPP_PLAYING_ORDER,
+  YourHandActiveHalo,
+  YourTurnBadge,
+} from './MobileShellShared';
 import { SharedDiscardPool } from './SharedDiscardPool';
 import { type SortMode, SortPicker } from './SortPicker';
 import { type Position, SEAT_COLOR } from './seatColor';
@@ -43,15 +48,6 @@ const RAIL_SECTION_LABEL_STYLE = {
   marginBottom: 4,
 };
 
-/** Perimeter slots for the landscape opp-strips chrome row,
- *  left-to-right. Matches HK mahjong playing order starting from the
- *  seat that plays immediately after the user (whose own seat sits
- *  at `bottom`): play moves counter-clockwise → right → top → left
- *  → back to user. Same order as `PortraitShell`'s top-to-bottom
- *  stack, so both orientations show e.g. East / South / West for a
- *  North-seated user. */
-const LANDSCAPE_OPP_POSITIONS: readonly Position[] = ['right', 'top', 'left'];
-
 interface LandscapeShellProps {
   state: GameState;
   seat: Seat;
@@ -71,8 +67,6 @@ interface LandscapeShellProps {
   latestDiscardId: number | null;
   userName: string;
   userWindGlyph: string;
-  userWindBg: string;
-  userWindFg: string;
   drawnTileId: number | null;
   hintTileId: number | null;
   readyWaits: readonly MTile[];
@@ -168,6 +162,7 @@ export function LandscapeShell({
       >
         <Pressable
           onPress={() => setMenuOpen(true)}
+          accessibilityRole="button"
           accessibilityLabel="Open menu"
           style={({ pressed }) => ({
             paddingHorizontal: 10,
@@ -180,7 +175,7 @@ export function LandscapeShell({
         </Pressable>
         {byPosition ? (
           <View style={{ flex: 1, flexDirection: 'row', gap: 6 }}>
-            {LANDSCAPE_OPP_POSITIONS.map((pos) => {
+            {OPP_PLAYING_ORDER.map((pos) => {
               const placement = byPosition[pos];
               const seatAbout = aboutToDraw && nextDrawerSeat === placement.seat;
               return (
@@ -251,12 +246,12 @@ export function LandscapeShell({
               }}
             >
               <View
+                pointerEvents="box-none"
                 style={{
                   flexDirection: 'row',
                   gap: 8,
                   flexWrap: 'wrap',
                   justifyContent: 'center',
-                  pointerEvents: 'box-none',
                 }}
               >
                 {canTsumo ? (
@@ -330,6 +325,14 @@ export function LandscapeShell({
               compact sort picker on the right so the hand stays
               centred on the row regardless of whether the pill is
               showing. */}
+          {/* Left/right slot widths are 88px each — deliberately
+              narrower than `YOUR_TURN_BADGE_WIDTH` (160) so the
+              non-compact YourTurnBadge can overflow its slot if
+              needed without pushing the hand off-centre. The 88px
+              floor matches the compact SortPicker pill's outer
+              width on the right, so both sides reserve the same
+              space and the hand stays centred whether or not the
+              badge / picker has visible content. */}
           <View style={{ minWidth: 88, alignItems: 'flex-start' }}>
             {myTurn ? <YourTurnBadge needsDraw={needsDraw} /> : null}
           </View>
@@ -483,7 +486,14 @@ function LandscapeInfoRail({
           />
         ) : null}
         {myTurn ? (
-          <Text style={{ fontSize: 10, fontWeight: '800', color: COLORS.red }}>
+          <Text
+            accessibilityLabel={
+              turnCountdown !== null
+                ? `${turnCountdown} seconds left in your turn`
+                : 'No turn timer'
+            }
+            style={{ fontSize: 10, fontWeight: '800', color: COLORS.red }}
+          >
             {turnCountdown !== null ? `${turnCountdown}s` : '∞'}
           </Text>
         ) : null}
@@ -595,12 +605,3 @@ function LandscapeInfoRail({
     </ScrollView>
   );
 }
-
-const WIND_NAME = {
-  E: 'East',
-  S: 'South',
-  W: 'West',
-  N: 'North',
-} as const;
-
-const STATUS_LOW_WALL_RED = '#b2503b';

@@ -19,23 +19,18 @@ import { TutorialTarget } from '../tutorial/TargetRegistry';
 import { WIND_GLYPH } from '../winds';
 import { GameStatusBar } from './GameStatusBar';
 import { MeldStrip } from './MeldStrip';
-import { DenseOppRow, YourHandActiveHalo, YourTurnBadge } from './MobileShellShared';
+import {
+  DenseOppRow,
+  OPP_PLAYING_ORDER,
+  YourHandActiveHalo,
+  YourTurnBadge,
+} from './MobileShellShared';
 import { ReadyHandBadge } from './ReadyHandBadge';
 import { SharedDiscardPool } from './SharedDiscardPool';
 import { type SortMode, SortPicker } from './SortPicker';
 import type { Position } from './seatColor';
 import type { SeatPlacement } from './seatPlacement';
 import type { FELT_SKINS } from './skins';
-
-/** Perimeter slots in HK mahjong playing order, starting from the
- *  seat that plays immediately after the user (whose seat sits at
- *  `bottom`). Play moves counter-clockwise: user → right → top →
- *  left → user. Rendering the three opponent rows in this order
- *  means the visual order matches the wind sequence regardless of
- *  who the user is: e.g. North user sees East / South / West
- *  top-to-bottom; South user sees West / North / East. Shared with
- *  `LandscapeShell` so both orientations stay in lockstep. */
-const OPP_PLAYING_ORDER: readonly Position[] = ['right', 'top', 'left'];
 
 interface PortraitShellProps {
   state: GameState;
@@ -268,12 +263,12 @@ export function PortraitShell({
             }}
           >
             <View
+              pointerEvents="box-none"
               style={{
                 flexDirection: 'row',
                 gap: 8,
                 flexWrap: 'wrap',
                 justifyContent: 'center',
-                pointerEvents: 'box-none',
               }}
             >
               {canTsumo ? (
@@ -428,13 +423,6 @@ interface ChromeTrailingProps {
   viewers: number | null;
 }
 
-const TRAILING_COLORS = {
-  ink: '#3a3328',
-  ink3: '#918275',
-  hairline: '#cdc1ad',
-  red: '#b14d3a',
-};
-
 /**
  * `#CODE` (online / LAN) or `SOLO` (offline) badge plus the viewer
  * count, rendered inside `GameStatusBar`'s trailing slot on mobile.
@@ -454,7 +442,7 @@ function ChromeTrailing({ showCode, matchCode, viewers }: ChromeTrailingProps) {
           style={{
             fontSize: 11,
             fontWeight: '800',
-            color: TRAILING_COLORS.red,
+            color: COLORS.red,
             letterSpacing: 1.2,
           }}
         >
@@ -470,7 +458,7 @@ function ChromeTrailing({ showCode, matchCode, viewers }: ChromeTrailingProps) {
           style={{
             fontSize: 11,
             fontWeight: '800',
-            color: TRAILING_COLORS.ink3,
+            color: COLORS.ink3,
             letterSpacing: 1.2,
           }}
         >
@@ -478,9 +466,7 @@ function ChromeTrailing({ showCode, matchCode, viewers }: ChromeTrailingProps) {
         </Text>
       ) : null}
       {viewers && viewers > 0 ? (
-        <Text style={{ fontSize: 11, color: TRAILING_COLORS.ink3, fontWeight: '600' }}>
-          👁 {viewers}
-        </Text>
+        <Text style={{ fontSize: 11, color: COLORS.ink3, fontWeight: '600' }}>👁 {viewers}</Text>
       ) : null}
     </View>
   );
@@ -547,6 +533,7 @@ function MenuPill({ onPress }: { onPress: () => void }) {
   return (
     <Pressable
       onPress={onPress}
+      accessibilityRole="button"
       accessibilityLabel="Open menu"
       style={({ pressed }) => ({
         paddingHorizontal: 12,

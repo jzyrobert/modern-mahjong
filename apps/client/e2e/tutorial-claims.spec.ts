@@ -13,6 +13,13 @@ const TEST_SEED = 5;
 test.beforeEach(async ({ page }) => {
   await page.addInitScript((seed) => {
     (globalThis as { __MAHJONG_TEST_SEED__?: number }).__MAHJONG_TEST_SEED__ = seed;
+    // Pin Math.random deterministically so the tutorial's three
+    // passive bots take the pass branch in the new coin-flip claim
+    // path. Without this, an intermediate bot could `peng` on a
+    // discard before seat 3 reaches its scripted chi-completion
+    // throw, flipping the engine into a different turn order and
+    // hanging the lesson on the watch step.
+    Math.random = () => 0.1;
     // Pre-mark basics + safety complete so the lobby card lands
     // directly on claims.
     localStorage.setItem(

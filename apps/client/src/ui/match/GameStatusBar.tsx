@@ -55,6 +55,12 @@ interface GameStatusBarProps {
  *  uses the same threshold instead of inlining its own. */
 export const WALL_LOW_THRESHOLD = 14;
 
+/** Red ink used by the wall-count chip (and the LandscapeShell's
+ *  info-rail Wall row) when `wallCount <= WALL_LOW_THRESHOLD`. Exported
+ *  so other status surfaces stay in sync with this pill's palette
+ *  rather than duplicating the hex. */
+export const STATUS_LOW_WALL_RED = '#b2503b';
+
 /**
  * Top-of-table status pill — wind glyph in a seat-coloured circle, the
  * player's name, live wall depletion bar, and a "YOUR TURN" indicator
@@ -138,7 +144,7 @@ export function GameStatusBar({
         style={{
           fontSize: 10,
           letterSpacing: 0.4,
-          color: low ? '#b2503b' : COLORS.ink,
+          color: low ? STATUS_LOW_WALL_RED : COLORS.ink,
           fontWeight: '700',
         }}
       >

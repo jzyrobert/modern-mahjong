@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Platform, Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { COLORS } from './colors';
+import { useIsLandscape } from './useOrientation';
 
 /**
  * Browsers reject `Element.requestFullscreen()` outside a user-activation
@@ -10,7 +11,9 @@ import { COLORS } from './colors';
  * small "tap for fullscreen" button in the corner whenever:
  *
  *   - the platform is web (no DOM on native targets),
- *   - the viewport is in landscape orientation (`width > height`),
+ *   - the viewport is in landscape orientation (via `useIsLandscape`,
+ *     the shared matchMedia-based hook — see CLAUDE.md's "Orientation"
+ *     convention),
  *   - the height is small enough to be a phone (`< 600 px`), so iPad
  *     landscape and laptops don't trigger the prompt,
  *   - we're not already in fullscreen,
@@ -20,12 +23,20 @@ import { COLORS } from './colors';
  * the press handler succeeds. Rotating back to portrait resets the
  * dismissal so a later landscape rotation gets another offer.
  *
+ * Orientation specifically reads `matchMedia('(orientation: landscape)')`
+ * rather than a raw `width > height` compare — Android Chrome shrinks
+ * `window.innerHeight` when the soft keyboard opens, which can flip a
+ * dimension-based check mid-tap and unmount the prompt out from under
+ * the user. The matchMedia query stays pinned to the device's physical
+ * orientation regardless of the keyboard.
+ *
  * No-op on native (React Native Web's `document` shim doesn't exist on
  * iOS / Android, and the OS already handles fullscreen via its own
  * shell). SSR-safe — every DOM access is gated on `typeof document`.
  */
 export function FullscreenPrompt() {
-  const { width, height } = useWindowDimensions();
+  const { height } = useWindowDimensions();
+  const isLandscape = useIsLandscape();
   const [inFullscreen, setInFullscreen] = useState(false);
   const [dismissed, setDismissed] = useState(false);
 
@@ -47,12 +58,12 @@ export function FullscreenPrompt() {
   // Reset the manual dismissal when the user rotates back to portrait
   // — a fresh landscape flip should offer the prompt again.
   useEffect(() => {
-    if (height >= width) setDismissed(false);
-  }, [width, height]);
+    if (!isLandscape) setDismissed(false);
+  }, [isLandscape]);
 
   if (Platform.OS !== 'web') return null;
   if (typeof document === 'undefined') return null;
-  if (width <= height) return null;
+  if (!isLandscape) return null;
   if (height >= 600) return null;
   if (inFullscreen) return null;
   if (dismissed) return null;

@@ -1,5 +1,5 @@
 import type { GameState } from '@mahjong/game-logic';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Text, View } from 'react-native';
 import type { LobbyState } from '../../state/game';
 import { PULSE_TEMPO, usePulse } from '../animations';
@@ -7,8 +7,22 @@ import { COLORS } from '../colors';
 import { WIND_GLYPH } from '../winds';
 import { MeldStrip } from './MeldStrip';
 import { oppIdentity } from './oppIdentity';
-import { SEAT_COLOR } from './seatColor';
+import { type Position, SEAT_COLOR } from './seatColor';
 import type { SeatPlacement } from './seatPlacement';
+
+/**
+ * Perimeter slots for the three opponent strips, ordered to match HK
+ * mahjong playing order from the seat that plays immediately after
+ * the user. The user always sits at `bottom`; play moves counter-
+ * clockwise → right → top → left → back to user. Rendering the three
+ * opponent rows in this order means the visual order matches the wind
+ * sequence regardless of who the user is: e.g. North user sees
+ * East / South / West top-to-bottom, South user sees West / North /
+ * East. Shared with `PortraitShell` (vertical stack above the
+ * shared discard pool) and `LandscapeShell` (equal-flex strips
+ * alongside the ☰ menu) so both orientations stay in lockstep.
+ */
+export const OPP_PLAYING_ORDER: readonly Position[] = ['right', 'top', 'left'];
 
 /**
  * Breathing gold halo painted over the user's hand row when it's their
@@ -47,7 +61,14 @@ export function YourHandActiveHalo() {
   useEffect(() => {
     Animated.timing(fadeIn, { toValue: 1, duration: 1200, useNativeDriver: true }).start();
   }, [fadeIn]);
-  const opacity = Animated.multiply(fadeIn, breathingOpacity);
+  // Memoise so the Animated multiply node isn't re-created on every
+  // render — both inputs are stable Animated refs/interpolations, so
+  // the memo just avoids rebuilding the composite node each pulse
+  // frame.
+  const opacity = useMemo(
+    () => Animated.multiply(fadeIn, breathingOpacity),
+    [fadeIn, breathingOpacity],
+  );
   return (
     <Animated.View
       pointerEvents="none"
@@ -101,11 +122,11 @@ export const YOUR_TURN_BADGE_WIDTH = 160;
 export const YOUR_TURN_BADGE_WIDTH_COMPACT = 152;
 /** Heights match the SortPicker pill's outer height in each
  *  variant (default vs slim) so the YOUR TURN pill and the sort
- *  pill line up visually on the same row. Exported so callers that
- *  reserve a fixed-height slot for the badge (e.g. `LandscapeShell`'s
- *  bottom-band YOUR-TURN reservation) match it instead of duplicating
- *  the magic 30. */
-export const YOUR_TURN_BADGE_HEIGHT = 30;
+ *  pill line up visually on the same row. Internal-only as of PR
+ *  #409: LandscapeShell no longer reserves a slot keyed off this
+ *  constant. Drop the `export` if no external reader returns; keep
+ *  the const because `YourTurnBadge` below still reads it. */
+const YOUR_TURN_BADGE_HEIGHT = 30;
 const YOUR_TURN_BADGE_HEIGHT_COMPACT = 26;
 
 interface YourTurnBadgeProps {
@@ -250,6 +271,12 @@ export function DenseOppRow({
           longer bot name joins. */}
       {botLabel ? (
         <View style={{ width: 34 }}>
+          {/* Defensive truncation — the 34-px slot is sized to the
+              4-char BOT_NAME_POOL cap, but a hibernated DO restoring
+              an older lobby snapshot could emit a longer bot name
+              (e.g. "Casey") that would overflow the slot's clip box
+              under numberOfLines={1}. Slice + ellipsis at render
+              keeps the row from breaking even when the pool drifts. */}
           <Text
             style={{
               fontSize: 12,
@@ -258,7 +285,7 @@ export function DenseOppRow({
             }}
             numberOfLines={1}
           >
-            {name}
+            {name.length > 4 ? `${name.slice(0, 4)}…` : name}
           </Text>
         </View>
       ) : (

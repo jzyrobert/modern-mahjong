@@ -29,3 +29,17 @@ export const WIND_GLYPH: Record<Wind, string> = {
  * which want a stable label that doesn't shift with dealer rotation.
  */
 export const SEAT_WIND_GLYPH = ['東', '南', '西', '北'] as const;
+
+/**
+ * English wind name for surfaces that prefer the romanised label
+ * alongside (or instead of) the glyph — currently the players sheet
+ * roster and the landscape match shell's info rail. Localisation
+ * pass will replace this with an i18n call, but the surfaces today
+ * are all en-US, so a single hoisted constant covers them.
+ */
+export const WIND_NAME: Record<Wind, string> = {
+  E: 'East',
+  S: 'South',
+  W: 'West',
+  N: 'North',
+};

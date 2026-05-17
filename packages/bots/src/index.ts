@@ -135,6 +135,10 @@ export const heuristicBot: Bot = {
  * label. Per the solo transport's claim-stagger optimization, when
  * this returns a pass the transport submits it instantly without the
  * 2-6 s delay; only the meaningful claims pay the stagger cost.
+ *
+ * Note: this is intentionally non-deterministic via `Math.random()` —
+ * snapshots/restore through this bot will see different claim picks
+ * across replays. Scripted tests must stub `Math.random`.
  */
 export const passiveBot: Bot = {
   kind: 'passive',

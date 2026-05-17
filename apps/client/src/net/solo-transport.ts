@@ -301,8 +301,14 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
     //    opens). Returns without looping — bot turns wait until the
     //    last claim timer fires.
     if (state.phase === 'awaitingClaims' && state.pendingClaims) {
-      const pending = state.pendingClaims;
       for (const seat of SEATS) {
+        // Live-read the engine state each iteration: an in-loop
+        // `applyAction` (the synchronous pass submission below) can
+        // flip `state.phase` away from 'awaitingClaims' or clear
+        // `state.pendingClaims`, and any further reads off the
+        // closure-captured `pending` would target stale data.
+        if (state.phase !== 'awaitingClaims' || !state.pendingClaims) break;
+        const pending = state.pendingClaims;
         if (seat === pending.discard.from) continue;
         const bot = bots[seat];
         if (!bot) continue;
@@ -367,9 +373,12 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
       // After scheduling: if every bot's pick was a pass we just
       // submitted them synchronously above, which may have resolved
       // the window already. Re-enter the loop so the next bot's turn
-      // fires immediately rather than waiting for a tick.
+      // fires immediately rather than waiting for a tick — but yield
+      // through `queueMicrotask` to match the boot-site setTimeout(…,0)
+      // yield discipline and prevent a deep synchronous re-entry from
+      // the loop's own iteration into another full loop body.
       if (state.phase !== 'awaitingClaims') {
-        driveBots();
+        queueMicrotask(() => driveBots());
       }
       return;
     }
@@ -462,8 +471,12 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
 
   // Defer the initial state/lobby emission until after the caller has had a
   // chance to subscribe via onMessage. Without this, the synchronous emit
-  // would fire into a Set that's still empty.
-  setTimeout(() => {
+  // would fire into a Set that's still empty. Track the handle so
+  // `close()` can cancel it — otherwise a transport closed before the
+  // tick fires would still emit + run bots, leaking work into a dead
+  // session.
+  let initHandle: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+    initHandle = null;
     if (closed) return;
     emit({ t: 'state', state, you: 0 });
     emitLobby();
@@ -523,6 +536,10 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
     },
     close() {
       closed = true;
+      if (initHandle !== null) {
+        clearTimeout(initHandle);
+        initHandle = null;
+      }
       clearPacing();
       clearTurnTimeout();
       clearClaimHandles();
