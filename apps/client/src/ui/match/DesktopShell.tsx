@@ -293,10 +293,21 @@ export function DesktopShell(props: DesktopShellProps) {
             contentContainerStyle={{
               flexGrow: 1,
               justifyContent: 'center',
+              alignItems: 'center',
               padding: 16,
             }}
           >
-            <ResultPanel onAction={onAction} mySeat={seat} isHost={isHost} onLeave={onLeave} />
+            {/* Constrain the panel to ~60% of the viewport so the
+                winning-hand + breakdown column doesn't sprawl across
+                a 1920-px desktop. Mobile keeps the full-width
+                treatment — the bounded width is desktop-only because
+                the scrim renders here. `maxWidth` caps it on ultra-
+                wide monitors; `minWidth` keeps the 13-tile winning
+                hand row from wrapping on narrow desktops near the
+                768-px breakpoint. */}
+            <View style={{ width: '60%', minWidth: 480, maxWidth: 720 }}>
+              <ResultPanel onAction={onAction} mySeat={seat} isHost={isHost} onLeave={onLeave} />
+            </View>
           </ScrollView>
         ) : null}
 
