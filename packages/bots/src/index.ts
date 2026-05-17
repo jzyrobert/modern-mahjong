@@ -121,9 +121,24 @@ export const heuristicBot: Bot = {
 };
 
 /**
- * `passive`: the disconnect stand-in. Always discards the most recently
- * drawn tile (the last one in the hand). Never claims. Designed to do as
- * little harm as possible to the absent player's hand.
+ * `passive`: the disconnect stand-in. Discards the most recently drawn
+ * tile (the last one in the hand). Designed to do as little harm as
+ * possible to the absent player's hand.
+ *
+ * Claims behaviour: flips a coin. ~50 % of the time it walks the
+ * standard priority chain (hu > gang > peng), otherwise it passes. A
+ * pure-pass policy made claim windows feel dead for the user — the
+ * surfaces "is anyone going to do anything?" tension never materialised
+ * — so the bot now exercises the claim path roughly half the time it
+ * has a legal option. Chi is intentionally excluded: it's the most
+ * tactical claim and feels out of character for the "easy" strategy
+ * label. Per the solo transport's claim-stagger optimization, when
+ * this returns a pass the transport submits it instantly without the
+ * 2-6 s delay; only the meaningful claims pay the stagger cost.
+ *
+ * Note: this is intentionally non-deterministic via `Math.random()` —
+ * snapshots/restore through this bot will see different claim picks
+ * across replays. Scripted tests must stub `Math.random`.
  */
 export const passiveBot: Bot = {
   kind: 'passive',
@@ -131,7 +146,14 @@ export const passiveBot: Bot = {
     const hand = view.state.hands[view.seat];
     return hand[hand.length - 1]!;
   },
-  pickClaim() {
+  pickClaim(view) {
+    if (Math.random() < 0.5) return { kind: 'pass' };
+    const { state, seat } = view;
+    if (!state.lastDiscard) return { kind: 'pass' };
+    if (canDeclareWin(state, seat)) return { kind: 'hu' };
+    const legal = legalClaimsFor(state, seat);
+    if (legal.includes('gang')) return { kind: 'gang' };
+    if (legal.includes('peng')) return { kind: 'peng' };
     return { kind: 'pass' };
   },
 };

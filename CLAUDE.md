@@ -71,6 +71,28 @@ Rules for these branches:
 - The default ("one PR = one branch") still applies to all other work
   done in parallel during the migration period.
 
+### Carve-out: iterating on an open PR that's awaiting manual merge
+
+When there is already an open PR that is **awaiting the user's manual-merge
+decision** ("don't auto-merge", "wait for me to review"), the default flips:
+**any further change request from the user stacks onto that same PR's
+branch as additional commits**, NOT a fresh branch off `main`. Branching
+off `main` for each tweak forces the user to merge the earlier PR before
+seeing the next iteration, which breaks the "I want to keep tweaking and
+reviewing before merging" workflow they're explicitly using.
+
+Two overrides revert to a fresh branch off `main`:
+
+1. The user **explicitly** asks for the new work to land in its own PR
+   ("open a separate PR for this", "new PR please").
+2. A **multi-PR plan** has already been generated and shared (e.g. from a
+   `/ce-code-review` output, an approved planning doc, or a prior session
+   that produced a queued PR list) — then each PR in that plan lands on
+   its own branch as planned.
+
+Once the open PR squash-merges, the default ("one PR = one branch off
+`main`") immediately resumes for the next chunk of work.
+
 ## PR workflow
 
 1. Run the full check pipeline locally before pushing: `pnpm -r typecheck`,

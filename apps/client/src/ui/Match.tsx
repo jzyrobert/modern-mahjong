@@ -157,10 +157,29 @@ export function Match() {
   // tileId-string for the hand so unrelated state deltas (opponent
   // draws/discards during `awaitingClaims`, other-seat turns) don't
   // re-run it — only changes to the user's own hand shape do.
+  //
+  // Gate on the user's *concealed-plus-melded* total: `waitTiles`
+  // expects a 13-tile hand shape (4 melds + the eye-minus-one shape),
+  // which the engine maintains between turns / after every discard /
+  // during claim windows. Each exposed meld is 3 tiles (peng/chi) or
+  // 4 tiles (gang) — but for the tenpai-shape check we count gangs as
+  // 3 too (the engine treats the bonus tile as detached for shanten),
+  // so `hand.length + 3 * melds.length === 13` holds for any tenpai
+  // user regardless of how many melds are exposed: 13 concealed (no
+  // melds), 10 + 1×3 (one peng), 7 + 2×3 (two melds), 4 + 3×3 (three
+  // melds), 1 + 4×3 (four melds — pair-wait). The only state where
+  // the user holds 14 tiles in this sum is mid-their-own-turn after
+  // drawing, before discarding — in that window "what tile completes
+  // me" is per-discard analysis, not a single set. Gating on this
+  // shape sum (instead of phase + hasDrawn) means the badge stays
+  // visible during an opponent's turn after they've drawn — the
+  // user's tenpai status doesn't depend on whose turn it is — and
+  // critically, it no longer hides itself the moment the user
+  // exposes a peng (the pre-fix `hand.length === 13` check went
+  // false at that point, even though the user is now in a 10+meld
+  // tenpai shape).
   const showReadyWaits =
-    !!state &&
-    seat !== null &&
-    (state.phase === 'awaitingClaims' || (state.phase === 'turn' && !state.hasDrawn));
+    !!state && seat !== null && state.hands[seat].length + 3 * state.melds[seat].length === 13;
   const readyHand = showReadyWaits ? state!.hands[seat!] : null;
   const readyHandKey = readyHand ? readyHand.map(tileId).join(',') : '';
   const readyMeldCount = readyHand ? state!.melds[seat!].length : 0;

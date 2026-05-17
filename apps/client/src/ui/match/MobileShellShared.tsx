@@ -1,51 +1,28 @@
 import type { GameState } from '@mahjong/game-logic';
-import { useEffect, useRef, useState } from 'react';
-import { Animated, Text } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, Text, View } from 'react-native';
 import type { LobbyState } from '../../state/game';
 import { PULSE_TEMPO, usePulse } from '../animations';
 import { COLORS } from '../colors';
-import { OppHandStrip } from './OppHandStrip';
+import { WIND_GLYPH } from '../winds';
+import { MeldStrip } from './MeldStrip';
+import { oppIdentity } from './oppIdentity';
+import { type Position, SEAT_COLOR } from './seatColor';
 import type { SeatPlacement } from './seatPlacement';
 
-interface SeatRowProps {
-  placement: SeatPlacement;
-  state: GameState;
-  lobby: LobbyState | null;
-  aboutToDraw: boolean;
-  drawCountdown: number | null;
-  turnCountdown: number | null;
-  compact?: boolean;
-}
-
-/** Thin adapter for `OppHandStrip` — derives `isActive` from the
- *  engine state. Used by `PortraitShell` (three vertical rows above the
- *  shared discard pool) and `LandscapeShell` via `LandscapeOppColumn`
- *  (three columns side-by-side), so it lives in this shared module. */
-export function SeatRow({
-  placement,
-  state,
-  lobby,
-  aboutToDraw,
-  drawCountdown,
-  turnCountdown,
-  compact,
-}: SeatRowProps) {
-  const isActive = state.turn === placement.seat && state.phase === 'turn';
-  return (
-    <OppHandStrip
-      seat={placement.seat}
-      seatWind={placement.seatWind}
-      position={placement.position}
-      lobby={lobby}
-      melds={state.melds[placement.seat]}
-      isActive={isActive}
-      aboutToDraw={aboutToDraw}
-      drawCountdown={drawCountdown}
-      turnCountdown={isActive ? turnCountdown : null}
-      compact={compact ?? false}
-    />
-  );
-}
+/**
+ * Perimeter slots for the three opponent strips, ordered to match HK
+ * mahjong playing order from the seat that plays immediately after
+ * the user. The user always sits at `bottom`; play moves counter-
+ * clockwise → right → top → left → back to user. Rendering the three
+ * opponent rows in this order means the visual order matches the wind
+ * sequence regardless of who the user is: e.g. North user sees
+ * East / South / West top-to-bottom, South user sees West / North /
+ * East. Shared with `PortraitShell` (vertical stack above the
+ * shared discard pool) and `LandscapeShell` (equal-flex strips
+ * alongside the ☰ menu) so both orientations stay in lockstep.
+ */
+export const OPP_PLAYING_ORDER: readonly Position[] = ['right', 'top', 'left'];
 
 /**
  * Breathing gold halo painted over the user's hand row when it's their
@@ -84,7 +61,14 @@ export function YourHandActiveHalo() {
   useEffect(() => {
     Animated.timing(fadeIn, { toValue: 1, duration: 1200, useNativeDriver: true }).start();
   }, [fadeIn]);
-  const opacity = Animated.multiply(fadeIn, breathingOpacity);
+  // Memoise so the Animated multiply node isn't re-created on every
+  // render — both inputs are stable Animated refs/interpolations, so
+  // the memo just avoids rebuilding the composite node each pulse
+  // frame.
+  const opacity = useMemo(
+    () => Animated.multiply(fadeIn, breathingOpacity),
+    [fadeIn, breathingOpacity],
+  );
   return (
     <Animated.View
       pointerEvents="none"
@@ -138,11 +122,11 @@ export const YOUR_TURN_BADGE_WIDTH = 160;
 export const YOUR_TURN_BADGE_WIDTH_COMPACT = 152;
 /** Heights match the SortPicker pill's outer height in each
  *  variant (default vs slim) so the YOUR TURN pill and the sort
- *  pill line up visually on the same row. Exported so callers that
- *  reserve a fixed-height slot for the badge (e.g. `LandscapeShell`'s
- *  bottom-band YOUR-TURN reservation) match it instead of duplicating
- *  the magic 30. */
-export const YOUR_TURN_BADGE_HEIGHT = 30;
+ *  pill line up visually on the same row. Internal-only as of PR
+ *  #409: LandscapeShell no longer reserves a slot keyed off this
+ *  constant. Drop the `export` if no external reader returns; keep
+ *  the const because `YourTurnBadge` below still reads it. */
+const YOUR_TURN_BADGE_HEIGHT = 30;
 const YOUR_TURN_BADGE_HEIGHT_COMPACT = 26;
 
 interface YourTurnBadgeProps {
@@ -190,5 +174,158 @@ export function YourTurnBadge({ needsDraw, compact = false }: YourTurnBadgeProps
         YOUR TURN {needsDraw ? '· DRAW' : '· DISCARD'}
       </Text>
     </Animated.View>
+  );
+}
+
+interface DenseOppRowProps {
+  placement: SeatPlacement;
+  state: GameState;
+  lobby: LobbyState | null;
+  aboutToDraw: boolean;
+  drawCountdown: number | null;
+  turnCountdown: number | null;
+}
+
+/**
+ * Transparent, single-line opponent row used by both `PortraitShell`
+ * (three vertical rows above the shared discard pool) and
+ * `LandscapeShell`'s top chrome (three equal-flex strips alongside the
+ * ☰ menu). Drops the cream `OppHandStrip` card to ~22 px tall so the
+ * shared discard pool's `flex: 1` recovers ~60 px of vertical space
+ * across the three opp rows.
+ *
+ * Active state: subtle red-tinted background + matching border + soft
+ * glow. Border stays 1 px in both states so the row doesn't shift by
+ * a pixel when the turn rotates. The 3-px seat-colour bar on the left
+ * stays in the seat palette (jade / mauve / sky) in every state — the
+ * red halo + tint carry the "this seat is on the move" cue; a red bar
+ * duplicates that role and reads as "this seat is red".
+ *
+ * Bot label sits LEFT of the flex spacer next to the name (not
+ * right-aligned), so countdowns stay anchored at the right edge
+ * without competing with the player identity.
+ */
+export function DenseOppRow({
+  placement,
+  state,
+  lobby,
+  aboutToDraw,
+  drawCountdown,
+  turnCountdown,
+}: DenseOppRowProps) {
+  const { name, botLabel } = oppIdentity(lobby, placement.seat);
+  const seatColor = SEAT_COLOR[placement.position];
+  const isActive = state.turn === placement.seat && state.phase === 'turn';
+  const meldsForSeat = state.melds[placement.seat];
+
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        minHeight: 22,
+        gap: 8,
+        // Padding stays constant so the row doesn't grow when active —
+        // toggling it would shift every neighbour by 12 × 4 px on each
+        // turn rotation. The inactive row keeps the same inset; the
+        // active visual is carried entirely by background + border colour
+        // + box-shadow.
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        backgroundColor: isActive ? 'rgba(219,93,74,0.16)' : 'transparent',
+        borderWidth: 1,
+        borderColor: isActive ? 'rgba(219,93,74,0.38)' : 'transparent',
+        borderRadius: 8,
+        boxShadow: isActive ? '0px 0px 10px rgba(219,93,74,0.28)' : 'none',
+      }}
+    >
+      <View
+        style={{
+          width: 3,
+          alignSelf: 'stretch',
+          borderRadius: 2,
+          backgroundColor: seatColor,
+        }}
+      />
+      <Text
+        style={{
+          fontFamily: 'Noto Serif TC',
+          fontSize: 11,
+          fontWeight: '700',
+          color: isActive ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.65)',
+        }}
+      >
+        {WIND_GLYPH[placement.seatWind]}
+      </Text>
+      {/* Bot rows pin the name to a fixed-width slot so the
+          (Easy)/(Passive) chip aligns vertically across the three
+          rows — "Yu" and "Haru" would otherwise put the chip at
+          different x-positions and read as a ragged column. Human
+          rows skip the slot entirely so a long display name doesn't
+          get cropped; humans don't carry a chip, so there's nothing
+          to align against. Slot width is sized to the widest
+          `BOT_NAME_POOL` entry — pool is capped at <= 4 chars by
+          design, so "Haru" / "Vera" / "Niko" (~28-30 px at 12-px
+          bold Inter) fit at 34 px with a small breathing margin.
+          Bump this and the pool's length-cap comment together if a
+          longer bot name joins. */}
+      {botLabel ? (
+        <View style={{ width: 34 }}>
+          {/* Defensive truncation — the 34-px slot is sized to the
+              4-char BOT_NAME_POOL cap, but a hibernated DO restoring
+              an older lobby snapshot could emit a longer bot name
+              (e.g. "Casey") that would overflow the slot's clip box
+              under numberOfLines={1}. Slice + ellipsis at render
+              keeps the row from breaking even when the pool drifts. */}
+          <Text
+            style={{
+              fontSize: 12,
+              fontWeight: '800',
+              color: isActive ? 'white' : 'rgba(255,255,255,0.88)',
+            }}
+            numberOfLines={1}
+          >
+            {name.length > 4 ? `${name.slice(0, 4)}…` : name}
+          </Text>
+        </View>
+      ) : (
+        <Text
+          style={{
+            fontSize: 12,
+            fontWeight: '800',
+            color: isActive ? 'white' : 'rgba(255,255,255,0.88)',
+            flexShrink: 1,
+          }}
+          numberOfLines={1}
+        >
+          {name}
+        </Text>
+      )}
+      {botLabel ? (
+        <Text
+          style={{
+            fontSize: 9,
+            fontWeight: '700',
+            color: isActive ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.36)',
+          }}
+        >
+          {botLabel}
+        </Text>
+      ) : null}
+      <View style={{ flex: 1 }} />
+      {isActive && turnCountdown !== null ? (
+        <Text style={{ fontSize: 9, fontWeight: '900', color: 'rgba(255,255,255,0.9)' }}>
+          {turnCountdown}s left
+        </Text>
+      ) : null}
+      {!isActive && aboutToDraw && drawCountdown !== null ? (
+        <Text style={{ fontSize: 9, fontWeight: '800', color: COLORS.gold }}>
+          drawing in {drawCountdown}s
+        </Text>
+      ) : null}
+      {meldsForSeat.length > 0 ? (
+        <MeldStrip melds={meldsForSeat} tileWidth={10} tileHeight={15} showKindLabel={false} />
+      ) : null}
+    </View>
   );
 }

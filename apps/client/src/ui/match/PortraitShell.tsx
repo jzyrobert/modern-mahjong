@@ -19,12 +19,16 @@ import { TutorialTarget } from '../tutorial/TargetRegistry';
 import { WIND_GLYPH } from '../winds';
 import { GameStatusBar } from './GameStatusBar';
 import { MeldStrip } from './MeldStrip';
-import { YourHandActiveHalo, YourTurnBadge } from './MobileShellShared';
+import {
+  DenseOppRow,
+  OPP_PLAYING_ORDER,
+  YourHandActiveHalo,
+  YourTurnBadge,
+} from './MobileShellShared';
 import { ReadyHandBadge } from './ReadyHandBadge';
 import { SharedDiscardPool } from './SharedDiscardPool';
 import { type SortMode, SortPicker } from './SortPicker';
-import { oppIdentity } from './oppIdentity';
-import { type Position, SEAT_COLOR } from './seatColor';
+import type { Position } from './seatColor';
 import type { SeatPlacement } from './seatPlacement';
 import type { FELT_SKINS } from './skins';
 
@@ -109,11 +113,19 @@ export function PortraitShell({
   setPlayersOpen,
   setMenuOpen,
 }: PortraitShellProps): ReactNode {
-  // Solo's matchCode is the placeholder `'SOLO'`; hide it since the
-  // pill #CODE carries no info the user can act on (no one to share
-  // it with). Online / LAN matches keep the real code visible.
+  // Solo's matchCode is the placeholder `'SOLO'`; the trailing chrome
+  // renders a `SOLO` badge in its place so the user still knows what
+  // kind of match they're in. Online / LAN matches keep the real
+  // `#CODE`.
   const showCode = matchCode !== null && matchCode !== 'SOLO';
   const viewers = lobby?.viewers ?? null;
+  const hasViewers = viewers !== null && viewers > 0;
+  // GameStatusBar prefixes each non-null slot prop with a vertical
+  // hairline divider. Only pass the slot when it has visible content,
+  // otherwise the divider renders against nothing and the bar shows a
+  // stray `│` (most visible on hand 1 solo: `… ∞ │ │ SOLO`).
+  const hasScores = SEATS.some((s) => state.scoreboard[s] !== 0);
+  const hasTrailing = showCode || matchCode === 'SOLO' || hasViewers;
   return (
     <>
       <View
@@ -140,9 +152,11 @@ export function PortraitShell({
             isMyTurn={myTurn}
             turnCountdown={myTurn ? turnCountdown : null}
             onPress={() => setPlayersOpen(true)}
-            inlineScores={<InlineScores />}
+            inlineScores={hasScores ? <InlineScores /> : null}
             trailing={
-              <ChromeTrailing showCode={showCode} matchCode={matchCode} viewers={viewers} />
+              hasTrailing ? (
+                <ChromeTrailing showCode={showCode} matchCode={matchCode} viewers={viewers} />
+              ) : null
             }
           />
         </View>
@@ -150,7 +164,7 @@ export function PortraitShell({
       </View>
       <View
         style={{
-          paddingHorizontal: 12,
+          paddingHorizontal: 8,
           paddingTop: 4,
           gap: 8,
           backgroundColor: felt.top,
@@ -162,37 +176,22 @@ export function PortraitShell({
          *  name, before the flex spacer, so countdowns stay right-aligned
          *  without competing for prominence with the player identity. */}
         {byPosition ? (
-          <View style={{ flexDirection: 'column', gap: 5 }}>
-            <DenseOppRow
-              placement={byPosition.top}
-              state={state}
-              lobby={lobby}
-              aboutToDraw={aboutToDraw && nextDrawerSeat === byPosition.top.seat}
-              drawCountdown={
-                aboutToDraw && nextDrawerSeat === byPosition.top.seat ? drawCountdown : null
-              }
-              turnCountdown={turnCountdown}
-            />
-            <DenseOppRow
-              placement={byPosition.left}
-              state={state}
-              lobby={lobby}
-              aboutToDraw={aboutToDraw && nextDrawerSeat === byPosition.left.seat}
-              drawCountdown={
-                aboutToDraw && nextDrawerSeat === byPosition.left.seat ? drawCountdown : null
-              }
-              turnCountdown={turnCountdown}
-            />
-            <DenseOppRow
-              placement={byPosition.right}
-              state={state}
-              lobby={lobby}
-              aboutToDraw={aboutToDraw && nextDrawerSeat === byPosition.right.seat}
-              drawCountdown={
-                aboutToDraw && nextDrawerSeat === byPosition.right.seat ? drawCountdown : null
-              }
-              turnCountdown={turnCountdown}
-            />
+          <View style={{ flexDirection: 'column', gap: 3 }}>
+            {OPP_PLAYING_ORDER.map((pos) => {
+              const placement = byPosition[pos];
+              const seatAbout = aboutToDraw && nextDrawerSeat === placement.seat;
+              return (
+                <DenseOppRow
+                  key={pos}
+                  placement={placement}
+                  state={state}
+                  lobby={lobby}
+                  aboutToDraw={seatAbout}
+                  drawCountdown={seatAbout ? drawCountdown : null}
+                  turnCountdown={turnCountdown}
+                />
+              );
+            })}
           </View>
         ) : null}
       </View>
@@ -200,9 +199,30 @@ export function PortraitShell({
         style={{
           flex: 1,
           minHeight: 0,
-          paddingHorizontal: 12,
-          paddingTop: 8,
+          // Tightened (12 → 8) so the discard pool inside can host
+          // one more tile column on a ~412 CSS-wide phone. The
+          // surrounding sections (opponent strips above, bottom
+          // action zone below) match this horizontal margin for
+          // visual consistency.
+          paddingHorizontal: 8,
+          // Tightened (8 → 4) so the pool sits closer to the
+          // opponent strips above — saves ~4 px of dead felt
+          // between the two.
+          paddingTop: 4,
+          // The visual gap between the pool's cream felt-bottom
+          // card and the action zone's top border lives here, on
+          // the pool side of the boundary. The action zone's
+          // `paddingTop` stays small so its border sits close to
+          // its first content row (YOUR MELDS, claim bar, hand,
+          // …).
+          paddingBottom: 8,
           backgroundColor: felt.top,
+          // Relative parent for the absolute-positioned tsumo /
+          // gang overlay below — the overlay anchors to the bottom
+          // edge of this pool section so it visually sits over the
+          // discards rather than competing with the hand row for
+          // bottom-action-zone real estate.
+          position: 'relative',
         }}
       >
         <View
@@ -212,7 +232,10 @@ export function PortraitShell({
             borderColor: 'rgba(255,255,255,0.12)',
             borderWidth: 1,
             borderRadius: 12,
-            padding: 8,
+            // Tightened (8 → 4) for the same reason — extra
+            // horizontal interior so an additional tile column
+            // fits on ~412 CSS phones.
+            padding: 4,
             minHeight: 0,
           }}
         >
@@ -224,48 +247,30 @@ export function PortraitShell({
             />
           </TutorialTarget>
         </View>
-      </View>
-
-      {/* Fixed bottom action zone — own melds, sort picker, hand,
-          and any active claim / tsumo / gang / result CTAs. Pinned
-          so the hand strip never drifts off-screen as the discard
-          pool grows. */}
-      <View
-        style={{
-          paddingHorizontal: 12,
-          paddingTop: 8,
-          paddingBottom: 4,
-          gap: 8,
-          backgroundColor: felt.top,
-          borderTopColor: 'rgba(0,0,0,0.12)',
-          borderTopWidth: 1,
-        }}
-      >
-        {state.melds[seat].length > 0 ? (
-          <View style={{ gap: 4 }}>
-            <Text
+        {canTsumo || concealedGangTile ? (
+          <TutorialTarget
+            id="tsumo-button"
+            style={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              bottom: 12,
+              alignItems: 'center',
+              // pointerEvents on the wrapper so taps fall through
+              // any empty area beside the button — the buttons
+              // themselves are still tappable.
+              pointerEvents: 'box-none',
+            }}
+          >
+            <View
+              pointerEvents="box-none"
               style={{
-                fontSize: 10,
-                fontWeight: '800',
-                color: 'rgba(255,255,255,0.7)',
-                letterSpacing: 0.5,
+                flexDirection: 'row',
+                gap: 8,
+                flexWrap: 'wrap',
+                justifyContent: 'center',
               }}
             >
-              YOUR MELDS
-            </Text>
-            <MeldStrip melds={state.melds[seat]} tileWidth={14} tileHeight={20} />
-          </View>
-        ) : null}
-
-        {hasClaimOption ? (
-          <TutorialTarget id="claim-bar">
-            <ClaimBar onAction={onAction} seat={seat} />
-          </TutorialTarget>
-        ) : null}
-
-        {canTsumo || concealedGangTile ? (
-          <TutorialTarget id="tsumo-button">
-            <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
               {canTsumo ? (
                 <PrimaryButton onPress={() => onAction({ t: 'declareWin', seat, selfDraw: true })}>
                   {tsumoFaan !== null
@@ -285,12 +290,84 @@ export function PortraitShell({
             </View>
           </TutorialTarget>
         ) : null}
+      </View>
+
+      {/* Fixed bottom action zone — own melds, sort picker, hand,
+          and any active claim / tsumo / gang / result CTAs. Pinned
+          so the hand strip never drifts off-screen as the discard
+          pool grows. */}
+      <View
+        style={{
+          // Matches the trimmed `paddingHorizontal: 8` on the
+          // opponent and discard-pool sections above.
+          paddingHorizontal: 8,
+          // Small (4) — the breathing room between the pool and
+          // the action zone is owned by the pool section's
+          // `paddingBottom`, not by this one. Keeping this tight
+          // means the action zone's top border sits close to its
+          // first content row (YOUR MELDS / claim bar / hand)
+          // rather than floating in dead felt.
+          paddingTop: 4,
+          paddingBottom: 4,
+          gap: 8,
+          backgroundColor: felt.top,
+          borderTopColor: 'rgba(0,0,0,0.12)',
+          borderTopWidth: 1,
+        }}
+      >
+        {state.melds[seat].length > 0 || readyWaits.length > 0 ? (
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'flex-end',
+              justifyContent: 'space-between',
+              gap: 8,
+              flexWrap: 'wrap',
+            }}
+          >
+            {state.melds[seat].length > 0 ? (
+              <View style={{ gap: 4, flexShrink: 1 }}>
+                <Text
+                  style={{
+                    fontSize: 10,
+                    fontWeight: '800',
+                    color: 'rgba(255,255,255,0.7)',
+                    letterSpacing: 0.5,
+                  }}
+                >
+                  YOUR MELDS
+                </Text>
+                <MeldStrip melds={state.melds[seat]} tileWidth={14} tileHeight={20} />
+              </View>
+            ) : (
+              <View />
+            )}
+            {/* ReadyHandBadge anchored flush-right of the melds row.
+                Surfaces tenpai status independent of phase — visible
+                during opponent turns, claim windows, and the user's
+                own pre-draw moment alike. The badge is its own self-
+                gated component (returns null when waits.length === 0),
+                so passing the array unconditionally is fine — the
+                outer `||` keeps the whole row from rendering when
+                both inputs are empty. */}
+            <ReadyHandBadge waits={readyWaits} />
+          </View>
+        ) : null}
+
+        {hasClaimOption ? (
+          <TutorialTarget id="claim-bar">
+            <ClaimBar onAction={onAction} seat={seat} />
+          </TutorialTarget>
+        ) : null}
 
         {/* SortPicker sits flush-right above the hand so the user can
             switch sort order mid-hand without taking their eyes off
-            the tiles. ReadyHandBadge sits flush-left on the same row
-            when the user is tenpai, so the badge + picker share one
-            strip instead of pushing the hand down. */}
+            the tiles. YOUR TURN pill sits flush-left on the same
+            row when active. The ReadyHandBadge no longer lives on
+            this row — it's pinned to the right of the YOUR MELDS
+            strip so it stays visible regardless of whose turn it
+            is, and so it doesn't have to compete with the YOUR TURN
+            pill for the same flush-left slot. */}
         <View
           style={{
             flexDirection: 'row',
@@ -305,7 +382,6 @@ export function PortraitShell({
                 shares the row with the slim SortPicker on a 393-px
                 portrait viewport without wrapping. */}
             {myTurn ? <YourTurnBadge needsDraw={needsDraw} compact /> : null}
-            <ReadyHandBadge waits={readyWaits} />
           </View>
           <View style={{ marginLeft: 'auto' }}>
             {/* Slim segmented picker — shrunk padding + smaller font
@@ -316,18 +392,16 @@ export function PortraitShell({
           </View>
         </View>
         <TutorialTarget id="own-hand">
-          {/* Wrapper picks up the gold breathing halo when it's the
-              user's turn — opponents already have this treatment
-              (OppHandStrip.ActiveHalo) so the user's hand getting
-              the same cue when active makes it obvious which seat
-              is on the clock. Gated on `!needsDraw` so the halo
-              only fires once the user has drawn and is choosing
-              what to discard — pre-draw the tile-to-discard action
-              isn't yet legal and the halo would misleadingly cue
-              interaction with the hand. `position: 'relative'` + 4
-              px padding give the absolute halo room to breathe
-              outward by its GROWTH_PX without clipping. */}
-          <View style={{ position: 'relative', padding: 4 }}>
+          {/* `position: 'relative'` + 4 px padding give the absolute
+              halo room to breathe outward by GROWTH_PX without
+              clipping. `alignSelf: 'center'` so the hand row sits
+              centred across the portrait viewport rather than
+              hugging the left edge — without this, the inner Hand
+              shrinks to its tile-row content width but the wrapping
+              flex stretched it left-aligned. The halo's still
+              relative to this centred wrapper, so it tracks the
+              hand correctly. */}
+          <View style={{ position: 'relative', padding: 4, alignSelf: 'center' }}>
             {myTurn && !needsDraw ? <YourHandActiveHalo /> : null}
             <Hand
               tiles={state.hands[seat]}
@@ -349,22 +423,18 @@ interface ChromeTrailingProps {
   viewers: number | null;
 }
 
-const TRAILING_COLORS = {
-  ink: '#3a3328',
-  ink3: '#918275',
-  hairline: '#cdc1ad',
-  red: '#b14d3a',
-};
-
 /**
- * Optional #CODE + viewer count rendered inside `GameStatusBar`'s
- * trailing slot on mobile for online / LAN matches. Solo and
- * code-less matches collapse this away. The ☰ menu button moved out
- * of the bar in 2026-05 — it now sits in a sibling pill on the top
- * right so the GameStatusBar stays one row tall on phone widths.
+ * `#CODE` (online / LAN) or `SOLO` (offline) badge plus the viewer
+ * count, rendered inside `GameStatusBar`'s trailing slot on mobile.
+ * Truly code-less matches collapse this away. The ☰ menu button
+ * moved out of the bar in 2026-05 — it now sits in a sibling pill
+ * on the top right so the GameStatusBar stays one row tall on phone
+ * widths.
  */
 function ChromeTrailing({ showCode, matchCode, viewers }: ChromeTrailingProps) {
-  if (!showCode && !(viewers && viewers > 0)) return null;
+  const isSolo = matchCode === 'SOLO';
+  const hasViewers = viewers !== null && viewers > 0;
+  if (!showCode && !isSolo && !hasViewers) return null;
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
       {showCode && matchCode ? (
@@ -372,17 +442,31 @@ function ChromeTrailing({ showCode, matchCode, viewers }: ChromeTrailingProps) {
           style={{
             fontSize: 11,
             fontWeight: '800',
-            color: TRAILING_COLORS.red,
+            color: COLORS.red,
             letterSpacing: 1.2,
           }}
         >
           #{matchCode}
         </Text>
       ) : null}
-      {viewers && viewers > 0 ? (
-        <Text style={{ fontSize: 11, color: TRAILING_COLORS.ink3, fontWeight: '600' }}>
-          👁 {viewers}
+      {/* `SOLO` reads as an identity badge for the offline flow —
+          no `#` prefix because there's nothing to share, and the
+          ink3 grey instead of the red used for shareable codes
+          signals "informational, not actionable". */}
+      {isSolo ? (
+        <Text
+          style={{
+            fontSize: 11,
+            fontWeight: '800',
+            color: COLORS.ink3,
+            letterSpacing: 1.2,
+          }}
+        >
+          SOLO
         </Text>
+      ) : null}
+      {viewers && viewers > 0 ? (
+        <Text style={{ fontSize: 11, color: COLORS.ink3, fontWeight: '600' }}>👁 {viewers}</Text>
       ) : null}
     </View>
   );
@@ -439,124 +523,6 @@ function InlineScores() {
   );
 }
 
-interface DenseOppRowProps {
-  placement: SeatPlacement;
-  state: GameState;
-  lobby: LobbyState | null;
-  aboutToDraw: boolean;
-  drawCountdown: number | null;
-  turnCountdown: number | null;
-}
-
-/**
- * Transparent, single-line opponent row used by the densified portrait
- * layout (Match Alt A). Drops the cream `OppHandStrip` card to ~28 px
- * tall so the shared discard pool's `flex: 1` recovers ~60 px of
- * vertical space across the three opp rows.
- *
- * Active state: subtle red-tinted background + matching border + soft
- * glow. Border stays 1 px in both states so the row doesn't shift by
- * a pixel when the turn rotates.
- *
- * Bot label sits LEFT of the flex spacer next to the name (not
- * right-aligned), so countdowns stay anchored at the right edge
- * without competing with the player identity.
- */
-function DenseOppRow({
-  placement,
-  state,
-  lobby,
-  aboutToDraw,
-  drawCountdown,
-  turnCountdown,
-}: DenseOppRowProps) {
-  const { name, botLabel } = oppIdentity(lobby, placement.seat);
-  const seatColor = SEAT_COLOR[placement.position];
-  const isActive = state.turn === placement.seat && state.phase === 'turn';
-  const meldsForSeat = state.melds[placement.seat];
-
-  return (
-    <View
-      style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        minHeight: 28,
-        gap: 8,
-        // Padding stays constant so the row doesn't grow when active —
-        // toggling it would shift every neighbour by 12 × 6 px on each
-        // turn rotation. The inactive row keeps the same inset; the
-        // active visual is carried entirely by background + border colour
-        // + box-shadow.
-        paddingHorizontal: 6,
-        paddingVertical: 3,
-        backgroundColor: isActive ? 'rgba(219,93,74,0.16)' : 'transparent',
-        borderWidth: 1,
-        borderColor: isActive ? 'rgba(219,93,74,0.38)' : 'transparent',
-        borderRadius: 8,
-        boxShadow: isActive ? '0px 0px 10px rgba(219,93,74,0.28)' : 'none',
-      }}
-    >
-      {/* 3-px seat-colour bar — turns redHot when active so it doubles
-          as the "live seat" indicator the cream card used to carry via
-          its background. */}
-      <View
-        style={{
-          width: 3,
-          alignSelf: 'stretch',
-          borderRadius: 2,
-          backgroundColor: isActive ? COLORS.redHot : seatColor,
-        }}
-      />
-      <Text
-        style={{
-          fontFamily: 'Noto Serif TC',
-          fontSize: 11,
-          fontWeight: '700',
-          color: isActive ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.65)',
-        }}
-      >
-        {WIND_GLYPH[placement.seatWind]}
-      </Text>
-      <Text
-        style={{
-          fontSize: 12,
-          fontWeight: '800',
-          maxWidth: 90,
-          color: isActive ? 'white' : 'rgba(255,255,255,0.88)',
-        }}
-        numberOfLines={1}
-      >
-        {name}
-      </Text>
-      {botLabel ? (
-        <Text
-          style={{
-            fontSize: 9,
-            fontWeight: '700',
-            color: isActive ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.36)',
-          }}
-        >
-          {botLabel}
-        </Text>
-      ) : null}
-      <View style={{ flex: 1 }} />
-      {isActive && turnCountdown !== null ? (
-        <Text style={{ fontSize: 9, fontWeight: '900', color: 'rgba(255,255,255,0.9)' }}>
-          {turnCountdown}s left
-        </Text>
-      ) : null}
-      {!isActive && aboutToDraw && drawCountdown !== null ? (
-        <Text style={{ fontSize: 9, fontWeight: '800', color: COLORS.gold }}>
-          drawing in {drawCountdown}s
-        </Text>
-      ) : null}
-      {meldsForSeat.length > 0 ? (
-        <MeldStrip melds={meldsForSeat} tileWidth={10} tileHeight={15} showKindLabel={false} />
-      ) : null}
-    </View>
-  );
-}
-
 /**
  * Standalone ☰ pill rendered next to `GameStatusBar` on mobile.
  * Hosts its own background so it can sit outside the status pill
@@ -567,6 +533,7 @@ function MenuPill({ onPress }: { onPress: () => void }) {
   return (
     <Pressable
       onPress={onPress}
+      accessibilityRole="button"
       accessibilityLabel="Open menu"
       style={({ pressed }) => ({
         paddingHorizontal: 12,

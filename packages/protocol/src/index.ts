@@ -56,12 +56,17 @@ export function botDisplayName(kind: BotKind): string {
  * the same list — otherwise online and solo would project different
  * name styles into the same `PublicPlayer.displayName` field.
  */
+// All entries are <= 4 characters by design: the portrait
+// `DenseOppRow` reserves a fixed-width slot for the name so the
+// bot-status chip aligns vertically across rows. Keeping every name
+// short means the slot can stay tight (44 px, see
+// `apps/client/src/ui/match/PortraitShell.tsx`). Add only names that
+// fit the same budget — longer ones force the slot wider, which
+// pushes the chip noticeably to the right.
 export const BOT_NAME_POOL: readonly string[] = [
   'Aiko',
   'Bao',
-  'Casey',
   'Dao',
-  'Elena',
   'Finn',
   'Haru',
   'Iris',

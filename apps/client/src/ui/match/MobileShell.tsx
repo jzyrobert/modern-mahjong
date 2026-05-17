@@ -183,8 +183,6 @@ export function MobileShell(props: MobileShellProps) {
             latestDiscardId={latestDiscardId}
             userName={userName}
             userWindGlyph={userWindGlyph}
-            userWindBg={userWindBg}
-            userWindFg={userWindFg}
             drawnTileId={drawnTileId}
             hintTileId={hintTileId}
             readyWaits={readyWaits}
@@ -193,6 +191,7 @@ export function MobileShell(props: MobileShellProps) {
             onAction={onAction}
             onTileTap={onTileTap}
             byPosition={byPosition}
+            seatToPosition={seatToPosition}
             setPlayersOpen={setPlayersOpen}
             setMenuOpen={setMenuOpen}
           />

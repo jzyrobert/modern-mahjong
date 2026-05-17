@@ -47,11 +47,6 @@ declare global {
    *  auto-discard fires inside the test's wall-clock budget. */
   // eslint-disable-next-line no-var
   var __MAHJONG_TEST_TURN_TIMEOUT_MS__: number | undefined;
-  /** Override the post-user-discard claim floor (default 3000ms — the
-   *  read window when no bot claims). Tests set this to `0` so the
-   *  next bot turn fires immediately after a user discard. */
-  // eslint-disable-next-line no-var
-  var __MAHJONG_TEST_CLAIM_FLOOR_MS__: number | undefined;
   /** Override the per-bot claim-submission delay (default 2000–6000ms,
    *  randomized per-bot). When set, tests get a deterministic single
    *  fixed delay (no jitter) — `0` for instant submissions. */
@@ -89,19 +84,11 @@ export interface SoloTransportControls {
 const BOT_PLAYER_IDS = ['bot-1', 'bot-2', 'bot-3'] as const;
 const DEFAULT_BOT_SKILLS: [BotKind, BotKind, BotKind] = ['heuristic', 'simple', 'passive'];
 
-/** Production defaults for the solo claim-pacing constants. Read via
- *  `claimFloorMs()` / `botClaimDelayMs()` so the `__MAHJONG_TEST_*`
- *  overrides apply uniformly at every call site. */
-export const DEFAULT_CLAIM_FLOOR_MS = 3_000;
+/** Production defaults for the per-bot claim-submission delay. Read
+ *  via `botClaimDelayMs()` so the `__MAHJONG_TEST_*` override applies
+ *  uniformly. */
 export const DEFAULT_BOT_CLAIM_MIN_MS = 2_000;
 export const DEFAULT_BOT_CLAIM_MAX_MS = 6_000;
-
-/** Resolve the post-user-discard floor (production default 3000 ms),
- *  honouring `__MAHJONG_TEST_CLAIM_FLOOR_MS__` when set. */
-export function claimFloorMs(): number {
-  const override = globalThis.__MAHJONG_TEST_CLAIM_FLOOR_MS__;
-  return typeof override === 'number' ? override : DEFAULT_CLAIM_FLOOR_MS;
-}
 
 /** Resolve a per-bot claim-submission delay. The default is a random
  *  draw from `[MIN, MAX]` (2–6 s in production); when
@@ -184,28 +171,18 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
     2: null,
     3: null,
   };
-  /** Soft floor between a user discard the engine auto-resolved and
-   *  the next bot draw (no claim contest to provide the gap). */
-  let userDiscardFloorHandle: ReturnType<typeof setTimeout> | null = null;
 
   const DEFAULT_BOT_PACE_MS = 3_000;
-  // Solo claim pacing — online uses the soft floor + alarm ladder
-  // on the server; in solo there's nobody to coordinate with, so we
-  // recreate the "you have time to read this discard" pause locally:
-  //
-  //   - `claimFloorMs()` — minimum gap between a user discard the
-  //     engine auto-resolved (no bot had a meaningful claim) and the
-  //     next bot draw. Without it, the next-bot's draw fires the same
-  //     frame as the user's tile lands on the pile, blowing past the
-  //     user's read window. Default 3000 ms; overridable via
-  //     `__MAHJONG_TEST_CLAIM_FLOOR_MS__`.
-  //   - `botClaimDelayMs()` — each bot that wants to claim picks a
-  //     delay in `[MIN, MAX]` (default 2000–6000 ms, randomised) before
-  //     submitting. The variance prevents the "all bots resolve in the
-  //     same frame" surprise when several seats can act on the same
-  //     discard, and the floor gives the user a visible window
-  //     between the discard and any resolution. Overridable to a fixed
-  //     delay via `__MAHJONG_TEST_BOT_CLAIM_DELAY_MS__`.
+  // Solo claim pacing — `botClaimDelayMs()` gives each bot that wants
+  // to claim a random delay in `[MIN, MAX]` (2–6 s in production)
+  // before submitting. The variance prevents "all bots resolve in
+  // the same frame" when several seats can act on the same discard,
+  // and gives the user a visible window between the discard and any
+  // resolution. Overridable to a fixed delay via
+  // `__MAHJONG_TEST_BOT_CLAIM_DELAY_MS__`. When no bot wants to claim
+  // there's no pause — the next bot's draw fires immediately and the
+  // "thinking gap" (`botPaceMs`, 3 s) before its discard provides
+  // the read window for the user's just-thrown tile.
 
   function emit(m: ServerMessage) {
     for (const cb of messageListeners) cb(m);
@@ -261,13 +238,6 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
     }
   }
 
-  function clearUserDiscardFloor() {
-    if (userDiscardFloorHandle !== null) {
-      clearTimeout(userDiscardFloorHandle);
-      userDiscardFloorHandle = null;
-    }
-  }
-
   /** Re-arm the user's turn-timeout timer based on the current
    *  `state.turnDeadlineMs`. Called after every applyAction; clears
    *  any stale timer first so re-entries (e.g. user discards mid-
@@ -315,13 +285,6 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
 
   function runBots() {
     clearPacing();
-    // Cancel any pending post-discard floor — when control reaches
-    // runBots from any path (a bot pacing timer, a turn-timeout
-    // auto-discard, the floor timer itself), the floor's job is done.
-    // Without this, a still-pending floor timer fires later as a ghost
-    // `runBots()` re-entry — harmless today (driveBots's phase guard
-    // exits cleanly) but wasted work and a future-leak hazard.
-    clearUserDiscardFloor();
     driveBots();
   }
 
@@ -338,13 +301,51 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
     //    opens). Returns without looping — bot turns wait until the
     //    last claim timer fires.
     if (state.phase === 'awaitingClaims' && state.pendingClaims) {
-      const pending = state.pendingClaims;
       for (const seat of SEATS) {
+        // Live-read the engine state each iteration: an in-loop
+        // `applyAction` (the synchronous pass submission below) can
+        // flip `state.phase` away from 'awaitingClaims' or clear
+        // `state.pendingClaims`, and any further reads off the
+        // closure-captured `pending` would target stale data.
+        if (state.phase !== 'awaitingClaims' || !state.pendingClaims) break;
+        const pending = state.pendingClaims;
         if (seat === pending.discard.from) continue;
         const bot = bots[seat];
         if (!bot) continue;
         if (pending.submitted[seat]) continue;
         if (claimHandles[seat] !== null) continue;
+        // Pre-compute the bot's pick so we can short-circuit passes.
+        // The engine pre-fills passes for seats with no *legal* claim,
+        // but a bot whose strategy chooses to pass on a discard it
+        // *could* claim (e.g. `passiveBot.pickClaim` always returns
+        // pass) still needs to submit through this path — which used
+        // to wait a full 2-6 s stagger before firing the pass. In a
+        // 3-passive-bot match, every bot's claim window stalled by
+        // up to 6 s of pure dead time. Submit passes instantly; only
+        // stagger meaningful claims, where the 2-6 s variance
+        // genuinely lets the user see the discard before the
+        // resolution kicks in. Throws here predate `setTimeout` so
+        // they propagate normally — the engine + IllegalActionError
+        // path stays the same.
+        let pick: ReturnType<typeof bot.pickClaim>;
+        try {
+          pick = bot.pickClaim({ state, seat });
+        } catch (e) {
+          if (!(e instanceof IllegalActionError)) {
+            console.error('solo bot claim error', e);
+          }
+          pick = { kind: 'pass' };
+        }
+        if (pick.kind === 'pass') {
+          try {
+            applyAction({ t: 'declareClaim', seat, claim: pick });
+          } catch (e) {
+            if (!(e instanceof IllegalActionError)) {
+              console.error('solo bot claim error', e);
+            }
+          }
+          continue;
+        }
         const delay = botClaimDelayMs();
         claimHandles[seat] = setTimeout(() => {
           claimHandles[seat] = null;
@@ -352,8 +353,7 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
           if (state.phase !== 'awaitingClaims' || !state.pendingClaims) return;
           if (state.pendingClaims.submitted[seat]) return;
           try {
-            const claim = bot.pickClaim({ state, seat });
-            applyAction({ t: 'declareClaim', seat, claim });
+            applyAction({ t: 'declareClaim', seat, claim: pick });
           } catch (e) {
             // Anything that isn't an IllegalActionError used to re-throw,
             // but a throw from inside a setTimeout callback becomes an
@@ -369,6 +369,16 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
           }
           driveBots();
         }, delay);
+      }
+      // After scheduling: if every bot's pick was a pass we just
+      // submitted them synchronously above, which may have resolved
+      // the window already. Re-enter the loop so the next bot's turn
+      // fires immediately rather than waiting for a tick — but yield
+      // through `queueMicrotask` to match the boot-site setTimeout(…,0)
+      // yield discipline and prevent a deep synchronous re-entry from
+      // the loop's own iteration into another full loop body.
+      if (state.phase !== 'awaitingClaims') {
+        queueMicrotask(() => driveBots());
       }
       return;
     }
@@ -461,8 +471,12 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
 
   // Defer the initial state/lobby emission until after the caller has had a
   // chance to subscribe via onMessage. Without this, the synchronous emit
-  // would fire into a Set that's still empty.
-  setTimeout(() => {
+  // would fire into a Set that's still empty. Track the handle so
+  // `close()` can cancel it — otherwise a transport closed before the
+  // tick fires would still emit + run bots, leaking work into a dead
+  // session.
+  let initHandle: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+    initHandle = null;
     if (closed) return;
     emit({ t: 'state', state, you: 0 });
     emitLobby();
@@ -492,32 +506,14 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
       }
       if (msg.t !== 'action') return;
       try {
-        const wasUserDiscard = msg.action.t === 'discard' && msg.action.seat === 0;
-        const phaseBefore = state.phase;
         applyAction(msg.action);
-        // Soft floor: when the user discarded a tile no bot wanted to
-        // claim, the engine auto-resolved the claim window inline
-        // (`discard` reducer's `allIn` fast path) and state is
-        // already back in `phase: 'turn'` for the next seat. Without
-        // a pause here, `runBots()` fires the next-bot draw the same
-        // frame as the user's tile lands on the pile — the user
-        // never sees their own discard sit on the felt. Hold for
-        // `CLAIM_FLOOR_MS` so the discard reads as a deliberate
-        // move. When at least one bot DID claim, the bot-claim
-        // stagger (2–6 s per bot, scheduled in `driveBots`) provides
-        // the read window instead and this branch is skipped (state
-        // would still be `awaitingClaims`).
-        const floorApplies = wasUserDiscard && phaseBefore === 'turn' && state.phase === 'turn';
-        if (floorApplies) {
-          clearUserDiscardFloor();
-          userDiscardFloorHandle = setTimeout(() => {
-            userDiscardFloorHandle = null;
-            if (closed) return;
-            runBots();
-          }, claimFloorMs());
-        } else {
-          runBots();
-        }
+        // When the user's discard had no bot claim contest, the
+        // engine's `allIn` fast path put state back into `phase:
+        // 'turn'` for the next seat — drive the bot loop immediately.
+        // The next bot's "thinking gap" (`botPaceMs` between draw
+        // and discard, default 3 s) covers the user's read window
+        // for the just-thrown tile.
+        runBots();
       } catch (e) {
         if (e instanceof IllegalActionError) {
           emit({ t: 'error', code: e.code, detail: e.message });
@@ -540,10 +536,13 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
     },
     close() {
       closed = true;
+      if (initHandle !== null) {
+        clearTimeout(initHandle);
+        initHandle = null;
+      }
       clearPacing();
       clearTurnTimeout();
       clearClaimHandles();
-      clearUserDiscardFloor();
       _status = 'closed';
       for (const cb of statusListeners) cb(_status);
     },
