@@ -268,9 +268,25 @@ export function DesktopShell(props: DesktopShellProps) {
                   alignItems: 'stretch',
                 }}
               >
-                <TutorialTarget id="claim-bar">
-                  <ClaimBar onAction={onAction} seat={seat} orientation="desktop" />
-                </TutorialTarget>
+                {/* Wrap the bar in a ScrollView so a tall variant (multi-chi
+                    chip picker stacking 2-3 chip rows in the vertical
+                    column) stays reachable when the felt's intrinsic
+                    height is short — typically at the ~768 × 600 desktop
+                    threshold. Without it, content overflowing the
+                    vertically-centred container would clip the bottom
+                    of the column (the Pass button) and leave the user
+                    unable to dismiss the claim. `flexGrow: 1 +
+                    justifyContent: center` preserves the centred read
+                    when content fits. */}
+                <ScrollView
+                  showsVerticalScrollIndicator={false}
+                  style={{ maxHeight: '100%' }}
+                  contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}
+                >
+                  <TutorialTarget id="claim-bar">
+                    <ClaimBar onAction={onAction} seat={seat} orientation="desktop" />
+                  </TutorialTarget>
+                </ScrollView>
               </View>
             ) : null}
           </View>
