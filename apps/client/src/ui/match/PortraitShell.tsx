@@ -287,11 +287,18 @@ export function PortraitShell({
           }}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            {myTurn ? <YourTurnBadge needsDraw={needsDraw} /> : null}
+            {/* Compact YOUR TURN pill (smaller font + width) so it
+                shares the row with the slim SortPicker on a 393-px
+                portrait viewport without wrapping. */}
+            {myTurn ? <YourTurnBadge needsDraw={needsDraw} compact /> : null}
             <ReadyHandBadge waits={readyWaits} />
           </View>
           <View style={{ marginLeft: 'auto' }}>
-            <SortPicker mode={sortMode} onChange={onSortModeChange} />
+            {/* Slim segmented picker — shrunk padding + smaller font
+                vs. the desktop variant; keeps the three-way affordance
+                (suit / num / manual) without collapsing to the
+                landscape's single cycle button. */}
+            <SortPicker mode={sortMode} onChange={onSortModeChange} slim />
           </View>
         </View>
         <TutorialTarget id="own-hand">

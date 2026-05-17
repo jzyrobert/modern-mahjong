@@ -238,9 +238,9 @@ export function LandscapeShell({
         {/* Always-rendered slot for the YOUR TURN pill — `height`
             matches the badge's intrinsic height so its absence
             doesn't collapse the bottom action zone (which would
-            shove the hand row up by ~24 px the instant the turn
+            shove the hand row up by ~30 px the instant the turn
             rotates away, and back down the next time it returns). */}
-        <View style={{ alignItems: 'center', marginBottom: 2, height: 22 }}>
+        <View style={{ alignItems: 'center', marginBottom: 2, height: 30 }}>
           {myTurn ? <YourTurnBadge needsDraw={needsDraw} /> : null}
         </View>
         <View
