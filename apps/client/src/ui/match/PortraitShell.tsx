@@ -520,17 +520,27 @@ function DenseOppRow({
       >
         {WIND_GLYPH[placement.seatWind]}
       </Text>
-      <Text
-        style={{
-          fontSize: 12,
-          fontWeight: '800',
-          maxWidth: 90,
-          color: isActive ? 'white' : 'rgba(255,255,255,0.88)',
-        }}
-        numberOfLines={1}
-      >
-        {name}
-      </Text>
+      {/* Fixed-width name slot so the bot label starts at the same
+          x-position in every row regardless of how short the
+          opponent's name is — "Yu" and "Casey" would otherwise push
+          the (Easy)/(Passive) chip to two different x-positions on
+          the three rows, which read as a ragged left edge for the
+          bot-status column. 90 px holds the longest BOT_NAME_POOL
+          entry ("Casey", "Elena") at the 12-px bold-weight size
+          we're using, with truncation for the rare long human
+          display name. */}
+      <View style={{ width: 90 }}>
+        <Text
+          style={{
+            fontSize: 12,
+            fontWeight: '800',
+            color: isActive ? 'white' : 'rgba(255,255,255,0.88)',
+          }}
+          numberOfLines={1}
+        >
+          {name}
+        </Text>
+      </View>
       {botLabel ? (
         <Text
           style={{
