@@ -150,7 +150,7 @@ export function PortraitShell({
       </View>
       <View
         style={{
-          paddingHorizontal: 12,
+          paddingHorizontal: 8,
           paddingTop: 4,
           gap: 8,
           backgroundColor: felt.top,
@@ -200,8 +200,16 @@ export function PortraitShell({
         style={{
           flex: 1,
           minHeight: 0,
-          paddingHorizontal: 12,
-          paddingTop: 8,
+          // Tightened (12 → 8) so the discard pool inside can host
+          // one more tile column on a ~412 CSS-wide phone. The
+          // surrounding sections (opponent strips above, bottom
+          // action zone below) match this horizontal margin for
+          // visual consistency.
+          paddingHorizontal: 8,
+          // Tightened (8 → 4) so the pool sits closer to the
+          // opponent strips above — saves ~4 px of dead felt
+          // between the two.
+          paddingTop: 4,
           backgroundColor: felt.top,
         }}
       >
@@ -212,7 +220,10 @@ export function PortraitShell({
             borderColor: 'rgba(255,255,255,0.12)',
             borderWidth: 1,
             borderRadius: 12,
-            padding: 8,
+            // Tightened (8 → 4) for the same reason — extra
+            // horizontal interior so an additional tile column
+            // fits on ~412 CSS phones.
+            padding: 4,
             minHeight: 0,
           }}
         >
@@ -232,8 +243,15 @@ export function PortraitShell({
           pool grows. */}
       <View
         style={{
-          paddingHorizontal: 12,
-          paddingTop: 8,
+          // Matches the trimmed `paddingHorizontal: 8` on the
+          // opponent and discard-pool sections above.
+          paddingHorizontal: 8,
+          // Bumped (8 → 12) so the user's hand area has a little
+          // more breathing room from the discard pool / its top
+          // border — the previous 8 made the YOUR MELDS strip
+          // (when present) press flush against the pool's bottom
+          // edge.
+          paddingTop: 12,
           paddingBottom: 4,
           gap: 8,
           backgroundColor: felt.top,

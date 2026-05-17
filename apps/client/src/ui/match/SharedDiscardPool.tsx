@@ -129,12 +129,14 @@ function OrderView({
         // padding (6 each side, see below) gives at 412 viewport.
         gap: 3,
         justifyContent: 'flex-start',
-        // Trimmed from 8 → 6 in lockstep with the gap above. The
+        // Trimmed from 8 → 4 in lockstep with the gap above. The
         // backdrop still reads as a contained pool surface but
-        // recovers ~4 px horizontally — together with the gap change
-        // that's the difference between 13 and 14 tiles per row on
-        // ~412 CSS phones.
-        padding: 6,
+        // recovers ~8 px horizontally; combined with the outer
+        // shell's trimmed paddingHorizontal (12 → 8) and the
+        // felt-bottom card's tightened padding (8 → 4) in
+        // PortraitShell.tsx, that's the difference between 13 and
+        // 14 tiles per row on ~412 CSS phones.
+        padding: 4,
         backgroundColor: 'rgba(0,0,0,0.05)',
         borderRadius: 12,
       }}
@@ -170,7 +172,7 @@ function PlayerView({
         // there. Gap + padding chosen so a 412 CSS-wide phone fits
         // one more tile column per seat row.
         gap: 3,
-        padding: 6,
+        padding: 4,
         backgroundColor: 'rgba(0,0,0,0.05)',
         borderRadius: 12,
       }}
