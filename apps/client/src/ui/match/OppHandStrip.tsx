@@ -1,5 +1,4 @@
 import type { Meld, Seat, Wind } from '@mahjong/game-logic';
-import { type BotKind, botDisplayName } from '@mahjong/protocol';
 import { useState } from 'react';
 import { Animated, Text, View } from 'react-native';
 import type { LobbyState } from '../../state/game';
@@ -7,6 +6,7 @@ import { PULSE_TEMPO, usePulse } from '../animations';
 import { COLORS as SHARED_COLORS } from '../colors';
 import { WIND_GLYPH } from '../winds';
 import { MeldStrip } from './MeldStrip';
+import { oppIdentity } from './oppIdentity';
 import { type Position, SEAT_COLOR } from './seatColor';
 
 interface OppHandStripProps {
@@ -96,11 +96,7 @@ export function OppHandStrip({
   turnCountdown = null,
   compact = false,
 }: OppHandStripProps) {
-  const player = lobby?.players.find((p) => p.seat === seat);
-  const name = player?.displayName ?? `Seat ${seat}`;
-  const isBot = player?.isBot ?? false;
-  const botKind = (player?.botKind ?? null) as BotKind | null;
-  const botStatus = isBot && botKind ? botDisplayName(botKind) : isBot ? 'Bot' : null;
+  const { name, botLabel: botStatus } = oppIdentity(lobby, seat);
 
   // `aboutToDraw` only surfaces when this seat is *not* the current
   // turn (it's the "next" seat). Active-turn cue takes priority.
