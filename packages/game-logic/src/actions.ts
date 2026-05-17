@@ -332,6 +332,31 @@ export function declareClaim(
   if (state.lastDiscard?.from === seat) {
     throw new IllegalActionError('SEAT', 'discarder cannot claim own discard');
   }
+  // Reject *differing* re-submissions. Without this gate, a seat
+  // could overwrite an already-submitted claim (peng → pass) and lose
+  // priority on a tile they could legitimately have claimed. The
+  // client also hides the ClaimBar once a submission lands, but the
+  // engine guard exists as defence-in-depth — a buggy or malicious
+  // client that tried to weaken its own submission would otherwise
+  // silently mutate `submitted[seat]`.
+  //
+  // Idempotent re-submission of the *same* claim is allowed so callers
+  // (server, tests, deterministic resolution flows) that explicitly
+  // re-submit a seat's prior choice — typically the pass the discard
+  // reducer already pre-filled for seats with no meaningful claim —
+  // continue to work as a no-op.
+  const existingClaim = state.pendingClaims.submitted[seat];
+  if (existingClaim !== undefined) {
+    if (!sameClaim(existingClaim, claim)) {
+      throw new IllegalActionError(
+        'CLAIM',
+        `seat ${seat} already submitted a different claim for this window`,
+      );
+    }
+    // Same claim — no state change. Auto-resolve isn't triggered from
+    // this no-op because the prior submission already ran the check.
+    return { state, events: [] };
+  }
   // Validate the claim shape against the seat's legal options. `pass`
   // is always legal; `hu` skips the kind check because
   // `legalClaimsFor` deliberately omits it (depends on shanten +
@@ -787,6 +812,21 @@ export function declareWin(
 function countExposedGroups(melds: readonly Meld[]): number {
   // Each meld counts as one group for shanten purposes.
   return melds.length;
+}
+
+/** Structural equality for `Claim`. Used by `declareClaim`'s
+ *  re-submission guard so idempotent passes (which the discard
+ *  reducer pre-fills for seats with no meaningful claim) don't throw,
+ *  but a peng → pass overwrite does. Chi compares its `with` tiles
+ *  pair-wise — if a seat submits the same two completing tiles in the
+ *  same order they're equal; a different chi sequence is a different
+ *  claim. */
+function sameClaim(a: Claim, b: Claim): boolean {
+  if (a.kind !== b.kind) return false;
+  if (a.kind === 'chi' && b.kind === 'chi') {
+    return sameFace(a.with[0], b.with[0]) && sameFace(a.with[1], b.with[1]);
+  }
+  return true;
 }
 
 /** Remove the last element matching `pred` in-place. No-op if no match. */
