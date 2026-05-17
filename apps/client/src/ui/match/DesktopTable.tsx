@@ -295,7 +295,26 @@ export function DesktopTable({
           gap: 12,
         }}
       >
-        <View style={{ width: dims.oppOuterWidth, justifyContent: 'center', gap: 6 }}>
+        {/* Side cell takes a fixed height matching the FeltFrame's
+            intrinsic height (top wall + gap + inner square + gap +
+            bottom wall). Without this, the cell auto-sized to its
+            content and the row's `alignItems: center` re-centered it
+            every turn — the badge bobbed up and down by half the
+            hand-count delta each cycle. With the fixed height, the
+            cell stays aligned to the FeltFrame regardless of how many
+            tiles or melds the opp accumulates.
+            `paddingTop` lines the badge up with the top of the inner
+            square (= top edge of the left/right wall) instead of the
+            top wall row, so the FaceDownStrip below it sits beside
+            the discard pool inside the felt. */}
+        <View
+          style={{
+            width: dims.oppOuterWidth,
+            height: dims.squareSize + 2 * dims.wallTileH + 8,
+            paddingTop: dims.wallTileH + 4,
+            gap: 6,
+          }}
+        >
           {renderOpp(byPos.left, 'vertical')}
         </View>
 
@@ -325,7 +344,14 @@ export function DesktopTable({
           />
         </FeltFrame>
 
-        <View style={{ width: dims.oppOuterWidth, justifyContent: 'center', gap: 6 }}>
+        <View
+          style={{
+            width: dims.oppOuterWidth,
+            height: dims.squareSize + 2 * dims.wallTileH + 8,
+            paddingTop: dims.wallTileH + 4,
+            gap: 6,
+          }}
+        >
           {renderOpp(byPos.right, 'vertical')}
         </View>
       </View>
@@ -648,7 +674,13 @@ function FaceDownStrip({ count, orient, dims, position, tileBackSurface }: FaceD
         flexDirection: orient === 'horizontal' ? 'row' : 'column',
         gap: 2,
         flexWrap: 'wrap',
-        justifyContent: 'center',
+        // `flex-start` keeps the first tile pinned to the badge-facing
+        // edge so any hand-count change appends / removes a tile at
+        // the FAR edge of the strip. With `center`, if anything ever
+        // constrained the strip's main-axis size (e.g. flexWrap), the
+        // whole stack would shift toward the middle on every count
+        // change.
+        justifyContent: 'flex-start',
         // Wrapper drop-shadow so the whole strip reads as sitting on
         // the felt — same one-shadow-for-the-row trick `WallEdge`
         // uses for its 17-stack row (per-tile shadows would compound

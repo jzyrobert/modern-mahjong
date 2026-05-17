@@ -1,9 +1,10 @@
 import type { Seat, Wind } from '@mahjong/game-logic';
+import { useState } from 'react';
 import { Animated, Text, View } from 'react-native';
 import type { LobbyState } from '../../state/game';
 import { nameForSeat } from '../../state/game';
 import { computeInitials } from '../../util';
-import { usePulse } from '../animations';
+import { PULSE_TEMPO, usePulse } from '../animations';
 import { COLORS as SHARED_COLORS } from '../colors';
 import { WIND_GLYPH } from '../winds';
 import { type Position, SEAT_COLOR } from './seatColor';
@@ -51,6 +52,13 @@ const COLORS = {
  * The legacy gradient + backdrop-filter blur become a solid red
  * background + scaled shadow on active — RN doesn't support
  * `backdrop-filter`, and the gradient lookup wasn't carrying its weight.
+ *
+ * The active-turn motion is an absolutely-positioned `ActiveHalo`
+ * overlay rather than a card-level transform. An earlier version ran
+ * `transform: scale 1 → 1.04` on the outer view (and toggled
+ * `borderWidth` 0↔2 between states); the transform visibly grew the
+ * badge each cycle and the border toggle pushed the surrounding row
+ * by 4 px every time the turn rotated. Same fix as `OppHandStrip`.
  */
 export function PlayerBadge({
   seat,
@@ -67,19 +75,13 @@ export function PlayerBadge({
   const initials = computeInitials(name);
   const avatarBg = SEAT_COLOR[position];
 
-  // Soft scale pulse while active — driven on the native thread so it
-  // doesn't compete with engine-side state updates. Stops cleanly when
-  // the seat is no longer active.
-  const pulse = usePulse({ enabled: isActive });
-  const scale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.04] });
-
   // The `aboutToDraw` halo shares its tone with the active-turn glow
   // (gold-on-yellow) but doesn't pulse — the user's already deciding
   // whether to claim, and a second moving border would compete for
   // attention with the `ClaimBar`.
   const cueBorder = !isActive && aboutToDraw;
   return (
-    <Animated.View
+    <View
       style={{
         flexDirection: 'row',
         alignItems: 'center',
@@ -93,11 +95,16 @@ export function PlayerBadge({
           : cueBorder
             ? '0px 0px 8px rgba(243,197,74,0.5)'
             : '0px 4px 6px rgba(0,0,0,0.1)',
-        borderWidth: isActive || cueBorder ? 2 : 0,
+        // Stays 2 px in every state — toggling 0↔2 between active /
+        // about-to-draw / idle grew the badge by 4 px when the turn
+        // rotated and shifted the desktop perimeter row by the same
+        // amount every cycle. Transparent in the idle state reads
+        // identically to `borderWidth: 0` without the layout cost.
+        borderWidth: 2,
         borderColor: isActive || cueBorder ? '#f3c54a' : 'transparent',
-        transform: isActive ? [{ scale }] : undefined,
       }}
     >
+      {isActive ? <ActiveHalo /> : null}
       <View
         style={{
           width: 30,
@@ -149,6 +156,54 @@ export function PlayerBadge({
               : `${score} pt`}
         </Text>
       </View>
-    </Animated.View>
+    </View>
+  );
+}
+
+/**
+ * Breathing gold halo for the active-turn badge. Sits as an
+ * absolutely-positioned overlay 2 px outside the card edge so its
+ * opacity + scale loop is purely visual — `position: absolute`
+ * siblings can't push their parent's layout and `transform` doesn't
+ * reflow regardless. Symmetric 0 → peak → 0 breath via `usePulse`.
+ *
+ * `scaleX` / `scaleY` are derived from the measured overlay size so
+ * every edge grows by the same absolute pixel amount at the breath's
+ * peak. A single uniform `scale: 1.04` would grow a ~180-px-wide
+ * badge by ~7 px horizontally and only ~2 px vertically; independent
+ * axes keep the visual growth balanced. Same shape as
+ * `OppHandStrip`'s `ActiveHalo`.
+ */
+function ActiveHalo() {
+  const t = usePulse({ durationMs: PULSE_TEMPO.state });
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+  const GROWTH_PX = 3;
+  const sx = size && size.w > 0 ? 1 + (GROWTH_PX * 2) / size.w : 1;
+  const sy = size && size.h > 0 ? 1 + (GROWTH_PX * 2) / size.h : 1;
+  const scaleX = t.interpolate({ inputRange: [0, 1], outputRange: [1, sx] });
+  const scaleY = t.interpolate({ inputRange: [0, 1], outputRange: [1, sy] });
+  const opacity = t.interpolate({ inputRange: [0, 1], outputRange: [0, 0.6] });
+  return (
+    <Animated.View
+      pointerEvents="none"
+      onLayout={(e) => {
+        const { width, height } = e.nativeEvent.layout;
+        setSize((prev) =>
+          prev && prev.w === width && prev.h === height ? prev : { w: width, h: height },
+        );
+      }}
+      style={{
+        position: 'absolute',
+        top: -2,
+        left: -2,
+        right: -2,
+        bottom: -2,
+        borderRadius: 16,
+        borderWidth: 2,
+        borderColor: '#f3c54a',
+        opacity,
+        transform: [{ scaleX }, { scaleY }],
+      }}
+    />
   );
 }
