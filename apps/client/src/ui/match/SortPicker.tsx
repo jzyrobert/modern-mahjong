@@ -11,6 +11,12 @@ interface SortPickerProps {
    *  bottom row so the hand sits on a single line at 393 px tall.
    *  Tapping rotates through suit → num → manual → suit. */
   compact?: boolean;
+  /** Portrait mobile uses the segmented picker but with shrunk
+   *  paddings + a smaller font so the YOUR TURN pill can fit on the
+   *  same row at a 393-px viewport. Mutually exclusive with
+   *  `compact` (which collapses to a single cycle button instead);
+   *  passing both selects `compact`. */
+  slim?: boolean;
 }
 
 const OPTIONS: { id: SortMode; label: string }[] = [
@@ -29,7 +35,7 @@ const ORDER: readonly SortMode[] = ['suit', 'num', 'manual'];
  * variant collapses the segmented picker to a single cycle button —
  * see `MobileShell.tsx`'s landscape branch.
  */
-export function SortPicker({ mode, onChange, compact = false }: SortPickerProps) {
+export function SortPicker({ mode, onChange, compact = false, slim = false }: SortPickerProps) {
   if (compact) {
     const next = ORDER[(ORDER.indexOf(mode) + 1) % ORDER.length] ?? 'suit';
     const meta = OPTIONS.find((o) => o.id === mode) ?? OPTIONS[0]!;
@@ -84,8 +90,8 @@ export function SortPicker({ mode, onChange, compact = false }: SortPickerProps)
             key={o.id}
             onPress={() => onChange(o.id)}
             style={({ pressed }) => ({
-              paddingVertical: 6,
-              paddingHorizontal: 12,
+              paddingVertical: slim ? 4 : 6,
+              paddingHorizontal: slim ? 7 : 12,
               borderRadius: 6,
               backgroundColor: active
                 ? COLORS.accentSalmonSwatch
@@ -96,7 +102,7 @@ export function SortPicker({ mode, onChange, compact = false }: SortPickerProps)
           >
             <Text
               style={{
-                fontSize: 11,
+                fontSize: slim ? 10 : 11,
                 fontWeight: active ? '800' : '600',
                 color: active ? COLORS.red : COLORS.ink,
                 letterSpacing: 0.4,

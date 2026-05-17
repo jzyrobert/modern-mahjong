@@ -1,5 +1,5 @@
 import type { GameState } from '@mahjong/game-logic';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Animated, Text } from 'react-native';
 import type { LobbyState } from '../../state/game';
 import { PULSE_TEMPO, usePulse } from '../animations';
@@ -67,7 +67,24 @@ export function YourHandActiveHalo() {
   const sy = size && size.h > 0 ? 1 + (GROWTH_PX * 2) / size.h : 1;
   const scaleX = t.interpolate({ inputRange: [0, 1], outputRange: [1, sx] });
   const scaleY = t.interpolate({ inputRange: [0, 1], outputRange: [1, sy] });
-  const opacity = t.interpolate({ inputRange: [0, 1], outputRange: [0.25, 0.85] });
+  const breathingOpacity = t.interpolate({ inputRange: [0, 1], outputRange: [0.25, 0.85] });
+  // Fade in over the draw popup's full duration (`DrawTileOverlay`'s
+  // rise + flip + hold + fly = ~1240 ms) so the halo ramps up
+  // alongside the tile's journey from wall to hand instead of
+  // popping in the instant `state.hasDrawn` flips. Multiplied with
+  // the breathing opacity via `Animated.multiply` so the pulse keeps
+  // ticking once the fade completes — both inputs run on the native
+  // driver. Runs once per mount; the next turn rotates `myTurn`
+  // false → true, which unmounts and re-mounts the halo and
+  // re-triggers this fade. Kept as a local constant rather than
+  // imported from `DrawTileOverlay` so this surface doesn't reach
+  // into the overlay's internals — within ~50 ms of TOTAL_MS is
+  // close enough; the halo's breathing pulse masks any tail mismatch.
+  const fadeIn = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(fadeIn, { toValue: 1, duration: 1200, useNativeDriver: true }).start();
+  }, [fadeIn]);
+  const opacity = Animated.multiply(fadeIn, breathingOpacity);
   return (
     <Animated.View
       pointerEvents="none"
@@ -105,17 +122,51 @@ export function YourHandActiveHalo() {
  * Used by both `PortraitShell` and `LandscapeShell` so it lives in
  * this shared module rather than in either orientation file.
  */
-export function YourTurnBadge({ needsDraw }: { needsDraw: boolean }) {
+/** Fixed pill widths so the DRAW (16 chars) vs DISCARD (19 chars)
+ *  variants render at the same size. Without this, swapping copy
+ *  the instant the user draws their tile widened the badge by ~17
+ *  px and re-centred the surrounding badge row.
+ *
+ *  Desktop default — wide enough for `YOUR TURN · DISCARD` at the
+ *  10-px bold weight with 0.6 letter-spacing plus 8-px horiz padding
+ *  + 1-px border each side. */
+export const YOUR_TURN_BADGE_WIDTH = 160;
+/** Compact width used on portrait phones where the badge has to
+ *  share a row with the SortPicker. Wide enough that
+ *  `YOUR TURN · DISCARD` fits on one line at fontSize 9; a 128-px
+ *  variant wrapped to two rows once DISCARD landed. */
+export const YOUR_TURN_BADGE_WIDTH_COMPACT = 152;
+/** Heights match the SortPicker pill's outer height in each
+ *  variant (default vs slim) so the YOUR TURN pill and the sort
+ *  pill line up visually on the same row. */
+const YOUR_TURN_BADGE_HEIGHT = 30;
+const YOUR_TURN_BADGE_HEIGHT_COMPACT = 26;
+
+interface YourTurnBadgeProps {
+  needsDraw: boolean;
+  /** Shrinks the pill (smaller width + smaller font + shorter
+   *  height) so it fits alongside the slim SortPicker on a 393-px
+   *  portrait viewport without wrapping. Default false (desktop +
+   *  landscape mobile use the full size). */
+  compact?: boolean;
+}
+
+export function YourTurnBadge({ needsDraw, compact = false }: YourTurnBadgeProps) {
   const t = usePulse({ durationMs: PULSE_TEMPO.state });
   const opacity = t.interpolate({ inputRange: [0, 1], outputRange: [0.78, 1] });
+  const width = compact ? YOUR_TURN_BADGE_WIDTH_COMPACT : YOUR_TURN_BADGE_WIDTH;
+  const height = compact ? YOUR_TURN_BADGE_HEIGHT_COMPACT : YOUR_TURN_BADGE_HEIGHT;
+  const fontSize = compact ? 9 : 10;
   return (
     <Animated.View
       style={{
+        width,
+        height,
         flexDirection: 'row',
         alignItems: 'center',
+        justifyContent: 'center',
         gap: 4,
-        paddingHorizontal: 8,
-        paddingVertical: 3,
+        paddingHorizontal: compact ? 6 : 8,
         borderRadius: 10,
         backgroundColor: COLORS.gold,
         borderColor: '#a87f24',
@@ -125,8 +176,9 @@ export function YourTurnBadge({ needsDraw }: { needsDraw: boolean }) {
       }}
     >
       <Text
+        numberOfLines={1}
         style={{
-          fontSize: 10,
+          fontSize,
           fontWeight: '900',
           color: '#3a2c0d',
           letterSpacing: 0.6,

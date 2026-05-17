@@ -6,7 +6,7 @@ import { useGame } from '../../state/game';
 import { Hand } from '../Hand';
 import { TutorialTarget } from '../tutorial/TargetRegistry';
 import { MeldStrip } from './MeldStrip';
-import { YourHandActiveHalo, YourTurnBadge } from './MobileShellShared';
+import { YOUR_TURN_BADGE_WIDTH, YourHandActiveHalo, YourTurnBadge } from './MobileShellShared';
 import { PlayerBadge } from './PlayerBadge';
 import { ReadyHandBadge } from './ReadyHandBadge';
 import { SeatDiscardPile } from './SeatDiscardPile';
@@ -295,7 +295,26 @@ export function DesktopTable({
           gap: 12,
         }}
       >
-        <View style={{ width: dims.oppOuterWidth, justifyContent: 'center', gap: 6 }}>
+        {/* Side cell takes a fixed height matching the FeltFrame's
+            intrinsic height (top wall + gap + inner square + gap +
+            bottom wall). Without this, the cell auto-sized to its
+            content and the row's `alignItems: center` re-centered it
+            every turn — the badge bobbed up and down by half the
+            hand-count delta each cycle. With the fixed height, the
+            cell stays aligned to the FeltFrame regardless of how many
+            tiles or melds the opp accumulates.
+            `paddingTop` lines the badge up with the top of the inner
+            square (= top edge of the left/right wall) instead of the
+            top wall row, so the FaceDownStrip below it sits beside
+            the discard pool inside the felt. */}
+        <View
+          style={{
+            width: dims.oppOuterWidth,
+            height: dims.squareSize + 2 * dims.wallTileH + 8,
+            paddingTop: dims.wallTileH + 4,
+            gap: 6,
+          }}
+        >
           {renderOpp(byPos.left, 'vertical')}
         </View>
 
@@ -325,7 +344,14 @@ export function DesktopTable({
           />
         </FeltFrame>
 
-        <View style={{ width: dims.oppOuterWidth, justifyContent: 'center', gap: 6 }}>
+        <View
+          style={{
+            width: dims.oppOuterWidth,
+            height: dims.squareSize + 2 * dims.wallTileH + 8,
+            paddingTop: dims.wallTileH + 4,
+            gap: 6,
+          }}
+        >
           {renderOpp(byPos.right, 'vertical')}
         </View>
       </View>
@@ -591,17 +617,29 @@ function MyArea({
         />
         <SortPicker mode={sortMode} onChange={onSortModeChange} />
         <ReadyHandBadge waits={readyWaits} />
-        {isActive ? <YourTurnBadge needsDraw={needsDraw} /> : null}
+        {/* Always-rendered slot for the YOUR TURN pill — without the
+            reservation, the badge appearing on the active turn made
+            the row wider and the parent's `alignItems: center`
+            re-centred everything, visibly shoving the PlayerBadge +
+            SortPicker leftward each turn. Width matches the badge's
+            fixed width so the row's total span is stable. */}
+        <View style={{ width: YOUR_TURN_BADGE_WIDTH }}>
+          {isActive ? <YourTurnBadge needsDraw={needsDraw} /> : null}
+        </View>
       </View>
       <TutorialTarget id="own-hand">
         {/* Wrapper picks up the gold breathing halo when it's the user's
             turn — opponents' `PlayerBadge` already gets the parallel
             active-turn glow, so mirroring it on the user's own hand
             closes the "which seat is on the clock" gap on desktop.
+            Gated on `!needsDraw` so the halo only fires once the user
+            has drawn and is choosing what to discard — pre-draw the
+            tile-to-discard action isn't yet legal and the halo would
+            misleadingly cue interaction with the hand.
             `position: 'relative'` + 4 px padding give the absolute halo
             room to breathe outward by its GROWTH_PX without clipping. */}
         <View style={{ position: 'relative', padding: 4 }}>
-          {isActive ? <YourHandActiveHalo /> : null}
+          {isActive && !needsDraw ? <YourHandActiveHalo /> : null}
           <Hand
             tiles={hand}
             onTileClick={ownHandClickable}
@@ -648,7 +686,13 @@ function FaceDownStrip({ count, orient, dims, position, tileBackSurface }: FaceD
         flexDirection: orient === 'horizontal' ? 'row' : 'column',
         gap: 2,
         flexWrap: 'wrap',
-        justifyContent: 'center',
+        // `flex-start` keeps the first tile pinned to the badge-facing
+        // edge so any hand-count change appends / removes a tile at
+        // the FAR edge of the strip. With `center`, if anything ever
+        // constrained the strip's main-axis size (e.g. flexWrap), the
+        // whole stack would shift toward the middle on every count
+        // change.
+        justifyContent: 'flex-start',
         // Wrapper drop-shadow so the whole strip reads as sitting on
         // the felt — same one-shadow-for-the-row trick `WallEdge`
         // uses for its 17-stack row (per-tile shadows would compound
