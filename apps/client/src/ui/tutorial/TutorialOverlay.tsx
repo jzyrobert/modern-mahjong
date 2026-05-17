@@ -1,5 +1,7 @@
 import { useRouter } from 'expo-router';
+import { useState } from 'react';
 import { Pressable, Text, View, useWindowDimensions } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
 import { useTransport } from '../../net/transport-context';
 import { useGame } from '../../state/game';
 import { LESSONS, nextLesson, useActiveTutorialStep, useTutorial } from '../../state/tutorial';
@@ -49,6 +51,12 @@ export function TutorialOverlay() {
   const advance = useTutorial((s) => s.advance);
   const window = useWindowDimensions();
   const targetRect = useTutorialTargetRect(active?.step.targetId ?? null);
+  // Measured overlay-wrapper size — drives the dim SVG so it spans
+  // the actual rendered area on Android edge-to-edge (where
+  // `useWindowDimensions()` excludes the nav-bar inset and would
+  // otherwise leave a strip undimmed). Guarded with a same-size
+  // identity check so a no-op layout pass doesn't trigger a render.
+  const [overlaySize, setOverlaySize] = useState<{ w: number; h: number } | null>(null);
 
   // Post-completion prompt takes precedence — the active step is
   // already cleared by `advance()` when the lesson finished, and
@@ -62,6 +70,7 @@ export function TutorialOverlay() {
   // Pad the highlight so the halo doesn't crowd the target's edges.
   const PAD = 8;
   const HALO_BORDER = 3;
+  const HALO_RADIUS = 12;
   const SCRIM_COLOR = 'rgba(20,15,10,0.55)';
 
   // The target's rect is registered relative to the registry root,
@@ -111,33 +120,17 @@ export function TutorialOverlay() {
       : EDGE_GAP;
   }
 
-  // Cancel-the-cutout: four rectangles around the halo painted with
-  // `SCRIM_COLOR`. When no target exists, render a single full-screen
-  // scrim instead. Each panel carries a stable `key` so React doesn't
-  // churn the four edges' identity when the halo position shifts.
-  //
-  // Earlier this code kept the four panels transparent and relied on
-  // a 9999-px-spread `boxShadow` on the halo View to paint the entire
-  // dim region (so the cutout naturally followed the halo's
-  // `borderRadius`). Android's renderer caps `boxShadow` spread well
-  // short of 9999 — on at least Pixel-class API 36 it stops within a
-  // few hundred px of the halo edge — so anything farther than that
-  // (typically the screen area below the halo) ended up undimmed.
-  // Painting the panels directly is reliable across platforms; the
-  // only cost is four tiny L-shapes (≈31 sq-px each at borderRadius=12)
-  // between the halo's curved border and its rectangular bound that
-  // stay undimmed. The halo's own `borderColor` already draws a
-  // visible gold ring through those L-shapes, so the gap reads as
-  // part of the highlight rather than a rendering bug.
-  // Panels are anchored to the overlay's bounds via `right: 0` /
-  // `bottom: 0` rather than sized with `useWindowDimensions()`.
-  // `window.height` returns the visible window minus the
-  // safe-area-bottom inset on Android edge-to-edge — ~268 px short of
-  // the physical screen — which used to leave the strip behind the
-  // system nav bar undimmed. The overlay wrapper below spans the
-  // entire app root (it inherits the registry root's `flex: 1`), so
-  // anchoring panels to its edges covers the full screen reliably.
-  const scrimPanels: ReadonlyArray<Panel & { key: string }> = halo
+  // Tap-capture panels — four transparent rectangles around the halo
+  // bounding box (or one full-screen panel when no target). They
+  // absorb taps outside the highlight without painting any dim
+  // themselves; the dim region is rendered by `<DimLayer>` below as
+  // a single SVG with a rounded cutout, which is the only way to
+  // make the dim's inner edge actually follow the halo's
+  // `borderRadius`. Earlier the panels DID paint the dim, but their
+  // rectangular silhouette left four tiny L-shape patches at the
+  // halo's corners undimmed — that's what reads as "hard corners"
+  // around the highlighted target.
+  const tapPanels: ReadonlyArray<Panel & { key: string }> = halo
     ? scrimAround(halo)
     : [{ key: 'full', left: 0, top: 0, right: 0, bottom: 0 }];
 
@@ -150,6 +143,12 @@ export function TutorialOverlay() {
     // top-level mount in `app/_layout.tsx` (the overlay sits after
     // every other root-level child).
     <View
+      onLayout={(e) => {
+        const { width, height } = e.nativeEvent.layout;
+        setOverlaySize((prev) =>
+          prev && prev.w === width && prev.h === height ? prev : { w: width, h: height },
+        );
+      }}
       style={{
         position: 'absolute',
         left: 0,
@@ -166,7 +165,16 @@ export function TutorialOverlay() {
       // (which wants to handle taps) do.
       pointerEvents="box-none"
     >
-      {scrimPanels.map((panel) => (
+      {overlaySize ? (
+        <DimLayer
+          width={overlaySize.w}
+          height={overlaySize.h}
+          halo={halo}
+          haloRadius={HALO_RADIUS}
+          color={SCRIM_COLOR}
+        />
+      ) : null}
+      {tapPanels.map((panel) => (
         <View
           key={panel.key}
           style={{
@@ -177,7 +185,9 @@ export function TutorialOverlay() {
             bottom: panel.bottom,
             width: panel.width,
             height: panel.height,
-            backgroundColor: SCRIM_COLOR,
+            // Transparent — the panel only exists to absorb taps.
+            // The dim is painted by the SVG above (which has
+            // `pointerEvents="none"` so it doesn't block tap-capture).
           }}
         />
       ))}
@@ -191,7 +201,7 @@ export function TutorialOverlay() {
             height: halo.height,
             borderWidth: HALO_BORDER,
             borderColor: COLORS.gold,
-            borderRadius: 12,
+            borderRadius: HALO_RADIUS,
           }}
           pointerEvents="none"
         />
@@ -292,6 +302,52 @@ interface Panel {
   bottom?: number;
   width?: number;
   height?: number;
+}
+
+interface DimLayerProps {
+  width: number;
+  height: number;
+  halo: HaloRect | null;
+  haloRadius: number;
+  color: string;
+}
+
+/**
+ * Full-overlay dim painted as a single SVG with an even-odd path —
+ * the outer rectangle fills the screen, the inner rounded rect at
+ * the halo position acts as a hole. The dim's inner edge follows
+ * the halo's `borderRadius` exactly, so there are no L-shape
+ * patches in the corners between the halo's gold border and its
+ * bounding box.
+ *
+ * `pointerEvents: 'none'` so the SVG sits visually above but doesn't
+ * block the tap-capture panels underneath.
+ */
+function DimLayer({ width, height, halo, haloRadius, color }: DimLayerProps) {
+  const d = halo
+    ? `${rectPath(0, 0, width, height)} ${roundedRectPath(halo.left, halo.top, halo.width, halo.height, haloRadius)}`
+    : rectPath(0, 0, width, height);
+  return (
+    <Svg
+      width={width}
+      height={height}
+      pointerEvents="none"
+      style={{ position: 'absolute', left: 0, top: 0 }}
+    >
+      <Path d={d} fill={color} fillRule="evenodd" />
+    </Svg>
+  );
+}
+
+function rectPath(x: number, y: number, w: number, h: number): string {
+  return `M${x} ${y} H${x + w} V${y + h} H${x} Z`;
+}
+
+function roundedRectPath(x: number, y: number, w: number, h: number, r: number): string {
+  // Clamp the radius so undersized halos (smaller than 2r) still
+  // produce a valid path — degenerate cases collapse to a pill.
+  const cr = Math.min(r, w / 2, h / 2);
+  return `M${x + cr} ${y} H${x + w - cr} A${cr} ${cr} 0 0 1 ${x + w} ${y + cr} V${y + h - cr} A${cr} ${cr} 0 0 1 ${x + w - cr} ${y + h} H${x + cr} A${cr} ${cr} 0 0 1 ${x} ${y + h - cr} V${y + cr} A${cr} ${cr} 0 0 1 ${x + cr} ${y} Z`;
 }
 
 interface HaloRect {
