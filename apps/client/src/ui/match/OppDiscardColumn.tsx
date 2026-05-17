@@ -2,7 +2,7 @@ import type { GameState } from '@mahjong/game-logic';
 import { tileId } from '@mahjong/game-logic';
 import { ScrollView, Text, View } from 'react-native';
 import { Tile } from '../Tile';
-import { DISCARD_HALO_STYLE } from './SeatDiscardPile';
+import { discardHaloStyle } from './SeatDiscardPile';
 import { type Position, SEAT_COLOR } from './seatColor';
 
 interface OppDiscardColumnProps {
@@ -61,7 +61,7 @@ export function OppDiscardColumn({ position, discards, latestId }: OppDiscardCol
               <View
                 // biome-ignore lint/suspicious/noArrayIndexKey: discard order is stable and tiles repeat — composite with index
                 key={`${id}-${i}`}
-                style={live ? DISCARD_HALO_STYLE : undefined}
+                style={live ? discardHaloStyle(TILE_W) : undefined}
               >
                 <Tile tile={entry.tile} width={TILE_W} height={TILE_H} />
               </View>

@@ -3,7 +3,7 @@ import { SEATS, tileId } from '@mahjong/game-logic';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useGame } from '../../state/game';
 import { Tile } from '../Tile';
-import { DISCARD_HALO_STYLE } from './SeatDiscardPile';
+import { discardHaloStyle } from './SeatDiscardPile';
 import { type Position, SEAT_COLOR } from './seatColor';
 
 interface SharedDiscardPoolProps {
@@ -229,7 +229,7 @@ function DiscardCell({
 }) {
   return (
     <View style={{ alignItems: 'center', gap: 2 }}>
-      <View style={live ? DISCARD_HALO_STYLE : undefined}>
+      <View style={live ? discardHaloStyle(TILE_W) : undefined}>
         <Tile tile={entry.tile} width={TILE_W} height={TILE_H} />
       </View>
       <View

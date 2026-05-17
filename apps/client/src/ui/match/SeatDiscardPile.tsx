@@ -1,6 +1,6 @@
 import { type Tile as MTile, tileId } from '@mahjong/game-logic';
 import { View } from 'react-native';
-import { Tile } from '../Tile';
+import { TILE_CORNER_RADIUS_RATIO, Tile } from '../Tile';
 
 interface SeatDiscardPileProps {
   tiles: readonly MTile[];
@@ -26,13 +26,19 @@ interface SeatDiscardPileProps {
 
 const HALO = '#dc9f4f';
 /** Live-claim-target border. Also used by `SharedDiscardPool` to mark
- *  the same tile in the centre pool view. */
-export const DISCARD_HALO_STYLE = {
-  boxShadow: `0px 0px 6px ${HALO}b3`,
-  borderWidth: 1.5,
-  borderColor: HALO,
-  borderRadius: 4,
-} as const;
+ *  the same tile in the centre pool view. The corner radius tracks the
+ *  tile's own `width * TILE_CORNER_RADIUS_RATIO` so the halo curves
+ *  follow the rounded tile silhouette at every tile size — a static
+ *  radius squares off relative to the tile face once tile width drifts
+ *  from ~22 px (mobile portrait pool, scaled desktop piles). */
+export function discardHaloStyle(tileWidth: number) {
+  return {
+    boxShadow: `0px 0px 6px ${HALO}b3`,
+    borderWidth: 1.5,
+    borderColor: HALO,
+    borderRadius: tileWidth * TILE_CORNER_RADIUS_RATIO,
+  } as const;
+}
 
 /**
  * One seat's discard pile, oriented for that seat's view of the table.
@@ -107,7 +113,7 @@ export function SeatDiscardPile({
               style={{
                 width: tileH,
                 height: tileW,
-                ...(isLatest && DISCARD_HALO_STYLE),
+                ...(isLatest && discardHaloStyle(tileW)),
               }}
             >
               <View
@@ -138,7 +144,7 @@ export function SeatDiscardPile({
             key={`${id}-${i}`}
             style={{
               transform: [{ rotate: `${rotate}deg` }],
-              ...(isLatest && DISCARD_HALO_STYLE),
+              ...(isLatest && discardHaloStyle(tileW)),
             }}
           >
             <Tile
