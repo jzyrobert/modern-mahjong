@@ -1,21 +1,30 @@
-import type { Action, GameState, Tile as MTile, Seat } from '@mahjong/game-logic';
+import {
+  type Action,
+  type GameState,
+  type Tile as MTile,
+  SEATS,
+  type Seat,
+  seatWindFor,
+} from '@mahjong/game-logic';
+import { type BotKind, botDisplayName } from '@mahjong/protocol';
 import type { ReactNode } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import type { LobbyState } from '../../state/game';
 import type { FeltSkin } from '../../state/game';
+import { useGame } from '../../state/game';
 import { ClaimBar } from '../ClaimBar';
 import { Hand } from '../Hand';
-import { Scoreboard } from '../Scoreboard';
 import { PrimaryButton } from '../buttons';
 import { COLORS, PANEL_ON_FELT } from '../colors';
 import { TutorialTarget } from '../tutorial/TargetRegistry';
+import { WIND_GLYPH } from '../winds';
 import { GameStatusBar } from './GameStatusBar';
 import { MeldStrip } from './MeldStrip';
-import { SeatRow, YourHandActiveHalo, YourTurnBadge } from './MobileShellShared';
+import { YourHandActiveHalo, YourTurnBadge } from './MobileShellShared';
 import { ReadyHandBadge } from './ReadyHandBadge';
 import { SharedDiscardPool } from './SharedDiscardPool';
 import { type SortMode, SortPicker } from './SortPicker';
-import type { Position } from './seatColor';
+import { type Position, SEAT_COLOR } from './seatColor';
 import type { SeatPlacement } from './seatPlacement';
 import type { FELT_SKINS } from './skins';
 
@@ -129,6 +138,7 @@ export function PortraitShell({
             isMyTurn={myTurn}
             turnCountdown={myTurn ? turnCountdown : null}
             onPress={() => setPlayersOpen(true)}
+            inlineScores={<InlineScores />}
             trailing={
               <ChromeTrailing showCode={showCode} matchCode={matchCode} viewers={viewers} />
             }
@@ -144,12 +154,14 @@ export function PortraitShell({
           backgroundColor: felt.top,
         }}
       >
-        {/* Scoreboard is loaded directly by zustand consumers via
-         *  useGame, so it doesn't need any props from here. */}
-        <Scoreboard />
+        {/* Opponent strips — transparent dense rows (~28 px each) so the
+         *  shared discard pool gains the ~60 px previously consumed by
+         *  the OppHandStrip cream cards. Bot label sits next to the
+         *  name, before the flex spacer, so countdowns stay right-aligned
+         *  without competing for prominence with the player identity. */}
         {byPosition ? (
-          <View style={{ gap: 6 }}>
-            <SeatRow
+          <View style={{ flexDirection: 'column', gap: 5 }}>
+            <DenseOppRow
               placement={byPosition.top}
               state={state}
               lobby={lobby}
@@ -159,7 +171,7 @@ export function PortraitShell({
               }
               turnCountdown={turnCountdown}
             />
-            <SeatRow
+            <DenseOppRow
               placement={byPosition.left}
               state={state}
               lobby={lobby}
@@ -169,7 +181,7 @@ export function PortraitShell({
               }
               turnCountdown={turnCountdown}
             />
-            <SeatRow
+            <DenseOppRow
               placement={byPosition.right}
               state={state}
               lobby={lobby}
@@ -358,6 +370,174 @@ function ChromeTrailing({ showCode, matchCode, viewers }: ChromeTrailingProps) {
         <Text style={{ fontSize: 11, color: TRAILING_COLORS.ink3, fontWeight: '600' }}>
           👁 {viewers}
         </Text>
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * Inline per-seat score chips rendered inside the GameStatusBar pill,
+ * replacing the standalone `Scoreboard` card. Each chip shows the
+ * seat's relative wind glyph (anchored to the dealer) and the signed
+ * score; the dealer's chip is red, others fade to ink2. Mirrors the
+ * "skip when every score is 0" behaviour from `Scoreboard` so the
+ * row doesn't carry redundant zeros at the start of a hand. Reads
+ * from zustand directly so the host PortraitShell doesn't have to
+ * thread scores through props.
+ */
+function InlineScores() {
+  const state = useGame((s) => s.state);
+  if (!state) return null;
+  const allZero = SEATS.every((s) => state.scoreboard[s] === 0);
+  if (allZero) return null;
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+      {SEATS.map((s) => {
+        const isDealer = s === state.dealer;
+        const seatWind = seatWindFor(state.dealer, s);
+        const score = state.scoreboard[s];
+        const sign = score >= 0 ? '+' : '';
+        return (
+          <View key={s} style={{ flexDirection: 'row', alignItems: 'baseline', gap: 2 }}>
+            <Text
+              style={{
+                fontFamily: 'Noto Serif TC',
+                fontSize: 11,
+                fontWeight: '700',
+                color: isDealer ? COLORS.red : COLORS.ink2,
+              }}
+            >
+              {WIND_GLYPH[seatWind]}
+            </Text>
+            <Text
+              style={{
+                fontSize: 10,
+                fontWeight: '800',
+                color: isDealer ? COLORS.red : COLORS.ink2,
+              }}
+            >
+              {sign}
+              {score}
+            </Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+interface DenseOppRowProps {
+  placement: SeatPlacement;
+  state: GameState;
+  lobby: LobbyState | null;
+  aboutToDraw: boolean;
+  drawCountdown: number | null;
+  turnCountdown: number | null;
+}
+
+/**
+ * Transparent, single-line opponent row used by the densified portrait
+ * layout (Match Alt A). Drops the cream `OppHandStrip` card to ~28 px
+ * tall so the shared discard pool's `flex: 1` recovers ~60 px of
+ * vertical space across the three opp rows.
+ *
+ * Active state: subtle red-tinted background + matching border + soft
+ * glow. Border stays 1 px in both states so the row doesn't shift by
+ * a pixel when the turn rotates.
+ *
+ * Bot label sits LEFT of the flex spacer next to the name (not
+ * right-aligned), so countdowns stay anchored at the right edge
+ * without competing with the player identity.
+ */
+function DenseOppRow({
+  placement,
+  state,
+  lobby,
+  aboutToDraw,
+  drawCountdown,
+  turnCountdown,
+}: DenseOppRowProps) {
+  const player = lobby?.players.find((p) => p.seat === placement.seat);
+  const name = player?.displayName ?? `Seat ${placement.seat}`;
+  const isBot = player?.isBot ?? false;
+  const botKind = (player?.botKind ?? null) as BotKind | null;
+  const botLabel = isBot ? (botKind ? botDisplayName(botKind) : 'Bot') : null;
+  const seatColor = SEAT_COLOR[placement.position];
+  const isActive = state.turn === placement.seat && state.phase === 'turn';
+  const meldsForSeat = state.melds[placement.seat];
+
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        minHeight: 28,
+        gap: 8,
+        paddingHorizontal: isActive ? 6 : 0,
+        paddingVertical: isActive ? 3 : 0,
+        backgroundColor: isActive ? 'rgba(219,93,74,0.16)' : 'transparent',
+        borderWidth: 1,
+        borderColor: isActive ? 'rgba(219,93,74,0.38)' : 'transparent',
+        borderRadius: 8,
+        boxShadow: isActive ? '0px 0px 10px rgba(219,93,74,0.28)' : 'none',
+      }}
+    >
+      {/* 3-px seat-colour bar — turns redHot when active so it doubles
+          as the "live seat" indicator the cream card used to carry via
+          its background. */}
+      <View
+        style={{
+          width: 3,
+          alignSelf: 'stretch',
+          borderRadius: 2,
+          backgroundColor: isActive ? COLORS.redHot : seatColor,
+        }}
+      />
+      <Text
+        style={{
+          fontFamily: 'Noto Serif TC',
+          fontSize: 11,
+          fontWeight: '700',
+          color: isActive ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.65)',
+        }}
+      >
+        {WIND_GLYPH[placement.seatWind]}
+      </Text>
+      <Text
+        style={{
+          fontSize: 12,
+          fontWeight: '800',
+          maxWidth: 90,
+          color: isActive ? 'white' : 'rgba(255,255,255,0.88)',
+        }}
+        numberOfLines={1}
+      >
+        {name}
+      </Text>
+      {botLabel ? (
+        <Text
+          style={{
+            fontSize: 9,
+            fontWeight: '700',
+            color: isActive ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.36)',
+          }}
+        >
+          {botLabel}
+        </Text>
+      ) : null}
+      <View style={{ flex: 1 }} />
+      {isActive && turnCountdown !== null ? (
+        <Text style={{ fontSize: 9, fontWeight: '900', color: 'rgba(255,255,255,0.9)' }}>
+          {turnCountdown}s left
+        </Text>
+      ) : null}
+      {!isActive && aboutToDraw && drawCountdown !== null ? (
+        <Text style={{ fontSize: 9, fontWeight: '800', color: COLORS.gold }}>
+          drawing in {drawCountdown}s
+        </Text>
+      ) : null}
+      {meldsForSeat.length > 0 ? (
+        <MeldStrip melds={meldsForSeat} tileWidth={10} tileHeight={15} showKindLabel={false} />
       ) : null}
     </View>
   );

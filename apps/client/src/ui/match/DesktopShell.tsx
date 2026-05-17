@@ -217,40 +217,63 @@ export function DesktopShell(props: DesktopShellProps) {
 
           <Scoreboard />
 
-          <DesktopTable
-            mySeat={seat}
-            dealer={state.dealer}
-            turn={state.turn}
-            phase={state.phase}
-            hands={state.hands}
-            melds={state.melds}
-            discards={state.discards}
-            scoreboard={state.scoreboard}
-            lobby={lobby}
-            ownHandClickable={myTurn && state.hasDrawn ? onTileTap : undefined}
-            sortMode={sortMode}
-            onSortModeChange={onSortModeChange}
-            drawnTileId={drawnTileId}
-            hintTileId={hintTileId}
-            readyWaits={readyWaits}
-            latestDiscardId={latestDiscardId}
-            centerHud={centerHud}
-            liveWallCount={state.wall.length}
-            nextDrawTile={state.wall.length > 0 ? state.wall[state.wall.length - 1]! : null}
-            breakPosition={state.openingRolls?.breakPosition}
-            onDrawNext={needsDraw ? () => onAction({ t: 'draw', seat }) : undefined}
-            needsDraw={needsDraw}
-            nextDrawerSeat={nextDrawerSeat}
-            aboutToDraw={aboutToDraw}
-            drawCountdown={drawCountdown}
-            turnCountdown={turnCountdown}
-          />
-
-          {hasClaimOption ? (
-            <TutorialTarget id="claim-bar">
-              <ClaimBar onAction={onAction} seat={seat} />
-            </TutorialTarget>
-          ) : null}
+          {/* DesktopTable is wrapped in a position:relative container so
+              the ClaimBar V2 can sit as an absolute overlay anchored to
+              the felt's right edge instead of below it. The handoff
+              moved the bar off the page flow so it overlaps the right
+              discard pile area — actionable but doesn't push hand
+              chrome down. `pointerEvents: 'box-none'` on the wrapper
+              lets taps fall through to discards underneath; the inner
+              ClaimBar still receives its own. */}
+          <View style={{ position: 'relative' }}>
+            <DesktopTable
+              mySeat={seat}
+              dealer={state.dealer}
+              turn={state.turn}
+              phase={state.phase}
+              hands={state.hands}
+              melds={state.melds}
+              discards={state.discards}
+              scoreboard={state.scoreboard}
+              lobby={lobby}
+              ownHandClickable={myTurn && state.hasDrawn ? onTileTap : undefined}
+              sortMode={sortMode}
+              onSortModeChange={onSortModeChange}
+              drawnTileId={drawnTileId}
+              hintTileId={hintTileId}
+              readyWaits={readyWaits}
+              latestDiscardId={latestDiscardId}
+              centerHud={centerHud}
+              liveWallCount={state.wall.length}
+              nextDrawTile={state.wall.length > 0 ? state.wall[state.wall.length - 1]! : null}
+              breakPosition={state.openingRolls?.breakPosition}
+              onDrawNext={needsDraw ? () => onAction({ t: 'draw', seat }) : undefined}
+              needsDraw={needsDraw}
+              nextDrawerSeat={nextDrawerSeat}
+              aboutToDraw={aboutToDraw}
+              drawCountdown={drawCountdown}
+              turnCountdown={turnCountdown}
+            />
+            {hasClaimOption ? (
+              <View
+                pointerEvents="box-none"
+                style={{
+                  position: 'absolute',
+                  right: 12,
+                  top: 0,
+                  bottom: 0,
+                  width: 190,
+                  zIndex: 10,
+                  justifyContent: 'center',
+                  alignItems: 'stretch',
+                }}
+              >
+                <TutorialTarget id="claim-bar">
+                  <ClaimBar onAction={onAction} seat={seat} orientation="desktop" />
+                </TutorialTarget>
+              </View>
+            ) : null}
+          </View>
 
           <View style={{ alignItems: 'center', paddingVertical: 4 }}>
             <ChatBar onSend={onSendChat} />

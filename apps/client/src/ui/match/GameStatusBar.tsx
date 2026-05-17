@@ -42,6 +42,12 @@ interface GameStatusBarProps {
    *  Desktop leaves this unset and continues to render `TopBar`
    *  separately (the perimeter felt has horizontal room to spare). */
   trailing?: ReactNode;
+  /** Optional inline-scores slot — when given, renders a hairline
+   *  divider followed by the supplied node (typically per-seat chips
+   *  like 東:+12 南:-4). Lets PortraitShell collapse the standalone
+   *  `Scoreboard` card into the status pill, recovering ~40 px of
+   *  vertical space without a separate row. */
+  inlineScores?: ReactNode;
 }
 
 /** Wall depth at or below which the wall-count chip turns red — surfaced as
@@ -67,6 +73,7 @@ export function GameStatusBar({
   turnCountdown = null,
   onPress,
   trailing,
+  inlineScores,
 }: GameStatusBarProps) {
   const low = wallCount <= WALL_LOW_THRESHOLD;
   const Container = onPress ? Pressable : View;
@@ -179,6 +186,12 @@ export function GameStatusBar({
       }}
     >
       {status}
+      {inlineScores ? (
+        <>
+          <Text style={{ opacity: 0.3, color: COLORS.ink, fontSize: 10 }}>│</Text>
+          {inlineScores}
+        </>
+      ) : null}
       {trailing ? (
         <>
           <Text style={{ opacity: 0.3, color: COLORS.ink, fontSize: 10 }}>│</Text>

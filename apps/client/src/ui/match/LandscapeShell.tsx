@@ -398,7 +398,7 @@ function LandscapeActionRail({
       ) : null}
       {hasClaimOption ? (
         <TutorialTarget id="claim-bar">
-          <ClaimBar onAction={onAction} seat={seat} />
+          <ClaimBar onAction={onAction} seat={seat} orientation="landscape" />
         </TutorialTarget>
       ) : null}
       {canTsumo || concealedGangTile ? (
