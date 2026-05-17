@@ -308,6 +308,38 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
         if (!bot) continue;
         if (pending.submitted[seat]) continue;
         if (claimHandles[seat] !== null) continue;
+        // Pre-compute the bot's pick so we can short-circuit passes.
+        // The engine pre-fills passes for seats with no *legal* claim,
+        // but a bot whose strategy chooses to pass on a discard it
+        // *could* claim (e.g. `passiveBot.pickClaim` always returns
+        // pass) still needs to submit through this path — which used
+        // to wait a full 2-6 s stagger before firing the pass. In a
+        // 3-passive-bot match, every bot's claim window stalled by
+        // up to 6 s of pure dead time. Submit passes instantly; only
+        // stagger meaningful claims, where the 2-6 s variance
+        // genuinely lets the user see the discard before the
+        // resolution kicks in. Throws here predate `setTimeout` so
+        // they propagate normally — the engine + IllegalActionError
+        // path stays the same.
+        let pick: ReturnType<typeof bot.pickClaim>;
+        try {
+          pick = bot.pickClaim({ state, seat });
+        } catch (e) {
+          if (!(e instanceof IllegalActionError)) {
+            console.error('solo bot claim error', e);
+          }
+          pick = { kind: 'pass' };
+        }
+        if (pick.kind === 'pass') {
+          try {
+            applyAction({ t: 'declareClaim', seat, claim: pick });
+          } catch (e) {
+            if (!(e instanceof IllegalActionError)) {
+              console.error('solo bot claim error', e);
+            }
+          }
+          continue;
+        }
         const delay = botClaimDelayMs();
         claimHandles[seat] = setTimeout(() => {
           claimHandles[seat] = null;
@@ -315,8 +347,7 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
           if (state.phase !== 'awaitingClaims' || !state.pendingClaims) return;
           if (state.pendingClaims.submitted[seat]) return;
           try {
-            const claim = bot.pickClaim({ state, seat });
-            applyAction({ t: 'declareClaim', seat, claim });
+            applyAction({ t: 'declareClaim', seat, claim: pick });
           } catch (e) {
             // Anything that isn't an IllegalActionError used to re-throw,
             // but a throw from inside a setTimeout callback becomes an
@@ -332,6 +363,13 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
           }
           driveBots();
         }, delay);
+      }
+      // After scheduling: if every bot's pick was a pass we just
+      // submitted them synchronously above, which may have resolved
+      // the window already. Re-enter the loop so the next bot's turn
+      // fires immediately rather than waiting for a tick.
+      if (state.phase !== 'awaitingClaims') {
+        driveBots();
       }
       return;
     }
