@@ -3,7 +3,7 @@ import { chiOptions, isWinning, legalClaimsFor, scoreHand } from '@mahjong/game-
 import { type ReactNode, useEffect, useRef } from 'react';
 import { Animated, Pressable, Text, View } from 'react-native';
 import { useGame } from '../state/game';
-import { Tile } from './Tile';
+import { TILE_CORNER_RADIUS_RATIO, Tile } from './Tile';
 import { COLORS } from './colors';
 
 interface ClaimBarProps {
@@ -124,11 +124,19 @@ export function ClaimBar({ onAction, seat, orientation = 'portrait' }: ClaimBarP
   // Header tile + CLAIM? sublabel. Same content in every orientation;
   // the surrounding layout decides whether to stack with the actions
   // (portrait) or sit above them (landscape / desktop).
+  // Match the live-tile halo's corner curve to the Tile face's actual
+  // rounded silhouette (Tile uses `width * TILE_CORNER_RADIUS_RATIO`).
+  // Without this, the hard-coded 6 px halo radius traced a tighter
+  // corner than the desktop's 44×60 tile (which rounds at ~8 px) and
+  // the gold ring stuck out at each corner.
+  const haloRadius = tileW * TILE_CORNER_RADIUS_RATIO;
   const tileHeader = discard ? (
     <View style={{ alignItems: 'center', gap: 4, flexShrink: 0 }}>
       <View
         style={{
-          borderRadius: 6,
+          width: tileW,
+          height: tileH,
+          borderRadius: haloRadius,
           boxShadow: `0 0 0 2px ${COLORS.gold}, 0 0 10px ${COLORS.gold}80`,
         }}
       >
