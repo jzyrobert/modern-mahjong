@@ -271,19 +271,42 @@ export function PortraitShell({
           borderTopWidth: 1,
         }}
       >
-        {state.melds[seat].length > 0 ? (
-          <View style={{ gap: 4 }}>
-            <Text
-              style={{
-                fontSize: 10,
-                fontWeight: '800',
-                color: 'rgba(255,255,255,0.7)',
-                letterSpacing: 0.5,
-              }}
-            >
-              YOUR MELDS
-            </Text>
-            <MeldStrip melds={state.melds[seat]} tileWidth={14} tileHeight={20} />
+        {state.melds[seat].length > 0 || readyWaits.length > 0 ? (
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'flex-end',
+              justifyContent: 'space-between',
+              gap: 8,
+              flexWrap: 'wrap',
+            }}
+          >
+            {state.melds[seat].length > 0 ? (
+              <View style={{ gap: 4, flexShrink: 1 }}>
+                <Text
+                  style={{
+                    fontSize: 10,
+                    fontWeight: '800',
+                    color: 'rgba(255,255,255,0.7)',
+                    letterSpacing: 0.5,
+                  }}
+                >
+                  YOUR MELDS
+                </Text>
+                <MeldStrip melds={state.melds[seat]} tileWidth={14} tileHeight={20} />
+              </View>
+            ) : (
+              <View />
+            )}
+            {/* ReadyHandBadge anchored flush-right of the melds row.
+                Surfaces tenpai status independent of phase — visible
+                during opponent turns, claim windows, and the user's
+                own pre-draw moment alike. The badge is its own self-
+                gated component (returns null when waits.length === 0),
+                so passing the array unconditionally is fine — the
+                outer `||` keeps the whole row from rendering when
+                both inputs are empty. */}
+            <ReadyHandBadge waits={readyWaits} />
           </View>
         ) : null}
 
@@ -318,9 +341,12 @@ export function PortraitShell({
 
         {/* SortPicker sits flush-right above the hand so the user can
             switch sort order mid-hand without taking their eyes off
-            the tiles. ReadyHandBadge sits flush-left on the same row
-            when the user is tenpai, so the badge + picker share one
-            strip instead of pushing the hand down. */}
+            the tiles. YOUR TURN pill sits flush-left on the same
+            row when active. The ReadyHandBadge no longer lives on
+            this row — it's pinned to the right of the YOUR MELDS
+            strip so it stays visible regardless of whose turn it
+            is, and so it doesn't have to compete with the YOUR TURN
+            pill for the same flush-left slot. */}
         <View
           style={{
             flexDirection: 'row',
@@ -335,7 +361,6 @@ export function PortraitShell({
                 shares the row with the slim SortPicker on a 393-px
                 portrait viewport without wrapping. */}
             {myTurn ? <YourTurnBadge needsDraw={needsDraw} compact /> : null}
-            <ReadyHandBadge waits={readyWaits} />
           </View>
           <View style={{ marginLeft: 'auto' }}>
             {/* Slim segmented picker — shrunk padding + smaller font
@@ -346,18 +371,16 @@ export function PortraitShell({
           </View>
         </View>
         <TutorialTarget id="own-hand">
-          {/* Wrapper picks up the gold breathing halo when it's the
-              user's turn — opponents already have this treatment
-              (OppHandStrip.ActiveHalo) so the user's hand getting
-              the same cue when active makes it obvious which seat
-              is on the clock. Gated on `!needsDraw` so the halo
-              only fires once the user has drawn and is choosing
-              what to discard — pre-draw the tile-to-discard action
-              isn't yet legal and the halo would misleadingly cue
-              interaction with the hand. `position: 'relative'` + 4
-              px padding give the absolute halo room to breathe
-              outward by its GROWTH_PX without clipping. */}
-          <View style={{ position: 'relative', padding: 4 }}>
+          {/* `position: 'relative'` + 4 px padding give the absolute
+              halo room to breathe outward by GROWTH_PX without
+              clipping. `alignSelf: 'center'` so the hand row sits
+              centred across the portrait viewport rather than
+              hugging the left edge — without this, the inner Hand
+              shrinks to its tile-row content width but the wrapping
+              flex stretched it left-aligned. The halo's still
+              relative to this centred wrapper, so it tracks the
+              hand correctly. */}
+          <View style={{ position: 'relative', padding: 4, alignSelf: 'center' }}>
             {myTurn && !needsDraw ? <YourHandActiveHalo /> : null}
             <Hand
               tiles={state.hands[seat]}

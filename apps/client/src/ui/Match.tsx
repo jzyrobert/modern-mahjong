@@ -157,10 +157,18 @@ export function Match() {
   // tileId-string for the hand so unrelated state deltas (opponent
   // draws/discards during `awaitingClaims`, other-seat turns) don't
   // re-run it — only changes to the user's own hand shape do.
-  const showReadyWaits =
-    !!state &&
-    seat !== null &&
-    (state.phase === 'awaitingClaims' || (state.phase === 'turn' && !state.hasDrawn));
+  //
+  // Gate on the user's *concealed hand length*: `waitTiles` expects
+  // a 13-tile hand (4 melds + the eye-minus-one shape), which the
+  // engine maintains between turns / after every discard / during
+  // claim windows. The only state where the user holds 14 tiles is
+  // mid-their-own-turn after drawing, before discarding — in that
+  // window "what tile completes me" is per-discard analysis, not a
+  // single set. Gating on hand-length (instead of phase + hasDrawn)
+  // means the badge stays visible during an opponent's turn after
+  // they've drawn — the user's tenpai status doesn't depend on
+  // whose turn it is.
+  const showReadyWaits = !!state && seat !== null && state.hands[seat].length === 13;
   const readyHand = showReadyWaits ? state!.hands[seat!] : null;
   const readyHandKey = readyHand ? readyHand.map(tileId).join(',') : '';
   const readyMeldCount = readyHand ? state!.melds[seat!].length : 0;

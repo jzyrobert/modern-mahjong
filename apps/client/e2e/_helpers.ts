@@ -16,15 +16,13 @@ export const test = base.extend({
     await page.addInitScript(() => {
       const g = globalThis as {
         __MAHJONG_TEST_BOT_PACE_MS__?: number;
-        __MAHJONG_TEST_CLAIM_FLOOR_MS__?: number;
         __MAHJONG_TEST_BOT_CLAIM_DELAY_MS__?: number;
       };
       g.__MAHJONG_TEST_BOT_PACE_MS__ = 0;
-      // Zero the post-user-discard claim floor + per-bot claim
-      // submission delay so e2e specs don't accumulate real wall-time
-      // on every discard. Specs that need to assert pacing can
-      // override either global later inside the test body.
-      g.__MAHJONG_TEST_CLAIM_FLOOR_MS__ = 0;
+      // Zero the per-bot claim submission delay so e2e specs don't
+      // accumulate real wall-time waiting for bot claim staggers.
+      // Specs that need to assert pacing can override this inside
+      // the test body.
       g.__MAHJONG_TEST_BOT_CLAIM_DELAY_MS__ = 0;
     });
     await use(page);

@@ -2,57 +2,26 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   DEFAULT_BOT_CLAIM_MAX_MS,
   DEFAULT_BOT_CLAIM_MIN_MS,
-  DEFAULT_CLAIM_FLOOR_MS,
   botClaimDelayMs,
-  claimFloorMs,
 } from './solo-transport';
 
 /**
- * Test-override hooks for solo claim pacing. The production defaults
- * (3 s floor + 2-6 s per-bot stagger) exist to give the user time to
- * see their own discard before bots resolve a claim; specs need to
- * suppress them to keep the suite fast and deterministic. These tests
- * pin the override contract so a regression that collapses
- * `claimFloorMs()` to 0 unconditionally — or ignores the override —
- * lands red.
+ * Test-override hooks for solo claim pacing. The production default
+ * (per-bot 2-6 s stagger before each bot submits its claim pick)
+ * gives the user time to read a discard between bot moves; specs
+ * need to suppress it to keep the suite fast and deterministic. The
+ * post-user-discard floor was removed — when no bot claims, the next
+ * bot's draw fires immediately and the bot's own pre-discard thinking
+ * gap covers the read window.
  */
 
 interface PacingGlobals {
-  __MAHJONG_TEST_CLAIM_FLOOR_MS__: number | undefined;
   __MAHJONG_TEST_BOT_CLAIM_DELAY_MS__: number | undefined;
 }
 
 function pacingGlobals(): PacingGlobals {
   return globalThis as unknown as PacingGlobals;
 }
-
-describe('claimFloorMs', () => {
-  beforeEach(() => {
-    pacingGlobals().__MAHJONG_TEST_CLAIM_FLOOR_MS__ = undefined;
-  });
-  afterEach(() => {
-    pacingGlobals().__MAHJONG_TEST_CLAIM_FLOOR_MS__ = undefined;
-  });
-
-  it('returns the production default when no override is set', () => {
-    expect(claimFloorMs()).toBe(DEFAULT_CLAIM_FLOOR_MS);
-  });
-
-  it('honours a numeric override', () => {
-    pacingGlobals().__MAHJONG_TEST_CLAIM_FLOOR_MS__ = 0;
-    expect(claimFloorMs()).toBe(0);
-    pacingGlobals().__MAHJONG_TEST_CLAIM_FLOOR_MS__ = 500;
-    expect(claimFloorMs()).toBe(500);
-  });
-
-  it('falls back to the default when the override is non-numeric', () => {
-    // Simulate a stale-string override from a buggy test that wrote a
-    // value via something other than the documented numeric contract.
-    (pacingGlobals() as unknown as Record<string, unknown>).__MAHJONG_TEST_CLAIM_FLOOR_MS__ =
-      'not-a-number';
-    expect(claimFloorMs()).toBe(DEFAULT_CLAIM_FLOOR_MS);
-  });
-});
 
 describe('botClaimDelayMs', () => {
   beforeEach(() => {
@@ -103,10 +72,8 @@ describe('botClaimDelayMs', () => {
 
 describe('pacing override constants', () => {
   it('exposes production defaults that align with the design handoff', () => {
-    // Pinned so a refactor that mistakenly halves the floor — or
-    // narrows the bot-stagger window — lands red instead of silently
-    // shrinking the user's read time.
-    expect(DEFAULT_CLAIM_FLOOR_MS).toBe(3_000);
+    // Pinned so a refactor that mistakenly narrows the bot-stagger
+    // window lands red instead of silently shrinking the variance.
     expect(DEFAULT_BOT_CLAIM_MIN_MS).toBe(2_000);
     expect(DEFAULT_BOT_CLAIM_MAX_MS).toBe(6_000);
   });
