@@ -383,14 +383,17 @@ const TRAILING_COLORS = {
 };
 
 /**
- * Optional #CODE + viewer count rendered inside `GameStatusBar`'s
- * trailing slot on mobile for online / LAN matches. Solo and
- * code-less matches collapse this away. The ☰ menu button moved out
- * of the bar in 2026-05 — it now sits in a sibling pill on the top
- * right so the GameStatusBar stays one row tall on phone widths.
+ * `#CODE` (online / LAN) or `SOLO` (offline) badge plus the viewer
+ * count, rendered inside `GameStatusBar`'s trailing slot on mobile.
+ * Truly code-less matches collapse this away. The ☰ menu button
+ * moved out of the bar in 2026-05 — it now sits in a sibling pill
+ * on the top right so the GameStatusBar stays one row tall on phone
+ * widths.
  */
 function ChromeTrailing({ showCode, matchCode, viewers }: ChromeTrailingProps) {
-  if (!showCode && !(viewers && viewers > 0)) return null;
+  const isSolo = matchCode === 'SOLO';
+  const hasViewers = viewers !== null && viewers > 0;
+  if (!showCode && !isSolo && !hasViewers) return null;
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
       {showCode && matchCode ? (
@@ -403,6 +406,22 @@ function ChromeTrailing({ showCode, matchCode, viewers }: ChromeTrailingProps) {
           }}
         >
           #{matchCode}
+        </Text>
+      ) : null}
+      {/* `SOLO` reads as an identity badge for the offline flow —
+          no `#` prefix because there's nothing to share, and the
+          ink3 grey instead of the red used for shareable codes
+          signals "informational, not actionable". */}
+      {isSolo ? (
+        <Text
+          style={{
+            fontSize: 11,
+            fontWeight: '800',
+            color: TRAILING_COLORS.ink3,
+            letterSpacing: 1.2,
+          }}
+        >
+          SOLO
         </Text>
       ) : null}
       {viewers && viewers > 0 ? (

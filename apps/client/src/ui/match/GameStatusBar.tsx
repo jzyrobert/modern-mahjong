@@ -156,7 +156,7 @@ export function GameStatusBar({
           }}
         />
       ) : null}
-      {isMyTurn && turnCountdown !== null ? (
+      {isMyTurn ? (
         <Text
           style={{
             fontSize: 10,
@@ -164,8 +164,11 @@ export function GameStatusBar({
             color: COLORS.red,
             letterSpacing: 0.4,
           }}
+          accessibilityLabel={
+            turnCountdown !== null ? `${turnCountdown} seconds left in your turn` : 'No turn timer'
+          }
         >
-          {turnCountdown}s left
+          {turnCountdown !== null ? `${turnCountdown}s left` : '∞'}
         </Text>
       ) : null}
     </Container>
