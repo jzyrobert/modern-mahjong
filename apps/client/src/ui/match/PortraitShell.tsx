@@ -210,6 +210,13 @@ export function PortraitShell({
           // opponent strips above — saves ~4 px of dead felt
           // between the two.
           paddingTop: 4,
+          // The visual gap between the pool's cream felt-bottom
+          // card and the action zone's top border lives here, on
+          // the pool side of the boundary. The action zone's
+          // `paddingTop` stays small so its border sits close to
+          // its first content row (YOUR MELDS, claim bar, hand,
+          // …).
+          paddingBottom: 8,
           backgroundColor: felt.top,
         }}
       >
@@ -246,12 +253,13 @@ export function PortraitShell({
           // Matches the trimmed `paddingHorizontal: 8` on the
           // opponent and discard-pool sections above.
           paddingHorizontal: 8,
-          // Bumped (8 → 12) so the user's hand area has a little
-          // more breathing room from the discard pool / its top
-          // border — the previous 8 made the YOUR MELDS strip
-          // (when present) press flush against the pool's bottom
-          // edge.
-          paddingTop: 12,
+          // Small (4) — the breathing room between the pool and
+          // the action zone is owned by the pool section's
+          // `paddingBottom`, not by this one. Keeping this tight
+          // means the action zone's top border sits close to its
+          // first content row (YOUR MELDS / claim bar / hand)
+          // rather than floating in dead felt.
+          paddingTop: 4,
           paddingBottom: 4,
           gap: 8,
           backgroundColor: felt.top,
