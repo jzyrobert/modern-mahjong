@@ -178,9 +178,16 @@ interface MeasurableNode {
 export function TutorialTarget({ id, children, enabled = true, style }: TutorialTargetProps) {
   const api = useTargetRegistry();
   const ref = useRef<MeasurableNode | null>(null);
+  // Flips to true in the unmount effect so any rAF or async
+  // `measureInWindow` callback still in flight from a previous
+  // render no-ops instead of writing a stale rect back into the
+  // registry after the unmount has already cleared the entry —
+  // which would re-paint the halo at a dead location.
+  const cancelledRef = useRef(false);
 
   const measureAndRegister = useCallback(() => {
     if (!enabled || !ref.current) return;
+    if (cancelledRef.current) return;
     const rootNode = api.rootRef.current as unknown as MeasurableNode | null;
     if (!rootNode) return;
     // Defer to the next frame so any pending layout commits (a sibling
@@ -197,8 +204,11 @@ export function TutorialTarget({ id, children, enabled = true, style }: Tutorial
     // value in the same coord space `<TutorialOverlay>` paints in
     // (the overlay is mounted inside this same root).
     requestAnimationFrame(() => {
+      if (cancelledRef.current) return;
       rootNode.measureInWindow((rootX, rootY) => {
+        if (cancelledRef.current) return;
         ref.current?.measureInWindow((targetX, targetY, width, height) => {
+          if (cancelledRef.current) return;
           api.set(id, {
             x: targetX - rootX,
             y: targetY - rootY,
@@ -226,8 +236,12 @@ export function TutorialTarget({ id, children, enabled = true, style }: Tutorial
   // Clear on unmount so a target that's torn down (e.g. mobile→desktop
   // shell swap) doesn't leave a phantom rect in the registry. Targets
   // re-register from the destination shell's tree on the next layout.
+  // Setting `cancelledRef.current` first ensures any in-flight rAF or
+  // async measureInWindow callback no-ops instead of clobbering the
+  // null clear we're about to write.
   useEffect(() => {
     return () => {
+      cancelledRef.current = true;
       if (enabled) api.set(id, null);
     };
   }, [api, id, enabled]);
