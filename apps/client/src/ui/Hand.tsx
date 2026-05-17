@@ -145,7 +145,19 @@ export function Hand({
   return (
     <View
       onLayout={onLayout}
-      style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP, width: '100%' }}
+      style={{
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: GAP,
+        width: '100%',
+        // Centre every row, including a partial wrapped row. Default
+        // `flex-start` left-anchors all rows, so a 14-tile hand that
+        // wraps to 11 + 3 on a narrow phone leaves the 3-tile second
+        // row hugging the left edge. The drag math is relative-delta
+        // based (`Math.round(g.dx / step)`), not absolute-position
+        // based, so centring doesn't break manual-sort reorders.
+        justifyContent: 'center',
+      }}
     >
       {ordered.map((t, i) => {
         const id = tileId(t);
