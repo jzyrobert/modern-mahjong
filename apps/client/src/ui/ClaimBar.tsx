@@ -105,10 +105,20 @@ export function ClaimBar({ onAction, seat, orientation = 'portrait' }: ClaimBarP
   const showPass = legal.has('pass');
 
   const isVertical = orientation === 'landscape' || orientation === 'desktop';
-  const tileW = orientation === 'desktop' ? 32 : isVertical ? 28 : 32;
-  const tileH = orientation === 'desktop' ? 44 : isVertical ? 38 : 44;
-  const cardShadow =
-    orientation === 'desktop' ? '0px 8px 24px rgba(0,0,0,0.14)' : '0px 4px 12px rgba(0,0,0,0.08)';
+  const isDesktop = orientation === 'desktop';
+  // Desktop's claim panel floats over the felt, so it gets to be larger
+  // — the user has more pixel budget than a phone shell and the bar's
+  // tap targets read better at button-class sizing rather than the
+  // mobile-compact dimensions the portrait + landscape variants use.
+  const tileW = isDesktop ? 44 : isVertical ? 28 : 32;
+  const tileH = isDesktop ? 60 : isVertical ? 38 : 44;
+  const previewW = isDesktop ? 16 : 11;
+  const previewH = isDesktop ? 22 : 16;
+  const buttonPadV = isDesktop ? 10 : 7;
+  const buttonPadH = isDesktop ? 14 : 10;
+  const glyphSize = isDesktop ? 18 : 14;
+  const labelSize = isDesktop ? 12 : 10;
+  const cardShadow = isDesktop ? '0px 8px 24px rgba(0,0,0,0.14)' : '0px 4px 12px rgba(0,0,0,0.08)';
 
   // Header tile + CLAIM? sublabel. Same content in every orientation;
   // the surrounding layout decides whether to stack with the actions
@@ -133,6 +143,14 @@ export function ClaimBar({ onAction, seat, orientation = 'portrait' }: ClaimBarP
     </Text>
   );
 
+  const actionSizing = {
+    padV: buttonPadV,
+    padH: buttonPadH,
+    glyphSize,
+    labelSize,
+    previewW,
+    previewH,
+  } as const;
   const buttons: ReactNode[] = [];
   if (showPeng && discard) {
     buttons.push(
@@ -141,6 +159,7 @@ export function ClaimBar({ onAction, seat, orientation = 'portrait' }: ClaimBarP
         kind="peng"
         meldTiles={[discard, discard, discard]}
         fullWidth={isVertical}
+        sizing={actionSizing}
         onPress={() => onAction({ t: 'declareClaim', seat, claim: { kind: 'peng' } })}
       />,
     );
@@ -155,6 +174,7 @@ export function ClaimBar({ onAction, seat, orientation = 'portrait' }: ClaimBarP
           kind="chi"
           meldTiles={run}
           fullWidth={isVertical}
+          sizing={actionSizing}
           onPress={() => onAction({ t: 'declareClaim', seat, claim: { kind: 'chi', with: opt } })}
         />,
       );
@@ -165,6 +185,7 @@ export function ClaimBar({ onAction, seat, orientation = 'portrait' }: ClaimBarP
           discard={discard}
           options={chiOpts}
           fullWidth={isVertical}
+          sizing={actionSizing}
           onPick={(opt) => onAction({ t: 'declareClaim', seat, claim: { kind: 'chi', with: opt } })}
         />,
       );
@@ -177,6 +198,7 @@ export function ClaimBar({ onAction, seat, orientation = 'portrait' }: ClaimBarP
         kind="gang"
         meldTiles={[discard, discard, discard, discard]}
         fullWidth={isVertical}
+        sizing={actionSizing}
         onPress={() => onAction({ t: 'declareClaim', seat, claim: { kind: 'gang' } })}
       />,
     );
@@ -190,6 +212,7 @@ export function ClaimBar({ onAction, seat, orientation = 'portrait' }: ClaimBarP
         faan={huFaan}
         amplified
         fullWidth={isVertical}
+        sizing={actionSizing}
         onPress={() => onAction({ t: 'declareClaim', seat, claim: { kind: 'hu' } })}
       />,
     );
@@ -202,6 +225,7 @@ export function ClaimBar({ onAction, seat, orientation = 'portrait' }: ClaimBarP
         meldTiles={null}
         ghost
         fullWidth={isVertical}
+        sizing={actionSizing}
         onPress={() => onAction({ t: 'declareClaim', seat, claim: { kind: 'pass' } })}
       />,
     );
@@ -219,7 +243,10 @@ export function ClaimBar({ onAction, seat, orientation = 'portrait' }: ClaimBarP
         overflow: 'hidden',
       }}
     >
-      <CountdownBar deadlineMs={state?.pendingClaims?.deadlineMs ?? null} />
+      <CountdownBar
+        hardDeadlineMs={state?.pendingClaims?.hardDeadlineMs ?? null}
+        totalWindowMs={state?.rules.claimHardWindowMs ?? null}
+      />
       {isVertical ? (
         <View style={{ paddingVertical: 8, paddingHorizontal: 10, gap: 6, alignItems: 'center' }}>
           {tileHeader}
@@ -254,6 +281,15 @@ export function ClaimBar({ onAction, seat, orientation = 'portrait' }: ClaimBarP
   );
 }
 
+interface ClaimActionSizing {
+  padV: number;
+  padH: number;
+  glyphSize: number;
+  labelSize: number;
+  previewW: number;
+  previewH: number;
+}
+
 interface ClaimActionProps {
   kind: CallKind;
   /** Inline tile previews rendered below the button. `null` skips
@@ -263,6 +299,7 @@ interface ClaimActionProps {
   amplified?: boolean;
   ghost?: boolean;
   fullWidth?: boolean;
+  sizing: ClaimActionSizing;
   onPress: () => void;
 }
 
@@ -273,6 +310,7 @@ function ClaimAction({
   amplified = false,
   ghost = false,
   fullWidth = false,
+  sizing,
   onPress,
 }: ClaimActionProps) {
   const meta = KIND[kind];
@@ -287,8 +325,8 @@ function ClaimAction({
           alignItems: 'center',
           justifyContent: 'center',
           gap: 5,
-          paddingVertical: 7,
-          paddingHorizontal: ghost ? 10 : amplified ? 12 : 10,
+          paddingVertical: sizing.padV,
+          paddingHorizontal: sizing.padH,
           borderRadius: 9,
           width: fullWidth ? '100%' : undefined,
           backgroundColor: pressed ? meta.pressed : meta.bg,
@@ -304,7 +342,7 @@ function ClaimAction({
         <Text
           style={{
             fontFamily: 'Noto Serif TC',
-            fontSize: 14,
+            fontSize: sizing.glyphSize,
             fontWeight: '700',
             color: meta.fg,
           }}
@@ -313,7 +351,7 @@ function ClaimAction({
         </Text>
         <Text
           style={{
-            fontSize: 10,
+            fontSize: sizing.labelSize,
             fontWeight: '900',
             color: meta.fg,
             letterSpacing: 0.4,
@@ -330,8 +368,8 @@ function ClaimAction({
               // biome-ignore lint/suspicious/noArrayIndexKey: positional preview
               key={i}
               tile={t}
-              width={11}
-              height={16}
+              width={sizing.previewW}
+              height={sizing.previewH}
             />
           ))}
         </View>
@@ -354,6 +392,7 @@ interface ChiChipGroupProps {
   discard: MTile;
   options: [MTile, MTile][];
   fullWidth: boolean;
+  sizing: ClaimActionSizing;
   onPick: (option: [MTile, MTile]) => void;
 }
 
@@ -363,7 +402,12 @@ interface ChiChipGroupProps {
  *  label so the player can pick from the visible options without
  *  uncovering anything. Portrait flexes into a wrap row; landscape /
  *  desktop stack full-width chips inside the vertical column. */
-function ChiChipGroup({ discard, options, fullWidth, onPick }: ChiChipGroupProps) {
+function ChiChipGroup({ discard, options, fullWidth, sizing, onPick }: ChiChipGroupProps) {
+  // Chi chip tiles ride a hair smaller than the main meld preview so
+  // the chip itself stays compact even at desktop sizing — the chip
+  // is already showing 3 tiles + a numeric label inside a Pressable.
+  const chipTileW = Math.max(12, sizing.previewW - 2);
+  const chipTileH = Math.max(17, sizing.previewH - 1);
   return (
     <View
       style={{
@@ -432,8 +476,8 @@ function ChiChipGroup({ discard, options, fullWidth, onPick }: ChiChipGroupProps
                   // biome-ignore lint/suspicious/noArrayIndexKey: ordered run is positional
                   key={j}
                   tile={t}
-                  width={12}
-                  height={17}
+                  width={chipTileW}
+                  height={chipTileH}
                 />
               ))}
             </View>
@@ -470,45 +514,55 @@ function sortRun(a: MTile, b: MTile, c: MTile): MTile[] {
 }
 
 interface CountdownBarProps {
-  deadlineMs: number | null;
+  /** Server-clock timestamp at which the engine auto-passes any seat
+   *  that hasn't submitted. Null in solo (the rule strips the hard
+   *  cap via `soloRulesFrom`), in which case the bar doesn't render. */
+  hardDeadlineMs: number | null;
+  /** Length of the hard-deadline window in ms (`rules.claimHardWindowMs`).
+   *  Used to compute the elapsed-vs-total fraction at mount, so the
+   *  bar starts at the correct fill if the user mounts mid-claim
+   *  (e.g. tab refresh, late-attached spectator). Null in solo. */
+  totalWindowMs: number | null;
 }
 
 /** Thin 3-px progress strip at the top of the claim card. Animated
- *  100→0 across the time remaining at mount. Absent when no deadline
- *  is set (solo / claimWindowMs=0) — the bar simply doesn't render so
- *  the card collapses to its actions only. */
-function CountdownBar({ deadlineMs }: CountdownBarProps) {
-  const width = useRef(new Animated.Value(1)).current;
+ *  current-fraction → 0 across the time remaining at mount. Hidden
+ *  when no hard deadline is set — solo strips `claimHardWindowMs` via
+ *  `soloRulesFrom`, so there's no real countdown to surface; the card
+ *  collapses to its actions only.
+ *
+ *  Driven by the engine's *hard* deadline (the auto-pass cap) rather
+ *  than the soft floor (`deadlineMs`, the earliest the engine will
+ *  resolve). The hard cap is what the user actually races against —
+ *  the soft floor is for fairness to slow clickers and never extends
+ *  the window. */
+function CountdownBar({ hardDeadlineMs, totalWindowMs }: CountdownBarProps) {
+  const fraction = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    if (deadlineMs === null) return;
+    if (hardDeadlineMs === null || totalWindowMs === null) return;
     const now = Date.now();
-    const remaining = deadlineMs - now;
+    const remaining = hardDeadlineMs - now;
     if (remaining <= 0) {
-      width.setValue(0);
+      fraction.setValue(0);
       return;
     }
-    // The bar shows "remaining vs full window," but we don't know the
-    // full window length here — `claimWindowMs` lives on the rule
-    // config. As a pragmatic stand-in we treat the elapsed-so-far +
-    // remaining as the window, capped at a sensible upper bound.
-    const ASSUMED_WINDOW_MS = Math.max(remaining, 5_000);
-    const start = remaining / ASSUMED_WINDOW_MS;
-    width.setValue(start);
-    const anim = Animated.timing(width, {
+    const start = Math.min(1, Math.max(0, remaining / totalWindowMs));
+    fraction.setValue(start);
+    const anim = Animated.timing(fraction, {
       toValue: 0,
       duration: remaining,
       useNativeDriver: false,
     });
     anim.start();
     return () => anim.stop();
-  }, [deadlineMs, width]);
-  if (deadlineMs === null) return null;
+  }, [hardDeadlineMs, totalWindowMs, fraction]);
+  if (hardDeadlineMs === null || totalWindowMs === null) return null;
   return (
     <View style={{ height: 3, backgroundColor: 'rgba(0,0,0,0.06)', width: '100%' }}>
       <Animated.View
         style={{
           height: '100%',
-          width: width.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
+          width: fraction.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
           backgroundColor: COLORS.redHot,
           opacity: 0.85,
         }}

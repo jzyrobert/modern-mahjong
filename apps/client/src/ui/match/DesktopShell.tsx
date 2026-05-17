@@ -262,7 +262,7 @@ export function DesktopShell(props: DesktopShellProps) {
                   right: 12,
                   top: 0,
                   bottom: 0,
-                  width: 190,
+                  width: 260,
                   zIndex: 10,
                   justifyContent: 'center',
                   alignItems: 'stretch',
