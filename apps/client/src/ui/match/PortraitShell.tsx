@@ -162,7 +162,7 @@ export function PortraitShell({
          *  name, before the flex spacer, so countdowns stay right-aligned
          *  without competing for prominence with the player identity. */}
         {byPosition ? (
-          <View style={{ flexDirection: 'column', gap: 5 }}>
+          <View style={{ flexDirection: 'column', gap: 3 }}>
             <DenseOppRow
               placement={byPosition.top}
               state={state}
@@ -480,15 +480,15 @@ function DenseOppRow({
       style={{
         flexDirection: 'row',
         alignItems: 'center',
-        minHeight: 28,
+        minHeight: 22,
         gap: 8,
         // Padding stays constant so the row doesn't grow when active —
-        // toggling it would shift every neighbour by 12 × 6 px on each
+        // toggling it would shift every neighbour by 12 × 4 px on each
         // turn rotation. The inactive row keeps the same inset; the
         // active visual is carried entirely by background + border colour
         // + box-shadow.
         paddingHorizontal: 6,
-        paddingVertical: 3,
+        paddingVertical: 2,
         backgroundColor: isActive ? 'rgba(219,93,74,0.16)' : 'transparent',
         borderWidth: 1,
         borderColor: isActive ? 'rgba(219,93,74,0.38)' : 'transparent',
@@ -496,15 +496,18 @@ function DenseOppRow({
         boxShadow: isActive ? '0px 0px 10px rgba(219,93,74,0.28)' : 'none',
       }}
     >
-      {/* 3-px seat-colour bar — turns redHot when active so it doubles
-          as the "live seat" indicator the cream card used to carry via
-          its background. */}
+      {/* 3-px seat-colour bar — stays in the seat palette (jade /
+          mauve / sky) in every state. The active-turn signal is
+          carried by the red halo + tint, not the bar — the user
+          asked specifically to keep the bar seat-coloured because a
+          red bar duplicates the halo's job and reads as "this seat
+          *is* red" rather than "this seat is on the move". */}
       <View
         style={{
           width: 3,
           alignSelf: 'stretch',
           borderRadius: 2,
-          backgroundColor: isActive ? COLORS.redHot : seatColor,
+          backgroundColor: seatColor,
         }}
       />
       <Text
