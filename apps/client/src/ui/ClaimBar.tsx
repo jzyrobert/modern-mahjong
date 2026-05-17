@@ -240,6 +240,11 @@ export function ClaimBar({ onAction, seat, orientation = 'portrait' }: ClaimBarP
     );
   }
 
+  // Landscape: the rail hosts the bar as the only thing in the
+  // remaining vertical slot, so the card grows to flex: 1 and centers
+  // its contents (large empty space above + below the actions reads
+  // as "claim takeover" without padding the content out artificially).
+  const landscapeFill = orientation === 'landscape';
   return (
     <View
       testID="claim-bar"
@@ -250,6 +255,7 @@ export function ClaimBar({ onAction, seat, orientation = 'portrait' }: ClaimBarP
         borderColor: COLORS.hairline,
         boxShadow: cardShadow,
         overflow: 'hidden',
+        ...(landscapeFill ? { flex: 1, minHeight: 0 } : {}),
       }}
     >
       <CountdownBar
@@ -257,7 +263,15 @@ export function ClaimBar({ onAction, seat, orientation = 'portrait' }: ClaimBarP
         totalWindowMs={state?.rules.claimHardWindowMs ?? null}
       />
       {isVertical ? (
-        <View style={{ paddingVertical: 8, paddingHorizontal: 10, gap: 6, alignItems: 'center' }}>
+        <View
+          style={{
+            paddingVertical: 8,
+            paddingHorizontal: 10,
+            gap: 6,
+            alignItems: 'center',
+            ...(landscapeFill ? { flex: 1, justifyContent: 'center' } : {}),
+          }}
+        >
           {tileHeader}
           <View style={{ width: '100%', gap: 6 }}>{buttons}</View>
         </View>

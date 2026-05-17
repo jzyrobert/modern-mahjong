@@ -402,54 +402,63 @@ function LandscapeActionRail({
         onPress={onOpenPlayers}
         onOpenMenu={onOpenMenu}
       />
-      {/* Scrollable middle — when the rail's content (melds + claim bar
-          + tsumo + ready waits + own discards) exceeds the rail's
-          available height, the ClaimBar's bottom edge used to spill
-          below the rail's bounding box, clipping the Pass button.
-          Wrapping the variable content in a ScrollView makes the
-          whole middle scroll cleanly. Status card stays pinned at
-          the top because it's outside the ScrollView. */}
-      <ScrollView
-        style={{ flex: 1, minHeight: 0, marginTop: 6 }}
-        contentContainerStyle={{ gap: 6 }}
-        showsVerticalScrollIndicator={false}
-      >
-        {state.melds[seat].length > 0 ? (
-          <View style={RAIL_SECTION_STYLE}>
-            <Text style={RAIL_SECTION_LABEL_STYLE}>YOUR MELDS</Text>
-            <MeldStrip melds={state.melds[seat]} tileWidth={14} tileHeight={20} />
-          </View>
-        ) : null}
-        {hasClaimOption ? (
-          <TutorialTarget id="claim-bar">
-            <ClaimBar onAction={onAction} seat={seat} orientation="landscape" />
-          </TutorialTarget>
-        ) : null}
-        {canTsumo || concealedGangTile ? (
-          <TutorialTarget id="tsumo-button">
-            <View style={{ gap: 6 }}>
-              {canTsumo ? (
-                <PrimaryButton onPress={() => onAction({ t: 'declareWin', seat, selfDraw: true })}>
-                  {tsumoFaan !== null
-                    ? `Declare win (tsumo, ${tsumoFaan} faan)`
-                    : 'Declare win (tsumo)'}
-                </PrimaryButton>
-              ) : null}
-              {concealedGangTile ? (
-                <PrimaryButton
-                  onPress={() =>
-                    onAction({ t: 'declareGangConcealed', seat, tile: concealedGangTile })
-                  }
-                >
-                  Declare gang
-                </PrimaryButton>
-              ) : null}
+      {hasClaimOption ? (
+        // Claim takeover — when a claim window is open, the bar's card
+        // fills the entire vertical extent of the rail below the
+        // status card. The other rail sections (melds, tsumo, ready
+        // waits, own discards) collapse off; the user's attention
+        // belongs on the claim decision. Card grows to flex: 1 inside
+        // the rail, contents centered vertically (see ClaimBar's
+        // orientation='landscape' branch). The status card stays
+        // pinned at the top so the user can still see whose discard
+        // they're claiming + the wall count without dismissing.
+        <TutorialTarget id="claim-bar" style={{ flex: 1, minHeight: 0, marginTop: 6 }}>
+          <ClaimBar onAction={onAction} seat={seat} orientation="landscape" />
+        </TutorialTarget>
+      ) : (
+        // Normal rail layout — melds + optional tsumo + ready waits +
+        // own discards stacked top-to-bottom. ScrollView covers the
+        // case where YOUR MELDS grows large enough that the natural
+        // content height exceeds the rail's available height.
+        <ScrollView
+          style={{ flex: 1, minHeight: 0, marginTop: 6 }}
+          contentContainerStyle={{ gap: 6 }}
+          showsVerticalScrollIndicator={false}
+        >
+          {state.melds[seat].length > 0 ? (
+            <View style={RAIL_SECTION_STYLE}>
+              <Text style={RAIL_SECTION_LABEL_STYLE}>YOUR MELDS</Text>
+              <MeldStrip melds={state.melds[seat]} tileWidth={14} tileHeight={20} />
             </View>
-          </TutorialTarget>
-        ) : null}
-        <ReadyHandBadge waits={readyWaits} />
-        <OwnDiscardsRail tiles={ownDiscards} latestId={latestDiscardId} />
-      </ScrollView>
+          ) : null}
+          {canTsumo || concealedGangTile ? (
+            <TutorialTarget id="tsumo-button">
+              <View style={{ gap: 6 }}>
+                {canTsumo ? (
+                  <PrimaryButton
+                    onPress={() => onAction({ t: 'declareWin', seat, selfDraw: true })}
+                  >
+                    {tsumoFaan !== null
+                      ? `Declare win (tsumo, ${tsumoFaan} faan)`
+                      : 'Declare win (tsumo)'}
+                  </PrimaryButton>
+                ) : null}
+                {concealedGangTile ? (
+                  <PrimaryButton
+                    onPress={() =>
+                      onAction({ t: 'declareGangConcealed', seat, tile: concealedGangTile })
+                    }
+                  >
+                    Declare gang
+                  </PrimaryButton>
+                ) : null}
+              </View>
+            </TutorialTarget>
+          ) : null}
+          <ReadyHandBadge waits={readyWaits} />
+          <OwnDiscardsRail tiles={ownDiscards} latestId={latestDiscardId} />
+        </ScrollView>
+      )}
     </View>
   );
 }
