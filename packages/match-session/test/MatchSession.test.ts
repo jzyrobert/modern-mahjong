@@ -1,7 +1,7 @@
 import { heuristicBot, passiveBot, simpleBot } from '@mahjong/bots';
 import { SEATS, type Seat } from '@mahjong/game-logic';
 import type { ServerMessage } from '@mahjong/protocol';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { MatchSession, type Outbound } from '../src/MatchSession.js';
 
 function pickBroadcasts(outs: Outbound[]): ServerMessage[] {
@@ -919,15 +919,17 @@ describe('MatchSession — bots stay out of the claim timer', () => {
 
   it('drains bot claims synchronously when only bots have meaningful claims (no soft-floor wait)', () => {
     // Repro of the user-reported bug: 1 human host + 3 bots (any
-    // skill — the easy/passive bot is the worst case because its
-    // `pickClaim` always passes). Host discards a tile that one of
-    // the bots could legally peng/gang. Pre-fix, the bot's claim
-    // was deferred to the soft-floor alarm 3s later — and if the
-    // bot is `passive` (easy mode), the alarm would just record a
+    // skill — passive in particular passes ~half the time and
+    // claims the rest, so we pin `Math.random` < 0.5 here to force
+    // the pass branch deterministically. Host discards a tile that
+    // one of the bots could legally peng/gang. Pre-fix, the bot's
+    // claim was deferred to the soft-floor alarm 3s later — and
+    // with passive picking pass, the alarm would just record a
     // pass that could have happened immediately. Post-fix, the
     // claim drains inside `runBots` synchronously, so the round
     // resolves at discard time and the next bot's turn begins
     // immediately.
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.1);
     const s = new MatchSession({ botPaceMs: 0 });
     helloAs(s, 'c0', 'p0', 'Host');
     // Seat all three opponents as easy/passive bots — passive's
@@ -988,6 +990,7 @@ describe('MatchSession — bots stay out of the claim timer', () => {
     // the deadline source, so just sanity-check we're past
     // 'awaitingClaims' — that proves no claim alarm is needed.
     void claimAlarms;
+    randomSpy.mockRestore();
   });
 
   it('human submission triggers resolution + bot-claim polling without waiting on bots', () => {

@@ -222,6 +222,12 @@ export function PortraitShell({
           // …).
           paddingBottom: 8,
           backgroundColor: felt.top,
+          // Relative parent for the absolute-positioned tsumo /
+          // gang overlay below — the overlay anchors to the bottom
+          // edge of this pool section so it visually sits over the
+          // discards rather than competing with the hand row for
+          // bottom-action-zone real estate.
+          position: 'relative',
         }}
       >
         <View
@@ -246,6 +252,49 @@ export function PortraitShell({
             />
           </TutorialTarget>
         </View>
+        {canTsumo || concealedGangTile ? (
+          <TutorialTarget
+            id="tsumo-button"
+            style={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              bottom: 12,
+              alignItems: 'center',
+              // pointerEvents on the wrapper so taps fall through
+              // any empty area beside the button — the buttons
+              // themselves are still tappable.
+              pointerEvents: 'box-none',
+            }}
+          >
+            <View
+              style={{
+                flexDirection: 'row',
+                gap: 8,
+                flexWrap: 'wrap',
+                justifyContent: 'center',
+                pointerEvents: 'box-none',
+              }}
+            >
+              {canTsumo ? (
+                <PrimaryButton onPress={() => onAction({ t: 'declareWin', seat, selfDraw: true })}>
+                  {tsumoFaan !== null
+                    ? `Declare win (tsumo, ${tsumoFaan} faan)`
+                    : 'Declare win (tsumo)'}
+                </PrimaryButton>
+              ) : null}
+              {concealedGangTile ? (
+                <PrimaryButton
+                  onPress={() =>
+                    onAction({ t: 'declareGangConcealed', seat, tile: concealedGangTile })
+                  }
+                >
+                  Declare gang
+                </PrimaryButton>
+              ) : null}
+            </View>
+          </TutorialTarget>
+        ) : null}
       </View>
 
       {/* Fixed bottom action zone — own melds, sort picker, hand,
@@ -313,29 +362,6 @@ export function PortraitShell({
         {hasClaimOption ? (
           <TutorialTarget id="claim-bar">
             <ClaimBar onAction={onAction} seat={seat} />
-          </TutorialTarget>
-        ) : null}
-
-        {canTsumo || concealedGangTile ? (
-          <TutorialTarget id="tsumo-button">
-            <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-              {canTsumo ? (
-                <PrimaryButton onPress={() => onAction({ t: 'declareWin', seat, selfDraw: true })}>
-                  {tsumoFaan !== null
-                    ? `Declare win (tsumo, ${tsumoFaan} faan)`
-                    : 'Declare win (tsumo)'}
-                </PrimaryButton>
-              ) : null}
-              {concealedGangTile ? (
-                <PrimaryButton
-                  onPress={() =>
-                    onAction({ t: 'declareGangConcealed', seat, tile: concealedGangTile })
-                  }
-                >
-                  Declare gang
-                </PrimaryButton>
-              ) : null}
-            </View>
           </TutorialTarget>
         ) : null}
 

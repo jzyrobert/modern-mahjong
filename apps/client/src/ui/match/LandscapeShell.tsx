@@ -224,6 +224,11 @@ export function LandscapeShell({
             borderWidth: 1,
             borderRadius: 12,
             padding: 6,
+            // Relative parent for the absolute-positioned tsumo /
+            // gang overlay below — the overlay anchors over the
+            // discard pool's lower edge so it sits above the hand
+            // row visually without competing for InfoRail space.
+            position: 'relative',
           }}
         >
           <TutorialTarget id="shared-discards" style={{ flex: 1, minHeight: 0 }}>
@@ -233,6 +238,48 @@ export function LandscapeShell({
               latestId={latestDiscardId}
             />
           </TutorialTarget>
+          {canTsumo || concealedGangTile ? (
+            <TutorialTarget
+              id="tsumo-button"
+              style={{
+                position: 'absolute',
+                left: 0,
+                right: 0,
+                bottom: 8,
+                alignItems: 'center',
+                pointerEvents: 'box-none',
+              }}
+            >
+              <View
+                style={{
+                  flexDirection: 'row',
+                  gap: 8,
+                  flexWrap: 'wrap',
+                  justifyContent: 'center',
+                  pointerEvents: 'box-none',
+                }}
+              >
+                {canTsumo ? (
+                  <PrimaryButton
+                    onPress={() => onAction({ t: 'declareWin', seat, selfDraw: true })}
+                  >
+                    {tsumoFaan !== null
+                      ? `Declare win (tsumo, ${tsumoFaan} faan)`
+                      : 'Declare win (tsumo)'}
+                  </PrimaryButton>
+                ) : null}
+                {concealedGangTile ? (
+                  <PrimaryButton
+                    onPress={() =>
+                      onAction({ t: 'declareGangConcealed', seat, tile: concealedGangTile })
+                    }
+                  >
+                    Declare gang
+                  </PrimaryButton>
+                ) : null}
+              </View>
+            </TutorialTarget>
+          ) : null}
         </View>
         <View style={{ width: RAIL_WIDTH, minHeight: 0 }}>
           {hasClaimOption ? (
@@ -250,11 +297,7 @@ export function LandscapeShell({
               matchCode={matchCode}
               viewers={viewers}
               dealerName={dealerName}
-              canTsumo={canTsumo}
-              tsumoFaan={tsumoFaan}
-              concealedGangTile={concealedGangTile}
               readyWaits={readyWaits}
-              onAction={onAction}
               onOpenPlayers={() => setPlayersOpen(true)}
             />
           )}
@@ -326,11 +369,7 @@ interface LandscapeInfoRailProps {
   matchCode: string | null;
   viewers: number | null;
   dealerName: string;
-  canTsumo: boolean;
-  tsumoFaan: number | null;
-  concealedGangTile: MTile | null;
   readyWaits: readonly MTile[];
-  onAction: (a: Action) => void;
   onOpenPlayers: () => void;
 }
 
@@ -345,7 +384,6 @@ interface LandscapeInfoRailProps {
  *  3. YOUR MELDS — small inline `MeldStrip` of the user's exposed
  *     melds (only rendered when melds.length > 0).
  *  4. Bottom — either:
- *       - the tsumo / concealed-gang CTAs when legal, or
  *       - the TENPAI · WAITING ON pill with wait-tile glyphs when the
  *         user is on the move and shanten 0, or
  *       - empty (no scores here — the player card's #CODE already
@@ -365,11 +403,7 @@ function LandscapeInfoRail({
   matchCode,
   viewers,
   dealerName,
-  canTsumo,
-  tsumoFaan,
-  concealedGangTile,
   readyWaits,
-  onAction,
   onOpenPlayers,
 }: LandscapeInfoRailProps) {
   const showCode = matchCode !== null && matchCode !== 'SOLO';
@@ -531,34 +565,15 @@ function LandscapeInfoRail({
         </View>
       ) : null}
 
-      {/* Bottom section — tsumo / gang CTAs take priority (they're
-          time-bounded actions the user must commit), then the tenpai
-          waiting-on tiles when applicable. Empty when neither: the
-          spec deliberately leaves this slot blank rather than backfill
-          it with scores, since the player card's #CODE already
-          carries enough game context. */}
-      {canTsumo || concealedGangTile ? (
-        <TutorialTarget id="tsumo-button">
-          <View style={{ gap: 6 }}>
-            {canTsumo ? (
-              <PrimaryButton onPress={() => onAction({ t: 'declareWin', seat, selfDraw: true })}>
-                {tsumoFaan !== null
-                  ? `Declare win (tsumo, ${tsumoFaan} faan)`
-                  : 'Declare win (tsumo)'}
-              </PrimaryButton>
-            ) : null}
-            {concealedGangTile ? (
-              <PrimaryButton
-                onPress={() =>
-                  onAction({ t: 'declareGangConcealed', seat, tile: concealedGangTile })
-                }
-              >
-                Declare gang
-              </PrimaryButton>
-            ) : null}
-          </View>
-        </TutorialTarget>
-      ) : myTurn && readyWaits.length > 0 ? (
+      {/* Bottom section — tenpai waiting-on tiles when applicable.
+          Empty when neither: the spec deliberately leaves this slot
+          blank rather than backfill it with scores, since the
+          player card's #CODE already carries enough game context.
+          Tsumo / gang CTAs live as an absolute overlay above the
+          discard pool in the parent shell, NOT in this rail — they
+          need to read as time-critical actions over the centre of
+          the table, not stacked at the bottom of an info card. */}
+      {myTurn && readyWaits.length > 0 ? (
         <View style={{ gap: 4 }}>
           <Text style={RAIL_SECTION_LABEL_STYLE}>TENPAI · WAITING ON</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 3 }}>
