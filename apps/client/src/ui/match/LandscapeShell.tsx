@@ -13,12 +13,7 @@ import { COLORS } from '../colors';
 import { TutorialTarget } from '../tutorial/TargetRegistry';
 import { WALL_LOW_THRESHOLD } from './GameStatusBar';
 import { MeldStrip } from './MeldStrip';
-import {
-  SeatRow,
-  YOUR_TURN_BADGE_HEIGHT,
-  YourHandActiveHalo,
-  YourTurnBadge,
-} from './MobileShellShared';
+import { SeatRow, YourHandActiveHalo, YourTurnBadge } from './MobileShellShared';
 import { OppDiscardColumn } from './OppDiscardColumn';
 import { ReadyHandBadge } from './ReadyHandBadge';
 import { type SortMode, SortPicker } from './SortPicker';
@@ -240,14 +235,18 @@ export function LandscapeShell({
           borderTopWidth: 1,
         }}
       >
-        {/* Always-rendered slot for the YOUR TURN pill — `height`
-            matches the badge's intrinsic height so its absence
-            doesn't collapse the bottom action zone (which would
-            shove the hand row up by ~30 px the instant the turn
-            rotates away, and back down the next time it returns). */}
-        <View style={{ alignItems: 'center', marginBottom: 2, height: YOUR_TURN_BADGE_HEIGHT }}>
-          {myTurn ? <YourTurnBadge needsDraw={needsDraw} /> : null}
-        </View>
+        {/* YOUR TURN pill, conditionally rendered. The previous layout
+            reserved a `YOUR_TURN_BADGE_HEIGHT`-tall slot here so the
+            hand row wouldn't shift by 30 px on every turn rotation,
+            but that left ~30 px of dead felt above the hand for 3/4
+            of the time the user wasn't on the move. The minor shift
+            is the cheaper visual cost in landscape, where vertical
+            space is the constraining axis. */}
+        {myTurn ? (
+          <View style={{ alignItems: 'center' }}>
+            <YourTurnBadge needsDraw={needsDraw} />
+          </View>
+        ) : null}
         <View
           style={{
             flexDirection: 'row',
@@ -388,7 +387,7 @@ function LandscapeActionRail({
 }: LandscapeActionRailProps) {
   const showCode = matchCode !== null && matchCode !== 'SOLO';
   return (
-    <View style={{ width: 200, gap: 6 }}>
+    <View style={{ width: 200, minHeight: 0 }}>
       <RailStatusCard
         windGlyph={userWindGlyph}
         windBg={userWindBg}
@@ -403,41 +402,54 @@ function LandscapeActionRail({
         onPress={onOpenPlayers}
         onOpenMenu={onOpenMenu}
       />
-      {state.melds[seat].length > 0 ? (
-        <View style={RAIL_SECTION_STYLE}>
-          <Text style={RAIL_SECTION_LABEL_STYLE}>YOUR MELDS</Text>
-          <MeldStrip melds={state.melds[seat]} tileWidth={14} tileHeight={20} />
-        </View>
-      ) : null}
-      {hasClaimOption ? (
-        <TutorialTarget id="claim-bar">
-          <ClaimBar onAction={onAction} seat={seat} orientation="landscape" />
-        </TutorialTarget>
-      ) : null}
-      {canTsumo || concealedGangTile ? (
-        <TutorialTarget id="tsumo-button">
-          <View style={{ gap: 6 }}>
-            {canTsumo ? (
-              <PrimaryButton onPress={() => onAction({ t: 'declareWin', seat, selfDraw: true })}>
-                {tsumoFaan !== null
-                  ? `Declare win (tsumo, ${tsumoFaan} faan)`
-                  : 'Declare win (tsumo)'}
-              </PrimaryButton>
-            ) : null}
-            {concealedGangTile ? (
-              <PrimaryButton
-                onPress={() =>
-                  onAction({ t: 'declareGangConcealed', seat, tile: concealedGangTile })
-                }
-              >
-                Declare gang
-              </PrimaryButton>
-            ) : null}
+      {/* Scrollable middle — when the rail's content (melds + claim bar
+          + tsumo + ready waits + own discards) exceeds the rail's
+          available height, the ClaimBar's bottom edge used to spill
+          below the rail's bounding box, clipping the Pass button.
+          Wrapping the variable content in a ScrollView makes the
+          whole middle scroll cleanly. Status card stays pinned at
+          the top because it's outside the ScrollView. */}
+      <ScrollView
+        style={{ flex: 1, minHeight: 0, marginTop: 6 }}
+        contentContainerStyle={{ gap: 6 }}
+        showsVerticalScrollIndicator={false}
+      >
+        {state.melds[seat].length > 0 ? (
+          <View style={RAIL_SECTION_STYLE}>
+            <Text style={RAIL_SECTION_LABEL_STYLE}>YOUR MELDS</Text>
+            <MeldStrip melds={state.melds[seat]} tileWidth={14} tileHeight={20} />
           </View>
-        </TutorialTarget>
-      ) : null}
-      <ReadyHandBadge waits={readyWaits} />
-      <OwnDiscardsRail tiles={ownDiscards} latestId={latestDiscardId} />
+        ) : null}
+        {hasClaimOption ? (
+          <TutorialTarget id="claim-bar">
+            <ClaimBar onAction={onAction} seat={seat} orientation="landscape" />
+          </TutorialTarget>
+        ) : null}
+        {canTsumo || concealedGangTile ? (
+          <TutorialTarget id="tsumo-button">
+            <View style={{ gap: 6 }}>
+              {canTsumo ? (
+                <PrimaryButton onPress={() => onAction({ t: 'declareWin', seat, selfDraw: true })}>
+                  {tsumoFaan !== null
+                    ? `Declare win (tsumo, ${tsumoFaan} faan)`
+                    : 'Declare win (tsumo)'}
+                </PrimaryButton>
+              ) : null}
+              {concealedGangTile ? (
+                <PrimaryButton
+                  onPress={() =>
+                    onAction({ t: 'declareGangConcealed', seat, tile: concealedGangTile })
+                  }
+                >
+                  Declare gang
+                </PrimaryButton>
+              ) : null}
+            </View>
+          </TutorialTarget>
+        ) : null}
+        <ReadyHandBadge waits={readyWaits} />
+        <OwnDiscardsRail tiles={ownDiscards} latestId={latestDiscardId} />
+      </ScrollView>
     </View>
   );
 }
