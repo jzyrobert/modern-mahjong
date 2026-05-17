@@ -16,8 +16,11 @@ import { defineConfig, devices } from '@playwright/test';
  * The five screenshot specs (`replay-library-screenshot-{portrait,
  * desktop}` ≈ 21 s each, `replay-screenshot-{portrait,landscape,
  * desktop}` ≈ 14 s each) were split out from two umbrella files
- * specifically so each one can land in a different shard. Each
- * shard hosts exactly one of them.
+ * specifically so each one can land in a different shard. Current
+ * distribution: shard-1 has library-portrait, shard-2 has
+ * replay-landscape, shard-3 has replay-portrait + replay-desktop,
+ * and shard-4 catches library-desktop via its `testIgnore`. Aim for
+ * one heavy spec per shard when re-balancing.
  *
  * Re-balance when new heavy specs land. Measure locally with
  *   `pnpm --filter @mahjong/client exec playwright test --project=shard-N`
