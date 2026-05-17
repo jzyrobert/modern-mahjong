@@ -58,18 +58,18 @@ export function FullscreenPrompt() {
   if (dismissed) return null;
 
   return (
-    // Top-left corner. The Scoreboard pill that sits in the felt's
-    // top-left renders nothing until at least one hand has been
-    // scored (`Scoreboard` returns null when every seat's score is
-    // 0), and the prompt self-hides as soon as the user accepts /
-    // dismisses, so the overlap window is short. Top-right is taken
-    // by the rail's status card / ☰ menu pill — putting the prompt
-    // there blocks taps on those buttons. `pointerEvents="box-none"`
-    // so the wrapper itself doesn't catch taps — only its Pressable
-    // children do.
+    // Top-right corner. The post-V2_3 landscape layout puts the ☰
+    // menu pill at top-LEFT in the chrome row, so placing the
+    // fullscreen prompt there now intercepts the menu tap. The right
+    // edge of the chrome row hosts the rightmost `DenseOppRow` strip
+    // — non-interactive (no Pressable wrap), and the prompt
+    // self-hides as soon as the user accepts / dismisses, so the
+    // brief visual overlap with the opponent's name + countdown is
+    // acceptable. `pointerEvents="box-none"` so the wrapper itself
+    // doesn't catch taps — only its Pressable children do.
     <View
       pointerEvents="box-none"
-      style={{ position: 'absolute', top: 8, left: 8, zIndex: 1000, alignItems: 'flex-start' }}
+      style={{ position: 'absolute', top: 8, right: 8, zIndex: 1000, alignItems: 'flex-end' }}
     >
       <Pressable
         onPress={requestWebFullscreen}
@@ -99,7 +99,7 @@ export function FullscreenPrompt() {
         accessibilityLabel="Dismiss fullscreen prompt"
         style={({ pressed }) => ({
           marginTop: 2,
-          alignSelf: 'flex-start',
+          alignSelf: 'flex-end',
           paddingHorizontal: 6,
           paddingVertical: 2,
           opacity: pressed ? 0.55 : 0.85,

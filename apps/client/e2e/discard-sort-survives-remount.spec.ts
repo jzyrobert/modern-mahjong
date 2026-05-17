@@ -12,10 +12,12 @@ import { expect, test } from './_helpers';
  * phone-class viewport `MobileShell.tsx` renders either
  * `<LandscapeShell>` or `<PortraitShell>` based on
  * `viewportWidth > viewportHeight`. `SharedDiscardPool` is mounted
- * only inside `PortraitShell`, so flipping portrait → landscape →
- * portrait unmounts the pool and remounts a fresh instance. With the
- * pre-#390 bug, the second mount's local `useState('order')` would
- * win; with the fix, the zustand selector returns `'player'`.
+ * inside both shells (since the landscape Alt D rewrite folded the
+ * per-opp discard columns into the same shared pool), so flipping
+ * portrait → landscape → portrait unmounts the pool twice and
+ * remounts a fresh instance each time. With the pre-#390 bug, the
+ * second mount's local `useState('order')` would win; with the fix,
+ * the zustand selector returns `'player'`.
  */
 
 const PORTRAIT = { width: 393, height: 852 };
@@ -61,12 +63,18 @@ test('SharedDiscardPool sort mode survives a real PortraitShell remount', async 
   expect(beforeFlip).toBe('player');
 
   // Flip to landscape — `MobileShell` swaps PortraitShell for
-  // LandscapeShell, which dismounts `SharedDiscardPool` entirely.
+  // LandscapeShell. With the Alt D landscape layout, the pool is
+  // still mounted (the unified shared-pool now spans both shells),
+  // but the surrounding component tree is fully re-instantiated so
+  // the inner `SharedDiscardPool` is a fresh mount with no carryover
+  // local state. The persisted `'player'` selection must survive
+  // through the zustand selector.
   await page.setViewportSize(LANDSCAPE);
-  await expect(playerButton).toBeHidden({ timeout: 2_000 });
+  await expect(playerButton).toBeVisible({ timeout: 2_000 });
+  await expect(playerButton).toHaveAttribute('aria-pressed', 'true');
 
   // Flip back to portrait — fresh PortraitShell instance, fresh
-  // `SharedDiscardPool` mount.
+  // `SharedDiscardPool` mount again. Same contract.
   await page.setViewportSize(PORTRAIT);
   await expect(playerButton).toBeVisible({ timeout: 2_000 });
 

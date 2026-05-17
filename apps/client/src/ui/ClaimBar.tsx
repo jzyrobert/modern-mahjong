@@ -111,10 +111,15 @@ export function ClaimBar({ onAction, seat, orientation = 'portrait' }: ClaimBarP
   // previews — the tiles are what the user is parsing ("am I peng-ing
   // 5m or 5p?"), so previews read large while the button chrome stays
   // near mobile-compact sizing rather than dominating the card.
-  const tileW = isDesktop ? 44 : isVertical ? 28 : 32;
-  const tileH = isDesktop ? 60 : isVertical ? 38 : 44;
-  const previewW = isDesktop ? 22 : 11;
-  const previewH = isDesktop ? 30 : 16;
+  //
+  // Landscape rail (Match Alt D): live tile 32×44 with gold halo, meld
+  // previews 13×18 — matches the V2 handoff so the rail's claim card
+  // reads with the same hierarchy as the portrait bar's tile preview
+  // rather than shrinking the live tile to a thumbnail.
+  const tileW = isDesktop ? 44 : 32;
+  const tileH = isDesktop ? 60 : 44;
+  const previewW = isDesktop ? 22 : 13;
+  const previewH = isDesktop ? 30 : 18;
   const buttonPadV = 7;
   const buttonPadH = isDesktop ? 11 : 10;
   const glyphSize = isDesktop ? 15 : 14;
@@ -142,7 +147,7 @@ export function ClaimBar({ onAction, seat, orientation = 'portrait' }: ClaimBarP
       >
         <Tile tile={discard} width={tileW} height={tileH} />
       </View>
-      <Text style={{ fontSize: 8, fontWeight: '800', color: COLORS.ink3, letterSpacing: 0.4 }}>
+      <Text style={{ fontSize: 9, fontWeight: '800', color: COLORS.ink3, letterSpacing: 0.4 }}>
         CLAIM?
       </Text>
     </View>

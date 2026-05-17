@@ -193,6 +193,7 @@ export function MobileShell(props: MobileShellProps) {
             onAction={onAction}
             onTileTap={onTileTap}
             byPosition={byPosition}
+            seatToPosition={seatToPosition}
             setPlayersOpen={setPlayersOpen}
             setMenuOpen={setMenuOpen}
           />

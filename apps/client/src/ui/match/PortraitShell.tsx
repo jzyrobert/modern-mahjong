@@ -19,12 +19,11 @@ import { TutorialTarget } from '../tutorial/TargetRegistry';
 import { WIND_GLYPH } from '../winds';
 import { GameStatusBar } from './GameStatusBar';
 import { MeldStrip } from './MeldStrip';
-import { YourHandActiveHalo, YourTurnBadge } from './MobileShellShared';
+import { DenseOppRow, YourHandActiveHalo, YourTurnBadge } from './MobileShellShared';
 import { ReadyHandBadge } from './ReadyHandBadge';
 import { SharedDiscardPool } from './SharedDiscardPool';
 import { type SortMode, SortPicker } from './SortPicker';
-import { oppIdentity } from './oppIdentity';
-import { type Position, SEAT_COLOR } from './seatColor';
+import type { Position } from './seatColor';
 import type { SeatPlacement } from './seatPlacement';
 import type { FELT_SKINS } from './skins';
 
@@ -490,154 +489,6 @@ function InlineScores() {
           </View>
         );
       })}
-    </View>
-  );
-}
-
-interface DenseOppRowProps {
-  placement: SeatPlacement;
-  state: GameState;
-  lobby: LobbyState | null;
-  aboutToDraw: boolean;
-  drawCountdown: number | null;
-  turnCountdown: number | null;
-}
-
-/**
- * Transparent, single-line opponent row used by the densified portrait
- * layout (Match Alt A). Drops the cream `OppHandStrip` card to ~28 px
- * tall so the shared discard pool's `flex: 1` recovers ~60 px of
- * vertical space across the three opp rows.
- *
- * Active state: subtle red-tinted background + matching border + soft
- * glow. Border stays 1 px in both states so the row doesn't shift by
- * a pixel when the turn rotates.
- *
- * Bot label sits LEFT of the flex spacer next to the name (not
- * right-aligned), so countdowns stay anchored at the right edge
- * without competing with the player identity.
- */
-function DenseOppRow({
-  placement,
-  state,
-  lobby,
-  aboutToDraw,
-  drawCountdown,
-  turnCountdown,
-}: DenseOppRowProps) {
-  const { name, botLabel } = oppIdentity(lobby, placement.seat);
-  const seatColor = SEAT_COLOR[placement.position];
-  const isActive = state.turn === placement.seat && state.phase === 'turn';
-  const meldsForSeat = state.melds[placement.seat];
-
-  return (
-    <View
-      style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        minHeight: 22,
-        gap: 8,
-        // Padding stays constant so the row doesn't grow when active —
-        // toggling it would shift every neighbour by 12 × 4 px on each
-        // turn rotation. The inactive row keeps the same inset; the
-        // active visual is carried entirely by background + border colour
-        // + box-shadow.
-        paddingHorizontal: 6,
-        paddingVertical: 2,
-        backgroundColor: isActive ? 'rgba(219,93,74,0.16)' : 'transparent',
-        borderWidth: 1,
-        borderColor: isActive ? 'rgba(219,93,74,0.38)' : 'transparent',
-        borderRadius: 8,
-        boxShadow: isActive ? '0px 0px 10px rgba(219,93,74,0.28)' : 'none',
-      }}
-    >
-      {/* 3-px seat-colour bar — stays in the seat palette (jade /
-          mauve / sky) in every state. The active-turn signal is
-          carried by the red halo + tint, not the bar — the user
-          asked specifically to keep the bar seat-coloured because a
-          red bar duplicates the halo's job and reads as "this seat
-          *is* red" rather than "this seat is on the move". */}
-      <View
-        style={{
-          width: 3,
-          alignSelf: 'stretch',
-          borderRadius: 2,
-          backgroundColor: seatColor,
-        }}
-      />
-      <Text
-        style={{
-          fontFamily: 'Noto Serif TC',
-          fontSize: 11,
-          fontWeight: '700',
-          color: isActive ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.65)',
-        }}
-      >
-        {WIND_GLYPH[placement.seatWind]}
-      </Text>
-      {/* Bot rows pin the name to a fixed-width slot so the
-          (Easy)/(Passive) chip aligns vertically across the three
-          rows — "Yu" and "Haru" would otherwise put the chip at
-          different x-positions and read as a ragged column. Human
-          rows skip the slot entirely so a long display name doesn't
-          get cropped; humans don't carry a chip, so there's nothing
-          to align against. Slot width is sized to the widest
-          `BOT_NAME_POOL` entry — pool is capped at <= 4 chars by
-          design, so "Haru" / "Vera" / "Niko" (~28-30 px at 12-px
-          bold Inter) fit at 34 px with a small breathing margin.
-          Bump this and the pool's length-cap comment together if a
-          longer bot name joins. */}
-      {botLabel ? (
-        <View style={{ width: 34 }}>
-          <Text
-            style={{
-              fontSize: 12,
-              fontWeight: '800',
-              color: isActive ? 'white' : 'rgba(255,255,255,0.88)',
-            }}
-            numberOfLines={1}
-          >
-            {name}
-          </Text>
-        </View>
-      ) : (
-        <Text
-          style={{
-            fontSize: 12,
-            fontWeight: '800',
-            color: isActive ? 'white' : 'rgba(255,255,255,0.88)',
-            flexShrink: 1,
-          }}
-          numberOfLines={1}
-        >
-          {name}
-        </Text>
-      )}
-      {botLabel ? (
-        <Text
-          style={{
-            fontSize: 9,
-            fontWeight: '700',
-            color: isActive ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.36)',
-          }}
-        >
-          {botLabel}
-        </Text>
-      ) : null}
-      <View style={{ flex: 1 }} />
-      {isActive && turnCountdown !== null ? (
-        <Text style={{ fontSize: 9, fontWeight: '900', color: 'rgba(255,255,255,0.9)' }}>
-          {turnCountdown}s left
-        </Text>
-      ) : null}
-      {!isActive && aboutToDraw && drawCountdown !== null ? (
-        <Text style={{ fontSize: 9, fontWeight: '800', color: COLORS.gold }}>
-          drawing in {drawCountdown}s
-        </Text>
-      ) : null}
-      {meldsForSeat.length > 0 ? (
-        <MeldStrip melds={meldsForSeat} tileWidth={10} tileHeight={15} showKindLabel={false} />
-      ) : null}
     </View>
   );
 }
