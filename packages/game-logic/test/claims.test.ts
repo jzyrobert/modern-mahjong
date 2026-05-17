@@ -517,6 +517,82 @@ describe('discard reducer — pre-pass + auto-resolve', () => {
     expect(afterClaim.pendingClaims).toBeUndefined();
   });
 
+  it('declareClaim rejects a differing re-submission from the same seat', () => {
+    // Peng → pass overwrite would let a seat that already locked in a
+    // meaningful claim downgrade themselves to a pass before
+    // resolution. The engine guard catches this even if the client's
+    // own "hide ClaimBar after submit" gate is bypassed.
+    //
+    // Construct an `awaitingClaims` state directly with two peng-eligible
+    // seats so the round doesn't auto-resolve after seat 1's peng —
+    // leaving a window in which we can attempt to overwrite seat 1 and
+    // assert it throws while the state is still observable. (Going
+    // through the `discard` reducer here would pull conflicting copies
+    // of the same face through `fillerForSeat` and exhaust the pool.)
+    const fiveM = suit('man', 5);
+    const partial = emptyState(DEFAULT_RULES);
+    const state: GameState = {
+      ...partial,
+      phase: 'awaitingClaims',
+      hasDrawn: false,
+      drewThisTurn: false,
+      turn: 0,
+      hands: {
+        0: [],
+        1: [fiveM, fiveM, ...fillerForSeat(1, 11)],
+        2: [fiveM, fiveM, ...fillerForSeat(2, 11)],
+        3: fillerForSeat(3, 13),
+      },
+      lastDiscard: { tile: fiveM, from: 0 },
+      pendingClaims: {
+        discard: { tile: fiveM, from: 0 },
+        deadlineMs: Date.now() + 60_000,
+        submitted: { 3: { kind: 'pass' } },
+      },
+    };
+    const { state: afterPeng } = reduce(state, {
+      t: 'declareClaim',
+      seat: 1,
+      claim: { kind: 'peng' },
+    });
+    expect(afterPeng.phase).toBe('awaitingClaims');
+    expect(afterPeng.pendingClaims?.submitted[1]).toEqual({ kind: 'peng' });
+    expect(() =>
+      reduce(afterPeng, { t: 'declareClaim', seat: 1, claim: { kind: 'pass' } }),
+    ).toThrow(/already submitted a different claim/);
+    // State unchanged after the throw — the original peng is still on
+    // file and the round is still parked at awaitingClaims.
+    expect(afterPeng.pendingClaims?.submitted[1]).toEqual({ kind: 'peng' });
+  });
+
+  it('declareClaim treats a duplicate identical claim as a no-op', () => {
+    // The discard reducer pre-fills `submitted[seat] = pass` for
+    // seats with no meaningful claim. Tests + deterministic
+    // resolution flows occasionally re-submit the same pass
+    // explicitly; that needs to stay idempotent rather than throw.
+    const south = honor('S');
+    const state = buildState([south, ...fillerForSeat(0, 13)], {
+      1: [south, south, ...fillerForSeat(1, 11)],
+      2: fillerForSeat(2, 13),
+      3: fillerForSeat(3, 13),
+    });
+    const southDiscard = state.hands[0].find((t) => sameFace(t, south))!;
+    const { state: discarded } = reduce(state, { t: 'discard', seat: 0, tile: southDiscard });
+    // Seats 2 + 3 hold filler, so the reducer pre-passed them.
+    expect(discarded.pendingClaims?.submitted[2]).toEqual({ kind: 'pass' });
+    expect(() =>
+      reduce(discarded, { t: 'declareClaim', seat: 2, claim: { kind: 'pass' } }),
+    ).not.toThrow();
+    const { state: afterDupe } = reduce(discarded, {
+      t: 'declareClaim',
+      seat: 2,
+      claim: { kind: 'pass' },
+    });
+    // Idempotent — no auto-resolution from a duplicate pass alone.
+    expect(afterDupe.phase).toBe('awaitingClaims');
+    expect(afterDupe.pendingClaims?.submitted[2]).toEqual({ kind: 'pass' });
+  });
+
   it('declareClaim auto-resolves immediately in solo (no fairness gate)', () => {
     const soloRules = {
       ...DEFAULT_RULES,

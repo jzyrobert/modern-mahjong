@@ -382,9 +382,19 @@ export function Match() {
   // of truth — it's the same one the `discard` reducer uses to pre-fill
   // `submitted`, so the client never sees a "phantom" bar for a seat
   // the engine has already auto-passed.
+  //
+  // Also hide the bar once the seat has submitted (peng, chi, pass,
+  // etc.). Without this, V2's polished card invites a second tap that
+  // would overwrite the prior claim (e.g. peng → pass), and the user
+  // would silently lose priority on a tile they could have claimed.
+  // The engine has a re-submission guard too, but the UI gate avoids
+  // surfacing an IllegalActionError toast for a tap that looked
+  // legitimate.
+  const alreadySubmitted = state.pendingClaims?.submitted[seat] !== undefined;
   const hasClaimOption =
     showClaim &&
     state.lastDiscard !== undefined &&
+    !alreadySubmitted &&
     hasMeaningfulClaim(state, seat, state.lastDiscard.tile);
 
   const nextDrawerSeat: Seat | null =
