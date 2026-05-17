@@ -100,12 +100,19 @@ jobs:
   # Per-shard runner for the Playwright suite. `e2e` below depends on
   # this matrix and exists purely as a sync point so the "e2e" status
   # check name stays stable for branch protection. The matrix expands
-  # to "e2e-shard (1)" / "(2)" / ... etc. and Playwright splits the
-  # spec list deterministically via `--shard=N/M`. Each shard runs its
-  # own `export-web` so it can start immediately after `test`; a
-  # central build-web job would serialise the whole second tier behind
-  # a single 60 s artifact upload, which on this matrix is slower
-  # than re-exporting in parallel (export is ~30 s).
+  # to "e2e-shard (1)" / "(2)" / ... etc. Each shard runs a named
+  # Playwright project (`shard-N`) defined in `playwright.config.ts`
+  # with an explicit per-shard `testMatch` list — hand-balanced so
+  # the wall-clock per shard stays within ~30 % of the median.
+  # Replaces an earlier `--shard=N/M` strategy, where Playwright's
+  # default alphabetical-by-file split clustered all 5 screenshot
+  # specs (replay-library-screenshots × 2, replay-screenshots × 3)
+  # into shard 3 — that shard was consistently ~50 s slower than
+  # the other three. Each shard runs its own `export-web` so it can
+  # start immediately after `test`; a central build-web job would
+  # serialise the whole second tier behind a single 60 s artifact
+  # upload, which on this matrix is slower than re-exporting in
+  # parallel (export is ~30 s).
   e2e-shard:
     runs-on: ubuntu-latest
     needs: [changes, test]
@@ -137,7 +144,7 @@ jobs:
         run: pnpm --filter @mahjong/client export-web
 
       - name: Run e2e shard ${{ matrix.shard }}/4
-        run: pnpm --filter @mahjong/client e2e --shard=${{ matrix.shard }}/4
+        run: pnpm --filter @mahjong/client e2e --project=shard-${{ matrix.shard }}
 
       - name: Upload Playwright report
         if: always()

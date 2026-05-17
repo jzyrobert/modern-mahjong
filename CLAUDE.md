@@ -181,12 +181,15 @@ that-isn't-rendered-as-UI, or test-only PRs are exempt. When in doubt
 take the screenshot — the cost is one extra Playwright run.
 
 The screenshot driver lives in
-`apps/client/e2e/replay-screenshots.spec.ts` /
-`replay-library-screenshots.spec.ts` for the replay surfaces and as
-ad-hoc specs for match-shell shots (set viewport, drive to the state
-you want, `page.screenshot({ path: ... })`). Output lands in
-`apps/client/e2e-output/` (gitignored), so capturing at multiple
-commits is fine — switch HEAD, re-`export-web`, re-run the spec under
+`apps/client/e2e/replay-screenshot-{portrait,landscape,desktop}.spec.ts`
+and `replay-library-screenshot-{portrait,desktop}.spec.ts` for the
+replay surfaces (one file per orientation so each can land in a
+different e2e shard) and as ad-hoc specs for match-shell shots (set
+viewport, drive to the state you want, `page.screenshot({ path: ... })`).
+Shared setup lives in `apps/client/e2e/_helpers-replay.ts`. Output
+lands in `apps/client/e2e-output/` (gitignored), so capturing at
+multiple commits is fine — switch HEAD, re-`export-web`, re-run the
+spec under
 a different `*_SHOT_LABEL` env, repeat.
 
 Hosting: **do not** commit the PNGs to the PR branch — they'd land on
