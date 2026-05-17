@@ -27,6 +27,16 @@ import type { Position } from './seatColor';
 import type { SeatPlacement } from './seatPlacement';
 import type { FELT_SKINS } from './skins';
 
+/** Perimeter slots in HK mahjong playing order, starting from the
+ *  seat that plays immediately after the user (whose seat sits at
+ *  `bottom`). Play moves counter-clockwise: user → right → top →
+ *  left → user. Rendering the three opponent rows in this order
+ *  means the visual order matches the wind sequence regardless of
+ *  who the user is: e.g. North user sees East / South / West
+ *  top-to-bottom; South user sees West / North / East. Shared with
+ *  `LandscapeShell` so both orientations stay in lockstep. */
+const OPP_PLAYING_ORDER: readonly Position[] = ['right', 'top', 'left'];
+
 interface PortraitShellProps {
   state: GameState;
   seat: Seat;
@@ -172,36 +182,21 @@ export function PortraitShell({
          *  without competing for prominence with the player identity. */}
         {byPosition ? (
           <View style={{ flexDirection: 'column', gap: 3 }}>
-            <DenseOppRow
-              placement={byPosition.top}
-              state={state}
-              lobby={lobby}
-              aboutToDraw={aboutToDraw && nextDrawerSeat === byPosition.top.seat}
-              drawCountdown={
-                aboutToDraw && nextDrawerSeat === byPosition.top.seat ? drawCountdown : null
-              }
-              turnCountdown={turnCountdown}
-            />
-            <DenseOppRow
-              placement={byPosition.left}
-              state={state}
-              lobby={lobby}
-              aboutToDraw={aboutToDraw && nextDrawerSeat === byPosition.left.seat}
-              drawCountdown={
-                aboutToDraw && nextDrawerSeat === byPosition.left.seat ? drawCountdown : null
-              }
-              turnCountdown={turnCountdown}
-            />
-            <DenseOppRow
-              placement={byPosition.right}
-              state={state}
-              lobby={lobby}
-              aboutToDraw={aboutToDraw && nextDrawerSeat === byPosition.right.seat}
-              drawCountdown={
-                aboutToDraw && nextDrawerSeat === byPosition.right.seat ? drawCountdown : null
-              }
-              turnCountdown={turnCountdown}
-            />
+            {OPP_PLAYING_ORDER.map((pos) => {
+              const placement = byPosition[pos];
+              const seatAbout = aboutToDraw && nextDrawerSeat === placement.seat;
+              return (
+                <DenseOppRow
+                  key={pos}
+                  placement={placement}
+                  state={state}
+                  lobby={lobby}
+                  aboutToDraw={seatAbout}
+                  drawCountdown={seatAbout ? drawCountdown : null}
+                  turnCountdown={turnCountdown}
+                />
+              );
+            })}
           </View>
         ) : null}
       </View>

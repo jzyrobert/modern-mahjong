@@ -43,9 +43,14 @@ const RAIL_SECTION_LABEL_STYLE = {
   marginBottom: 4,
 };
 
-/** Perimeter slots used for the landscape opp-strips chrome row,
- *  left-to-right. The user's own seat lives at `bottom`, not here. */
-const LANDSCAPE_OPP_POSITIONS: readonly Position[] = ['top', 'left', 'right'];
+/** Perimeter slots for the landscape opp-strips chrome row,
+ *  left-to-right. Matches HK mahjong playing order starting from the
+ *  seat that plays immediately after the user (whose own seat sits
+ *  at `bottom`): play moves counter-clockwise → right → top → left
+ *  → back to user. Same order as `PortraitShell`'s top-to-bottom
+ *  stack, so both orientations show e.g. East / South / West for a
+ *  North-seated user. */
+const LANDSCAPE_OPP_POSITIONS: readonly Position[] = ['right', 'top', 'left'];
 
 interface LandscapeShellProps {
   state: GameState;
