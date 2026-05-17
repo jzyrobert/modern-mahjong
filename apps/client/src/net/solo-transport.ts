@@ -47,6 +47,16 @@ declare global {
    *  auto-discard fires inside the test's wall-clock budget. */
   // eslint-disable-next-line no-var
   var __MAHJONG_TEST_TURN_TIMEOUT_MS__: number | undefined;
+  /** Override the post-user-discard claim floor (default 3000ms — the
+   *  read window when no bot claims). Tests set this to `0` so the
+   *  next bot turn fires immediately after a user discard. */
+  // eslint-disable-next-line no-var
+  var __MAHJONG_TEST_CLAIM_FLOOR_MS__: number | undefined;
+  /** Override the per-bot claim-submission delay (default 2000–6000ms,
+   *  randomized per-bot). When set, tests get a deterministic single
+   *  fixed delay (no jitter) — `0` for instant submissions. */
+  // eslint-disable-next-line no-var
+  var __MAHJONG_TEST_BOT_CLAIM_DELAY_MS__: number | undefined;
 }
 
 interface SoloOptions {
@@ -78,6 +88,31 @@ export interface SoloTransportControls {
 
 const BOT_PLAYER_IDS = ['bot-1', 'bot-2', 'bot-3'] as const;
 const DEFAULT_BOT_SKILLS: [BotKind, BotKind, BotKind] = ['heuristic', 'simple', 'passive'];
+
+/** Production defaults for the solo claim-pacing constants. Read via
+ *  `claimFloorMs()` / `botClaimDelayMs()` so the `__MAHJONG_TEST_*`
+ *  overrides apply uniformly at every call site. */
+export const DEFAULT_CLAIM_FLOOR_MS = 3_000;
+export const DEFAULT_BOT_CLAIM_MIN_MS = 2_000;
+export const DEFAULT_BOT_CLAIM_MAX_MS = 6_000;
+
+/** Resolve the post-user-discard floor (production default 3000 ms),
+ *  honouring `__MAHJONG_TEST_CLAIM_FLOOR_MS__` when set. */
+export function claimFloorMs(): number {
+  const override = globalThis.__MAHJONG_TEST_CLAIM_FLOOR_MS__;
+  return typeof override === 'number' ? override : DEFAULT_CLAIM_FLOOR_MS;
+}
+
+/** Resolve a per-bot claim-submission delay. The default is a random
+ *  draw from `[MIN, MAX]` (2–6 s in production); when
+ *  `__MAHJONG_TEST_BOT_CLAIM_DELAY_MS__` is set, every bot uses the
+ *  same fixed delay so tests can pin the timeline deterministically. */
+export function botClaimDelayMs(): number {
+  const override = globalThis.__MAHJONG_TEST_BOT_CLAIM_DELAY_MS__;
+  if (typeof override === 'number') return override;
+  const range = DEFAULT_BOT_CLAIM_MAX_MS - DEFAULT_BOT_CLAIM_MIN_MS;
+  return DEFAULT_BOT_CLAIM_MIN_MS + Math.random() * range;
+}
 
 /**
  * In-process transport: skips the WebSocket entirely and runs an
@@ -158,20 +193,19 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
   // on the server; in solo there's nobody to coordinate with, so we
   // recreate the "you have time to read this discard" pause locally:
   //
-  //   - `CLAIM_FLOOR_MS` — minimum gap between a user discard the
+  //   - `claimFloorMs()` — minimum gap between a user discard the
   //     engine auto-resolved (no bot had a meaningful claim) and the
   //     next bot draw. Without it, the next-bot's draw fires the same
   //     frame as the user's tile lands on the pile, blowing past the
-  //     user's read window.
-  //   - `BOT_CLAIM_MIN_MS` / `BOT_CLAIM_MAX_MS` — each bot that wants
-  //     to claim picks a random delay in this range before submitting
-  //     its claim. The variance prevents the "all bots resolve in the
+  //     user's read window. Default 3000 ms; overridable via
+  //     `__MAHJONG_TEST_CLAIM_FLOOR_MS__`.
+  //   - `botClaimDelayMs()` — each bot that wants to claim picks a
+  //     delay in `[MIN, MAX]` (default 2000–6000 ms, randomised) before
+  //     submitting. The variance prevents the "all bots resolve in the
   //     same frame" surprise when several seats can act on the same
   //     discard, and the floor gives the user a visible window
-  //     between the discard and any resolution.
-  const CLAIM_FLOOR_MS = 3_000;
-  const BOT_CLAIM_MIN_MS = 2_000;
-  const BOT_CLAIM_MAX_MS = 6_000;
+  //     between the discard and any resolution. Overridable to a fixed
+  //     delay via `__MAHJONG_TEST_BOT_CLAIM_DELAY_MS__`.
 
   function emit(m: ServerMessage) {
     for (const cb of messageListeners) cb(m);
@@ -311,8 +345,7 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
         if (!bot) continue;
         if (pending.submitted[seat]) continue;
         if (claimHandles[seat] !== null) continue;
-        const range = BOT_CLAIM_MAX_MS - BOT_CLAIM_MIN_MS;
-        const delay = BOT_CLAIM_MIN_MS + Math.random() * range;
+        const delay = botClaimDelayMs();
         claimHandles[seat] = setTimeout(() => {
           claimHandles[seat] = null;
           if (closed) return;
@@ -481,7 +514,7 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
             userDiscardFloorHandle = null;
             if (closed) return;
             runBots();
-          }, CLAIM_FLOOR_MS);
+          }, claimFloorMs());
         } else {
           runBots();
         }
