@@ -6,7 +6,6 @@ import {
   type Seat,
   seatWindFor,
 } from '@mahjong/game-logic';
-import { type BotKind, botDisplayName } from '@mahjong/protocol';
 import type { ReactNode } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import type { LobbyState } from '../../state/game';
@@ -24,6 +23,7 @@ import { YourHandActiveHalo, YourTurnBadge } from './MobileShellShared';
 import { ReadyHandBadge } from './ReadyHandBadge';
 import { SharedDiscardPool } from './SharedDiscardPool';
 import { type SortMode, SortPicker } from './SortPicker';
+import { oppIdentity } from './oppIdentity';
 import { type Position, SEAT_COLOR } from './seatColor';
 import type { SeatPlacement } from './seatPlacement';
 import type { FELT_SKINS } from './skins';
@@ -470,11 +470,7 @@ function DenseOppRow({
   drawCountdown,
   turnCountdown,
 }: DenseOppRowProps) {
-  const player = lobby?.players.find((p) => p.seat === placement.seat);
-  const name = player?.displayName ?? `Seat ${placement.seat}`;
-  const isBot = player?.isBot ?? false;
-  const botKind: BotKind | null = player?.botKind ?? null;
-  const botLabel = isBot ? (botKind ? botDisplayName(botKind) : 'Bot') : null;
+  const { name, botLabel } = oppIdentity(lobby, placement.seat);
   const seatColor = SEAT_COLOR[placement.position];
   const isActive = state.turn === placement.seat && state.phase === 'turn';
   const meldsForSeat = state.melds[placement.seat];
