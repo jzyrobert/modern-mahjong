@@ -1,5 +1,78 @@
 import { defineConfig, devices } from '@playwright/test';
 
+/**
+ * Per-shard spec assignments. Playwright's default `--shard=N/M`
+ * splits by file in alphabetical order — that put all 5 screenshot
+ * specs (replay-library-screenshots × 2 ≈ 42 s, replay-screenshots ×
+ * 3 ≈ 41 s) into shard 3, leaving it ~50 s slower than the other
+ * three on every CI run. The explicit projects below hand-balance
+ * the spec load so each shard lands within ~30 % of the median.
+ *
+ * Shard membership is by spec filename (relative to `testDir`).
+ * Shards 1–3 use `testMatch`; shard 4 uses `testIgnore` covering
+ * everything assigned elsewhere, so a newly-added spec falls into
+ * shard 4 by default rather than disappearing.
+ *
+ * The five screenshot specs (`replay-library-screenshot-{portrait,
+ * desktop}` ≈ 21 s each, `replay-screenshot-{portrait,landscape,
+ * desktop}` ≈ 14 s each) were split out from two umbrella files
+ * specifically so each one can land in a different shard. Each
+ * shard hosts exactly one of them.
+ *
+ * Re-balance when new heavy specs land. Measure locally with
+ *   `pnpm --filter @mahjong/client exec playwright test --project=shard-N`
+ * and adjust the lists.
+ */
+const SHARD_1_SPECS = [
+  'claim-bar-options.spec.ts',
+  'claim-announcement-toast.spec.ts',
+  'claim-missed-toast.spec.ts',
+  'discard-hint.spec.ts',
+  'discard-sort-survives-remount.spec.ts',
+  'lan-browser-join.spec.ts',
+  'lobby-accordion-persistence.spec.ts',
+  'lobby-browser.spec.ts',
+  'lobby-code-copy.spec.ts',
+  'lobby-host-button-web.spec.ts',
+  'lobby-layout.spec.ts',
+  'lobby-match-code-focus.spec.ts',
+  'lobby-name-edit.spec.ts',
+  'lobby-rule-prefs.spec.ts',
+  'manual-sort-drag.spec.ts',
+  // 1 of 5 screenshot specs lands here (~21 s).
+  'replay-library-screenshot-portrait.spec.ts',
+];
+
+const SHARD_2_SPECS = [
+  'match-chrome-portrait.spec.ts',
+  'match-reload-stranded.spec.ts',
+  'menu-sheet.spec.ts',
+  'mobile-portrait.spec.ts',
+  'online-bots-lobby.spec.ts',
+  'online-dice-once.spec.ts',
+  'online-foreground-rejoin.spec.ts',
+  'online-host-leave.spec.ts',
+  'online-multi-player.spec.ts',
+  'online-reload-survival.spec.ts',
+  'overlay-portrait.spec.ts',
+  'replay.spec.ts',
+  // 1 of 5 screenshot specs lands here (~14 s).
+  'replay-screenshot-landscape.spec.ts',
+  'scoring-rules-sheet.spec.ts',
+];
+
+const SHARD_3_SPECS = [
+  'players-sheet.spec.ts',
+  'post-game-save-replay.spec.ts',
+  // 2 of 5 screenshot specs land here (~14 s each = ~28 s).
+  'replay-screenshot-portrait.spec.ts',
+  'replay-screenshot-desktop.spec.ts',
+  'shuffle-on-rejoin.spec.ts',
+  'solo-match.spec.ts',
+];
+
+const ASSIGNED_SPECS = [...SHARD_1_SPECS, ...SHARD_2_SPECS, ...SHARD_3_SPECS];
+
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: true,
@@ -24,5 +97,30 @@ export default defineConfig({
     stdout: 'ignore',
     stderr: 'pipe',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [
+    {
+      name: 'shard-1',
+      use: { ...devices['Desktop Chrome'] },
+      testMatch: SHARD_1_SPECS,
+    },
+    {
+      name: 'shard-2',
+      use: { ...devices['Desktop Chrome'] },
+      testMatch: SHARD_2_SPECS,
+    },
+    {
+      name: 'shard-3',
+      use: { ...devices['Desktop Chrome'] },
+      testMatch: SHARD_3_SPECS,
+    },
+    {
+      // Catch-all: everything not explicitly assigned above. Includes
+      // solo-* (minus solo-match), tile-reference-sheet, and the
+      // tutorial-* family. Newly-added specs auto-land here so a
+      // missed assignment doesn't silently drop them from CI.
+      name: 'shard-4',
+      use: { ...devices['Desktop Chrome'] },
+      testIgnore: ASSIGNED_SPECS,
+    },
+  ],
 });
