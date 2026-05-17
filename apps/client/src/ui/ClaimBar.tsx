@@ -106,18 +106,19 @@ export function ClaimBar({ onAction, seat, orientation = 'portrait' }: ClaimBarP
 
   const isVertical = orientation === 'landscape' || orientation === 'desktop';
   const isDesktop = orientation === 'desktop';
-  // Desktop's claim panel floats over the felt, so it gets to be larger
-  // — the user has more pixel budget than a phone shell and the bar's
-  // tap targets read better at button-class sizing rather than the
-  // mobile-compact dimensions the portrait + landscape variants use.
+  // Desktop's claim panel floats over the felt with more pixel budget
+  // than a phone shell. The visual weight tilts toward the meld
+  // previews — the tiles are what the user is parsing ("am I peng-ing
+  // 5m or 5p?"), so previews read large while the button chrome stays
+  // near mobile-compact sizing rather than dominating the card.
   const tileW = isDesktop ? 44 : isVertical ? 28 : 32;
   const tileH = isDesktop ? 60 : isVertical ? 38 : 44;
-  const previewW = isDesktop ? 16 : 11;
-  const previewH = isDesktop ? 22 : 16;
-  const buttonPadV = isDesktop ? 10 : 7;
-  const buttonPadH = isDesktop ? 14 : 10;
-  const glyphSize = isDesktop ? 18 : 14;
-  const labelSize = isDesktop ? 12 : 10;
+  const previewW = isDesktop ? 22 : 11;
+  const previewH = isDesktop ? 30 : 16;
+  const buttonPadV = 7;
+  const buttonPadH = isDesktop ? 11 : 10;
+  const glyphSize = isDesktop ? 15 : 14;
+  const labelSize = 10;
   const cardShadow = isDesktop ? '0px 8px 24px rgba(0,0,0,0.14)' : '0px 4px 12px rgba(0,0,0,0.08)';
 
   // Header tile + CLAIM? sublabel. Same content in every orientation;
