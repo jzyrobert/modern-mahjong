@@ -109,11 +109,19 @@ export function PortraitShell({
   setPlayersOpen,
   setMenuOpen,
 }: PortraitShellProps): ReactNode {
-  // Solo's matchCode is the placeholder `'SOLO'`; hide it since the
-  // pill #CODE carries no info the user can act on (no one to share
-  // it with). Online / LAN matches keep the real code visible.
+  // Solo's matchCode is the placeholder `'SOLO'`; the trailing chrome
+  // renders a `SOLO` badge in its place so the user still knows what
+  // kind of match they're in. Online / LAN matches keep the real
+  // `#CODE`.
   const showCode = matchCode !== null && matchCode !== 'SOLO';
   const viewers = lobby?.viewers ?? null;
+  const hasViewers = viewers !== null && viewers > 0;
+  // GameStatusBar prefixes each non-null slot prop with a vertical
+  // hairline divider. Only pass the slot when it has visible content,
+  // otherwise the divider renders against nothing and the bar shows a
+  // stray `│` (most visible on hand 1 solo: `… ∞ │ │ SOLO`).
+  const hasScores = SEATS.some((s) => state.scoreboard[s] !== 0);
+  const hasTrailing = showCode || matchCode === 'SOLO' || hasViewers;
   return (
     <>
       <View
@@ -140,9 +148,11 @@ export function PortraitShell({
             isMyTurn={myTurn}
             turnCountdown={myTurn ? turnCountdown : null}
             onPress={() => setPlayersOpen(true)}
-            inlineScores={<InlineScores />}
+            inlineScores={hasScores ? <InlineScores /> : null}
             trailing={
-              <ChromeTrailing showCode={showCode} matchCode={matchCode} viewers={viewers} />
+              hasTrailing ? (
+                <ChromeTrailing showCode={showCode} matchCode={matchCode} viewers={viewers} />
+              ) : null
             }
           />
         </View>
