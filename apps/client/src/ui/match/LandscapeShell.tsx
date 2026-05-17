@@ -1,7 +1,7 @@
 import type { Action, GameState, Tile as MTile, Seat } from '@mahjong/game-logic';
 import { seatWindFor } from '@mahjong/game-logic';
 import type { ReactNode } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 import { nameForSeat } from '../../state/game';
 import type { LobbyState } from '../../state/game';
 import type { FeltSkin } from '../../state/game';
@@ -415,14 +415,17 @@ function LandscapeInfoRail({
   const prevailingName = WIND_NAME[state.prevailingWind];
   const userSeatWind = seatWindFor(state.dealer, seat);
   return (
-    <View
+    <ScrollView
       style={{
         ...RAIL_CARD,
         flex: 1,
         minHeight: 0,
+      }}
+      contentContainerStyle={{
         padding: 8,
         gap: 8,
       }}
+      showsVerticalScrollIndicator={false}
     >
       {/* Self player card */}
       <Pressable
@@ -589,7 +592,7 @@ function LandscapeInfoRail({
           </View>
         </View>
       ) : null}
-    </View>
+    </ScrollView>
   );
 }
 
