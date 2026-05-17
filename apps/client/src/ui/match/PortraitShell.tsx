@@ -287,11 +287,18 @@ export function PortraitShell({
           }}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            {myTurn ? <YourTurnBadge needsDraw={needsDraw} /> : null}
+            {/* Compact YOUR TURN pill (smaller font + width) so it
+                shares the row with the slim SortPicker on a 393-px
+                portrait viewport without wrapping. */}
+            {myTurn ? <YourTurnBadge needsDraw={needsDraw} compact /> : null}
             <ReadyHandBadge waits={readyWaits} />
           </View>
           <View style={{ marginLeft: 'auto' }}>
-            <SortPicker mode={sortMode} onChange={onSortModeChange} />
+            {/* Slim segmented picker — shrunk padding + smaller font
+                vs. the desktop variant; keeps the three-way affordance
+                (suit / num / manual) without collapsing to the
+                landscape's single cycle button. */}
+            <SortPicker mode={sortMode} onChange={onSortModeChange} slim />
           </View>
         </View>
         <TutorialTarget id="own-hand">
@@ -299,11 +306,15 @@ export function PortraitShell({
               user's turn — opponents already have this treatment
               (OppHandStrip.ActiveHalo) so the user's hand getting
               the same cue when active makes it obvious which seat
-              is on the clock. `position: 'relative'` + 4 px padding
-              give the absolute halo room to breathe outward by its
-              GROWTH_PX without clipping. */}
+              is on the clock. Gated on `!needsDraw` so the halo
+              only fires once the user has drawn and is choosing
+              what to discard — pre-draw the tile-to-discard action
+              isn't yet legal and the halo would misleadingly cue
+              interaction with the hand. `position: 'relative'` + 4
+              px padding give the absolute halo room to breathe
+              outward by its GROWTH_PX without clipping. */}
           <View style={{ position: 'relative', padding: 4 }}>
-            {myTurn ? <YourHandActiveHalo /> : null}
+            {myTurn && !needsDraw ? <YourHandActiveHalo /> : null}
             <Hand
               tiles={state.hands[seat]}
               onTileClick={myTurn && state.hasDrawn ? onTileTap : undefined}
