@@ -13,7 +13,12 @@ import { COLORS } from '../colors';
 import { TutorialTarget } from '../tutorial/TargetRegistry';
 import { WALL_LOW_THRESHOLD } from './GameStatusBar';
 import { MeldStrip } from './MeldStrip';
-import { SeatRow, YourHandActiveHalo, YourTurnBadge } from './MobileShellShared';
+import {
+  SeatRow,
+  YOUR_TURN_BADGE_HEIGHT,
+  YourHandActiveHalo,
+  YourTurnBadge,
+} from './MobileShellShared';
 import { OppDiscardColumn } from './OppDiscardColumn';
 import { ReadyHandBadge } from './ReadyHandBadge';
 import { type SortMode, SortPicker } from './SortPicker';
@@ -240,7 +245,7 @@ export function LandscapeShell({
             doesn't collapse the bottom action zone (which would
             shove the hand row up by ~30 px the instant the turn
             rotates away, and back down the next time it returns). */}
-        <View style={{ alignItems: 'center', marginBottom: 2, height: 30 }}>
+        <View style={{ alignItems: 'center', marginBottom: 2, height: YOUR_TURN_BADGE_HEIGHT }}>
           {myTurn ? <YourTurnBadge needsDraw={needsDraw} /> : null}
         </View>
         <View

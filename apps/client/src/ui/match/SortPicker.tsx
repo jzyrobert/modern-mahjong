@@ -89,6 +89,9 @@ export function SortPicker({ mode, onChange, compact = false, slim = false }: So
           <Pressable
             key={o.id}
             onPress={() => onChange(o.id)}
+            accessibilityRole="button"
+            accessibilityLabel={`Sort by ${o.label}`}
+            accessibilityState={{ selected: active }}
             style={({ pressed }) => ({
               paddingVertical: slim ? 4 : 6,
               paddingHorizontal: slim ? 7 : 12,

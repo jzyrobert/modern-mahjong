@@ -63,10 +63,12 @@ interface PortraitShellProps {
 }
 
 /**
- * Portrait-orientation mobile body — top chrome row (status bar + ☰
- * pill), Scoreboard + three vertically-stacked opponent hand strips,
- * shared centre discard pool, then the action band (melds / claim
- * bar / tsumo / sort picker / own hand).
+ * Portrait-orientation mobile body — top chrome row (combined status
+ * pill with inline per-seat scores + ☰ pill), three transparent
+ * `DenseOppRow` strips, shared centre discard pool, then the action
+ * band (melds / claim bar / tsumo / sort picker / own hand). The
+ * standalone `Scoreboard` card is no longer rendered here — its
+ * content lives inside the status pill's `inlineScores` slot.
  *
  * Renders a fragment so the parent dispatcher can host the
  * SafeAreaView + overlays + ResultPanel + MatchModals. Pairs with
@@ -471,7 +473,7 @@ function DenseOppRow({
   const player = lobby?.players.find((p) => p.seat === placement.seat);
   const name = player?.displayName ?? `Seat ${placement.seat}`;
   const isBot = player?.isBot ?? false;
-  const botKind = (player?.botKind ?? null) as BotKind | null;
+  const botKind: BotKind | null = player?.botKind ?? null;
   const botLabel = isBot ? (botKind ? botDisplayName(botKind) : 'Bot') : null;
   const seatColor = SEAT_COLOR[placement.position];
   const isActive = state.turn === placement.seat && state.phase === 'turn';
@@ -484,8 +486,13 @@ function DenseOppRow({
         alignItems: 'center',
         minHeight: 28,
         gap: 8,
-        paddingHorizontal: isActive ? 6 : 0,
-        paddingVertical: isActive ? 3 : 0,
+        // Padding stays constant so the row doesn't grow when active —
+        // toggling it would shift every neighbour by 12 × 6 px on each
+        // turn rotation. The inactive row keeps the same inset; the
+        // active visual is carried entirely by background + border colour
+        // + box-shadow.
+        paddingHorizontal: 6,
+        paddingVertical: 3,
         backgroundColor: isActive ? 'rgba(219,93,74,0.16)' : 'transparent',
         borderWidth: 1,
         borderColor: isActive ? 'rgba(219,93,74,0.38)' : 'transparent',

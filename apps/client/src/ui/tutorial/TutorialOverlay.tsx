@@ -54,9 +54,18 @@ export function TutorialOverlay() {
   // Measured overlay-wrapper size — drives the dim SVG so it spans
   // the actual rendered area on Android edge-to-edge (where
   // `useWindowDimensions()` excludes the nav-bar inset and would
-  // otherwise leave a strip undimmed). Guarded with a same-size
-  // identity check so a no-op layout pass doesn't trigger a render.
-  const [overlaySize, setOverlaySize] = useState<{ w: number; h: number } | null>(null);
+  // otherwise leave a strip undimmed). Seeded with the visible window
+  // dimensions so the SVG paints on the first commit; `onLayout`
+  // corrects to the wrapper's real bounds (typically larger on
+  // Android edge-to-edge) on the next frame. Without the seed the
+  // halo + caption would render for one frame with no dim, briefly
+  // showing the un-scrimmed game beneath the overlay. Guarded with a
+  // same-size identity check so a no-op layout pass doesn't trigger
+  // a render.
+  const [overlaySize, setOverlaySize] = useState<{ w: number; h: number }>({
+    w: window.width,
+    h: window.height,
+  });
 
   // Post-completion prompt takes precedence — the active step is
   // already cleared by `advance()` when the lesson finished, and
@@ -165,15 +174,13 @@ export function TutorialOverlay() {
       // (which wants to handle taps) do.
       pointerEvents="box-none"
     >
-      {overlaySize ? (
-        <DimLayer
-          width={overlaySize.w}
-          height={overlaySize.h}
-          halo={halo}
-          haloRadius={HALO_RADIUS}
-          color={SCRIM_COLOR}
-        />
-      ) : null}
+      <DimLayer
+        width={overlaySize.w}
+        height={overlaySize.h}
+        halo={halo}
+        haloRadius={HALO_RADIUS}
+        color={SCRIM_COLOR}
+      />
       {tapPanels.map((panel) => (
         <View
           key={panel.key}

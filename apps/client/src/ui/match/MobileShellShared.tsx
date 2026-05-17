@@ -138,8 +138,11 @@ export const YOUR_TURN_BADGE_WIDTH = 160;
 export const YOUR_TURN_BADGE_WIDTH_COMPACT = 152;
 /** Heights match the SortPicker pill's outer height in each
  *  variant (default vs slim) so the YOUR TURN pill and the sort
- *  pill line up visually on the same row. */
-const YOUR_TURN_BADGE_HEIGHT = 30;
+ *  pill line up visually on the same row. Exported so callers that
+ *  reserve a fixed-height slot for the badge (e.g. `LandscapeShell`'s
+ *  bottom-band YOUR-TURN reservation) match it instead of duplicating
+ *  the magic 30. */
+export const YOUR_TURN_BADGE_HEIGHT = 30;
 const YOUR_TURN_BADGE_HEIGHT_COMPACT = 26;
 
 interface YourTurnBadgeProps {

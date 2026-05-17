@@ -281,6 +281,13 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
 
   function runBots() {
     clearPacing();
+    // Cancel any pending post-discard floor — when control reaches
+    // runBots from any path (a bot pacing timer, a turn-timeout
+    // auto-discard, the floor timer itself), the floor's job is done.
+    // Without this, a still-pending floor timer fires later as a ghost
+    // `runBots()` re-entry — harmless today (driveBots's phase guard
+    // exits cleanly) but wasted work and a future-leak hazard.
+    clearUserDiscardFloor();
     driveBots();
   }
 
@@ -311,11 +318,21 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
           if (closed) return;
           if (state.phase !== 'awaitingClaims' || !state.pendingClaims) return;
           if (state.pendingClaims.submitted[seat]) return;
-          const claim = bot.pickClaim({ state, seat });
           try {
+            const claim = bot.pickClaim({ state, seat });
             applyAction({ t: 'declareClaim', seat, claim });
           } catch (e) {
-            if (!(e instanceof IllegalActionError)) throw e;
+            // Anything that isn't an IllegalActionError used to re-throw,
+            // but a throw from inside a setTimeout callback becomes an
+            // uncaught exception — the round would stall in
+            // `awaitingClaims` with no UI signal and the user couldn't
+            // continue without a reload. Log + treat as if the bot
+            // passed; the engine resolves the round once the remaining
+            // submissions are in (or the seat is forced to pass via the
+            // next driveBots cycle).
+            if (!(e instanceof IllegalActionError)) {
+              console.error('solo bot claim error', e);
+            }
           }
           driveBots();
         }, delay);

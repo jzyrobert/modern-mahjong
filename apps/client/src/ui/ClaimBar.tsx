@@ -545,10 +545,29 @@ interface CountdownBarProps {
  *  resolve). The hard cap is what the user actually races against —
  *  the soft floor is for fairness to slow clickers and never extends
  *  the window. */
+function initialFraction(hardDeadlineMs: number | null, totalWindowMs: number | null): number {
+  if (hardDeadlineMs === null || totalWindowMs === null) return 0;
+  const remaining = hardDeadlineMs - Date.now();
+  if (remaining <= 0) return 0;
+  return Math.min(1, Math.max(0, remaining / totalWindowMs));
+}
+
 function CountdownBar({ hardDeadlineMs, totalWindowMs }: CountdownBarProps) {
-  const fraction = useRef(new Animated.Value(0)).current;
+  // Seed the Animated.Value at the correct starting fraction so the
+  // very first paint already shows the right fill — without the lazy
+  // initialiser, the ref captured `0`, the useEffect ran after commit,
+  // and the bar visibly popped from empty → start-fraction on mount.
+  const fraction = useRef(
+    new Animated.Value(initialFraction(hardDeadlineMs, totalWindowMs)),
+  ).current;
   useEffect(() => {
-    if (hardDeadlineMs === null || totalWindowMs === null) return;
+    if (hardDeadlineMs === null || totalWindowMs === null) {
+      // Reset to 0 so a subsequent claim window that opens while this
+      // bar stays mounted doesn't flash at the stale fill for a frame
+      // before its own start-fraction is set.
+      fraction.setValue(0);
+      return;
+    }
     const now = Date.now();
     const remaining = hardDeadlineMs - now;
     if (remaining <= 0) {
