@@ -520,29 +520,44 @@ function DenseOppRow({
       >
         {WIND_GLYPH[placement.seatWind]}
       </Text>
-      {/* Fixed-width name slot so the bot-status chip starts at the
-          same x-position on every row, regardless of name length —
-          a free-flowing layout left the (Easy)/(Passive) chip
-          ragged when one seat was "Yu" and another was "Haru".
-          Width sized to the widest entry in `BOT_NAME_POOL`
-          (capped at <= 4 chars by design): "Haru" / "Vera" / "Niko"
-          measure ~28-30 px at 12-px bold Inter, so 44 px holds them
-          with a small breathing margin. Rare long human display
-          names truncate via `numberOfLines={1}`. If a longer name
-          ever joins the pool, bump this and update the pool's
-          length-cap comment in lockstep. */}
-      <View style={{ width: 44 }}>
+      {/* Bot rows pin the name to a fixed-width slot so the
+          (Easy)/(Passive) chip aligns vertically across the three
+          rows — "Yu" and "Haru" would otherwise put the chip at
+          different x-positions and read as a ragged column. Human
+          rows skip the slot entirely so a long display name doesn't
+          get cropped; humans don't carry a chip, so there's nothing
+          to align against. Slot width is sized to the widest
+          `BOT_NAME_POOL` entry — pool is capped at <= 4 chars by
+          design, so "Haru" / "Vera" / "Niko" (~28-30 px at 12-px
+          bold Inter) fit at 34 px with a small breathing margin.
+          Bump this and the pool's length-cap comment together if a
+          longer bot name joins. */}
+      {botLabel ? (
+        <View style={{ width: 34 }}>
+          <Text
+            style={{
+              fontSize: 12,
+              fontWeight: '800',
+              color: isActive ? 'white' : 'rgba(255,255,255,0.88)',
+            }}
+            numberOfLines={1}
+          >
+            {name}
+          </Text>
+        </View>
+      ) : (
         <Text
           style={{
             fontSize: 12,
             fontWeight: '800',
             color: isActive ? 'white' : 'rgba(255,255,255,0.88)',
+            flexShrink: 1,
           }}
           numberOfLines={1}
         >
           {name}
         </Text>
-      </View>
+      )}
       {botLabel ? (
         <Text
           style={{

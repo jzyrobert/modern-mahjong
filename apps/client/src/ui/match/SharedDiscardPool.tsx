@@ -123,9 +123,18 @@ function OrderView({
       style={{
         flexDirection: 'row',
         flexWrap: 'wrap',
-        gap: 4,
+        // Trimmed from 4 → 3 to gain one column on 1080-physical
+        // phones (~412 CSS px wide): 14 × 24-px tiles with 13 × 3-px
+        // gaps need 375 px of pool-interior width, which the trimmed
+        // padding (6 each side, see below) gives at 412 viewport.
+        gap: 3,
         justifyContent: 'flex-start',
-        padding: 8,
+        // Trimmed from 8 → 6 in lockstep with the gap above. The
+        // backdrop still reads as a contained pool surface but
+        // recovers ~4 px horizontally — together with the gap change
+        // that's the difference between 13 and 14 tiles per row on
+        // ~412 CSS phones.
+        padding: 6,
         backgroundColor: 'rgba(0,0,0,0.05)',
         borderRadius: 12,
       }}
@@ -157,8 +166,11 @@ function PlayerView({
   return (
     <View
       style={{
-        gap: 4,
-        padding: 8,
+        // Same density trim as `OrderView` — see the inline comments
+        // there. Gap + padding chosen so a 412 CSS-wide phone fits
+        // one more tile column per seat row.
+        gap: 3,
+        padding: 6,
         backgroundColor: 'rgba(0,0,0,0.05)',
         borderRadius: 12,
       }}
@@ -186,7 +198,7 @@ function PlayerView({
                 flex: 1,
                 flexDirection: 'row',
                 flexWrap: 'wrap',
-                gap: 4,
+                gap: 3,
                 alignItems: 'center',
               }}
             >
