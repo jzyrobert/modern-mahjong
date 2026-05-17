@@ -6,7 +6,7 @@ import { useGame } from '../../state/game';
 import { Hand } from '../Hand';
 import { TutorialTarget } from '../tutorial/TargetRegistry';
 import { MeldStrip } from './MeldStrip';
-import { YourHandActiveHalo, YourTurnBadge } from './MobileShellShared';
+import { YOUR_TURN_BADGE_WIDTH, YourHandActiveHalo, YourTurnBadge } from './MobileShellShared';
 import { PlayerBadge } from './PlayerBadge';
 import { ReadyHandBadge } from './ReadyHandBadge';
 import { SeatDiscardPile } from './SeatDiscardPile';
@@ -617,17 +617,29 @@ function MyArea({
         />
         <SortPicker mode={sortMode} onChange={onSortModeChange} />
         <ReadyHandBadge waits={readyWaits} />
-        {isActive ? <YourTurnBadge needsDraw={needsDraw} /> : null}
+        {/* Always-rendered slot for the YOUR TURN pill — without the
+            reservation, the badge appearing on the active turn made
+            the row wider and the parent's `alignItems: center`
+            re-centred everything, visibly shoving the PlayerBadge +
+            SortPicker leftward each turn. Width matches the badge's
+            fixed width so the row's total span is stable. */}
+        <View style={{ width: YOUR_TURN_BADGE_WIDTH }}>
+          {isActive ? <YourTurnBadge needsDraw={needsDraw} /> : null}
+        </View>
       </View>
       <TutorialTarget id="own-hand">
         {/* Wrapper picks up the gold breathing halo when it's the user's
             turn — opponents' `PlayerBadge` already gets the parallel
             active-turn glow, so mirroring it on the user's own hand
             closes the "which seat is on the clock" gap on desktop.
+            Gated on `!needsDraw` so the halo only fires once the user
+            has drawn and is choosing what to discard — pre-draw the
+            tile-to-discard action isn't yet legal and the halo would
+            misleadingly cue interaction with the hand.
             `position: 'relative'` + 4 px padding give the absolute halo
             room to breathe outward by its GROWTH_PX without clipping. */}
         <View style={{ position: 'relative', padding: 4 }}>
-          {isActive ? <YourHandActiveHalo /> : null}
+          {isActive && !needsDraw ? <YourHandActiveHalo /> : null}
           <Hand
             tiles={hand}
             onTileClick={ownHandClickable}

@@ -235,11 +235,14 @@ export function LandscapeShell({
           borderTopWidth: 1,
         }}
       >
-        {myTurn ? (
-          <View style={{ alignItems: 'center', marginBottom: 2 }}>
-            <YourTurnBadge needsDraw={needsDraw} />
-          </View>
-        ) : null}
+        {/* Always-rendered slot for the YOUR TURN pill — `height`
+            matches the badge's intrinsic height so its absence
+            doesn't collapse the bottom action zone (which would
+            shove the hand row up by ~24 px the instant the turn
+            rotates away, and back down the next time it returns). */}
+        <View style={{ alignItems: 'center', marginBottom: 2, height: 22 }}>
+          {myTurn ? <YourTurnBadge needsDraw={needsDraw} /> : null}
+        </View>
         <View
           style={{
             flexDirection: 'row',
@@ -253,11 +256,16 @@ export function LandscapeShell({
                 user's turn — opponents already have this treatment
                 (OppHandStrip.ActiveHalo) so the user's hand getting
                 the same cue when active makes it obvious which seat
-                is on the clock. `position: 'relative'` + 4 px padding
-                give the absolute halo room to breathe outward by its
-                GROWTH_PX without clipping. */}
+                is on the clock. Gated on `!needsDraw` so the halo
+                only fires once the user has drawn and is choosing
+                what to discard — pre-draw the tile-to-discard
+                action isn't yet legal and the halo would
+                misleadingly cue interaction with the hand.
+                `position: 'relative'` + 4 px padding give the absolute
+                halo room to breathe outward by its GROWTH_PX without
+                clipping. */}
             <View style={{ position: 'relative', padding: 4 }}>
-              {myTurn ? <YourHandActiveHalo /> : null}
+              {myTurn && !needsDraw ? <YourHandActiveHalo /> : null}
               <Hand
                 tiles={state.hands[seat]}
                 onTileClick={myTurn && state.hasDrawn ? onTileTap : undefined}

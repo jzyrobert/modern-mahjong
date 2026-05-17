@@ -105,14 +105,26 @@ export function YourHandActiveHalo() {
  * Used by both `PortraitShell` and `LandscapeShell` so it lives in
  * this shared module rather than in either orientation file.
  */
+/** Fixed pill width so the DRAW (16 chars) vs DISCARD (19 chars)
+ *  variants render at the same size. Without this, swapping copy
+ *  the instant the user draws their tile widened the badge by ~17
+ *  px and re-centred the surrounding badge row — visibly shoving
+ *  the PlayerBadge + SortPicker leftward at the same beat as the
+ *  draw animation. Wide enough for `YOUR TURN · DISCARD` at the
+ *  10-px bold weight with 0.6 letter-spacing plus the 8-px horiz
+ *  padding + 1-px border each side. */
+export const YOUR_TURN_BADGE_WIDTH = 140;
+
 export function YourTurnBadge({ needsDraw }: { needsDraw: boolean }) {
   const t = usePulse({ durationMs: PULSE_TEMPO.state });
   const opacity = t.interpolate({ inputRange: [0, 1], outputRange: [0.78, 1] });
   return (
     <Animated.View
       style={{
+        width: YOUR_TURN_BADGE_WIDTH,
         flexDirection: 'row',
         alignItems: 'center',
+        justifyContent: 'center',
         gap: 4,
         paddingHorizontal: 8,
         paddingVertical: 3,
