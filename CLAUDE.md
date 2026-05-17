@@ -132,12 +132,30 @@ pnpm --filter @mahjong/client export-web && pnpm --filter @mahjong/client e2e
 ```
 
 CI is the final check, not the first signal. The suite runs in ~30s
-locally and ~2m on CI (sharded ×4 after #348). Don't burn a CI cycle
+locally and ~2m on CI (sharded ×4 — initial sharding in #348, switched
+from `--shard=N/M` to named projects in #400). Don't burn a CI cycle
 on something a local run would have caught. To iterate on one spec:
 
 ```sh
 pnpm --filter @mahjong/client exec playwright test e2e/solo-match.spec.ts
 ```
+
+To reproduce a single failing CI shard locally (matrix shard N maps to
+the `shard-N` Playwright project):
+
+```sh
+pnpm --filter @mahjong/client e2e --project=shard-N
+```
+
+Shard membership is hand-balanced in `apps/client/playwright.config.ts`
+via per-shard `testMatch` arrays. When adding a new spec that costs more
+than ~10 s of wall-clock, measure each shard with `--project=shard-N`
+and slot the new spec into the lightest one (edit the matching
+`SHARD_N_SPECS` array). New specs that aren't added to an explicit
+shard fall into shard 4 via its `testIgnore` catch-all — fine for
+small specs, drifty for heavy ones. A vitest case
+(`src/playwright-shards.test.ts`) catches duplicate or missing
+assignments before CI does.
 
 Pure logic, copy, or refactor PRs that don't reach the client can skip
 the e2e step.
