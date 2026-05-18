@@ -106,25 +106,29 @@ export function TutorialOverlay() {
   // downward and the caption ends up overlapping (or being pushed
   // off-screen by) new tiles. Anchoring to a fixed edge keeps the
   // caption stable regardless of how the targeted element resizes.
-  // Heuristic: only dock at the bottom when the halo sits clearly
-  // in the *upper third* of the viewport (a wall-draw cue, header
-  // pill, etc.). Anything in the middle or lower portion of the
-  // screen — own hand, claim bar, shared-discards pool — gets the
-  // caption pinned to the top, since those targets sit well below
-  // the caption's natural top-edge position. The earlier
-  // half-and-half threshold flipped the wrong way for halos that
-  // started near the centre and grew downward (the discard pool),
-  // briefly placing the caption over the hand. Without a target,
-  // centre vertically.
+  //
+  // Heuristic: dock at whichever screen edge has more vertical
+  // space free of the halo. An earlier upper-third check correctly
+  // bottom-docked for small chrome targets and top-docked for the
+  // hand / claim bar, but failed for the portrait discard pool: the
+  // pool's halo *centre* sits below the upper-third line (so the
+  // rule pinned the caption to the top), yet the pool's halo *top*
+  // is high enough that a 60-px-padded 160-px caption pinned at
+  // y=60 overlapped the pool's upper edge. Comparing free space
+  // above and below the halo correctly bottom-docks when the halo
+  // hugs the screen top, and keeps top-docking the user's hand
+  // (which sits at the very bottom). Without a target, centre
+  // vertically.
   const CAPTION_HEIGHT = 160;
   const EDGE_GAP = 60;
   let captionTop: number;
   if (!halo) {
     captionTop = Math.max(40, window.height / 2 - CAPTION_HEIGHT / 2);
   } else {
-    const haloCentre = halo.top + halo.height / 2;
-    const haloInUpperThird = haloCentre < window.height / 3;
-    captionTop = haloInUpperThird
+    const spaceAbove = halo.top;
+    const spaceBelow = window.height - (halo.top + halo.height);
+    const dockBottom = spaceBelow > spaceAbove;
+    captionTop = dockBottom
       ? Math.max(EDGE_GAP, window.height - EDGE_GAP - CAPTION_HEIGHT)
       : EDGE_GAP;
   }

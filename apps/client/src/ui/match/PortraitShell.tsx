@@ -136,9 +136,13 @@ export function PortraitShell({
           paddingHorizontal: 12,
           paddingTop: 12,
           // Floor for chrome → first-row separation at the no-scroll
-          // start state. The ScrollView's own `padding: 12` adds
-          // more on top of this when content scrolls.
-          paddingBottom: 8,
+          // start state. Trimmed (8 → 2) so the self-player status
+          // pill sits closer to the opponent identity strips below
+          // — the previous gap left ~12 px of dead felt between the
+          // user's chrome and the next row, which read as a visible
+          // band separating "you" from "the other players" on
+          // narrow portrait viewports.
+          paddingBottom: 2,
           backgroundColor: felt.top,
         }}
       >
@@ -165,7 +169,11 @@ export function PortraitShell({
       <View
         style={{
           paddingHorizontal: 8,
-          paddingTop: 4,
+          // Trimmed (4 → 2) in concert with the chrome row's
+          // tightened `paddingBottom` so the opponent strips sit
+          // close to the self-player status pill above — total gap
+          // collapses from ~12 px to ~4 px.
+          paddingTop: 2,
           gap: 8,
           backgroundColor: felt.top,
         }}
