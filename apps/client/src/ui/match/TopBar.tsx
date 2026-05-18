@@ -7,6 +7,12 @@ interface TopBarProps {
   /** Opens the bottom-sheet menu containing Settings / Game log /
    *  Tile reference / Leave. Wired by `Match.tsx`. */
   onOpenMenu: () => void;
+  /** Whether the ☰ menu is currently open. Drives the pressed /
+   *  "latched" tint on the trigger so a docked panel (desktop's
+   *  right-anchored `<MenuSidePanel>`) reads as being toggled from
+   *  this button. Optional — mobile callers that use the bottom-
+   *  sheet pattern can omit it. */
+  menuOpen?: boolean;
 }
 
 /**
@@ -16,7 +22,7 @@ interface TopBarProps {
  * button now, surfaced via the `MenuSheet` bottom-sheet — the
  * old row clipped on a 320 px iPhone SE even with flex-wrap.
  */
-export function TopBar({ matchCode, viewers, onOpenMenu }: TopBarProps) {
+export function TopBar({ matchCode, viewers, onOpenMenu, menuOpen = false }: TopBarProps) {
   return (
     <View
       style={{
@@ -49,12 +55,24 @@ export function TopBar({ matchCode, viewers, onOpenMenu }: TopBarProps) {
           paddingHorizontal: 10,
           paddingVertical: 4,
           borderRadius: 8,
-          backgroundColor: pressed ? COLORS.creamLow : 'transparent',
-          borderColor: COLORS.hairline,
+          backgroundColor: menuOpen
+            ? COLORS.accentSalmonSwatch
+            : pressed
+              ? COLORS.creamLow
+              : 'transparent',
+          borderColor: menuOpen ? COLORS.red : COLORS.hairline,
           borderWidth: 1,
         })}
       >
-        <Text style={{ fontSize: 14, fontWeight: '700', color: COLORS.ink }}>☰</Text>
+        <Text
+          style={{
+            fontSize: 14,
+            fontWeight: '700',
+            color: menuOpen ? COLORS.red : COLORS.ink,
+          }}
+        >
+          ☰
+        </Text>
       </Pressable>
     </View>
   );

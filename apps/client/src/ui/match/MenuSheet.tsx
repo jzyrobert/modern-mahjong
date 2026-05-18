@@ -8,7 +8,7 @@ import { COLORS } from '../colors';
 import { basicsLesson } from '../tutorial/lessons/basics';
 import { EMOTES } from './ChatBar';
 
-interface MenuSheetProps {
+export interface MenuSheetProps {
   open: boolean;
   onClose: () => void;
   onOpenSettings: () => void;
@@ -44,6 +44,11 @@ interface MenuRowProps {
  * `setSettingsOpen` / `setLogOpen` / `setReferenceOpen` /
  * `onLeave` handlers, then immediately closes the menu so the
  * downstream sheet/modal opens cleanly.
+ *
+ * The row list + state subscriptions are factored into `<MenuRowsList>`
+ * so the desktop `<MenuSidePanel>` can reuse the exact same content
+ * inside its slide-in container without duplicating the recorder /
+ * tutorial / auto-record logic.
  */
 export function MenuSheet({
   open,
@@ -55,13 +60,70 @@ export function MenuSheet({
   onLeave,
   onSendChat,
 }: MenuSheetProps) {
+  return (
+    <Modal open={open} title="Menu" onClose={onClose} placement="bottom" maxWidth={520}>
+      {/* `ScrollView` so short viewports (iPhone SE in landscape, or
+          mobile portrait once Tutorial / Save-match / Auto-record rows
+          stack above Leave) can still reach every row. The Modal's
+          90% maxHeight already caps the sheet; the ScrollView just
+          lets content beyond that height scroll instead of clipping
+          Leave off the bottom. `flexGrow: 0` keeps the ScrollView
+          from stealing extra height — it still hugs its content
+          when everything fits. */}
+      <ScrollView style={{ flexGrow: 0 }} contentContainerStyle={{ padding: 14, gap: 8 }}>
+        {onSendChat ? (
+          <EmoteRow
+            onSendChat={(emote) => {
+              onSendChat(emote);
+              onClose();
+            }}
+          />
+        ) : null}
+        <MenuRowsList
+          onClose={onClose}
+          onOpenSettings={onOpenSettings}
+          onOpenLog={onOpenLog}
+          onOpenReference={onOpenReference}
+          onOpenScoring={onOpenScoring}
+          onLeave={onLeave}
+        />
+      </ScrollView>
+    </Modal>
+  );
+}
+
+interface MenuRowsListProps {
+  onClose: () => void;
+  onOpenSettings: () => void;
+  onOpenLog: () => void;
+  onOpenReference: () => void;
+  onOpenScoring: () => void;
+  onLeave: () => void;
+}
+
+/**
+ * Renders the menu's row list (Settings / Game log / Tile reference /
+ * Scoring rules / conditional Tutorial / conditional Save / Auto-record /
+ * Leave) as a fragment. No outer wrapper — the caller provides the
+ * scroll container so layout (bottom-sheet vs side-panel) stays in
+ * the caller's hands.
+ *
+ * Owns the recorder / tutorial / auto-record subscriptions so both
+ * `<MenuSheet>` (mobile bottom-sheet) and `<MenuSidePanel>` (desktop
+ * right-anchored panel) get the same rows without duplicating the
+ * hook calls.
+ */
+export function MenuRowsList({
+  onClose,
+  onOpenSettings,
+  onOpenLog,
+  onOpenReference,
+  onOpenScoring,
+  onLeave,
+}: MenuRowsListProps) {
   const handle = (cb: () => void) => () => {
     onClose();
     cb();
-  };
-  const handleEmote = (emote: string) => {
-    onSendChat?.(emote);
-    onClose();
   };
   const draftActive = useRecorder((s) => s.draft !== null);
   const savedThisMatch = useRecorder((s) => s.savedThisMatch);
@@ -95,95 +157,89 @@ export function MenuSheet({
   };
 
   return (
-    <Modal open={open} title="Menu" onClose={onClose} placement="bottom" maxWidth={520}>
-      {/* `ScrollView` so short viewports (iPhone SE in landscape, or
-          mobile portrait once Tutorial / Save-match / Auto-record rows
-          stack above Leave) can still reach every row. The Modal's
-          90% maxHeight already caps the sheet; the ScrollView just
-          lets content beyond that height scroll instead of clipping
-          Leave off the bottom. `flexGrow: 0` keeps the ScrollView
-          from stealing extra height — it still hugs its content
-          when everything fits. */}
-      <ScrollView style={{ flexGrow: 0 }} contentContainerStyle={{ padding: 14, gap: 8 }}>
-        {onSendChat ? <EmoteRow onSendChat={handleEmote} /> : null}
+    <>
+      <MenuRow
+        icon="⚙"
+        title="Settings"
+        hint="Felt, tile back, sound, animations."
+        onPress={handle(onOpenSettings)}
+      />
+      <MenuRow
+        icon="📜"
+        title="Game log"
+        hint="Recent engine events for this hand."
+        onPress={handle(onOpenLog)}
+      />
+      <MenuRow
+        icon="📖"
+        title="Tile reference"
+        hint="All 136 tiles grouped by suit + honors."
+        onPress={handle(onOpenReference)}
+      />
+      <MenuRow
+        icon="🏆"
+        title="Scoring rules"
+        hint="Every fan pattern with worked example hands."
+        onPress={handle(onOpenScoring)}
+      />
+      {showTutorialRow ? (
         <MenuRow
-          icon="⚙"
-          title="Settings"
-          hint="Felt, tile back, sound, animations."
-          onPress={handle(onOpenSettings)}
-        />
-        <MenuRow
-          icon="📜"
-          title="Game log"
-          hint="Recent engine events for this hand."
-          onPress={handle(onOpenLog)}
-        />
-        <MenuRow
-          icon="📖"
-          title="Tile reference"
-          hint="All 136 tiles grouped by suit + honors."
-          onPress={handle(onOpenReference)}
-        />
-        <MenuRow
-          icon="🏆"
-          title="Scoring rules"
-          hint="Every fan pattern with worked example hands."
-          onPress={handle(onOpenScoring)}
-        />
-        {showTutorialRow ? (
-          <MenuRow
-            icon="🎓"
-            title={tutorialActive ? 'Restart tutorial' : `Tutorial: ${tutorialTarget.title}`}
-            hint={
-              tutorialActive
-                ? 'Reset the lesson back to the welcome step.'
-                : `Open the "${tutorialTarget.title}" lesson.`
-            }
-            onPress={handle(onRestartTutorial)}
-          />
-        ) : null}
-        {draftActive ? (
-          <MenuRow
-            icon={savedThisMatch ? '✓' : '💾'}
-            title={savedThisMatch ? 'Saved · tap to discard' : 'Save this match'}
-            hint={
-              savedThisMatch
-                ? 'Stays available in /replays. Tap to stop persisting further deltas.'
-                : 'Records this match to your replay library.'
-            }
-            onPress={onSaveMatch}
-          />
-        ) : null}
-        <MenuRow
-          icon={autoRecord ? '◉' : '○'}
-          title={autoRecord ? 'Auto-record: on' : 'Auto-record: off'}
+          icon="🎓"
+          title={tutorialActive ? 'Restart tutorial' : `Tutorial: ${tutorialTarget.title}`}
           hint={
-            autoRecord
-              ? 'Every match auto-saves on teardown. Tap to disable.'
-              : 'Future matches save only if you tap "Save this match".'
+            tutorialActive
+              ? 'Reset the lesson back to the welcome step.'
+              : `Open the "${tutorialTarget.title}" lesson.`
           }
-          onPress={onToggleAutoRecord}
+          onPress={handle(onRestartTutorial)}
         />
+      ) : null}
+      {draftActive ? (
         <MenuRow
-          icon="←"
-          title="Leave match"
-          hint="Disconnects and returns to the lobby."
-          onPress={handle(onLeave)}
-          destructive
+          icon={savedThisMatch ? '✓' : '💾'}
+          title={savedThisMatch ? 'Saved · tap to discard' : 'Save this match'}
+          hint={
+            savedThisMatch
+              ? 'Stays available in /replays. Tap to stop persisting further deltas.'
+              : 'Records this match to your replay library.'
+          }
+          onPress={onSaveMatch}
         />
-      </ScrollView>
-    </Modal>
+      ) : null}
+      <MenuRow
+        icon={autoRecord ? '◉' : '○'}
+        title={autoRecord ? 'Auto-record: on' : 'Auto-record: off'}
+        hint={
+          autoRecord
+            ? 'Every match auto-saves on teardown. Tap to disable.'
+            : 'Future matches save only if you tap "Save this match".'
+        }
+        onPress={onToggleAutoRecord}
+      />
+      <MenuRow
+        icon="←"
+        title="Leave match"
+        hint="Disconnects and returns to the lobby."
+        onPress={handle(onLeave)}
+        destructive
+      />
+    </>
   );
 }
 
 /**
- * Six-emote row inside the menu sheet. On the desktop shell the same
- * emotes live in a persistent `<ChatBar>` along the bottom of the
- * felt; on mobile portrait there's no room for a dedicated bar, so
- * we tuck them into the menu. Tapping an emote sends it and closes
- * the sheet, mirroring how the other menu rows behave.
+ * Six-emote row inside the menu. On the desktop shell the same
+ * emotes also live in a persistent `<ChatBar>` along the bottom of
+ * the felt — the menu copy is for when the user is already in the
+ * menu and wants to react without closing it. Tapping an emote
+ * sends it and closes the menu, mirroring how the other menu rows
+ * behave.
+ *
+ * Exported so the desktop `<MenuSidePanel>` can render it above its
+ * scroll area (the design pins emote outside the scrolling region
+ * for the side-panel variant).
  */
-function EmoteRow({ onSendChat }: { onSendChat: (emote: string) => void }) {
+export function EmoteRow({ onSendChat }: { onSendChat: (emote: string) => void }) {
   return (
     <View
       style={{
@@ -231,7 +287,7 @@ function EmoteRow({ onSendChat }: { onSendChat: (emote: string) => void }) {
   );
 }
 
-function MenuRow({ icon, title, hint, onPress, destructive }: MenuRowProps) {
+export function MenuRow({ icon, title, hint, onPress, destructive }: MenuRowProps) {
   return (
     <Pressable
       onPress={onPress}

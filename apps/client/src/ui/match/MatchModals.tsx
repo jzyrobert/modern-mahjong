@@ -1,6 +1,7 @@
 import type { Seat } from '@mahjong/game-logic';
 import { GameLog } from './GameLog';
 import { MenuSheet } from './MenuSheet';
+import { MenuSidePanel } from './MenuSidePanel';
 import { PlayersSheet } from './PlayersSheet';
 import { ScoringRulesSheet } from './ScoringRulesSheet';
 import { SettingsPanel } from './SettingsPanel';
@@ -26,13 +27,19 @@ interface MatchModalsProps {
    *  shells that already host a persistent `<ChatBar>` outside the
    *  menu, e.g. the desktop felt). */
   onSendChat?: ((text: string) => void) | undefined;
+  /** When true, the ☰ menu renders as a right-anchored slide-in
+   *  panel (`<MenuSidePanel>`) instead of the mobile bottom-sheet.
+   *  Driven by `DesktopShell` — mobile shells leave it false / omit
+   *  it and keep the bottom-sheet pattern. */
+  menuVariant?: 'sheet' | 'sidePanel';
 }
 
 /**
  * Bundles the five sheet/modal mounts that both `DesktopShell` and
  * `MobileShell` render identically — `SettingsPanel`, `GameLog`,
- * `TileReferenceSheet`, `PlayersSheet`, and the consolidated
- * `MenuSheet`. Exists so the two shells don't duplicate the same
+ * `TileReferenceSheet`, `PlayersSheet`, and the consolidated ☰
+ * menu (either `MenuSheet` or `MenuSidePanel` depending on
+ * `menuVariant`). Exists so the two shells don't duplicate the same
  * five-line wiring block.
  *
  * The state lives in `Match.tsx`'s `useState` hooks; this component
@@ -55,7 +62,9 @@ export function MatchModals({
   setMenuOpen,
   onLeave,
   onSendChat,
+  menuVariant = 'sheet',
 }: MatchModalsProps) {
+  const MenuComponent = menuVariant === 'sidePanel' ? MenuSidePanel : MenuSheet;
   return (
     <>
       <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
@@ -63,7 +72,7 @@ export function MatchModals({
       <TileReferenceSheet open={referenceOpen} onClose={() => setReferenceOpen(false)} />
       <ScoringRulesSheet open={scoringOpen} onClose={() => setScoringOpen(false)} />
       <PlayersSheet open={playersOpen} onClose={() => setPlayersOpen(false)} mySeat={mySeat} />
-      <MenuSheet
+      <MenuComponent
         open={menuOpen}
         onClose={() => setMenuOpen(false)}
         onOpenSettings={() => setSettingsOpen(true)}
