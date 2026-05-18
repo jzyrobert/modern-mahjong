@@ -250,6 +250,7 @@ export function MobileLobby({ isLandscape }: MobileLobbyProps) {
       subtitle="Play with friends over the internet"
       icon={<GlobeIcon color={COLORS.red} size={18} />}
       badge="RECOMMENDED"
+      fillHeight={isLandscape}
     >
       <View>
         <Text style={[fieldLabelStyle, { marginBottom: 4 }]}>MATCH CODE</Text>
@@ -280,6 +281,7 @@ export function MobileLobby({ isLandscape }: MobileLobbyProps) {
       title="Practice vs bots"
       subtitle={isLandscape ? 'vs bots · offline' : 'Single device · no connection'}
       icon={<BotIcon color={COLORS.ink2} size={18} />}
+      fillHeight={isLandscape}
     >
       <Text style={{ fontSize: 11, color: COLORS.ink3, fontWeight: '600', lineHeight: 16 }}>
         Three bots —{' '}
@@ -623,6 +625,16 @@ interface PrimaryModeCardProps {
   /** Renders a RECOMMENDED pill next to the title — only set on
    *  the accent card (Online). */
   badge?: string;
+  /** When true, the card claims `flex: 1` so it stretches to fill
+   *  its parent's cross-axis. Used in the landscape side-by-side row
+   *  to equalise the Online + Practice card heights — the Online
+   *  card carries more content (match-code input + 3 buttons +
+   *  connection status), so without this the Practice card sits
+   *  shorter and the row reads uneven. Portrait stacks the cards
+   *  vertically inside a column-flex parent where flex:1 would
+   *  greedily consume the rest of the column, so callers must only
+   *  set this when the parent is a row-flex container. */
+  fillHeight?: boolean;
   children: ReactNode;
 }
 
@@ -639,6 +651,7 @@ function PrimaryModeCard({
   subtitle,
   icon,
   badge,
+  fillHeight = false,
   children,
 }: PrimaryModeCardProps) {
   return (
@@ -652,6 +665,7 @@ function PrimaryModeCard({
         paddingVertical: 12,
         gap: 10,
         boxShadow: '0px 1px 3px rgba(0,0,0,0.04)',
+        ...(fillHeight && { flex: 1 }),
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
