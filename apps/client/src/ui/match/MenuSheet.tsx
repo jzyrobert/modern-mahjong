@@ -71,6 +71,10 @@ export function MenuSheet({
           from stealing extra height — it still hugs its content
           when everything fits. */}
       <ScrollView style={{ flexGrow: 0 }} contentContainerStyle={{ padding: 14, gap: 8 }}>
+        {/* Emote row temporarily disabled — the reaction system is being
+            reworked. Re-enable (or replace with the new reaction surface)
+            once the redesign lands. */}
+        {/*
         {onSendChat ? (
           <EmoteRow
             onSendChat={(emote) => {
@@ -79,6 +83,7 @@ export function MenuSheet({
             }}
           />
         ) : null}
+        */}
         <MenuRowsList
           onClose={onClose}
           onOpenSettings={onOpenSettings}
