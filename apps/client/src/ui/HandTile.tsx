@@ -1,11 +1,43 @@
 import type { Tile as MTile } from '@mahjong/game-logic';
 import { tileId } from '@mahjong/game-logic';
 import { useContext, useEffect, useRef, useState } from 'react';
-import { Animated, PanResponder, View } from 'react-native';
+import { Animated, PanResponder, Platform, View } from 'react-native';
 import { useGame } from '../state/game';
 import { FlipBagContext } from './FlipBag';
 import { TILE_CORNER_RADIUS_RATIO, Tile } from './Tile';
 import { PULSE_TEMPO, usePulse } from './animations';
+
+/**
+ * After a tap-to-discard, the hand re-flows and (on a narrow viewport
+ * where 14 tiles wrapped onto two rows) the bottom action zone can
+ * shrink vertically — the SortPicker row above the hand slides DOWN
+ * into the space the second hand row just vacated. The browser's
+ * synthetic click event, dispatched after touchend / pointerup at the
+ * original pointer coordinates, then lands on whichever Pressable now
+ * occupies those coords — most often the SortPicker, which silently
+ * flips sort mode under the user's finger. Install a one-shot
+ * capture-phase listener at the window level so a click dispatched
+ * near the original touch coords is consumed before any React handler
+ * sees it. Position-gated (±32 px) so legitimate clicks elsewhere on
+ * the page — e.g. tapping the MANUAL sort pill immediately after a
+ * discard — still pass through. Self-cleans after 300 ms in case no
+ * synthetic click follows (mouse paths or motion-suppressed touches).
+ */
+function swallowNextSyntheticClickAt(x: number, y: number): void {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+  const SLOP_PX = 32;
+  const handler = (e: Event) => {
+    const me = e as MouseEvent;
+    if (Math.abs(me.clientX - x) > SLOP_PX || Math.abs(me.clientY - y) > SLOP_PX) return;
+    e.stopPropagation();
+    e.preventDefault();
+    window.removeEventListener('click', handler, true);
+  };
+  window.addEventListener('click', handler, true);
+  window.setTimeout(() => {
+    window.removeEventListener('click', handler, true);
+  }, 300);
+}
 
 interface HandTileProps {
   tile: MTile;
@@ -293,6 +325,13 @@ export function HandTile({
           const toIndex = Math.max(0, Math.min(totalRef.current - 1, toRow * perRow + toCol));
           exitDrag(g.dx, g.dy, toIndex);
         } else if (!movedRef.current && onTapRef.current) {
+          // `g.moveX/moveY` carry the touchend coords in client/page
+          // space on RNW (same coordinate system the browser uses for
+          // the follow-up synthetic click), so scoping the swallow
+          // around (moveX, moveY) targets exactly the spot the
+          // synthetic click would land. Falls back to (x0, y0) when
+          // moveX/Y are 0 (a tap with no recorded movement).
+          swallowNextSyntheticClickAt(g.moveX || g.x0, g.moveY || g.y0);
           onTapRef.current();
         }
       },
