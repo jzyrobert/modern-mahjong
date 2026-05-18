@@ -46,9 +46,13 @@ export const COLORS = {
    *  the YOUR TURN halo). */
   redHot: '#db5d4a',
   /** Success — semantic colour for "online / connected / valid /
-   *  win-positive". Use the token directly for dots, accents, and
-   *  switch tracks. For pill surfaces (text on a tinted bg with a
-   *  tinted border) use `SUCCESS_PILL` below.
+   *  win-positive". Use the token directly for dots and accents that
+   *  *mean* connected / valid. For pill surfaces (text on a tinted
+   *  bg with a tinted border) use `SUCCESS_PILL` below. Do NOT use
+   *  for generic on/off switch tracks — that overloads the "valid"
+   *  semantic onto "this preference is enabled" and clashes with
+   *  the Sage felt swatch in Settings; reach for `SWITCH_TRACK`
+   *  instead so the on-state inherits the brand red accent.
    *
    *  Nudged from the old `#58c280` to `#3aa066` — slightly darker /
    *  more saturated so it carries enough contrast to be used as fg
@@ -82,6 +86,19 @@ export const SUCCESS_PILL = {
   bg: 'rgba(58,160,102,0.12)',
   border: 'rgba(58,160,102,0.35)',
   fg: '#1f6a44',
+} as const;
+
+/**
+ * Generic on/off switch track recipe. The on-state uses brand red
+ * (same accent the Settings panel's selected felt-skin / tile-back
+ * rings use), so a flipped switch reads as part of the same
+ * "selected / active" visual language as the swatches above it
+ * instead of borrowing the green "valid / connected" semantic.
+ * Spread into a `<Switch trackColor={SWITCH_TRACK} />` prop.
+ */
+export const SWITCH_TRACK = {
+  true: COLORS.red,
+  false: COLORS.hairline,
 } as const;
 
 /**

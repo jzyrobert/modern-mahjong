@@ -1,7 +1,7 @@
 import { Pressable, ScrollView, Switch, Text, View } from 'react-native';
 import { type FeltSkin, type TileBackSkin, type UserSettings, useGame } from '../../state/game';
 import { Modal } from '../Modal';
-import { COLORS } from '../colors';
+import { COLORS, SWITCH_TRACK } from '../colors';
 import { FELT_SKINS, TILE_BACK_SKINS } from './skins';
 
 interface SettingsPanelProps {
@@ -190,6 +190,7 @@ function ToggleRow({ label, hint, value, onChange }: ToggleRowProps) {
         onValueChange={onChange}
         accessibilityLabel={label}
         accessibilityState={{ checked: value }}
+        trackColor={SWITCH_TRACK}
       />
     </View>
   );

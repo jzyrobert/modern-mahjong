@@ -3,7 +3,7 @@ import type { Action, RuleConfig } from '@mahjong/protocol';
 import { useState } from 'react';
 import { Pressable, Switch, Text, TextInput, View } from 'react-native';
 import { useGame } from '../state/game';
-import { COLORS } from './colors';
+import { COLORS, SWITCH_TRACK } from './colors';
 
 interface RulePanelProps {
   rules: RuleConfig;
@@ -170,7 +170,7 @@ function ToggleRow({
         disabled={disabled}
         accessibilityLabel={label}
         accessibilityState={{ checked: value, disabled }}
-        trackColor={{ true: COLORS.success, false: COLORS.hairline }}
+        trackColor={SWITCH_TRACK}
       />
     </View>
   );
