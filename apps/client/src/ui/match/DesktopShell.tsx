@@ -212,6 +212,7 @@ export function DesktopShell(props: DesktopShellProps) {
               matchCode={matchCode}
               viewers={lobby?.viewers ?? null}
               onOpenMenu={() => setMenuOpen(true)}
+              menuOpen={menuOpen}
             />
           </View>
 
@@ -368,6 +369,8 @@ export function DesktopShell(props: DesktopShellProps) {
           menuOpen={menuOpen}
           setMenuOpen={setMenuOpen}
           onLeave={onLeave}
+          onSendChat={onSendChat}
+          menuVariant="sidePanel"
         />
       </SafeAreaView>
     </View>
