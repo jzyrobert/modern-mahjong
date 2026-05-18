@@ -68,7 +68,13 @@ export function SharedDiscardPool({
 
   return (
     <View style={{ flex: 1, gap: 6, minHeight: 0 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+      {/* paddingLeft nudges the DISCARDS label inboard so it sits over
+          the felt's interior tile-grid rather than flush against the
+          card's inner border — the title had been hugging the left
+          edge too tightly. The sort toggle on the right keeps its
+          flush-right alignment since the row's `flex` spacer absorbs
+          the inset. */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 6 }}>
         <Text
           style={{
             fontSize: 11,

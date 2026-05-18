@@ -74,7 +74,8 @@ export function ModeCard({ title, subtitle, icon, accent = false, children }: Mo
             <Text style={{ fontSize: 16, fontWeight: '900', color: COLORS.ink, lineHeight: 18 }}>
               {title}
             </Text>
-            {accent ? <RecommendedBadge /> : null}
+            {/* RECOMMENDED pill paused — restore by switching to:
+                {accent ? <RecommendedBadge /> : null} */}
           </View>
           <Text
             style={{
@@ -128,28 +129,6 @@ export function ModeGrid({ children }: { children: ReactNode }) {
   );
 }
 
-function RecommendedBadge() {
-  return (
-    <View
-      style={{
-        backgroundColor: COLORS.accentSalmonSwatch,
-        borderColor: COLORS.accentSalmonEdge,
-        borderWidth: 1,
-        borderRadius: 6,
-        paddingHorizontal: 7,
-        paddingVertical: 3,
-      }}
-    >
-      <Text
-        style={{
-          color: COLORS.red,
-          fontSize: 9,
-          fontWeight: '900',
-          letterSpacing: 0.7,
-        }}
-      >
-        RECOMMENDED
-      </Text>
-    </View>
-  );
-}
+// RecommendedBadge — paused. To re-enable: re-add the function below
+// and switch the render slot back to `{accent ? <RecommendedBadge /> : null}`.
+// function RecommendedBadge() { ... }

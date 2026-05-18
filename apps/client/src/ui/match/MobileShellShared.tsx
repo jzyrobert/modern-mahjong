@@ -144,6 +144,13 @@ export function YourTurnBadge({ needsDraw, compact = false }: YourTurnBadgeProps
   const width = compact ? YOUR_TURN_BADGE_WIDTH_COMPACT : YOUR_TURN_BADGE_WIDTH;
   const height = compact ? YOUR_TURN_BADGE_HEIGHT_COMPACT : YOUR_TURN_BADGE_HEIGHT;
   const fontSize = compact ? 9 : 10;
+  // Compact variant rides the same row as the slim SortPicker in
+  // PortraitShell — match its borderRadius (8 vs the old 10), drop
+  // the gold drop-shadow, and tighten letter-spacing so both chips
+  // read as siblings on the bottom action row rather than as a
+  // hand-rolled pill next to a segmented control. Desktop /
+  // landscape variants keep their original chrome since they don't
+  // share a baseline with the segmented picker there.
   return (
     <Animated.View
       style={{
@@ -154,12 +161,12 @@ export function YourTurnBadge({ needsDraw, compact = false }: YourTurnBadgeProps
         justifyContent: 'center',
         gap: 4,
         paddingHorizontal: compact ? 6 : 8,
-        borderRadius: 10,
+        borderRadius: compact ? 8 : 10,
         backgroundColor: COLORS.gold,
         borderColor: '#a87f24',
         borderWidth: 1,
         opacity,
-        boxShadow: '0px 2px 6px rgba(196,159,52,0.35)',
+        ...(compact ? null : { boxShadow: '0px 2px 6px rgba(196,159,52,0.35)' }),
       }}
     >
       <Text
@@ -168,7 +175,7 @@ export function YourTurnBadge({ needsDraw, compact = false }: YourTurnBadgeProps
           fontSize,
           fontWeight: '900',
           color: '#3a2c0d',
-          letterSpacing: 0.6,
+          letterSpacing: compact ? 0.4 : 0.6,
         }}
       >
         YOUR TURN {needsDraw ? '· DRAW' : '· DISCARD'}
