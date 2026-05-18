@@ -10,7 +10,10 @@ import { Scoreboard } from '../Scoreboard';
 import { PrimaryButton } from '../buttons';
 import { COLORS } from '../colors';
 import { TutorialTarget } from '../tutorial/TargetRegistry';
-import { ChatBar } from './ChatBar';
+// `ChatBar` import removed while the reaction system is being reworked
+// (the persistent emote bar is commented out below). Re-add when the
+// new reaction surface lands.
+// import { ChatBar } from './ChatBar';
 import { ChatBubbles } from './ChatBubbles';
 import { ClaimAnnouncementToast } from './ClaimAnnouncementToast';
 import { ClaimMissedToast } from './ClaimMissedToast';
@@ -292,9 +295,14 @@ export function DesktopShell(props: DesktopShellProps) {
             ) : null}
           </View>
 
+          {/* Persistent emote bar temporarily disabled — the reaction
+              system is being reworked. Re-enable (or replace with the
+              new reaction surface) once the redesign lands. */}
+          {/*
           <View style={{ alignItems: 'center', paddingVertical: 4 }}>
             <ChatBar onSend={onSendChat} />
           </View>
+          */}
 
           <ChatBubbles seatToPosition={seatToPosition} />
           <ClaimMissedToast />

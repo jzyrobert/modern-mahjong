@@ -39,13 +39,12 @@ test.describe('Match menu sheet', () => {
       await expect(page.getByRole('button', { name: label })).toBeVisible();
     }
 
-    // Emote row is included in the mobile menu (the persistent
-    // ChatBar that lives on the desktop felt is folded in here for
-    // phone viewports, since that row of buttons doesn't fit
-    // alongside hand + opp strips).
-    for (const emote of ['👍', '😎', '🎉', '🤔', '😅', '🔥']) {
-      await expect(page.getByLabel(`Send ${emote}`)).toBeVisible();
-    }
+    // Emote row temporarily disabled — the reaction system is being
+    // reworked. Re-enable these assertions once the new reaction
+    // surface lands.
+    // for (const emote of ['👍', '😎', '🎉', '🤔', '😅', '🔥']) {
+    //   await expect(page.getByLabel(`Send ${emote}`)).toBeVisible();
+    // }
 
     // Tapping a row closes the menu and opens the downstream
     // surface. Verify with Settings.
@@ -54,7 +53,11 @@ test.describe('Match menu sheet', () => {
     await expect(page.getByText('Settings', { exact: true }).first()).toBeVisible();
   });
 
-  test('tapping an emote in the menu closes the sheet and surfaces a bubble', async ({ page }) => {
+  // Emote row temporarily disabled — the reaction system is being
+  // reworked. Re-enable once the new reaction surface lands.
+  test.skip('tapping an emote in the menu closes the sheet and surfaces a bubble', async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 412, height: 906 });
     await page.goto('/');
     await page.getByRole('button', { name: 'Play vs bots' }).click();

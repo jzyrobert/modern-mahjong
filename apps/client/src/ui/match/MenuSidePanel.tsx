@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Pressable, ScrollView, Text, View } from 'react-native';
 import { COLORS } from '../colors';
-import { EmoteRow, MenuRowsList, type MenuSheetProps } from './MenuSheet';
+// `EmoteRow` import removed while the reaction system is being reworked
+// (the emote panel is commented out below). Re-add when the new
+// reaction surface lands.
+import { MenuRowsList, type MenuSheetProps } from './MenuSheet';
 
-const PANEL_WIDTH = 300;
+const PANEL_WIDTH = 450;
 const SLIDE_MS = 260;
 const SCRIM_MS = 200;
 
@@ -145,6 +148,10 @@ export function MenuSidePanel({
         }}
       >
         <PanelHeader onClose={onClose} />
+        {/* Emote row temporarily disabled — the reaction system is being
+            reworked. Re-enable (or replace with the new reaction surface)
+            once the redesign lands. */}
+        {/*
         {onSendChat ? (
           <View style={{ paddingTop: 10, paddingHorizontal: 11, paddingBottom: 4 }}>
             <EmoteRow
@@ -155,6 +162,7 @@ export function MenuSidePanel({
             />
           </View>
         ) : null}
+        */}
         <ScrollView
           style={{ flex: 1 }}
           contentContainerStyle={{
