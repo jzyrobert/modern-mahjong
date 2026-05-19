@@ -67,6 +67,28 @@ export function PlayIcon({ size = 20, color = 'currentColor' }: IconProps) {
   );
 }
 
+/**
+ * Right-chevron affordance for tappable rows (Tutorial / LAN /
+ * Replays in MobileLobby). Body-text weight (stroke 2) so the glyph
+ * reads as quiet UI chrome rather than competing with the row's
+ * title. Stroked from `color` so the parent's `color: COLORS.ink3`
+ * flows through. `viewBox` is 12 wide / 16 tall so the chevron sits
+ * vertically centred against the typical 12-13 px row title.
+ */
+export function ChevronRightIcon({ size = 12, color = 'currentColor' }: IconProps) {
+  return (
+    <Svg width={size} height={Math.round(size * (16 / 12))} viewBox="0 0 12 16" fill="none">
+      <Path
+        d="M4 4l4 4-4 4"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
 /** Mortarboard / cap icon — the Tutorial card. Two strokes form the
  *  diamond mortar plus a simple tassel; a horizontal underline hints
  *  at the cap's base. Same line-weight as the rest of the icon set

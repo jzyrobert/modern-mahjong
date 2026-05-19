@@ -200,14 +200,20 @@ function DesktopLobby() {
                 maxLength={5}
                 autoCapitalize="characters"
               />
-              <ButtonRow>
+              {/* Stacked column of three full-width primary CTAs — Join /
+                  Create / Browse all carry the same brand-red weight so
+                  the user reads them as siblings under MATCH CODE rather
+                  than "the primary action + two ghost fallbacks". */}
+              <View style={{ flexDirection: 'column', gap: 8 }}>
                 <PrimaryButton
+                  full
                   onPress={() => code && transport.joinOnline(code)}
                   disabled={code.length !== 5}
                 >
                   Join match
                 </PrimaryButton>
-                <GhostButton
+                <PrimaryButton
+                  full
                   onPress={() => {
                     const fresh = generateMatchCode();
                     setCode(fresh);
@@ -215,11 +221,11 @@ function DesktopLobby() {
                   }}
                 >
                   Create new match
-                </GhostButton>
-                <GhostButton onPress={() => setBrowseLobbiesOpen(true)}>
+                </PrimaryButton>
+                <PrimaryButton full onPress={() => setBrowseLobbiesOpen(true)}>
                   Browse open lobbies
-                </GhostButton>
-              </ButtonRow>
+                </PrimaryButton>
+              </View>
               <OnlineConnectionStatus />
             </ModeCard>
 

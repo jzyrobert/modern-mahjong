@@ -32,7 +32,15 @@ import { COLORS as SHARED_COLORS } from '../colors';
 import { useIsLandscape } from '../useOrientation';
 import { LobbyPreview } from './LobbyPreview';
 import { WindEmblem } from './WindEmblem';
-import { BotIcon, BoxIcon, GlobeIcon, PlayIcon, TutorialIcon, WifiIcon } from './icons';
+import {
+  BotIcon,
+  BoxIcon,
+  ChevronRightIcon,
+  GlobeIcon,
+  PlayIcon,
+  TutorialIcon,
+  WifiIcon,
+} from './icons';
 import { replaySubtitleFor, summariseReplays } from './replaySubtitle';
 
 /**
@@ -249,7 +257,8 @@ export function MobileLobby({ isLandscape }: MobileLobbyProps) {
       title="Online match"
       subtitle="Play with friends over the internet"
       icon={<GlobeIcon color={COLORS.red} size={18} />}
-      badge="RECOMMENDED"
+      // RECOMMENDED pill paused — restore by re-adding `badge="RECOMMENDED"`.
+      // badge="RECOMMENDED"
       fillHeight={isLandscape}
     >
       <View>
@@ -262,7 +271,7 @@ export function MobileLobby({ isLandscape }: MobileLobbyProps) {
           onPress={() => code && transport.joinOnline(code)}
           disabled={code.length !== 5}
         />
-        <CompactGhost
+        <CompactPrimary
           label="Create"
           onPress={() => {
             const fresh = generateMatchCode();
@@ -270,7 +279,7 @@ export function MobileLobby({ isLandscape }: MobileLobbyProps) {
             transport.joinOnline(fresh);
           }}
         />
-        <CompactGhost label="Browse" onPress={() => setBrowseLobbiesOpen(true)} />
+        <CompactPrimary label="Browse" onPress={() => setBrowseLobbiesOpen(true)} />
       </View>
       <OnlineConnectionStatus />
     </PrimaryModeCard>
@@ -622,9 +631,10 @@ interface PrimaryModeCardProps {
   title: string;
   subtitle: string;
   icon: ReactNode;
-  /** Renders a RECOMMENDED pill next to the title — only set on
-   *  the accent card (Online). */
-  badge?: string;
+  // RECOMMENDED pill paused — `badge?: string` slot removed alongside
+  // its render hook below. Restore both together (see ModeCard.tsx
+  // for the matching pause on the desktop side) when the pill comes
+  // back.
   /** When true, the card claims `flex: 1` so it stretches to fill
    *  its parent's cross-axis. Used in the landscape side-by-side row
    *  to equalise the Online + Practice card heights — the Online
@@ -650,7 +660,6 @@ function PrimaryModeCard({
   title,
   subtitle,
   icon,
-  badge,
   fillHeight = false,
   children,
 }: PrimaryModeCardProps) {
@@ -695,7 +704,9 @@ function PrimaryModeCard({
             >
               {title}
             </Text>
-            {badge ? <RecommendedBadge label={badge} /> : null}
+            {/* RECOMMENDED pill paused — re-add the badge prop + a
+                <RecommendedBadge label={badge} /> render here when
+                restoring. See ModeCard.tsx for the desktop pair. */}
           </View>
           <Text
             style={{
@@ -714,24 +725,9 @@ function PrimaryModeCard({
   );
 }
 
-function RecommendedBadge({ label }: { label: string }) {
-  return (
-    <View
-      style={{
-        backgroundColor: COLORS.accentSalmonSwatch,
-        borderColor: COLORS.accentSalmonEdge,
-        borderWidth: 1,
-        borderRadius: 5,
-        paddingHorizontal: 6,
-        paddingVertical: 2,
-      }}
-    >
-      <Text style={{ fontSize: 8, fontWeight: '900', letterSpacing: 0.7, color: COLORS.red }}>
-        {label}
-      </Text>
-    </View>
-  );
-}
+// RecommendedBadge — paused. Re-add as `function RecommendedBadge({ label })`
+// returning the salmon-on-cream pill (see git history pre-this-PR) when
+// the slot in PrimaryModeCard above is restored.
 
 // ─── Secondary row ──────────────────────────────────────────────────
 
@@ -796,7 +792,7 @@ function SecondaryRow({ icon, title, subtitle, onPress, trailing }: SecondaryRow
         </Text>
       </View>
       {trailing}
-      <Text style={{ fontSize: 18, fontWeight: '700', color: COLORS.ink3 }}>›</Text>
+      <ChevronRightIcon size={11} color={COLORS.ink3} />
     </Pressable>
   );
 }
@@ -858,16 +854,9 @@ function ExpandedCard({ icon, title, subtitle, onCollapse, children }: ExpandedC
             {subtitle}
           </Text>
         </View>
-        <Text
-          style={{
-            fontSize: 18,
-            fontWeight: '700',
-            color: COLORS.ink3,
-            transform: [{ rotate: '90deg' }],
-          }}
-        >
-          ›
-        </Text>
+        <View style={{ transform: [{ rotate: '90deg' }] }}>
+          <ChevronRightIcon size={11} color={COLORS.ink3} />
+        </View>
       </Pressable>
       {children}
     </View>
@@ -929,7 +918,7 @@ function LessonRow({ title, blurb, done, onPress }: LessonRowProps) {
           {blurb}
         </Text>
       </View>
-      <Text style={{ fontSize: 18, fontWeight: '700', color: COLORS.ink3 }}>›</Text>
+      <ChevronRightIcon size={11} color={COLORS.ink3} />
     </Pressable>
   );
 }
@@ -949,6 +938,12 @@ interface MatchCodeInputProps {
  */
 function MatchCodeInput({ value, onChangeText }: MatchCodeInputProps) {
   const [focused, setFocused] = useState(false);
+  // Empty-state styling tilts the input toward "placeholder" — italic
+  // + zero letter-spacing — so the `ABCDE` hint stops reading like a
+  // typed `A B C D E` value. Once the user types, both flip back to
+  // the live mono-tracked appearance so the entered code keeps its
+  // legibility.
+  const isEmpty = value.length === 0;
   return (
     <TextInput
       value={value}
@@ -970,8 +965,9 @@ function MatchCodeInput({ value, onChangeText }: MatchCodeInputProps) {
         fontFamily: 'JetBrains Mono',
         fontSize: 16,
         fontWeight: '700',
+        fontStyle: isEmpty ? 'italic' : 'normal',
         color: COLORS.ink,
-        letterSpacing: 3,
+        letterSpacing: isEmpty ? 0 : 3,
         backgroundColor: COLORS.paperHi,
         borderColor: focused ? COLORS.red : COLORS.hairline,
         borderWidth: 1,

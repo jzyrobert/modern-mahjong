@@ -151,6 +151,12 @@ export function TextField({
   autoCorrect = false,
 }: TextFieldProps) {
   const [focused, setFocused] = useState(false);
+  // For monospaced inputs (the match-code field), drop the tight
+  // letter-spacing and tilt to italic while the field is empty so the
+  // placeholder reads as a hint instead of a pre-typed `A B C D E`
+  // value. Live input restores the wide tracking so the entered code
+  // stays legible.
+  const monoEmpty = mono && value.length === 0;
   return (
     <View>
       <Text
@@ -189,8 +195,9 @@ export function TextField({
           backgroundColor: COLORS.paperHi,
           fontSize: mono ? 16 : 14,
           fontWeight: '600',
+          fontStyle: monoEmpty ? 'italic' : 'normal',
           color: COLORS.ink,
-          letterSpacing: mono ? 3 : 0,
+          letterSpacing: mono && !monoEmpty ? 3 : 0,
           ...(focused && {
             boxShadow: `0px 0px 4px ${COLORS.red}26`,
           }),
