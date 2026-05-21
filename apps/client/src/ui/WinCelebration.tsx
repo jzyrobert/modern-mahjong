@@ -2,7 +2,7 @@ import { tileId } from '@mahjong/game-logic';
 import { useEffect, useState } from 'react';
 import { Animated, Pressable, Text, View } from 'react-native';
 import { nameForSeat, useGame } from '../state/game';
-import { useTutorial } from '../state/tutorial';
+import { LESSONS, useTutorial } from '../state/tutorial';
 import { PULSE_TEMPO, useFadeInOut, usePulse } from './animations';
 import { COLORS } from './colors';
 import { DISMISS_MS } from './timing';
@@ -23,7 +23,22 @@ export function WinCelebration() {
   // completion prompt is up, so by the time the prompt is dismissed
   // the celebration has fade-cleared itself.
   const tutorialJustCompleted = useTutorial((s) => s.justCompleted);
-  const visibleForFade = isWin && !dismissed && !tutorialJustCompleted;
+  // Mid-lesson suppression: strategy lessons (`scoring-intro`,
+  // `yaku-gallery`) stage `phase: 'resolved'` + a synthetic
+  // `lastResult` on every example step. Without this gate the
+  // celebration would re-fire on each step (6–7 times per lesson),
+  // drowning the lesson's own caption. Opt-in per lesson via
+  // `Lesson.suppressWinCelebration` so gameplay lessons (`win`, `ron`,
+  // `robbing-kong`) — whose final hand IS meant to surface the
+  // celebration — stay unaffected. The complement to the
+  // `justCompleted` guard above: that handles the post-completion
+  // dismissal window; this handles every step of a celebration-
+  // suppressing lesson up to (and including) the final "Done" tap.
+  const activeLessonId = useTutorial((s) => s.active?.lessonId ?? null);
+  const tutorialSuppresses = activeLessonId
+    ? (LESSONS[activeLessonId]?.suppressWinCelebration ?? false)
+    : false;
+  const visibleForFade = isWin && !dismissed && !tutorialJustCompleted && !tutorialSuppresses;
   const { fade, fadeOut } = useFadeInOut({ visible: visibleForFade });
 
   // Content-derived key for the current result. Multiplayer hosts

@@ -369,7 +369,15 @@ export function DesktopShell(props: DesktopShellProps) {
                 hand row from wrapping on narrow desktops near the
                 768-px breakpoint. */}
             <View style={{ width: '60%', minWidth: 480, maxWidth: 720 }}>
-              <ResultPanel onAction={onAction} mySeat={seat} isHost={isHost} onLeave={onLeave} />
+              {/* Wrap in TutorialTarget so the `scoring-intro` /
+                  `yaku-gallery` lessons can anchor their captions to
+                  the panel rect rather than overlapping it with a
+                  centered card. Mounts only while `lastResult` is set
+                  (this branch's gate), so the rect cleanly tracks
+                  the panel's presence. */}
+              <TutorialTarget id="result-panel">
+                <ResultPanel onAction={onAction} mySeat={seat} isHost={isHost} onLeave={onLeave} />
+              </TutorialTarget>
             </View>
           </ScrollView>
         ) : null}

@@ -232,6 +232,25 @@ test.describe('tutorial: scoring-intro', () => {
       expect(snap.hand0).not.toBeNull();
       capturedHands.push(snap.hand0!);
 
+      // Regression guard (Fix 2): the ResultPanel is visible on every
+      // example step — the caption is anchored to the panel rect via
+      // `targetId: 'result-panel'` rather than centered on top of it.
+      // The "Seat 0 wins!" text only renders inside ResultPanel, so
+      // its visibility is a stable proxy for "the panel is mounted
+      // and on screen". `.first()` because the live screen may also
+      // surface "Seat 0" in seat labels.
+      await expect(page.getByText('Seat 0 wins!').first()).toBeVisible();
+
+      // Regression guard (Fix 1): the full-screen 和 celebration is
+      // suppressed during this lesson. The celebration would
+      // otherwise pulse on every example step. The 和 emblem inside
+      // `WinCelebration` has `fontFamily: 'Noto Serif TC', fontSize:
+      // 96` — there's no other 和 glyph on the table at this size, so
+      // we assert no 和 glyph is visible. (The ResultPanel doesn't
+      // render this glyph; the breakdown lists `平和`/`對對和` etc as
+      // entry names but those are sub-tile-sized.)
+      await expect(page.getByText(/^和$/)).toHaveCount(0);
+
       await page.getByRole('button', { name: 'Got it' }).click();
     }
 

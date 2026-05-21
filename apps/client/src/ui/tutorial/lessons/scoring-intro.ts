@@ -409,6 +409,13 @@ export const scoringIntroLesson: Lesson = {
   // and we never reach a bot turn (every step stages a resolved
   // state and ends the lesson on a caption tap).
   botScripts: {},
+  // Suppress the full-screen 和 celebration on every example step.
+  // Each step stages `phase: 'resolved'` + a synthetic `lastResult`
+  // to drive the score panel; without this flag the celebration would
+  // fire six times in a row. See WinCelebration's `tutorialSuppresses`
+  // gate. The lesson's pedagogical surface is the ResultPanel
+  // breakdown next to the caption, not the celebration.
+  suppressWinCelebration: true,
   steps: [
     {
       id: 'intro',
@@ -425,6 +432,13 @@ export const scoringIntroLesson: Lesson = {
         body: 'Look at the score panel: this hand is 4 chows + a non-honor pair, won by ron on 5p. The engine credits 平和 (1 faan) for the all-sequence shape, plus 門前清 (1 faan) because nothing was claimed from opponents. The cleanest, lowest-faan win shape — common in casual play.',
       },
       ctaLabel: 'Got it',
+      // Anchor the caption to the staged ResultPanel so the
+      // breakdown stays visible alongside the caption rather than
+      // disappearing under a centered card. The panel only mounts
+      // once `lastResult` is staged by `setupBeforeStep`, so the
+      // first paint of the step shows the centered fallback for one
+      // frame; the next frame re-anchors to the panel rect.
+      targetId: 'result-panel',
       setupBeforeStep: (state) => stageResolvedWin(state, PINGHU_HAND),
     },
     {
@@ -434,6 +448,7 @@ export const scoringIntroLesson: Lesson = {
         body: 'Same idea, opposite extreme: 4 triplets + a pair. The exposed 9-sou peng on the left was claimed from another seat, so the engine credits 對對和 (3 faan) but not 門前清. Three times the weight of a plain 平和 — triplets are stronger than chows in HK scoring.',
       },
       ctaLabel: 'Got it',
+      targetId: 'result-panel',
       setupBeforeStep: (state) => stageResolvedWin(state, TOITOI_HAND),
     },
     {
@@ -443,6 +458,7 @@ export const scoringIntroLesson: Lesson = {
         body: "All man tiles plus a single honor pair. One suit + honors only = 混一色 (3 faan). The engine also credits 門前清 (1 faan) for the concealed shape. Building toward a single suit is one of the easier ways to push your faan up — every tile of another suit becomes a discard you'd rather not draw.",
       },
       ctaLabel: 'Got it',
+      targetId: 'result-panel',
       setupBeforeStep: (state) => stageResolvedWin(state, HUN_YISE_HAND),
     },
     {
@@ -452,6 +468,7 @@ export const scoringIntroLesson: Lesson = {
         body: "Same idea as 混一色, but no honor tiles at all — every tile in the hand is pin. 清一色 weighs in at 7 faan, much harder to build because you can't fall back on dragons or winds. Plus 門前清 (1 faan) for staying concealed. A big-deck swing when it lands.",
       },
       ctaLabel: 'Got it',
+      targetId: 'result-panel',
       setupBeforeStep: (state) => stageResolvedWin(state, QING_YISE_HAND),
     },
     {
@@ -461,6 +478,7 @@ export const scoringIntroLesson: Lesson = {
         body: "Same all-chow shape as example 1, but this time you drew your own winning tile (9m) off the wall instead of claiming it off someone's discard. The engine adds 自摸 (1 faan) on top of 平和 + 門前清 — three small patterns stacking. Self-draws are worth more because you're not at the mercy of opponents' discards.",
       },
       ctaLabel: 'Got it',
+      targetId: 'result-panel',
       setupBeforeStep: (state) => stageResolvedWin(state, ZIMO_HAND),
     },
     {
@@ -470,6 +488,7 @@ export const scoringIntroLesson: Lesson = {
         body: "An all-chow self-draw — but the wall is empty. The very last tile from the wall completed your hand, and the engine credits 海底撈月 (1 faan) on top of 自摸 + 平和 + 門前清. Reading 'how many tiles are left' becomes a real scoring lever as the wall winds down.",
       },
       ctaLabel: 'Got it',
+      targetId: 'result-panel',
       setupBeforeStep: (state) => stageResolvedWin(state, HAITEI_HAND),
     },
     {

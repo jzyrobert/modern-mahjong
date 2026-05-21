@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { LobbyState } from '../../state/game';
 import type { FeltSkin } from '../../state/game';
 import { ResultPanel } from '../ResultPanel';
+import { TutorialTarget } from '../tutorial/TargetRegistry';
 import { ChatBubbles } from './ChatBubbles';
 import { ClaimAnnouncementToast } from './ClaimAnnouncementToast';
 import { ClaimMissedToast } from './ClaimMissedToast';
@@ -280,7 +281,15 @@ export function MobileShell(props: MobileShellProps) {
               padding: 16,
             }}
           >
-            <ResultPanel onAction={onAction} mySeat={seat} isHost={isHost} onLeave={onLeave} />
+            {/* Wrap in TutorialTarget so the `scoring-intro` /
+                `yaku-gallery` lessons can anchor their captions to
+                the panel rect rather than overlapping it with a
+                centered card. The target only registers while
+                `state.lastResult` is set (this branch only renders
+                in that case), so the rect mounts/unmounts cleanly. */}
+            <TutorialTarget id="result-panel">
+              <ResultPanel onAction={onAction} mySeat={seat} isHost={isHost} onLeave={onLeave} />
+            </TutorialTarget>
           </ScrollView>
         ) : null}
 
