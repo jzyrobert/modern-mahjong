@@ -21,7 +21,11 @@ import { LESSONS, useTutorial } from '../state/tutorial';
 import type { JoinInfo } from './join-info';
 import { getActiveLanHostBridge, stopLanHostBridge } from './lan-host-bridge';
 import { resolveServerHost } from './server-host';
-import { type SoloTransportControls, createSoloTransport } from './solo-transport';
+import {
+  type SoloTransportControls,
+  applyTestWallDepth,
+  createSoloTransport,
+} from './solo-transport';
 import {
   type Transport,
   type TransportStatus,
@@ -246,7 +250,14 @@ export function TransportProvider({ children }: { children: ReactNode }) {
         lesson.seed,
         lesson.dealer,
       ).state;
-      const tutorialState = lesson.prepareState ? lesson.prepareState(baseState) : baseState;
+      const preparedState = lesson.prepareState ? lesson.prepareState(baseState) : baseState;
+      // Optional wall-depth truncation via the `__MAHJONG_TEST_WALL_DEPTH__`
+      // global. The `drawn-game` lesson uses this so the wall exhausts
+      // in a handful of turns instead of the ~17 minutes a natural drain
+      // would take. Applied AFTER prepareState so a lesson hook still
+      // owns the rest of the engine-state mutation; see
+      // `applyTestWallDepth` for the slice contract.
+      const tutorialState = applyTestWallDepth(preparedState);
       // Force every bot to `passive` for the duration of the lesson —
       // a heuristic bot might claim or self-draw mid-walkthrough,
       // which would invalidate the script's predicates. The user's
@@ -364,9 +375,15 @@ export function TransportProvider({ children }: { children: ReactNode }) {
     const w = globalThis as {
       __MAHJONG_TEST_BOT_SCRIPTS__?: unknown;
       __MAHJONG_TUTORIAL_FORCE_PASS__?: boolean | undefined;
+      __MAHJONG_TEST_WALL_DEPTH__?: number | undefined;
     };
     w.__MAHJONG_TEST_BOT_SCRIPTS__ = undefined;
     w.__MAHJONG_TUTORIAL_FORCE_PASS__ = undefined;
+    // The `drawn-game` lesson pins the wall to a small depth via this
+    // global; clear unconditionally on teardown so a follow-up regular
+    // solo match doesn't inherit the tiny wall and end after a couple
+    // of turns. Mirrors the bot-scripts cleanup just above.
+    w.__MAHJONG_TEST_WALL_DEPTH__ = undefined;
     setTransport(null);
     setMatchCode(null);
     setStatus('idle');
