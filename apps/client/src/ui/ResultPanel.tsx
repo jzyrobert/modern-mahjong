@@ -110,7 +110,13 @@ function WinningHand({ winner, winningTile }: { winner: Seat; winningTile: MTile
   const concealed = sortHand(state.hands[winner]);
   const melds = state.melds[winner];
   return (
-    <View style={{ gap: 6, marginTop: 4 }}>
+    <View
+      // `testID` so the scoring-intro / yaku-gallery regression
+      // spec can assert the winning-hand row is on-screen and not
+      // covered by the tutorial caption card.
+      testID="winning-hand"
+      style={{ gap: 6, marginTop: 4 }}
+    >
       {melds.length > 0 ? <MeldStrip melds={melds} tileWidth={22} tileHeight={30} /> : null}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 3, alignItems: 'center' }}>
         {concealed.map((t) => {

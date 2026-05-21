@@ -286,10 +286,23 @@ export function MobileShell(props: MobileShellProps) {
                 the panel rect rather than overlapping it with a
                 centered card. The target only registers while
                 `state.lastResult` is set (this branch only renders
-                in that case), so the rect mounts/unmounts cleanly. */}
-            <TutorialTarget id="result-panel">
-              <ResultPanel onAction={onAction} mySeat={seat} isHost={isHost} onLeave={onLeave} />
-            </TutorialTarget>
+                in that case), so the rect mounts/unmounts cleanly.
+                On landscape phones the panel is capped to ~480 px
+                wide so the tutorial caption has a clear side strip
+                to dock into without occluding the winning-hand row
+                at the top of the panel. Portrait stays full-width
+                — its panel content (large win heading + wide 13-
+                tile concealed row + rule grid) reads cleanest
+                using the full viewport, and the caption falls back
+                to a bottom-dock that leaves the panel's top
+                exposed. */}
+            <View
+              style={isLandscape ? { alignSelf: 'center', maxWidth: 440, width: '100%' } : null}
+            >
+              <TutorialTarget id="result-panel">
+                <ResultPanel onAction={onAction} mySeat={seat} isHost={isHost} onLeave={onLeave} />
+              </TutorialTarget>
+            </View>
           </ScrollView>
         ) : null}
 

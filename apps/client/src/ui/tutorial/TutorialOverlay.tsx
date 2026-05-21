@@ -107,7 +107,7 @@ export function TutorialOverlay() {
   // off-screen by) new tiles. Anchoring to a fixed edge keeps the
   // caption stable regardless of how the targeted element resizes.
   //
-  // Heuristic: dock at whichever screen edge has more vertical
+  // Heuristic: dock at whichever screen edge has the most clear
   // space free of the halo. An earlier upper-third check correctly
   // bottom-docked for small chrome targets and top-docked for the
   // hand / claim bar, but failed for the portrait discard pool: the
@@ -119,19 +119,128 @@ export function TutorialOverlay() {
   // hugs the screen top, and keeps top-docking the user's hand
   // (which sits at the very bottom). Without a target, centre
   // vertically.
+  //
+  // For tall, near-screen-centred halos (the `result-panel` on
+  // portrait + landscape phones, where the ResultPanel's centred
+  // card eats most of the vertical space) neither top- nor bottom-
+  // dock can place the caption without overlapping the panel — its
+  // winning-hand row sits at the top of the panel, so a top-docked
+  // caption hides exactly the content the scoring lesson wants the
+  // user to see. When the wider horizontal axis has more clear space
+  // beside the halo than the vertical axis has above or below it,
+  // dock the caption to the side instead. The side dock pins the
+  // caption to a clear strip of felt, leaving the entire halo
+  // (winning hand + score breakdown + start-next-hand row) visible.
   const CAPTION_HEIGHT = 160;
+  // Minimum width a side-dock caption stays readable at. Below this
+  // the card wraps so aggressively (Chinese-glyph headings, mixed
+  // glyph + ASCII body copy) that the side dock buys nothing over a
+  // partially-overlapping vertical dock. Tuned to the landscape-
+  // phone ResultPanel case: 852 px wide minus a ~480 px centred
+  // panel leaves a ~186 px strip on either side, just clearing the
+  // floor with a tight gap.
+  const SIDE_CAPTION_MIN_WIDTH = 160;
   const EDGE_GAP = 60;
-  let captionTop: number;
+  const SIDE_GAP = 12;
+
+  type Dock =
+    | { kind: 'top' | 'bottom'; top: number }
+    | { kind: 'left' | 'right'; top: number; width: number };
+  let dock: Dock;
   if (!halo) {
-    captionTop = Math.max(40, window.height / 2 - CAPTION_HEIGHT / 2);
+    dock = { kind: 'top', top: Math.max(40, window.height / 2 - CAPTION_HEIGHT / 2) };
   } else {
     const spaceAbove = halo.top;
     const spaceBelow = window.height - (halo.top + halo.height);
-    const dockBottom = spaceBelow > spaceAbove;
-    captionTop = dockBottom
-      ? Math.max(EDGE_GAP, window.height - EDGE_GAP - CAPTION_HEIGHT)
+    const spaceLeft = halo.left;
+    const spaceRight = window.width - (halo.left + halo.width);
+
+    // Pick the better vertical edge with the *original* "more
+    // vertical space wins" rule (PR #348). Equal space tie-breaks
+    // to top-dock (strict-greater on spaceBelow), matching the
+    // pre-PR behaviour exactly so existing tutorial steps render
+    // unchanged.
+    // `own-hand` (very bottom of screen) → spaceAbove >> spaceBelow
+    // → top-dock. `tsumo-button` (chrome at top) → spaceBelow >>
+    // spaceAbove → bottom-dock. `result-panel` on portrait phones
+    // → near-equal spaces, ties to top-dock by default; the
+    // overlap-tolerance escape hatch below promotes it to a side
+    // or bottom dock when the top dock would hide load-bearing
+    // content.
+    const verticalDockBottom = spaceBelow > spaceAbove;
+    const verticalDockTop = verticalDockBottom
+      ? window.height - EDGE_GAP - CAPTION_HEIGHT
       : EDGE_GAP;
+    // How much of the halo would the vertical dock visually
+    // overlap? (caption rect intersected with halo rect, vertical
+    // extent). If the overlap is small the vertical dock is good
+    // enough — keep the existing behaviour unchanged. If the
+    // overlap is large *and* a side strip has comfortable room,
+    // prefer the side dock so the entire halo stays visible.
+    const verticalCaptionBottom = verticalDockTop + CAPTION_HEIGHT;
+    const haloBottom = halo.top + halo.height;
+    const verticalOverlap = Math.max(
+      0,
+      Math.min(verticalCaptionBottom, haloBottom) - Math.max(verticalDockTop, halo.top),
+    );
+    // 50 px tolerance — `result-panel` halos with a ~14 px internal
+    // padding can lose ~40 px to the caption (desktop's top-dock
+    // case) without hiding the "Seat 0 wins!" heading or the
+    // winning-hand row that sits beneath it. Above this threshold
+    // the caption starts covering meaningful pedagogical surface
+    // and we either escape sideways (when a side strip fits) or
+    // flip to the opposite vertical edge.
+    const VERTICAL_OVERLAP_TOLERATED = 50;
+
+    // A side dock fits if either side strip is wider than the
+    // readability floor (after a SIDE_GAP padding on each side).
+    const sideSlackNeeded = SIDE_CAPTION_MIN_WIDTH + SIDE_GAP * 2;
+    const leftFits = spaceLeft >= sideSlackNeeded;
+    const rightFits = spaceRight >= sideSlackNeeded;
+    // Side-dock width: fill the strip up to the standard 460 px cap.
+    const sideWidth = (strip: number) =>
+      Math.max(SIDE_CAPTION_MIN_WIDTH, Math.min(460, strip - SIDE_GAP * 2));
+    // Vertically centre the side dock so it lands beside the halo.
+    // Clamp to keep the caption fully on screen for the side branch.
+    const sideTop = Math.max(
+      EDGE_GAP,
+      Math.min(
+        halo.top + halo.height / 2 - CAPTION_HEIGHT / 2,
+        window.height - EDGE_GAP - CAPTION_HEIGHT,
+      ),
+    );
+
+    if (verticalOverlap > VERTICAL_OVERLAP_TOLERATED) {
+      if (leftFits || rightFits) {
+        // Side-dock to whichever strip has more clearance; right
+        // wins ties to keep the caption away from the top-left
+        // win-summary heading on the landscape ResultPanel.
+        if (rightFits && (!leftFits || spaceRight >= spaceLeft)) {
+          dock = { kind: 'right', top: sideTop, width: sideWidth(spaceRight) };
+        } else {
+          dock = { kind: 'left', top: sideTop, width: sideWidth(spaceLeft) };
+        }
+      } else {
+        // No side strip fits — promote a top-dock to a bottom-dock
+        // when overlap is high. The `result-panel` and similar
+        // centred portrait halos render their pedagogically-load-
+        // bearing content (winning hand + faan summary) at the
+        // *top* of the halo; bottom-dock covers buttons + rules
+        // (which the user has already learned by this point in
+        // the curriculum) instead.
+        dock = {
+          kind: 'bottom',
+          top: Math.max(EDGE_GAP, window.height - EDGE_GAP - CAPTION_HEIGHT),
+        };
+      }
+    } else {
+      dock = {
+        kind: verticalDockBottom ? 'bottom' : 'top',
+        top: verticalDockTop,
+      };
+    }
   }
+  const captionTop = dock.top;
 
   // Tap-capture panels — four transparent rectangles around the halo
   // bounding box (or one full-screen panel when no target). They
@@ -221,10 +330,16 @@ export function TutorialOverlay() {
       <View
         style={{
           position: 'absolute',
-          left: 20,
-          right: 20,
+          // Side docks pin to the relevant edge so the caption sits
+          // beside the halo rather than spanning the viewport, with
+          // an explicit width so the inner card's `width: '100%'`
+          // resolves to the strip beside the halo instead of
+          // collapsing.
+          left: dock.kind === 'right' ? undefined : dock.kind === 'left' ? SIDE_GAP : 20,
+          right: dock.kind === 'left' ? undefined : dock.kind === 'right' ? SIDE_GAP : 20,
           top: captionTop,
-          alignItems: 'center',
+          width: dock.kind === 'left' || dock.kind === 'right' ? dock.width : undefined,
+          alignItems: dock.kind === 'left' || dock.kind === 'right' ? 'flex-start' : 'center',
         }}
         pointerEvents="box-none"
       >
