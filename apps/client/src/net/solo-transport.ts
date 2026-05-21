@@ -27,8 +27,22 @@ interface TestBotScript {
    *  When the script is exhausted, every subsequent turn falls back. */
   discards?: Tile[];
   /** Sequence of claims to issue; defaults to all-pass. Same exhaustion
-   *  semantics as `discards`. */
+   *  semantics as `claims`. */
   claims?: Claim[];
+  /** Sequence of promoted-gang declarations to fire on the bot's own
+   *  turn, before the discard pick. Each entry is consumed once and
+   *  matched against the bot's melds (must hold a `peng` of the
+   *  target face) AND the bot's current hand (must contain a tile of
+   *  that face). If the preconditions don't hold, the entry stays
+   *  queued and the bot falls through to `pickDiscard` for that turn.
+   *
+   *  The existing `pickClaim` shim only fires during the
+   *  `awaitingClaims` window, so it can't reach the own-turn
+   *  `declareGangPromoted` path in `packages/game-logic/src/actions.ts:557`.
+   *  This slot is the bot-side analogue — consumed inside the bot
+   *  pacing loop's draw-then-pause-then-act block (`driveBots` below),
+   *  used by the `robbing-kong` lesson to set up the rob window. */
+  promotions?: { tile: Tile }[];
 }
 type TestBotScripts = Partial<Record<Seat, TestBotScript>>;
 
@@ -419,6 +433,42 @@ export function createSoloTransport(opts: SoloOptions): Transport & SoloTranspor
           return;
         } catch (e) {
           if (!(e instanceof IllegalActionError)) throw e;
+        }
+        // Scripted own-turn promoted gang. Consumed BEFORE pickDiscard so
+        // a lesson can engineer the rob-the-kong flow: the bot has a
+        // pre-existing peng meld + the matching fourth tile in hand,
+        // and we want it to promote instead of discarding. The script
+        // entry is popped only when the preconditions hold (peng of
+        // the face is present in melds AND a copy of the face is in
+        // hand); otherwise it stays queued and we fall through to a
+        // normal discard for this turn. The existing pickClaim /
+        // pickDiscard shims can't reach this path — promoted-gang
+        // fires from `actions.ts:557` on the bot's own turn, after a
+        // draw and before any discard would be picked.
+        const script = globalThis.__MAHJONG_TEST_BOT_SCRIPTS__?.[turnSeat];
+        const nextPromotion = script?.promotions?.[0];
+        if (nextPromotion) {
+          const promoFace = nextPromotion.tile;
+          const hasMatchingPeng = state.melds[turnSeat].some(
+            (m) => m.kind === 'peng' && m.tiles.some((t) => sameFace(t, promoFace)),
+          );
+          const hasMatchingTile = state.hands[turnSeat].some((t) => sameFace(t, promoFace));
+          if (hasMatchingPeng && hasMatchingTile) {
+            // Consume the entry off the queue. Mutating the live array
+            // is fine — we own the script object via `__MAHJONG_TEST_BOT_SCRIPTS__`
+            // and the same shape is read again on the bot's next turn.
+            script.promotions!.shift();
+            try {
+              applyAction({ t: 'declareGangPromoted', seat: turnSeat, tile: promoFace });
+              driveBots();
+              return;
+            } catch (e) {
+              if (!(e instanceof IllegalActionError)) throw e;
+              // Promotion threw IllegalActionError despite the precond
+              // check above — treat as "fall through to pickDiscard"
+              // so the bot turn doesn't hang.
+            }
+          }
         }
         const tile = turnBot.pickDiscard({ state, seat: turnSeat });
         applyAction({ t: 'discard', seat: turnSeat, tile });

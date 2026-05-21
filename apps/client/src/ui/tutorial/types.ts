@@ -17,11 +17,36 @@ export type LessonClaim =
   | { kind: 'gang'; tile: Tile }
   | { kind: 'hu'; selfDraw: boolean };
 
+/**
+ * Bot-side own-turn promoted-gang scripting. Consumed by
+ * `solo-transport.ts`'s bot pacing loop before `pickDiscard` fires:
+ * when it's the bot's turn, the bot has already drawn, the bot holds
+ * a `peng` meld matching `tile`, AND the bot's hand contains a tile
+ * of that face, the scripted entry is popped and a
+ * `declareGangPromoted` action is applied instead of a discard. This
+ * is the bot-side analogue of `LessonClaim` — `__MAHJONG_TEST_BOT_SCRIPTS__`
+ * already covers `pickClaim` / `pickDiscard`, but neither hook fires
+ * on the own-turn promotion path (`actions.ts:557`), so the rob-the-
+ * kong lesson needs this separate slot.
+ */
+export interface LessonPromotion {
+  /** Face the bot will promote (the existing peng must already
+   *  match this face). */
+  tile: Tile;
+}
+
 export interface LessonBotScript {
   /** Sequence of tiles the bot will discard, in order. */
   discards?: Tile[];
   /** Sequence of claims the bot will issue when given a chance. */
   claims?: LessonClaim[];
+  /** Sequence of promoted-gang declarations the bot will fire on
+   *  its own turn, before a discard pick. Each entry is consumed
+   *  exactly once; when the bot's hand and melds satisfy the
+   *  preconditions for the next entry the bot fires
+   *  `declareGangPromoted`. Otherwise the entry stays queued and
+   *  the bot falls through to `pickDiscard` as usual. */
+  promotions?: LessonPromotion[];
 }
 
 export type LessonBotScripts = Partial<Record<Seat, LessonBotScript>>;
@@ -71,6 +96,15 @@ export interface Lesson {
    *  welcome caption. The basics lesson sets it true since it
    *  introduces the dice as part of the core flow.  */
   showOpeningRolls?: boolean;
+  /** Per-lesson `faanMin` override. Defaults to 0 (the standard
+   *  tutorial floor — any structurally winning shape is legal). The
+   *  `robbing-kong` lesson raises this to `3` so the user's
+   *  intermediate ron on the peng-trigger face falls below the
+   *  floor (their concealed-hand `門前清 + 平和` ron scores 2 faan;
+   *  faanMin: 3 gates it out) but the rob — which adds +1 搶槓 —
+   *  clears at exactly 3 faan. Constrained to the same union as
+   *  `RuleConfig['faanMin']` so the value is wire-compatible. */
+  faanMin?: 0 | 1 | 3 | 5;
   /** Hook fired exactly once, after the engine first observes a
    *  discard from seat 0. Lets a lesson rewrite its bot scripts
    *  based on the user's remaining hand — useful when the chi /
@@ -80,6 +114,17 @@ export interface Lesson {
    *  transport reads it on every bot turn so updates land on the
    *  next pick. */
   setupAfterFirstDiscard?: (state: GameState) => void;
+  /** One-shot transform applied to the engine state after
+   *  `startHand` but before `<Match>` mounts the live transport.
+   *  Used by lessons whose precondition can't be expressed via a
+   *  seed alone — e.g. `robbing-kong` needs seat 1 to already hold a
+   *  peng meld of the user's wait face when the lesson begins, and
+   *  the wall-position-of-fourth-tile constraint pushes the
+   *  seed-search hit-rate below 1-in-millions in practice (the bot
+   *  rarely draws the 4th copy of W on its first own-turn). Returns
+   *  the patched state; consumed in `joinSoloTutorial` (in
+   *  `transport-context.tsx`). Most lessons leave this undefined. */
+  prepareState?: (state: GameState) => GameState;
   steps: LessonStep[];
 }
 
