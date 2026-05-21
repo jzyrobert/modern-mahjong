@@ -231,7 +231,22 @@ export function TransportProvider({ children }: { children: ReactNode }) {
         turnTimeoutMs: 0,
         faanMin: 0 as const,
       };
-      const tutorialState = startHand(emptyState(tutorialRules), lesson.seed, lesson.dealer).state;
+      // Tutorials can override the per-lesson faanMin via the
+      // optional Lesson.faanMin field — the rob-the-kong lesson
+      // raises it so the user's intermediate ron on the peng
+      // discard falls below the floor and the engine pre-passes
+      // them (their concealed-hand ron is 1 faan, faanMin: 2 gates
+      // it out; the rob, with its +1 搶槓 faan, clears).
+      const rulesWithLessonFaan =
+        typeof lesson.faanMin === 'number'
+          ? { ...tutorialRules, faanMin: lesson.faanMin }
+          : tutorialRules;
+      const baseState = startHand(
+        emptyState(rulesWithLessonFaan),
+        lesson.seed,
+        lesson.dealer,
+      ).state;
+      const tutorialState = lesson.prepareState ? lesson.prepareState(baseState) : baseState;
       // Force every bot to `passive` for the duration of the lesson —
       // a heuristic bot might claim or self-draw mid-walkthrough,
       // which would invalidate the script's predicates. The user's

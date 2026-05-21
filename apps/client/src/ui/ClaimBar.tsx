@@ -82,11 +82,23 @@ export function ClaimBar({ onAction, seat, orientation = 'portrait' }: ClaimBarP
       allowSpecial,
     });
     if (winnable) {
+      // Promoted-gang rob windows boost the score by +1 faan (搶槓);
+      // `state.pendingPromotedGang` being set is the engine signal
+      // that we're in a robWindow. Without this, the user's hu CTA
+      // hides on rob-only-viable hands (the regular ron score falls
+      // below `faanMin` but the rob clears the floor) — see
+      // `apps/client/src/ui/tutorial/lessons/robbing-kong.ts` for the
+      // case that surfaced this gap. Mirrors `canScoredHu` in
+      // `packages/game-logic/src/claims.ts` so the engine's pre-pass
+      // gate (`hasMeaningfulClaim`) and the UI's CTA gate use the
+      // same score.
+      const robbingKong = state.pendingPromotedGang !== undefined;
       const score = scoreHand({
         state,
         winner: seat,
         winningTile: state.lastDiscard.tile,
         selfDraw: false,
+        robbingKong,
       });
       if (score.faan >= state.rules.faanMin) {
         legal.add('hu');
