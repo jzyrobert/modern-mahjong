@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, Text, View, useWindowDimensions } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { useTransport } from '../../net/transport-context';
@@ -66,6 +66,33 @@ export function TutorialOverlay() {
     w: window.width,
     h: window.height,
   });
+  // Measured caption-card height. Driven by the inner card's
+  // `onLayout` below. The placement clamp at the bottom of the
+  // caption-positioning block reads this to guarantee the entire
+  // card (including the "Got it" / "Done" CTA) stays inside the
+  // viewport. `null` = not yet measured; falls back to a generous
+  // estimate that's larger than the largest real card we've seen
+  // on phone shells, so the first-paint clamp errs on the side of
+  // not pushing content off-screen.
+  const [captionHeight, setCaptionHeight] = useState<number | null>(null);
+  // Invalidate the measured height when the step or window
+  // dimensions change. The card's content (title + body) is
+  // step-specific, and its width — which drives wrap height —
+  // depends on which dock the placement logic chose (which in
+  // turn depends on window dimensions). Without this reset a
+  // desktop → portrait resize would carry a too-short desktop
+  // measurement through one render and clip the CTA on the new
+  // viewport. PR #426 hit a similar re-measure trap for the
+  // target rect; same fix shape here.
+  const stepId = active?.step.id ?? null;
+  // Deps are intentional trigger keys, not read inside the effect:
+  // the effect resets the measured caption height whenever the
+  // active step or window dimensions change. Same pattern as
+  // `HandTile.tsx`'s draw-animation effect.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-fire-key deps
+  useEffect(() => {
+    setCaptionHeight(null);
+  }, [stepId, window.width, window.height]);
 
   // Post-completion prompt takes precedence — the active step is
   // already cleared by `advance()` when the lesson finished, and
@@ -131,7 +158,23 @@ export function TutorialOverlay() {
   // dock the caption to the side instead. The side dock pins the
   // caption to a clear strip of felt, leaving the entire halo
   // (winning hand + score breakdown + start-next-hand row) visible.
+  // Two card-height knobs:
+  //   - `CAPTION_HEIGHT`: a fixed estimate used by the placement
+  //     heuristic (which edge to dock against). 160 px matches the
+  //     desktop top-dock card; keeping the estimate at the original
+  //     PR #432 value preserves every dock decision the heuristic
+  //     made before this fix landed.
+  //   - `clampHeight`: the LIVE measurement from `onLayout`. Real
+  //     cards range from ~120 px (desktop) to ~330 px (landscape
+  //     side-dock where the body copy stacks tall in a narrow
+  //     column). Used ONLY by the final viewport clamp so a tall
+  //     card pinned to a high `top` gets pulled up enough that the
+  //     CTA stays on-screen. Falling back to an over-estimate (320)
+  //     on first paint keeps the CTA on-screen until `onLayout`
+  //     fires, at the cost of a tiny over-shift on the first frame.
   const CAPTION_HEIGHT = 160;
+  const CLAMP_HEIGHT_ESTIMATE = 320;
+  const clampHeight = captionHeight ?? CLAMP_HEIGHT_ESTIMATE;
   // Minimum width a side-dock caption stays readable at. Below this
   // the card wraps so aggressively (Chinese-glyph headings, mixed
   // glyph + ASCII body copy) that the side dock buys nothing over a
@@ -141,6 +184,11 @@ export function TutorialOverlay() {
   // floor with a tight gap.
   const SIDE_CAPTION_MIN_WIDTH = 160;
   const EDGE_GAP = 60;
+  // Minimum padding to keep between the caption's top/bottom edges
+  // and the viewport. Smaller than EDGE_GAP — when the card is tall
+  // enough that EDGE_GAP would push the CTA out we trade the
+  // top-of-screen breathing room for keeping the button on-screen.
+  const VIEWPORT_PADDING = 8;
   const SIDE_GAP = 12;
 
   type Dock =
@@ -201,14 +249,10 @@ export function TutorialOverlay() {
     const sideWidth = (strip: number) =>
       Math.max(SIDE_CAPTION_MIN_WIDTH, Math.min(460, strip - SIDE_GAP * 2));
     // Vertically centre the side dock so it lands beside the halo.
-    // Clamp to keep the caption fully on screen for the side branch.
-    const sideTop = Math.max(
-      EDGE_GAP,
-      Math.min(
-        halo.top + halo.height / 2 - CAPTION_HEIGHT / 2,
-        window.height - EDGE_GAP - CAPTION_HEIGHT,
-      ),
-    );
+    // The final clamp below keeps the caption fully on screen for
+    // every branch (side + vertical) — so this is just the
+    // preferred position before clamping.
+    const sideTop = halo.top + halo.height / 2 - CAPTION_HEIGHT / 2;
 
     if (verticalOverlap > VERTICAL_OVERLAP_TOLERATED) {
       if (leftFits || rightFits) {
@@ -230,7 +274,7 @@ export function TutorialOverlay() {
         // the curriculum) instead.
         dock = {
           kind: 'bottom',
-          top: Math.max(EDGE_GAP, window.height - EDGE_GAP - CAPTION_HEIGHT),
+          top: window.height - EDGE_GAP - CAPTION_HEIGHT,
         };
       }
     } else {
@@ -240,7 +284,22 @@ export function TutorialOverlay() {
       };
     }
   }
-  const captionTop = dock.top;
+  // Final viewport clamp — the hard invariant is that the entire
+  // caption card (including its CTA button) must stay on-screen.
+  // Uses `clampHeight` (live measurement) so the clamp tracks the
+  // card's actual size, not the placement-heuristic estimate. The
+  // placement above runs against the fixed 160-px estimate to keep
+  // its dock decisions stable across all viewports; the clamp here
+  // is what guarantees the CTA visibility invariant.
+  //
+  // If the card is taller than the viewport the clamp pins the top
+  // to VIEWPORT_PADDING — the bottom will still clip, but in
+  // practice no real lesson copy exceeds the phone-portrait
+  // viewport. The clamp may force the caption to overlap the halo
+  // by a few pixels (especially on landscape where vertical space
+  // is genuinely scarce); CTA visibility trumps non-overlap.
+  const maxTop = Math.max(VIEWPORT_PADDING, window.height - clampHeight - VIEWPORT_PADDING);
+  const captionTop = Math.max(VIEWPORT_PADDING, Math.min(dock.top, maxTop));
 
   // Tap-capture panels — four transparent rectangles around the halo
   // bounding box (or one full-screen panel when no target). They
@@ -347,6 +406,16 @@ export function TutorialOverlay() {
           // Tap-eater so taps on the card don't fall through to the
           // scrim and pass to whatever sits underneath.
           pointerEvents="auto"
+          // Measure the real card height each layout pass — the
+          // body copy width depends on the dock (side dock narrows
+          // to ~180 px and stacks taller), and the placement clamp
+          // above needs a live measurement to keep the CTA on
+          // screen. Same identity-check guard as the overlay
+          // wrapper so a no-op layout pass doesn't re-render.
+          onLayout={(e) => {
+            const { height } = e.nativeEvent.layout;
+            setCaptionHeight((prev) => (prev === height ? prev : height));
+          }}
           style={{
             maxWidth: 460,
             width: '100%',

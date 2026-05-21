@@ -300,6 +300,45 @@ test.describe('tutorial: yaku-gallery', () => {
     expect(completed).toContain('yaku-gallery');
   });
 
+  test('caption CTA stays inside the viewport across portrait / landscape / desktop', async ({
+    page,
+  }) => {
+    // Regression guard for the "Got it" CTA clipping bug fixed in
+    // the PR after #432: the side-dock placement on landscape (and
+    // the bottom-dock placement on portrait) was computed against
+    // a 160 px placeholder while the real card runs taller — the
+    // CTA fell off the bottom of the viewport. The yaku-gallery
+    // lesson reuses the same `result-panel` targeted captions as
+    // scoring-intro, so the same placement clamp applies. The
+    // hard invariant is that the entire CTA button rect stays
+    // inside the viewport so the user can always advance.
+    await page.goto('/');
+    await expect(page.getByRole('heading', { name: 'Modern Mahjong' })).toBeVisible();
+    await page.getByLabel('Start Yaku gallery').click();
+    await page.getByRole('button', { name: 'Got it' }).click();
+    // Step 2 — first example, seven-pairs.
+    await expect(page.getByRole('heading', { name: /七對子/ })).toBeVisible();
+
+    const viewports = [
+      { w: 393, h: 852, name: 'portrait' },
+      { w: 852, h: 393, name: 'landscape' },
+      { w: 1280, h: 800, name: 'desktop' },
+    ];
+    for (const vp of viewports) {
+      await page.setViewportSize({ width: vp.w, height: vp.h });
+      // Frame for overlay re-measure (target rect + caption-height
+      // invalidation effects).
+      await page.waitForTimeout(400);
+      const cta = await page.getByRole('button', { name: 'Got it' }).boundingBox();
+      expect(cta, `cta box @ ${vp.name}`).not.toBeNull();
+      const b = cta!;
+      expect(
+        b.y >= 0 && b.x >= 0 && b.x + b.width <= vp.w && b.y + b.height <= vp.h,
+        `CTA "Got it" clipped at ${vp.name} ${vp.w}x${vp.h}: cta=${JSON.stringify(b)}`,
+      ).toBe(true);
+    }
+  });
+
   test('re-entry after completion: same seven staged hands re-appear deterministically', async ({
     page,
   }) => {
