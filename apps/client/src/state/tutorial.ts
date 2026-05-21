@@ -13,6 +13,7 @@ import { safetyLesson } from '../ui/tutorial/lessons/safety';
 import { scoringIntroLesson } from '../ui/tutorial/lessons/scoring-intro';
 import { waitShapesLesson } from '../ui/tutorial/lessons/wait-shapes';
 import { winLesson } from '../ui/tutorial/lessons/win';
+import { yakuGalleryLesson } from '../ui/tutorial/lessons/yaku-gallery';
 import type { Lesson } from '../ui/tutorial/types';
 import { useGame } from './game';
 
@@ -38,6 +39,7 @@ export const LESSONS: Record<string, Lesson> = {
   [drawnGameLesson.id]: drawnGameLesson,
   [waitShapesLesson.id]: waitShapesLesson,
   [scoringIntroLesson.id]: scoringIntroLesson,
+  [yakuGalleryLesson.id]: yakuGalleryLesson,
   [stubLesson.id]: stubLesson,
 };
 
@@ -64,6 +66,7 @@ export const LESSON_ORDER: readonly string[] = [
   drawnGameLesson.id,
   waitShapesLesson.id,
   scoringIntroLesson.id,
+  yakuGalleryLesson.id,
 ];
 
 /**
