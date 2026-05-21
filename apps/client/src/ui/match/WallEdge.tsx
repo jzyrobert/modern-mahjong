@@ -4,6 +4,7 @@ import { Animated, Easing, type LayoutChangeEvent, Pressable, Text, View } from 
 import { useGame } from '../../state/game';
 import { Tile } from '../Tile';
 import { PULSE_TEMPO, usePulse } from '../animations';
+import { TutorialTarget } from '../tutorial/TargetRegistry';
 import type { Position } from './seatColor';
 import { TILE_BACK_SKINS } from './skins';
 import type { WallSlot } from './wallLayout';
@@ -421,7 +422,15 @@ function NextDrawSlot({
     },
     [setWallSourceContext, landscape],
   );
-  return (
+  // Only register the `wall-draw` tutorial target on the seat whose
+  // next-draw stack is the user's (`enableDrawTestId` flips true for
+  // the user's draw turn) — otherwise the registry would carry stale
+  // wrappers for every seat's wall edge on every render. The wrapper
+  // is a `<TutorialTarget>` so any tutorial step anchored on
+  // `wall-draw` gets a real halo (instead of falling back to the
+  // centred caption + full-screen scrim, which would block the very
+  // tap the user is being prompted to make).
+  const pressable = (
     <Pressable
       onPress={onPress}
       testID={enableDrawTestId ? 'wall-draw-next' : undefined}
@@ -472,6 +481,7 @@ function NextDrawSlot({
       </PulseHalo>
     </Pressable>
   );
+  return enableDrawTestId ? <TutorialTarget id="wall-draw">{pressable}</TutorialTarget> : pressable;
 }
 
 function tileLong(stackDir: 'row' | 'column', tileW: number, tileH: number): number {

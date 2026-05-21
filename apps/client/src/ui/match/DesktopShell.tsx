@@ -182,9 +182,7 @@ export function DesktopShell(props: DesktopShellProps) {
           {promotedGangTile ? (
             <TutorialTarget id="promote-gang">
               <PrimaryButton
-                onPress={() =>
-                  onAction({ t: 'declareGangPromoted', seat, tile: promotedGangTile })
-                }
+                onPress={() => onAction({ t: 'declareGangPromoted', seat, tile: promotedGangTile })}
               >
                 Promote gang
               </PrimaryButton>
