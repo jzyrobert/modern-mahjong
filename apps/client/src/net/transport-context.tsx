@@ -261,8 +261,19 @@ export function TransportProvider({ children }: { children: ReactNode }) {
       // scripts make the global a no-op. The teardown path clears
       // the global so a regular post-lesson solo match doesn't
       // inherit the tutorial's scripts.
-      const w = globalThis as { __MAHJONG_TEST_BOT_SCRIPTS__?: unknown };
+      const w = globalThis as {
+        __MAHJONG_TEST_BOT_SCRIPTS__?: unknown;
+        __MAHJONG_TUTORIAL_FORCE_PASS__?: boolean;
+      };
       w.__MAHJONG_TEST_BOT_SCRIPTS__ = lesson.botScripts;
+      // Force every bot to pass on unscripted claim windows for the
+      // duration of the lesson — without this, `passiveBot.pickClaim`
+      // flips a coin and will peng/gang/hu if it can. A passive bot
+      // holding a pair matching the user's nudged discard (e.g. an
+      // honour pair the peng lesson nudges the user to discard) would
+      // opportunistically peng mid-walkthrough and silently break the
+      // lesson's predicates. Cleared on tutorial teardown below.
+      w.__MAHJONG_TUTORIAL_FORCE_PASS__ = true;
       swap(
         createSoloTransport({
           playerId: getPlayerId(),
@@ -350,8 +361,12 @@ export function TransportProvider({ children }: { children: ReactNode }) {
     // tile). Existing e2e specs that set scripts via page.evaluate
     // do so per-test and never trigger teardown mid-test, so this
     // is safe to wipe.
-    const w = globalThis as { __MAHJONG_TEST_BOT_SCRIPTS__?: unknown };
+    const w = globalThis as {
+      __MAHJONG_TEST_BOT_SCRIPTS__?: unknown;
+      __MAHJONG_TUTORIAL_FORCE_PASS__?: boolean | undefined;
+    };
     w.__MAHJONG_TEST_BOT_SCRIPTS__ = undefined;
+    w.__MAHJONG_TUTORIAL_FORCE_PASS__ = undefined;
     setTransport(null);
     setMatchCode(null);
     setStatus('idle');

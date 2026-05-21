@@ -66,6 +66,15 @@ declare global {
    *  fixed delay (no jitter) — `0` for instant submissions. */
   // eslint-disable-next-line no-var
   var __MAHJONG_TEST_BOT_CLAIM_DELAY_MS__: number | undefined;
+  /** When set by `joinSoloTutorial`, bot `pickClaim` falls through to
+   *  `{ kind: 'pass' }` whenever no scripted claim is queued — instead
+   *  of the passive bot's 50% opportunistic peng/gang/hu roll. Without
+   *  this, a passive bot holding a pair matching the user's nudged
+   *  discard (e.g. an honour pair) can opportunistically peng mid-
+   *  walkthrough and silently break the lesson's predicates. Cleared
+   *  on tutorial teardown alongside `__MAHJONG_TEST_BOT_SCRIPTS__`. */
+  // eslint-disable-next-line no-var
+  var __MAHJONG_TUTORIAL_FORCE_PASS__: boolean | undefined;
 }
 
 interface SoloOptions {
@@ -638,6 +647,14 @@ function withTestScript(seat: Seat, fallback: Bot): Bot {
       const script = globalThis.__MAHJONG_TEST_BOT_SCRIPTS__?.[seat];
       const target = script?.claims?.shift();
       if (target) return target;
+      // Tutorials default every bot to "pass" on unscripted claim
+      // windows. `passiveBot.pickClaim` flips a coin and will peng /
+      // gang / hu if it can — fine for live solo play, fatal for a
+      // walkthrough whose state predicates assume the engineered
+      // discard is the next thing that lands. The lesson explicitly
+      // scripts every claim that should fire; everything else is a
+      // pass.
+      if (globalThis.__MAHJONG_TUTORIAL_FORCE_PASS__) return { kind: 'pass' };
       return fallback.pickClaim(view);
     },
   };

@@ -285,4 +285,62 @@ describe('driveBots synchronous-pass optimization', () => {
     // sentinel timer (the peng stagger).
     expect(setTimeoutCallsAt(SENTINEL_DELAY_MS).length).toBeGreaterThanOrEqual(1);
   });
+
+  /**
+   * Tutorial mode forces every unscripted bot claim to pass. Without
+   * this, the passive bot's 50% opportunistic peng/gang/hu roll can
+   * silently break a lesson — e.g. the peng lesson nudges the user
+   * to discard an honour tile, but a bot holding a pair of that
+   * honour will peng on the coin flip. Sentinel: with the East-peng
+   * setup that drives a non-pass claim in the previous test,
+   * flipping on `__MAHJONG_TUTORIAL_FORCE_PASS__` must drop the
+   * stagger timer count to zero.
+   */
+  it('forces unscripted claims to pass when tutorial mode is active', () => {
+    mathRandomSpy?.mockRestore();
+    mathRandomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.7) as unknown as Spy;
+
+    const base = emptyState(soloRulesFrom());
+    const east1 = honor('E', 0);
+    const east2 = honor('E', 1);
+    const discardEast = honor('E', 2);
+    const seed: GameState = {
+      ...base,
+      phase: 'awaitingClaims',
+      turn: 0,
+      hasDrawn: false,
+      drewThisTurn: false,
+      lastDiscard: { tile: discardEast, from: 0 },
+      hands: { ...base.hands, 1: [east1, east2] },
+      pendingClaims: {
+        discard: { tile: discardEast, from: 0 },
+        deadlineMs: Date.now() - 1,
+        submitted: {},
+      },
+    };
+
+    (globalThis as { __MAHJONG_TUTORIAL_FORCE_PASS__?: boolean }).__MAHJONG_TUTORIAL_FORCE_PASS__ =
+      true;
+    try {
+      const transport = createSoloTransport({
+        playerId: 'p0',
+        displayName: 'You',
+        botSkills: ['passive', 'passive', 'passive'],
+        seedState: seed,
+      });
+      createdTransport = transport;
+      transport.onMessage(() => {});
+
+      vi.advanceTimersByTime(1);
+
+      // With force-pass on, every bot returns `{ kind: 'pass' }`
+      // inline — same fast path as the all-pass test. No stagger
+      // timers fire.
+      expect(setTimeoutCallsAt(SENTINEL_DELAY_MS)).toEqual([]);
+    } finally {
+      (
+        globalThis as { __MAHJONG_TUTORIAL_FORCE_PASS__?: boolean | undefined }
+      ).__MAHJONG_TUTORIAL_FORCE_PASS__ = undefined;
+    }
+  });
 });
