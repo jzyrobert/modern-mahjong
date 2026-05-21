@@ -59,6 +59,11 @@ interface LandscapeShellProps {
   canTsumo: boolean;
   tsumoFaan: number | null;
   concealedGangTile: MTile | null;
+  /** When set, the user holds an existing peng meld of this face AND
+   *  the fourth copy in their concealed hand — surfaces a "Promote
+   *  gang" button next to the tsumo / concealed-gang affordances.
+   *  Dispatches `declareGangPromoted`. */
+  promotedGangTile: MTile | null;
   hasClaimOption: boolean;
   nextDrawerSeat: Seat | null;
   aboutToDraw: boolean;
@@ -121,6 +126,7 @@ export function LandscapeShell({
   canTsumo,
   tsumoFaan,
   concealedGangTile,
+  promotedGangTile,
   hasClaimOption,
   nextDrawerSeat,
   aboutToDraw,
@@ -233,7 +239,7 @@ export function LandscapeShell({
               latestId={latestDiscardId}
             />
           </TutorialTarget>
-          {canTsumo || concealedGangTile ? (
+          {canTsumo || concealedGangTile || promotedGangTile ? (
             <TutorialTarget
               id="tsumo-button"
               style={{
@@ -271,6 +277,17 @@ export function LandscapeShell({
                   >
                     Declare gang
                   </PrimaryButton>
+                ) : null}
+                {promotedGangTile ? (
+                  <TutorialTarget id="promote-gang">
+                    <PrimaryButton
+                      onPress={() =>
+                        onAction({ t: 'declareGangPromoted', seat, tile: promotedGangTile })
+                      }
+                    >
+                      Promote gang
+                    </PrimaryButton>
+                  </TutorialTarget>
                 ) : null}
               </View>
             </TutorialTarget>

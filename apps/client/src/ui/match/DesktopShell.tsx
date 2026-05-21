@@ -40,6 +40,11 @@ interface DesktopShellProps {
    *  Null when `canTsumo` is false. */
   tsumoFaan: number | null;
   concealedGangTile: MTile | null;
+  /** When set, the user holds an existing peng meld of this face AND
+   *  the fourth copy in their concealed hand — surfaces a "Promote
+   *  gang" button next to the tsumo / concealed-gang affordances.
+   *  Dispatches `declareGangPromoted`. */
+  promotedGangTile: MTile | null;
   hasClaimOption: boolean;
   /** Seat that would draw next once claims resolve. Populated only
    *  during `awaitingClaims`. Drives the "next about to draw" gold
@@ -115,6 +120,7 @@ export function DesktopShell(props: DesktopShellProps) {
     canTsumo,
     tsumoFaan,
     concealedGangTile,
+    promotedGangTile,
     hasClaimOption,
     nextDrawerSeat,
     aboutToDraw,
@@ -156,7 +162,7 @@ export function DesktopShell(props: DesktopShellProps) {
   // `DrawCue` here too would surface a second `wall-draw-next`
   // element and break Playwright's strict locator.
   const centerHud: ReactNode =
-    canTsumo || concealedGangTile ? (
+    canTsumo || concealedGangTile || promotedGangTile ? (
       <TutorialTarget id="tsumo-button">
         <View style={{ flexDirection: 'row', gap: 8 }}>
           {canTsumo ? (
@@ -172,6 +178,17 @@ export function DesktopShell(props: DesktopShellProps) {
             >
               Declare gang
             </PrimaryButton>
+          ) : null}
+          {promotedGangTile ? (
+            <TutorialTarget id="promote-gang">
+              <PrimaryButton
+                onPress={() =>
+                  onAction({ t: 'declareGangPromoted', seat, tile: promotedGangTile })
+                }
+              >
+                Promote gang
+              </PrimaryButton>
+            </TutorialTarget>
           ) : null}
         </View>
       </TutorialTarget>

@@ -35,6 +35,11 @@ interface MobileShellProps {
    *  shows a "Declare gang (concealed)" button next to the tsumo
    *  affordance. */
   concealedGangTile: MTile | null;
+  /** When set, the user holds an existing peng meld of this face AND
+   *  the fourth copy is in their concealed hand — surfaces a
+   *  "Promote gang" button next to the tsumo / concealed-gang
+   *  affordances. Dispatches `declareGangPromoted`. */
+  promotedGangTile: MTile | null;
   hasClaimOption: boolean;
   /** Seat that would draw next once claims resolve. Drives the
    *  "next about to draw" gold halo on the next-seat's `OppHandStrip`
@@ -124,6 +129,7 @@ export function MobileShell(props: MobileShellProps) {
     canTsumo,
     tsumoFaan,
     concealedGangTile,
+    promotedGangTile,
     hasClaimOption,
     nextDrawerSeat,
     aboutToDraw,
@@ -175,6 +181,7 @@ export function MobileShell(props: MobileShellProps) {
             canTsumo={canTsumo}
             tsumoFaan={tsumoFaan}
             concealedGangTile={concealedGangTile}
+            promotedGangTile={promotedGangTile}
             hasClaimOption={hasClaimOption}
             nextDrawerSeat={nextDrawerSeat}
             aboutToDraw={aboutToDraw}
@@ -207,6 +214,7 @@ export function MobileShell(props: MobileShellProps) {
             canTsumo={canTsumo}
             tsumoFaan={tsumoFaan}
             concealedGangTile={concealedGangTile}
+            promotedGangTile={promotedGangTile}
             hasClaimOption={hasClaimOption}
             nextDrawerSeat={nextDrawerSeat}
             aboutToDraw={aboutToDraw}
