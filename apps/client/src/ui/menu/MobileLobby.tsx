@@ -180,7 +180,17 @@ export function MobileLobby({ isLandscape }: MobileLobbyProps) {
     replaySummary.streak,
     isLandscape,
   );
-  const tutorialSubtitle = `${completedCount}/${LESSON_ORDER.length} lessons · tap to start`;
+  // Compact "X/N lessons" count replaces the per-lesson green-dots row
+  // that used to live in the SecondaryRow's `trailing` slot. With the
+  // curriculum at 12 lessons (and growing), a dot per lesson overflowed
+  // the row on phone-class viewports — both the ~393 px portrait card
+  // and the ~256 px landscape side-by-side column. The subtitle already
+  // carried the same "5/12" count, so promoting it to the canonical
+  // affordance keeps the row legible without adding a new breakpoint.
+  // Desktop `Lobby.tsx` never rendered dots (it uses a textual subtitle),
+  // so this is a mobile-only change.
+  const tutorialSubtitleLandscape = `${completedCount}/${LESSON_ORDER.length} lessons complete`;
+  const tutorialSubtitle = `${completedCount}/${LESSON_ORDER.length} lessons complete · tap to start`;
   const lanSubtitle = isLandscape ? 'Same Wi-Fi' : 'Same Wi-Fi · no accounts';
 
   // Tutorial card / sheet body — same lesson list either way, so
@@ -334,9 +344,8 @@ export function MobileLobby({ isLandscape }: MobileLobbyProps) {
                   <SecondaryRow
                     icon={<TutorialIcon color={COLORS.ink2} size={18} />}
                     title="Tutorial"
-                    subtitle={`${completedCount}/${LESSON_ORDER.length} lessons`}
+                    subtitle={tutorialSubtitleLandscape}
                     onPress={onToggleTutorial}
-                    trailing={<ProgressDots done={completedCount} total={LESSON_ORDER.length} />}
                   />
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
@@ -388,7 +397,6 @@ export function MobileLobby({ isLandscape }: MobileLobbyProps) {
                   title="Tutorial"
                   subtitle={tutorialSubtitle}
                   onPress={onToggleTutorial}
-                  trailing={<ProgressDots done={completedCount} total={LESSON_ORDER.length} />}
                 />
               )}
               {expandedRow === 'lan' ? (
@@ -736,8 +744,12 @@ interface SecondaryRowProps {
   title: string;
   subtitle: string;
   onPress: () => void;
-  /** Optional trailing slot (used for Tutorial progress dots). The
-   *  chevron is always rendered after this. */
+  /** Optional trailing slot — rendered before the chevron. Currently
+   *  unused (the Tutorial progress dots that lived here were replaced
+   *  by a textual "X/N" subtitle when the curriculum grew past ~8
+   *  lessons and the dot row stopped fitting on phone viewports), but
+   *  kept as an extension point for other rows that want a small
+   *  trailing indicator. */
   trailing?: ReactNode;
 }
 
@@ -1045,29 +1057,6 @@ function CompactGhost({ label, onPress }: { label: string; onPress?: () => void 
     >
       <Text style={{ color: COLORS.ink, fontWeight: '700', fontSize: 12 }}>{label}</Text>
     </Pressable>
-  );
-}
-
-// ─── Progress dots ──────────────────────────────────────────────────
-
-function ProgressDots({ done, total }: { done: number; total: number }) {
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-      {Array.from({ length: total }, (_, i) => (
-        <View
-          // biome-ignore lint/suspicious/noArrayIndexKey: fixed-length count, dot order is positional
-          key={i}
-          style={{
-            width: 8,
-            height: 8,
-            borderRadius: 4,
-            backgroundColor: i < done ? COLORS.success : COLORS.creamLow,
-            borderColor: i < done ? 'transparent' : COLORS.hairline,
-            borderWidth: i < done ? 0 : 1,
-          }}
-        />
-      ))}
-    </View>
   );
 }
 
