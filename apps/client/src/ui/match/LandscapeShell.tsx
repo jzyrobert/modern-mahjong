@@ -604,20 +604,22 @@ function LandscapeInfoRail({
           need to read as time-critical actions over the centre of
           the table, not stacked at the bottom of an info card. */}
       {myTurn && readyWaits.length > 0 ? (
-        <View style={{ gap: 4 }}>
-          <Text style={RAIL_SECTION_LABEL_STYLE}>TENPAI · WAITING ON</Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 3 }}>
-            {readyWaits.map((tile, i) => (
-              <Tile
-                // biome-ignore lint/suspicious/noArrayIndexKey: ready-wait set is positional, deduped upstream
-                key={i}
-                tile={tile}
-                width={16}
-                height={22}
-              />
-            ))}
+        <TutorialTarget id="ready-hand-badge">
+          <View style={{ gap: 4 }}>
+            <Text style={RAIL_SECTION_LABEL_STYLE}>TENPAI · WAITING ON</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 3 }}>
+              {readyWaits.map((tile, i) => (
+                <Tile
+                  // biome-ignore lint/suspicious/noArrayIndexKey: ready-wait set is positional, deduped upstream
+                  key={i}
+                  tile={tile}
+                  width={16}
+                  height={22}
+                />
+              ))}
+            </View>
           </View>
-        </View>
+        </TutorialTarget>
       ) : null}
     </ScrollView>
   );

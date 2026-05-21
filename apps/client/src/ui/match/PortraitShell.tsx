@@ -375,7 +375,9 @@ export function PortraitShell({
                 so passing the array unconditionally is fine — the
                 outer `||` keeps the whole row from rendering when
                 both inputs are empty. */}
-            <ReadyHandBadge waits={readyWaits} />
+            <TutorialTarget id="ready-hand-badge">
+              <ReadyHandBadge waits={readyWaits} />
+            </TutorialTarget>
           </View>
         ) : null}
 

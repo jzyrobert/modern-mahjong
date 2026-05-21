@@ -616,7 +616,9 @@ function MyArea({
           turnCountdown={turnCountdown}
         />
         <SortPicker mode={sortMode} onChange={onSortModeChange} />
-        <ReadyHandBadge waits={readyWaits} />
+        <TutorialTarget id="ready-hand-badge">
+          <ReadyHandBadge waits={readyWaits} />
+        </TutorialTarget>
         {/* Always-rendered slot for the YOUR TURN pill — without the
             reservation, the badge appearing on the active turn made
             the row wider and the parent's `alignItems: center`

@@ -150,4 +150,5 @@ export type TutorialTargetId =
   | 'shared-discards'
   | 'tsumo-button'
   | 'promote-gang'
-  | 'dice-ceremony';
+  | 'dice-ceremony'
+  | 'ready-hand-badge';
