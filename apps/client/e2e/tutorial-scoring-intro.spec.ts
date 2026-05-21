@@ -336,6 +336,22 @@ test.describe('tutorial: scoring-intro', () => {
         overlaps,
         `caption covers winning-hand row at ${vp.name} ${vp.w}x${vp.h}: hand=${JSON.stringify(h)} caption=${JSON.stringify(c)}`,
       ).toBe(false);
+
+      // Regression guard for the "Got it" CTA clipping bug fixed
+      // in the PR after #432: the side-dock placement on landscape
+      // (and the bottom-dock placement on portrait) was computed
+      // against a 160 px placeholder while the real card runs
+      // taller — the CTA fell off the bottom of the viewport. The
+      // hard invariant is that the entire CTA button rect stays
+      // inside the viewport so the user can always tap it to
+      // advance the lesson.
+      const cta = await page.getByRole('button', { name: 'Got it' }).boundingBox();
+      expect(cta, `cta box @ ${vp.name}`).not.toBeNull();
+      const b = cta!;
+      expect(
+        b.y >= 0 && b.x >= 0 && b.x + b.width <= vp.w && b.y + b.height <= vp.h,
+        `CTA "Got it" clipped at ${vp.name} ${vp.w}x${vp.h}: cta=${JSON.stringify(b)}`,
+      ).toBe(true);
     }
   });
 
