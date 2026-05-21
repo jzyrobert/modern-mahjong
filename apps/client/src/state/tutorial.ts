@@ -10,6 +10,7 @@ import { promotedGangLesson } from '../ui/tutorial/lessons/promoted-gang';
 import { robbingKongLesson } from '../ui/tutorial/lessons/robbing-kong';
 import { ronLesson } from '../ui/tutorial/lessons/ron';
 import { safetyLesson } from '../ui/tutorial/lessons/safety';
+import { scoringIntroLesson } from '../ui/tutorial/lessons/scoring-intro';
 import { waitShapesLesson } from '../ui/tutorial/lessons/wait-shapes';
 import { winLesson } from '../ui/tutorial/lessons/win';
 import type { Lesson } from '../ui/tutorial/types';
@@ -36,6 +37,7 @@ export const LESSONS: Record<string, Lesson> = {
   [hiddenGangLesson.id]: hiddenGangLesson,
   [drawnGameLesson.id]: drawnGameLesson,
   [waitShapesLesson.id]: waitShapesLesson,
+  [scoringIntroLesson.id]: scoringIntroLesson,
   [stubLesson.id]: stubLesson,
 };
 
@@ -61,6 +63,7 @@ export const LESSON_ORDER: readonly string[] = [
   hiddenGangLesson.id,
   drawnGameLesson.id,
   waitShapesLesson.id,
+  scoringIntroLesson.id,
 ];
 
 /**
