@@ -120,6 +120,18 @@ export interface Lesson {
    *  clears at exactly 3 faan. Constrained to the same union as
    *  `RuleConfig['faanMin']` so the value is wire-compatible. */
   faanMin?: 0 | 1 | 3 | 5;
+  /** When true, the `<WinCelebration>` overlay is suppressed for the
+   *  entire lifecycle of this lesson. Used by strategy lessons
+   *  (`scoring-intro`, `yaku-gallery`) that stage a `phase: 'resolved'`
+   *  state with a populated `lastResult` at each example step via
+   *  `setupBeforeStep`: the staged win would otherwise re-trigger the
+   *  full-screen 和 celebration on every step (six or seven times per
+   *  lesson), which is the wrong UX. Defaults to false — gameplay
+   *  lessons (`win`, `ron`, `robbing-kong`) keep the celebration
+   *  because seeing it is part of the lesson. The existing
+   *  `useTutorial.justCompleted` guard inside `WinCelebration`
+   *  continues to handle the post-lesson dismissal window. */
+  suppressWinCelebration?: boolean;
   /** Hook fired exactly once, after the engine first observes a
    *  discard from seat 0. Lets a lesson rewrite its bot scripts
    *  based on the user's remaining hand — useful when the chi /
@@ -166,4 +178,14 @@ export type TutorialTargetId =
   | 'tsumo-button'
   | 'promote-gang'
   | 'dice-ceremony'
-  | 'ready-hand-badge';
+  | 'ready-hand-badge'
+  // `'result-panel'` — wraps the between-hand summary panel
+  // (`<ResultPanel>`) inside both `MobileShell` and `DesktopShell`. The
+  // panel only mounts when `state.lastResult` is set, so the target's
+  // rect is only registered during the resolved phase. Used by the
+  // `scoring-intro` and `yaku-gallery` strategy lessons so the
+  // example-step captions anchor beside the score breakdown rather
+  // than overlapping it. Mount/unmount tracks `lastResult`; if a lesson
+  // step asks for this target before `lastResult` is staged, the
+  // overlay falls back to the centered caption card.
+  | 'result-panel';

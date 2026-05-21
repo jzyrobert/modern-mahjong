@@ -253,6 +253,19 @@ test.describe('tutorial: yaku-gallery', () => {
       expect(snap.hand0).not.toBeNull();
       capturedHands.push(snap.hand0!);
 
+      // Regression guard (Fix 2): ResultPanel is visible on every
+      // example step. The caption is anchored to the panel via
+      // `targetId: 'result-panel'` rather than centered on top of it.
+      // "Seat 0 wins!" only renders inside ResultPanel; visibility is
+      // a stable mount-and-on-screen proxy.
+      await expect(page.getByText('Seat 0 wins!').first()).toBeVisible();
+
+      // Regression guard (Fix 1): the full-screen 和 celebration is
+      // suppressed during this lesson. The celebration would
+      // otherwise pulse on every example step. No 和 glyph is
+      // rendered at celebration-tile size anywhere else on the table.
+      await expect(page.getByText(/^和$/)).toHaveCount(0);
+
       await page.getByRole('button', { name: 'Got it' }).click();
     }
 

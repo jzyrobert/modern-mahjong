@@ -438,6 +438,13 @@ export const yakuGalleryLesson: Lesson = {
   seed: 5,
   dealer: 0,
   botScripts: {},
+  // Suppress the full-screen 和 celebration on every example step.
+  // Each step stages `phase: 'resolved'` + a synthetic `lastResult`
+  // to drive the score panel; without this flag the celebration would
+  // fire seven times in a row. See WinCelebration's `tutorialSuppresses`
+  // gate. The lesson's pedagogical surface is the ResultPanel
+  // breakdown next to the caption, not the celebration.
+  suppressWinCelebration: true,
   steps: [
     {
       id: 'intro',
@@ -454,6 +461,9 @@ export const yakuGalleryLesson: Lesson = {
         body: 'Seven distinct pairs — no sets, no chows, just pairs all the way. The engine scores it as 七對子 (4 faan) plus 門前清 (1 faan) for being concealed. A non-standard winning shape: most hands need 4 sets + a pair, but 七對子 is the carve-out. Easier to build than it looks once you stop fighting for runs.',
       },
       ctaLabel: 'Got it',
+      // Anchor caption to the staged ResultPanel — see the
+      // matching comment in `scoring-intro.ts`. Same rationale.
+      targetId: 'result-panel',
       setupBeforeStep: (state) => stageResolvedWin(state, SEVEN_PAIRS_HAND),
     },
     {
@@ -463,6 +473,7 @@ export const yakuGalleryLesson: Lesson = {
         body: 'Every tile here is a terminal (1 or 9) or an honor — no middle ranks anywhere. 混么九 (4 faan) covers the mixed case (terminals AND honors); pure 1s-and-9s would step up to 清么九 (13 faan). The exposed N peng claimed off another seat costs you 門前清, but the structural rarity still earns the 4 faan.',
       },
       ctaLabel: 'Got it',
+      targetId: 'result-panel',
       setupBeforeStep: (state) => stageResolvedWin(state, HUN_YAO_JIU_HAND),
     },
     {
@@ -472,6 +483,7 @@ export const yakuGalleryLesson: Lesson = {
         body: "All three dragons — 中, 發, 白 — as triplets in the same hand. 大三元 (8 faan) is one of the headline yaku; HK scoring also stacks +1 for each dragon triplet (三元牌 中/發/白), 對對和 (3) for the all-triplets shape, and 門前清 (1) for staying concealed. The breakdown stacks fast — that's why a single dragon-heavy hand can swing a session.",
       },
       ctaLabel: 'Got it',
+      targetId: 'result-panel',
       setupBeforeStep: (state) => stageResolvedWin(state, BIG_DRAGONS_HAND),
     },
     {
@@ -481,6 +493,7 @@ export const yakuGalleryLesson: Lesson = {
         body: 'Every tile in the hand is an honor — winds and dragons, no suits at all. 字一色 (10 faan) is one of the hardest yaku to land because honors are scarce: only 4 copies of each face exist. When honors-only does land, it always stacks with the wind / dragon triplet yaku that fall out of the shape — here 小四喜 (6) for the three wind triplets plus 三元牌 Z (1) for the dragon peng. Total 17 faan.',
       },
       ctaLabel: 'Got it',
+      targetId: 'result-panel',
       setupBeforeStep: (state) => stageResolvedWin(state, ALL_HONORS_HAND),
     },
     {
@@ -490,6 +503,7 @@ export const yakuGalleryLesson: Lesson = {
         body: "Four triplets, none claimed from anyone — every set built off your own draws. 四暗刻 (8 faan) replaces 對對和 in the breakdown because it's strictly stronger: the concealment promise is what costs you. The ron here had to complete the pair, not a triplet — winning a triplet by ron exposes that triplet and breaks 四暗刻 (you'd only get 三暗刻).",
       },
       ctaLabel: 'Got it',
+      targetId: 'result-panel',
       setupBeforeStep: (state) => stageResolvedWin(state, FOUR_CONCEALED_HAND),
     },
     {
@@ -499,6 +513,7 @@ export const yakuGalleryLesson: Lesson = {
         body: 'A specific single-suit shape: 1-1-1-2-3-4-5-6-7-8-9-9-9 of one suit, plus any extra tile of the same suit completes it. 九蓮寶燈 (13 faan) replaces 清一色 in the breakdown when this exact pattern fires — strictly concealed, suit-locked, almost a unicorn in casual play. Worth recognising so you know what you just witnessed.',
       },
       ctaLabel: 'Got it',
+      targetId: 'result-panel',
       setupBeforeStep: (state) => stageResolvedWin(state, NINE_GATES_HAND),
     },
     {
@@ -508,6 +523,7 @@ export const yakuGalleryLesson: Lesson = {
         body: 'One of each terminal (1 and 9 of every suit) plus one of every honor — thirteen distinct faces — and a pair of any one of them. 十三幺 (13 faan) is the other big non-standard shape alongside 七對子. The engine also credits 混么九 (4) on top because every tile happens to be a terminal-or-honor by definition. Concealed only, of course.',
       },
       ctaLabel: 'Got it',
+      targetId: 'result-panel',
       setupBeforeStep: (state) => stageResolvedWin(state, THIRTEEN_ORPHANS_HAND),
     },
     {
