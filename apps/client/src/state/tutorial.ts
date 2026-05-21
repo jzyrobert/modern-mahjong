@@ -121,6 +121,27 @@ interface TutorialState {
   nudge(): void;
 }
 
+/**
+ * Run the entering step's `setupBeforeStep` hook (if any) by reading
+ * the current engine-state mirror, applying the transform, and pushing
+ * the result back through `useGame.getState().setState`. Pure no-op when the step
+ * has no hook, when there's no lesson, or when there's no current
+ * engine state (mid-lobby; can't happen during an actual lesson because
+ * `joinSoloTutorial` runs `prepareState` first). Lives at module scope
+ * so both `begin()` and `advance()` call into the same code path.
+ */
+function runStepSetup(lessonId: string, stepIndex: number): void {
+  const lesson = LESSONS[lessonId];
+  const step = lesson?.steps[stepIndex];
+  if (!step?.setupBeforeStep) return;
+  const game = useGame.getState();
+  const current = game.state;
+  if (!current) return;
+  const next = step.setupBeforeStep(current);
+  if (next === current) return;
+  game.setState(next);
+}
+
 export const useTutorial = create<TutorialState>((set, get) => ({
   active: null,
   lastNudge: null,
@@ -145,6 +166,11 @@ export const useTutorial = create<TutorialState>((set, get) => ({
       justCompleted: null,
       dismissedTutorialSeed: null,
     });
+    // Fire the first step's `setupBeforeStep` hook (if any) so the
+    // staged engine state lands before the next render commits the
+    // caption. `begin()` is the lesson-entry analogue of `advance()`'s
+    // step-entry path.
+    runStepSetup(lessonId, 0);
   },
   advance: () => {
     const { active } = get();
@@ -152,6 +178,19 @@ export const useTutorial = create<TutorialState>((set, get) => ({
     const lesson = LESSONS[active.lessonId];
     if (!lesson) return;
     const nextIndex = active.stepIndex + 1;
+    // Fire the entering step's `setupBeforeStep` (if any) BEFORE the
+    // store write that bumps `stepIndex`. Both writes (engine-state
+    // mirror in `useGame`, then `active.stepIndex` here) land
+    // synchronously in the same call frame; React 18+'s automatic
+    // batching commits a single render so the new caption and the
+    // staged engine state appear on the same tick. This avoids the
+    // render-time-setState / useEffect-clears traps documented in
+    // `CLAUDE.md` ("state that needs a synchronous external reset →
+    // put it in zustand"). Skipped on the completion branch — the
+    // last step has already been seen by the user.
+    if (nextIndex < lesson.steps.length) {
+      runStepSetup(active.lessonId, nextIndex);
+    }
     if (nextIndex >= lesson.steps.length) {
       // Last step advanced — mark the lesson complete in user
       // settings (the lobby card collapses to a checkmark on next

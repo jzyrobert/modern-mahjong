@@ -74,6 +74,21 @@ export interface LessonStep {
   /** Override for the caption card's CTA button label. Defaults to
    *  `"Got it"` for steps without `completedWhen`, hidden otherwise. */
   ctaLabel?: string;
+  /** Optional per-step engine-state injection. Pure transform:
+   *  `(state) => nextState`. Fires on step ENTRY, synchronously inside
+   *  `useTutorial.advance()` immediately before the `stepIndex` bump,
+   *  so React 18+ batches both writes into a single render — the new
+   *  caption and the staged engine state commit on the same tick. Used
+   *  by strategy lessons (`wait-shapes`, `scoring-intro`, `yaku-gallery`)
+   *  to stage a different example hand at each step.
+   *
+   *  Updates `useGame`'s engine-state MIRROR, not the authoritative
+   *  state owned by `createSoloTransport`. Safe only across no-emit
+   *  windows — strategy lessons rely on `__MAHJONG_TUTORIAL_FORCE_PASS__`
+   *  + `turnTimeoutMs: 0` to prevent the transport from re-emitting and
+   *  reverting the staged state. Implementations must not mutate the
+   *  input; return a new state object. */
+  setupBeforeStep?: (state: GameState) => GameState;
 }
 
 export interface Lesson {
