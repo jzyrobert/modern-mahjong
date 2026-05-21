@@ -204,6 +204,7 @@ export function TutorialOverlay() {
       ))}
       {halo ? (
         <View
+          testID="tutorial-halo"
           style={{
             position: 'absolute',
             left: halo.left,

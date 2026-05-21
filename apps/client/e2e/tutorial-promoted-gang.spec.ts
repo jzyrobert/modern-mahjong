@@ -198,4 +198,76 @@ test.describe('tutorial: promoted-gang', () => {
     });
     expect(completed).toContain('promoted-gang');
   });
+
+  // Regression: the tutorial halo for the promote-gang step must
+  // stay aligned with the "Promote gang" button after the draw
+  // animation finishes. Reproduced at portrait viewport (393 × 800)
+  // because `PortraitShell` puts the button inside the discard-pool
+  // area at `bottom: 12`; `DrawTileOverlay`'s ~1240 ms flight opens
+  // the hand-row gap at HOLD_END (~860 ms in), which reflows the
+  // bottom action zone, shrinks the flex:1 discard pool, and shifts
+  // the button up on screen. The wrapping `<TutorialTarget>` doesn't
+  // re-fire `onLayout` (its offset inside its parent didn't change —
+  // only the parent's screen position shifted), so without the
+  // settling-period re-measure loop in `TargetRegistry.tsx` the halo
+  // stays anchored to the pre-animation rect. `DesktopShell` doesn't
+  // hit the bug — its `centerHud` sits in an absolute overlay centred
+  // on the table area, independent of the bottom action zone.
+  test.describe('regression: promote-gang halo tracks the button after draw', () => {
+    test.use({ viewport: { width: 393, height: 800 } });
+    test('halo stays centred on the promote-gang button', async ({ page }) => {
+      await page.goto('/');
+      await expect(page.getByRole('heading', { name: 'Modern Mahjong' })).toBeVisible();
+
+      // Portrait MobileLobby tucks the lesson list behind an
+      // expandable "Tutorial" row — tap the row to reveal the
+      // promoted-gang Start button. The row's accessibilityLabel
+      // is exactly "Tutorial" (`SecondaryRow` forwards `title` as
+      // `accessibilityLabel`).
+      await page.getByLabel('Tutorial', { exact: true }).click();
+      await page.getByLabel('Start Promoting a gang').click();
+
+      // Drive to the promote step (mirrors the happy-path test).
+      await expect(page.getByText('Promoting a gang')).toBeVisible();
+      await page.getByRole('button', { name: 'Got it' }).click();
+      await expect(page.getByText('Take your first turn')).toBeVisible();
+      await page.getByTestId('own-hand-tile').last().click();
+      await expect(page.getByText('Claim the peng')).toBeVisible({ timeout: 10_000 });
+      await page.getByRole('button', { name: 'Peng' }).click();
+      await expect(page.getByText('Take your post-peng turn')).toBeVisible();
+      await page.getByTestId('own-hand-tile').last().click();
+      await expect(
+        page.getByRole('heading', { name: 'Tutorial step: Draw your next' }),
+      ).toBeVisible({ timeout: 10_000 });
+      await page.getByTestId('wall-draw-next').click();
+
+      await expect(page.getByText('Promote your peng to a gang!')).toBeVisible();
+
+      // Wait for the full draw animation (~1240 ms) to play out so
+      // any layout settling has completed before we measure. The
+      // settling re-measure loop in `TargetRegistry` runs for
+      // ~1500 ms after activation, so by 1600 ms the halo's
+      // registered rect should reflect the post-animation layout.
+      await page.waitForTimeout(1600);
+
+      const promoteButton = page.getByRole('button', { name: 'Promote gang' });
+      const halo = page.getByTestId('tutorial-halo');
+      await expect(promoteButton).toBeVisible();
+      await expect(halo).toBeVisible();
+      const buttonBox = await promoteButton.boundingBox();
+      const haloBox = await halo.boundingBox();
+      expect(buttonBox).not.toBeNull();
+      expect(haloBox).not.toBeNull();
+      const buttonCenterX = buttonBox!.x + buttonBox!.width / 2;
+      const buttonCenterY = buttonBox!.y + buttonBox!.height / 2;
+      const haloCenterX = haloBox!.x + haloBox!.width / 2;
+      const haloCenterY = haloBox!.y + haloBox!.height / 2;
+      // The halo pads the rect by 8 px on each side, so the centres
+      // should coincide within a couple of pixels. Pre-fix the halo
+      // was anchored to the pre-animation rect, putting the y-centre
+      // ~one-hand-row (~50 px) off the button's actual position.
+      expect(Math.abs(haloCenterX - buttonCenterX)).toBeLessThan(4);
+      expect(Math.abs(haloCenterY - buttonCenterY)).toBeLessThan(4);
+    });
+  });
 });

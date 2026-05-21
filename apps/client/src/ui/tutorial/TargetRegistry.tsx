@@ -10,6 +10,7 @@ import {
 } from 'react';
 import { useSyncExternalStore } from 'react';
 import { type StyleProp, View, type ViewStyle } from 'react-native';
+import { LESSONS, useTutorial } from '../../state/tutorial';
 import type { TutorialTargetId } from './types';
 
 export interface TargetRect {
@@ -185,6 +186,23 @@ export function TutorialTarget({ id, children, enabled = true, style }: Tutorial
   // which would re-paint the halo at a dead location.
   const cancelledRef = useRef(false);
 
+  // True iff this target is the currently-active tutorial step's
+  // target. When this flips true we kick off a settling re-measure
+  // loop (below) so the registered rect tracks layout shifts that
+  // animations cause *after* the wrapper's own `onLayout` / commit
+  // has already fired — e.g. `DrawTileOverlay` opens the hand-row
+  // gap ~860 ms into the draw animation, which shifts the
+  // absolutely-positioned promote-gang button on screen without
+  // moving its frame inside its flex parent (and so without firing
+  // onLayout on the wrapper). See PR #421 for the originating
+  // `promote-gang` target.
+  const isActiveTarget = useTutorial((s) => {
+    if (!enabled || !s.active) return false;
+    const lesson = LESSONS[s.active.lessonId];
+    const step = lesson?.steps[s.active.stepIndex];
+    return step?.targetId === id;
+  });
+
   const measureAndRegister = useCallback(() => {
     if (!enabled || !ref.current) return;
     if (cancelledRef.current) return;
@@ -232,6 +250,41 @@ export function TutorialTarget({ id, children, enabled = true, style }: Tutorial
   useEffect(() => {
     measureAndRegister();
   });
+
+  // Settling-period re-measure loop. The wrapper's own re-render
+  // catches synchronous layout shifts, but engine-driven animations
+  // — `DrawTileOverlay` (~1240 ms), inter-hand FlipBag flights, the
+  // dice-ceremony dismiss — change the *screen* position of an
+  // absolutely-positioned ancestor over time without triggering a
+  // re-render on the target's wrapper. Concretely: the promote-gang
+  // button sits inside the discard-pool area's `bottom: 12` slot;
+  // when `DrawTileOverlay` opens the hand-row gap at HOLD_END the
+  // pool's flex height shrinks and the slot moves up on screen,
+  // leaving the registered halo behind.
+  //
+  // Polling on `requestAnimationFrame` for ~1500 ms after the
+  // target becomes the active step's target catches the full window
+  // of post-activation animation. The registry dedupes identical
+  // rects so frames where nothing actually moved are a no-op.
+  useEffect(() => {
+    if (!isActiveTarget) return;
+    let rafId: number | null = null;
+    const startedAt = Date.now();
+    const DURATION_MS = 1500;
+    const tick = () => {
+      if (cancelledRef.current) return;
+      measureAndRegister();
+      if (Date.now() - startedAt < DURATION_MS) {
+        rafId = requestAnimationFrame(tick);
+      } else {
+        rafId = null;
+      }
+    };
+    rafId = requestAnimationFrame(tick);
+    return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    };
+  }, [isActiveTarget, measureAndRegister]);
 
   // Clear on unmount so a target that's torn down (e.g. mobile→desktop
   // shell swap) doesn't leave a phantom rect in the registry. Targets
