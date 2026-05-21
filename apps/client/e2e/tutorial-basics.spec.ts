@@ -259,6 +259,7 @@ test.describe('tutorial: basics', () => {
             'win',
             'hidden-gang',
             'drawn-game',
+            'wait-shapes',
           ],
         }),
       );
@@ -276,6 +277,7 @@ test.describe('tutorial: basics', () => {
     await expect(page.getByLabel('Replay Winning a hand')).toBeVisible();
     await expect(page.getByLabel('Replay Concealed gang')).toBeVisible();
     await expect(page.getByLabel('Replay Drawn game')).toBeVisible();
+    await expect(page.getByLabel('Replay Wait shapes')).toBeVisible();
   });
 
   test('"Tutorial" row appears in the in-match menu once basics is complete', async ({ page }) => {
