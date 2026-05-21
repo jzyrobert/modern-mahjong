@@ -23,7 +23,16 @@ test.beforeEach(async ({ page }) => {
         replayQuota: 50,
         // Pre-mark every prior lesson so the lobby card lands on
         // hidden-gang directly.
-        tutorialsCompleted: ['basics', 'ron', 'safety', 'claims', 'peng', 'win'],
+        tutorialsCompleted: [
+          'basics',
+          'ron',
+          'safety',
+          'claims',
+          'peng',
+          'robbing-kong',
+          'open-gang-claim',
+          'win',
+        ],
       }),
     );
   });

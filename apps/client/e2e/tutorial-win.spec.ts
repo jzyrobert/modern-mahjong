@@ -22,7 +22,15 @@ test.beforeEach(async ({ page }) => {
         replayQuota: 50,
         // Pre-mark every lesson up to win as complete so the lobby
         // card lands directly on win.
-        tutorialsCompleted: ['basics', 'ron', 'safety', 'claims', 'peng'],
+        tutorialsCompleted: [
+          'basics',
+          'ron',
+          'safety',
+          'claims',
+          'peng',
+          'robbing-kong',
+          'open-gang-claim',
+        ],
       }),
     );
   });

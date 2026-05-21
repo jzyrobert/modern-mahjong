@@ -247,16 +247,29 @@ test.describe('tutorial: basics', () => {
           botSkills: ['heuristic', 'simple', 'passive'],
           autoRecordReplays: false,
           replayQuota: 50,
-          tutorialsCompleted: ['basics', 'safety', 'claims', 'peng', 'win', 'hidden-gang'],
+          tutorialsCompleted: [
+            'basics',
+            'ron',
+            'safety',
+            'claims',
+            'peng',
+            'robbing-kong',
+            'open-gang-claim',
+            'win',
+            'hidden-gang',
+          ],
         }),
       );
     });
 
     await page.goto('/');
     await expect(page.getByLabel('Replay Basics: a guided hand')).toBeVisible();
+    await expect(page.getByLabel('Replay Winning off a discard')).toBeVisible();
     await expect(page.getByLabel('Replay Reading the table')).toBeVisible();
     await expect(page.getByLabel('Replay Claiming a chi')).toBeVisible();
     await expect(page.getByLabel('Replay Claiming a peng')).toBeVisible();
+    await expect(page.getByLabel('Replay Robbing the kong')).toBeVisible();
+    await expect(page.getByLabel('Replay Claiming an open gang')).toBeVisible();
     await expect(page.getByLabel('Replay Winning a hand')).toBeVisible();
     await expect(page.getByLabel('Replay Concealed gang')).toBeVisible();
   });
