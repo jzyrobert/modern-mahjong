@@ -3,6 +3,7 @@ import { stubLesson } from '../ui/tutorial/lessons/_stub';
 import { basicsLesson } from '../ui/tutorial/lessons/basics';
 import { claimsLesson } from '../ui/tutorial/lessons/claims';
 import { hiddenGangLesson } from '../ui/tutorial/lessons/hidden-gang';
+import { ronLesson } from '../ui/tutorial/lessons/ron';
 import { safetyLesson } from '../ui/tutorial/lessons/safety';
 import { winLesson } from '../ui/tutorial/lessons/win';
 import type { Lesson } from '../ui/tutorial/types';
@@ -18,6 +19,7 @@ import { useGame } from './game';
  */
 export const LESSONS: Record<string, Lesson> = {
   [basicsLesson.id]: basicsLesson,
+  [ronLesson.id]: ronLesson,
   [safetyLesson.id]: safetyLesson,
   [claimsLesson.id]: claimsLesson,
   [winLesson.id]: winLesson,
@@ -36,6 +38,7 @@ export const LESSONS: Record<string, Lesson> = {
  */
 export const LESSON_ORDER: readonly string[] = [
   basicsLesson.id,
+  ronLesson.id,
   safetyLesson.id,
   claimsLesson.id,
   winLesson.id,

@@ -53,9 +53,10 @@ test.describe('tutorial: basics', () => {
     await expect(page.getByText('Lesson complete!')).toBeHidden();
     await expect(page.getByText('Nice work!')).toBeVisible();
     // With only basics complete, the prompt offers the *next*
-    // curriculum entry ("Reading the table") plus the always-on
-    // "Continue playing" / "Back to lobby" affordances.
-    await expect(page.getByLabel('Start next lesson: Reading the table')).toBeVisible();
+    // curriculum entry ("Winning off a discard" — the ron lesson)
+    // plus the always-on "Continue playing" / "Back to lobby"
+    // affordances.
+    await expect(page.getByLabel('Start next lesson: Winning off a discard')).toBeVisible();
     await expect(page.getByLabel('Continue playing')).toBeVisible();
     await expect(page.getByLabel('Back to lobby')).toBeVisible();
 
@@ -87,9 +88,11 @@ test.describe('tutorial: basics', () => {
   });
 
   test('post-completion prompt: "Next lesson" launches the following lesson', async ({ page }) => {
-    // Pre-mark basics complete so we can run safety end-to-end and
-    // confirm the prompt's "Next lesson" CTA jumps to claims (the
-    // entry after safety in LESSON_ORDER).
+    // Pre-mark basics + ron complete so we can run safety end-to-end
+    // and confirm the prompt's "Next lesson" CTA jumps to claims
+    // (the entry after safety in LESSON_ORDER). Walking ron in this
+    // test would couple it to the ron lesson's seed engineering;
+    // tutorial-ron.spec.ts already covers that path.
     await page.addInitScript(() => {
       localStorage.setItem(
         'mj.settings.v1',
@@ -102,7 +105,7 @@ test.describe('tutorial: basics', () => {
           botSkills: ['heuristic', 'simple', 'passive'],
           autoRecordReplays: false,
           replayQuota: 50,
-          tutorialsCompleted: ['basics'],
+          tutorialsCompleted: ['basics', 'ron'],
         }),
       );
     });
@@ -261,6 +264,10 @@ test.describe('tutorial: basics', () => {
     await page.addInitScript(() => {
       const w = globalThis as { __MAHJONG_TEST_SEED__?: number };
       w.__MAHJONG_TEST_SEED__ = 5;
+      // Pre-mark basics + ron so the next-lesson cursor advances to
+      // safety. The "Tutorial" menu row tracks whichever lesson the
+      // user hasn't done yet; the ron row would otherwise show here
+      // and the safety-targeted assertions below would fail.
       localStorage.setItem(
         'mj.settings.v1',
         JSON.stringify({
@@ -272,7 +279,7 @@ test.describe('tutorial: basics', () => {
           botSkills: ['heuristic', 'simple', 'passive'],
           autoRecordReplays: false,
           replayQuota: 50,
-          tutorialsCompleted: ['basics'],
+          tutorialsCompleted: ['basics', 'ron'],
         }),
       );
     });
@@ -282,8 +289,8 @@ test.describe('tutorial: basics', () => {
     await page.getByRole('button', { name: 'Start match' }).click();
     await page.getByTestId('own-hand-tile').first().waitFor();
 
-    // Menu now shows "Tutorial: <next lesson>" (Safety, since
-    // basics is already complete).
+    // Menu now shows "Tutorial: <next lesson>" (Reading the table,
+    // since basics + ron are already complete).
     await page.getByLabel('Open menu').first().click();
     await expect(page.getByLabel('Tutorial: Reading the table')).toBeVisible();
 
