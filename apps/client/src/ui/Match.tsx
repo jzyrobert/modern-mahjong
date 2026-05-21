@@ -289,6 +289,32 @@ export function Match() {
     }
     return null;
   }, [tsumoState, tsumoSeat]);
+  // Promoted-gang derivation. The user can upgrade an existing peng
+  // meld of face F into a `gang-promoted` meld iff (a) it's their
+  // turn, (b) they've drawn, and (c) their concealed hand contains a
+  // tile of face F (the fourth copy — the other three are already in
+  // the meld). Returns the tile-from-hand that the promote button
+  // would dispatch, or null when no promotion is available. Memoised
+  // alongside `concealedGangTile` so the per-tile face scan only
+  // re-runs when state changes — see the same O(n²) note above for
+  // the concealed-gang scan.
+  const promotedGangTile = useMemo<MTile | null>(() => {
+    if (!tsumoState || tsumoSeat === null) return null;
+    if (tsumoState.phase !== 'turn' || tsumoState.turn !== tsumoSeat || !tsumoState.hasDrawn) {
+      return null;
+    }
+    const melds = tsumoState.melds[tsumoSeat];
+    if (melds.length === 0) return null;
+    const hand = tsumoState.hands[tsumoSeat];
+    for (const meld of melds) {
+      if (meld.kind !== 'peng') continue;
+      const meldFace = meld.tiles[0];
+      if (!meldFace) continue;
+      const matching = hand.find((t) => sameFace(t, meldFace));
+      if (matching) return matching;
+    }
+    return null;
+  }, [tsumoState, tsumoSeat]);
 
   // Spectator branch — `you === 'spectator'` means the server routed
   // this connection into the viewer pool (either because seats were
@@ -469,6 +495,7 @@ export function Match() {
     canTsumo,
     tsumoFaan,
     concealedGangTile,
+    promotedGangTile,
     hasClaimOption,
     nextDrawerSeat,
     aboutToDraw,

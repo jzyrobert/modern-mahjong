@@ -135,8 +135,11 @@ export interface Lesson {
  * time. Keep this list narrow — every entry here is a public contract
  * with the lesson authors.
  *
- * Both shells (`MobileShell` and `DesktopShell`) must register every
- * id below so a lesson can survive an in-flight rotation.
+ * All three concrete shells (`PortraitShell`, `LandscapeShell`,
+ * `DesktopShell`) must register every id below so a lesson can survive
+ * an in-flight rotation or width-driven shell swap. (The legacy
+ * `MobileShell` is now a thin dispatcher into `PortraitShell` /
+ * `LandscapeShell` based on `isLandscape`.)
  */
 export type TutorialTargetId =
   | 'own-hand'
@@ -146,4 +149,5 @@ export type TutorialTargetId =
   | 'turn-countdown'
   | 'shared-discards'
   | 'tsumo-button'
+  | 'promote-gang'
   | 'dice-ceremony';

@@ -30,6 +30,7 @@ test.beforeEach(async ({ page }) => {
           'peng',
           'robbing-kong',
           'open-gang-claim',
+          'promoted-gang',
         ],
       }),
     );

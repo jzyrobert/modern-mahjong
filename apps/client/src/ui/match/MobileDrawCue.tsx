@@ -4,6 +4,7 @@ import { Animated, Dimensions, Pressable, View } from 'react-native';
 import { useGame } from '../../state/game';
 import { TILE_CORNER_RADIUS_RATIO, Tile } from '../Tile';
 import { PULSE_TEMPO, usePulse } from '../animations';
+import { TutorialTarget } from '../tutorial/TargetRegistry';
 import { DRAW_ANCHOR_Y_RATIO } from './DrawTileOverlay';
 
 const TILE_W = 64;
@@ -111,52 +112,63 @@ export function MobileDrawCue({ tile, onPress }: MobileDrawCueProps) {
         zIndex: 50,
       }}
     >
-      <Pressable
-        onPress={() => {
-          if (tapInFlight.current) return;
-          tapInFlight.current = true;
-          if (tapResetTimer.current !== null) clearTimeout(tapResetTimer.current);
-          tapResetTimer.current = setTimeout(() => {
-            tapInFlight.current = false;
-            tapResetTimer.current = null;
-          }, TAP_LATCH_TIMEOUT_MS);
-          onPress();
-        }}
-        testID="wall-draw-next"
-        accessibilityLabel="Draw next tile"
-        accessibilityRole="button"
-        style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
-      >
-        <Animated.View
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            width: TILE_W,
-            height: TILE_H,
-            borderRadius: radius,
-            backgroundColor: '#dc9f4f',
-            opacity: haloOpacity,
-            transform: [{ scale: haloScale }],
-            pointerEvents: 'none',
+      {/* Register the `wall-draw` tutorial target on the user's draw
+          cue so any lesson anchored on `wall-draw` (e.g.
+          `promoted-gang.ts`'s "Draw your next tile" step) gets a real
+          halo on phone-class shells. Without the wrapper the overlay
+          falls back to a centred caption + full-screen scrim, which
+          blocks the tap the user is being prompted to make. The cue
+          only mounts when it's actually the user's draw turn, so the
+          target registration is naturally scoped. Mirrors the
+          equivalent wrap in `WallEdge.tsx` (DesktopShell). */}
+      <TutorialTarget id="wall-draw">
+        <Pressable
+          onPress={() => {
+            if (tapInFlight.current) return;
+            tapInFlight.current = true;
+            if (tapResetTimer.current !== null) clearTimeout(tapResetTimer.current);
+            tapResetTimer.current = setTimeout(() => {
+              tapInFlight.current = false;
+              tapResetTimer.current = null;
+            }, TAP_LATCH_TIMEOUT_MS);
+            onPress();
           }}
-        />
-        <View
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            width: TILE_W,
-            height: TILE_H,
-            borderRadius: radius,
-            borderWidth: 3,
-            borderColor: '#f3c54a',
-            pointerEvents: 'none',
-            boxShadow: '0px 0px 8px rgba(243,197,74,0.85)',
-          }}
-        />
-        <Tile tile={tile} faceDown width={TILE_W} height={TILE_H} />
-      </Pressable>
+          testID="wall-draw-next"
+          accessibilityLabel="Draw next tile"
+          accessibilityRole="button"
+          style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
+        >
+          <Animated.View
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: TILE_W,
+              height: TILE_H,
+              borderRadius: radius,
+              backgroundColor: '#dc9f4f',
+              opacity: haloOpacity,
+              transform: [{ scale: haloScale }],
+              pointerEvents: 'none',
+            }}
+          />
+          <View
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: TILE_W,
+              height: TILE_H,
+              borderRadius: radius,
+              borderWidth: 3,
+              borderColor: '#f3c54a',
+              pointerEvents: 'none',
+              boxShadow: '0px 0px 8px rgba(243,197,74,0.85)',
+            }}
+          />
+          <Tile tile={tile} faceDown width={TILE_W} height={TILE_H} />
+        </Pressable>
+      </TutorialTarget>
     </View>
   );
 }
