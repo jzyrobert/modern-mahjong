@@ -282,6 +282,63 @@ test.describe('tutorial: scoring-intro', () => {
     expect(completed).toContain('scoring-intro');
   });
 
+  test('caption does not cover the winning-hand row across portrait / landscape / desktop', async ({
+    page,
+  }) => {
+    // Regression guard for the PR-after-#431 fix: the tutorial
+    // caption is allowed to overlap the ResultPanel halo (it
+    // covers buttons / rules at the bottom of the panel), but the
+    // "Seat 0 wins!" heading + winning-hand row at the *top* of
+    // the panel must always remain unobscured. We assert this by
+    // checking that the heading's bounding box does not intersect
+    // the caption card's bounding box at any of the three shells
+    // (PortraitShell, LandscapeShell, DesktopShell).
+    await page.goto('/');
+    await expect(page.getByRole('heading', { name: 'Modern Mahjong' })).toBeVisible();
+    await page.getByLabel('Start Scoring 101').click();
+    await page.getByRole('button', { name: 'Got it' }).click();
+    // Step 2 (pinghu) — the first example with a staged ResultPanel.
+    await expect(page.getByRole('heading', { name: /平和/ })).toBeVisible();
+
+    // Three shells: phone-portrait, phone-landscape, desktop. Each
+    // resize re-derives both the caption placement and any width
+    // cap on the ResultPanel itself, so every viewport stresses
+    // the fix end-to-end.
+    const viewports = [
+      { w: 393, h: 852, name: 'portrait' },
+      { w: 852, h: 393, name: 'landscape' },
+      { w: 1280, h: 800, name: 'desktop' },
+    ];
+    for (const vp of viewports) {
+      await page.setViewportSize({ width: vp.w, height: vp.h });
+      // Give the overlay a frame to re-measure the result-panel
+      // target rect through the registry's pending-update queue.
+      await page.waitForTimeout(400);
+      // The winning-hand row inside ResultPanel renders a row of
+      // tiles sized to actual content (sortHand + an optional meld
+      // strip), so its bounding box is a tight fit and a rect-
+      // intersection check against the caption is meaningful. By
+      // contrast the "Seat 0 wins!" Text element is text-aligned
+      // left in a wider container — its box overstates the visible
+      // glyph extent — so we anchor on the tile row instead.
+      const hand = await page.locator('[data-testid="winning-hand"]').boundingBox();
+      const captionCard = await page
+        .getByRole('button', { name: 'Got it' })
+        .locator('xpath=ancestor::*[2]')
+        .boundingBox();
+      expect(hand, `winning-hand box @ ${vp.name}`).not.toBeNull();
+      expect(captionCard, `caption box @ ${vp.name}`).not.toBeNull();
+      const h = hand!;
+      const c = captionCard!;
+      const overlaps =
+        h.x < c.x + c.width && h.x + h.width > c.x && h.y < c.y + c.height && h.y + h.height > c.y;
+      expect(
+        overlaps,
+        `caption covers winning-hand row at ${vp.name} ${vp.w}x${vp.h}: hand=${JSON.stringify(h)} caption=${JSON.stringify(c)}`,
+      ).toBe(false);
+    }
+  });
+
   test('re-entry after completion: same six staged hands re-appear deterministically', async ({
     page,
   }) => {
