@@ -75,6 +75,17 @@ declare global {
    *  on tutorial teardown alongside `__MAHJONG_TEST_BOT_SCRIPTS__`. */
   // eslint-disable-next-line no-var
   var __MAHJONG_TUTORIAL_FORCE_PASS__: boolean | undefined;
+  /** When set, the live wall is truncated to this length after
+   *  `startHand` builds the lesson's deterministic engine state in
+   *  `joinSoloTutorial` (`transport-context.tsx`). Used by the
+   *  `drawn-game` lesson so the wall exhausts in a few turns instead
+   *  of the ~17 minutes a natural drain would take. Joins the
+   *  `__MAHJONG_TEST_*__` family; cleared on tutorial teardown
+   *  alongside `__MAHJONG_TEST_BOT_SCRIPTS__` and
+   *  `__MAHJONG_TUTORIAL_FORCE_PASS__` so a follow-up regular solo
+   *  match doesn't inherit the tiny wall. */
+  // eslint-disable-next-line no-var
+  var __MAHJONG_TEST_WALL_DEPTH__: number | undefined;
 }
 
 interface SoloOptions {
@@ -112,6 +123,29 @@ const DEFAULT_BOT_SKILLS: [BotKind, BotKind, BotKind] = ['heuristic', 'simple', 
  *  uniformly. */
 export const DEFAULT_BOT_CLAIM_MIN_MS = 2_000;
 export const DEFAULT_BOT_CLAIM_MAX_MS = 6_000;
+
+/**
+ * Apply the `__MAHJONG_TEST_WALL_DEPTH__` global hatch to a freshly-
+ * dealt tutorial engine state. When the global is set to a non-negative
+ * integer smaller than the live wall, the wall is truncated to that
+ * length by taking the top-of-stack slice (`wall.slice(-N)` — `drawTile`
+ * pops the last entry, so the next `N` draws are identical to a non-
+ * truncated run, just with nothing behind them). Returns the input
+ * state unchanged when the global is unset, non-numeric, negative, or
+ * already at-or-below the requested depth.
+ *
+ * Consumed by `joinSoloTutorial` in `transport-context.tsx` so the
+ * `drawn-game` lesson can pin a small wall and exhaust it in a handful
+ * of turns instead of the ~17 minutes a natural drain would take. The
+ * helper is extracted here so unit tests can exercise the hatch
+ * without standing up the full transport-context React provider.
+ */
+export function applyTestWallDepth<S extends { wall: readonly unknown[] }>(state: S): S {
+  const depth = globalThis.__MAHJONG_TEST_WALL_DEPTH__;
+  if (typeof depth !== 'number') return state;
+  if (depth < 0 || depth >= state.wall.length) return state;
+  return { ...state, wall: state.wall.slice(-depth) };
+}
 
 /** Resolve a per-bot claim-submission delay. The default is a random
  *  draw from `[MIN, MAX]` (2–6 s in production); when

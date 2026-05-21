@@ -255,8 +255,10 @@ test.describe('tutorial: basics', () => {
             'peng',
             'robbing-kong',
             'open-gang-claim',
+            'promoted-gang',
             'win',
             'hidden-gang',
+            'drawn-game',
           ],
         }),
       );
@@ -270,8 +272,10 @@ test.describe('tutorial: basics', () => {
     await expect(page.getByLabel('Replay Claiming a peng')).toBeVisible();
     await expect(page.getByLabel('Replay Robbing the kong')).toBeVisible();
     await expect(page.getByLabel('Replay Claiming an open gang')).toBeVisible();
+    await expect(page.getByLabel('Replay Promoting a gang')).toBeVisible();
     await expect(page.getByLabel('Replay Winning a hand')).toBeVisible();
     await expect(page.getByLabel('Replay Concealed gang')).toBeVisible();
+    await expect(page.getByLabel('Replay Drawn game')).toBeVisible();
   });
 
   test('"Tutorial" row appears in the in-match menu once basics is complete', async ({ page }) => {

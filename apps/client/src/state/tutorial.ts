@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { stubLesson } from '../ui/tutorial/lessons/_stub';
 import { basicsLesson } from '../ui/tutorial/lessons/basics';
 import { claimsLesson } from '../ui/tutorial/lessons/claims';
+import { drawnGameLesson } from '../ui/tutorial/lessons/drawn-game';
 import { hiddenGangLesson } from '../ui/tutorial/lessons/hidden-gang';
 import { openGangClaimLesson } from '../ui/tutorial/lessons/open-gang-claim';
 import { pengLesson } from '../ui/tutorial/lessons/peng';
@@ -32,6 +33,7 @@ export const LESSONS: Record<string, Lesson> = {
   [promotedGangLesson.id]: promotedGangLesson,
   [winLesson.id]: winLesson,
   [hiddenGangLesson.id]: hiddenGangLesson,
+  [drawnGameLesson.id]: drawnGameLesson,
   [stubLesson.id]: stubLesson,
 };
 
@@ -55,6 +57,7 @@ export const LESSON_ORDER: readonly string[] = [
   promotedGangLesson.id,
   winLesson.id,
   hiddenGangLesson.id,
+  drawnGameLesson.id,
 ];
 
 /**
