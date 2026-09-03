@@ -1,11 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import {
-  ACESFilmicToneMapping,
-  PCFSoftShadowMap,
-  SRGBColorSpace,
-  Scene,
-  WebGLRenderer,
-} from 'three';
+import { ACESFilmicToneMapping, PCFShadowMap, SRGBColorSpace, Scene, WebGLRenderer } from 'three';
 import { useGame } from '../../state/game';
 import { type CameraPreset, CameraRig } from './camera';
 import { Loop } from './loop';
@@ -128,7 +122,8 @@ export function SceneHost({
     renderer.toneMapping = ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.05;
     renderer.shadowMap.enabled = quality.shadowMapSize > 0;
-    renderer.shadowMap.type = PCFSoftShadowMap;
+    // r185 deprecates PCFSoftShadowMap (and falls back to this anyway).
+    renderer.shadowMap.type = PCFShadowMap;
     if (!transparent) renderer.setClearColor(clearColor, 1);
     else renderer.setClearColor(0x000000, 0);
 

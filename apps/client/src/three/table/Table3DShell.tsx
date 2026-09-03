@@ -431,8 +431,11 @@ export function Table3DShell(props: Table3DShellProps) {
         transform: 'translateX(-50%)',
       };
     }
-    if (pos === 'left') return { position: 'absolute', left: pad, top: portrait ? '46%' : '30%' };
-    return { position: 'absolute', right: pad, top: portrait ? '46%' : '30%' };
+    // Landscape tucks them into the top corners under the chrome so the
+    // claim column and toasts have the flanks to themselves.
+    const sideTop = portrait ? '46%' : pad + insets.top + 58;
+    if (pos === 'left') return { position: 'absolute', left: pad + insets.left, top: sideTop };
+    return { position: 'absolute', right: pad + insets.right, top: sideTop };
   };
   const resolved = state.lastResult !== null && state.lastResult !== undefined;
   const youBadge = badges.find((b) => b.position === 'bottom');
@@ -573,17 +576,18 @@ export function Table3DShell(props: Table3DShellProps) {
             />
           </div>
 
-          {/* Claim column on wide viewports. */}
+          {/* Claim column on wide viewports — bottom-aligned on desktop so
+              it sits beside the hand, clear of the right seat's badge. */}
           {props.hasClaimOption && !portrait ? (
             <div
               style={{
                 position: 'absolute',
                 right: pad + insets.right,
-                top: pad + insets.top + 60,
-                bottom: pad + insets.bottom + 70,
+                top: pad + insets.top + (compact ? 112 : 60),
+                bottom: pad + insets.bottom + (compact ? 8 : 70),
                 width: compact ? 200 : 260,
                 display: 'flex',
-                alignItems: 'center',
+                alignItems: compact ? 'center' : 'flex-end',
                 justifyContent: 'flex-end',
                 pointerEvents: 'none',
                 zIndex: 4,
