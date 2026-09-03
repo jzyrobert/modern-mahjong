@@ -136,7 +136,7 @@ const GLASS_BG = 'rgba(14,20,17,0.74)';
 /** Deeper tint for a card that has to sit over dimmed chrome: with the
  *  scrim already flattening what is behind, the blur has little to
  *  bite on and the tint alone has to stop labels reading through. */
-const GLASS_BG_DENSE = 'rgba(14,20,17,0.94)';
+const GLASS_BG_DENSE = 'rgba(14,20,17,0.97)';
 const GLASS_BORDER = 'rgba(255,255,255,0.12)';
 const TEXT_PRIMARY = 'rgba(255,255,255,0.92)';
 const TEXT_SECONDARY = 'rgba(255,255,255,0.64)';

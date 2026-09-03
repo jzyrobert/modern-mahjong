@@ -42,9 +42,10 @@ export interface CaptionPlacement {
    *  card-local px (x for above/below, y for left/right). `null` when
    *  the card is centred with no target. */
   notch: number | null;
-  /** True when the card still intersects an `avoid` rect after every
-   *  shift the layout allowed. The overlay raises the glass tint so
-   *  dimmed chrome underneath cannot read through. */
+  /** True when the card ends up over something it should not — an
+   *  `avoid` rect it could not dodge, or the spotlit target itself (the
+   *  portrait fallback overlaps the result panel's bottom). The overlay
+   *  raises the glass tint so what is underneath cannot read through. */
   overlapsChrome: boolean;
 }
 
@@ -164,20 +165,22 @@ export function placeCaption({
   // screen → above; the tsumo button in the top chrome → below.
   const preferBelow = spaceBelow > spaceAbove;
 
+  // Tint decision looks at *everything* the card ends up over — chrome
+  // it could not dodge and the spotlit target itself (the portrait
+  // fallback deliberately overlaps the result panel's bottom, whose
+  // buttons would otherwise read through the lighter glass).
   const finish = (
     kind: DockKind,
     left: number,
     top: number,
     width: number,
     notch: number | null,
-  ): CaptionPlacement => ({
-    kind,
-    left,
-    top,
-    width,
-    notch,
-    overlapsChrome: chrome.some((r) => intersectionArea({ left, top, width, height: h }, r) > 0),
-  });
+  ): CaptionPlacement => {
+    const card = { left, top, width, height: h };
+    const covers =
+      intersectionArea(card, halo) > 0 || (avoid ?? []).some((r) => intersectionArea(card, r) > 0);
+    return { kind, left, top, width, notch, overlapsChrome: covers };
+  };
 
   /**
    * Score a card rect against the chrome: `partial` is the area of

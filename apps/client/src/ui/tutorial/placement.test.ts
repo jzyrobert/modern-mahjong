@@ -230,6 +230,9 @@ describe('placeCaption', () => {
     expect(p.kind).toBe('below');
     expect(p.top).toBe(915 - 240 - safeInset(phone.width));
     expect(inside(p, 240, phone)).toBe(true);
+    // Sitting over the panel: the card deepens its tint even though the
+    // panel's buttons are spotlit content rather than chrome to dodge.
+    expect(p.overlapsChrome).toBe(true);
   });
 
   test('landscape phone result panel → narrow side card clamped vertically', () => {
