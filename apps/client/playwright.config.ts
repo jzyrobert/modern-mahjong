@@ -72,6 +72,8 @@ const SHARD_3_SPECS = [
   'replay-screenshot-desktop.spec.ts',
   'shuffle-on-rejoin.spec.ts',
   'solo-match.spec.ts',
+  // 3D render layer — settings panel + live preview (~15 s).
+  'three-settings.spec.ts',
 ];
 
 const ASSIGNED_SPECS = [...SHARD_1_SPECS, ...SHARD_2_SPECS, ...SHARD_3_SPECS];

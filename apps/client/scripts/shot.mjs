@@ -257,25 +257,41 @@ async function runStep(page, step, ctx) {
     return;
   }
   if (step.openSettings) {
-    // Both renderers expose a settings entry; try the common labels.
-    const candidates = [
-      '[data-testid="open-settings"]',
-      'role=button[name="Settings"]',
-      'text=Settings',
-      'role=button[name="☰"]',
-      '[data-testid="menu-pill"]',
-    ];
-    for (const sel of candidates) {
-      const loc = page.locator(sel).first();
-      if (await loc.isVisible().catch(() => false)) {
-        await loc.click();
-        const settings = page.getByText('Settings', { exact: true }).first();
-        if ((await settings.isVisible().catch(() => false)) && sel !== 'text=Settings')
-          await settings.click().catch(() => {});
-        return;
+    // Every shell exposes `data-testid="open-settings"` — directly in
+    // the 3D HUD, or inside the ☰ menu on the classic shells. Try the
+    // direct entry first, then open the menu (aria-label "Open menu"
+    // on the classic TopBar / MenuPill) and pick the row.
+    const direct = page.locator('[data-testid="open-settings"]').first();
+    if (await direct.isVisible().catch(() => false)) {
+      await direct.click();
+    } else {
+      const menuTriggers = [
+        '[data-testid="open-menu"]',
+        '[aria-label="Open menu"]',
+        'role=button[name="Open menu"]',
+        '[data-testid="menu-pill"]',
+      ];
+      let opened = false;
+      for (const sel of menuTriggers) {
+        const loc = page.locator(sel).first();
+        if (await loc.isVisible().catch(() => false)) {
+          await loc.click();
+          opened = true;
+          break;
+        }
       }
+      if (!opened) throw new Error('no settings entry found');
+      const row = page
+        .locator('[data-testid="open-settings"]')
+        .or(page.getByRole('button', { name: 'Settings' }))
+        .first();
+      await row.click({ timeout: step.timeout ?? 8000 });
     }
-    throw new Error('no settings entry found');
+    // The panel is open once its title is on screen.
+    return page
+      .getByText('Settings', { exact: true })
+      .first()
+      .waitFor({ timeout: step.timeout ?? 8000 });
   }
   if (step.startTutorial) {
     return page.evaluate((id) => {

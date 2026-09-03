@@ -66,6 +66,14 @@ export interface SceneHostProps {
   /** Stable key — bumping it rebuilds the scene (e.g. skin change). */
   rebuildKey?: string;
   testID?: string;
+  /**
+   * Explicitly lose the WebGL context on unmount (after `dispose()`).
+   * Browsers cap live contexts at ~16 and only reclaim them on GC, so
+   * a canvas that mounts/unmounts often (the settings preview inside
+   * a modal) should release eagerly. Off by default — a full-screen
+   * scene that remounts rarely doesn't need it.
+   */
+  releaseContextOnUnmount?: boolean;
 }
 
 const MAX_CONTEXT_LOSSES = 2;
@@ -80,6 +88,7 @@ export function SceneHost({
   onFatal,
   rebuildKey,
   testID,
+  releaseContextOnUnmount = false,
 }: SceneHostProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const buildRef = useRef(build);
@@ -235,8 +244,9 @@ export function SceneHost({
       unmount();
       perf.dispose();
       renderer.dispose();
+      if (releaseContextOnUnmount) renderer.forceContextLoss();
     };
-  }, [rebuildKey, qualitySetting, animations, transparent, clearColor]);
+  }, [rebuildKey, qualitySetting, animations, transparent, clearColor, releaseContextOnUnmount]);
 
   return (
     <div
