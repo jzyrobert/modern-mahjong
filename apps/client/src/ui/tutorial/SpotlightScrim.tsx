@@ -1,18 +1,25 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useId, useRef } from 'react';
 import { Animated, Easing, View } from 'react-native';
-import Svg, { Path } from 'react-native-svg';
+import Svg, { ClipPath, Defs, G, Path } from 'react-native-svg';
 import { COLORS } from '../colors';
-import type { HaloRect } from './placement';
+import { FEATHER_OUT, type FeatherSides, type HaloRect } from './placement';
 
 /**
  * Dim + spotlight for the tutorial coach-marks.
  *
  * One SVG paints the scrim as an even-odd path (outer rectangle minus
- * a rounded hole `FEATHER` px larger than the halo), then a handful of
- * thin stroked rounded-rect rings fill the feather band with rising
- * opacity. Strokes only touch the perimeter, so the whole layer costs
+ * a rounded hole just outside the halo), then a handful of thin stroked
+ * rounded-rect rings fill a 24 px feather band with rising opacity —
+ * `FEATHER_IN` px of it inside the halo edge (over the halo's own
+ * padding, never over the target itself) and up to `FEATHER_OUT` px
+ * outside. Strokes only touch the perimeter, so the whole layer costs
  * about one full-screen fill plus a few outlines per repaint — cheap
  * enough to follow a moving rect at 60 fps while the 3D camera eases.
+ *
+ * `feather` shrinks the outward band per side (see `featherFor`): the
+ * rings are clipped to the shrunken hole so a side that butts against
+ * an opaque neighbour gets a firm edge instead of un-dimming a strip of
+ * it.
  *
  * The pulse is a separate `Animated.View` ring: transform + opacity
  * only (compositor-friendly), 1.6 s breathing loop, held static under
@@ -20,17 +27,33 @@ import type { HaloRect } from './placement';
  */
 export const SCRIM_RGB = '7,12,10';
 export const SCRIM_ALPHA = 0.7;
-export const FEATHER = 24;
+export const FEATHER_IN = 10;
+export const FEATHER = FEATHER_IN + FEATHER_OUT;
 const RINGS = 16;
+
+const FULL_FEATHER: FeatherSides = {
+  top: FEATHER_OUT,
+  right: FEATHER_OUT,
+  bottom: FEATHER_OUT,
+  left: FEATHER_OUT,
+};
 
 interface SpotlightScrimProps {
   width: number;
   height: number;
   halo: HaloRect | null;
   radius: number;
+  feather?: FeatherSides | undefined;
 }
 
-export function SpotlightScrim({ width, height, halo, radius }: SpotlightScrimProps) {
+export function SpotlightScrim({
+  width,
+  height,
+  halo,
+  radius,
+  feather = FULL_FEATHER,
+}: SpotlightScrimProps) {
+  const clipId = `tutorial-spot-${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
   if (!halo) {
     return (
       <Svg
@@ -43,16 +66,23 @@ export function SpotlightScrim({ width, height, halo, radius }: SpotlightScrimPr
       </Svg>
     );
   }
-  const outer = expand(halo, FEATHER);
+  const outer = expandSides(halo, feather);
+  const holePath = roundedRectPath(
+    outer.left,
+    outer.top,
+    outer.width,
+    outer.height,
+    radius + Math.min(feather.top, feather.right, feather.bottom, feather.left),
+  );
   const step = FEATHER / RINGS;
   const rings: { key: string; d: string; alpha: number }[] = [];
   for (let k = 0; k < RINGS; k++) {
-    const dist = FEATHER - (k + 0.5) * step;
+    const dist = FEATHER_OUT - (k + 0.5) * step;
     const r = expand(halo, dist);
     rings.push({
       key: dist.toFixed(2),
       d: roundedRectPath(r.left, r.top, r.width, r.height, radius + dist),
-      alpha: SCRIM_ALPHA * smoothstep(dist / FEATHER),
+      alpha: SCRIM_ALPHA * smoothstep((dist + FEATHER_IN) / FEATHER),
     });
   }
   return (
@@ -62,26 +92,27 @@ export function SpotlightScrim({ width, height, halo, radius }: SpotlightScrimPr
       pointerEvents="none"
       style={{ position: 'absolute', left: 0, top: 0 }}
     >
+      <Defs>
+        <ClipPath id={clipId}>
+          <Path d={holePath} />
+        </ClipPath>
+      </Defs>
       <Path
-        d={`${rectPath(0, 0, width, height)} ${roundedRectPath(
-          outer.left,
-          outer.top,
-          outer.width,
-          outer.height,
-          radius + FEATHER,
-        )}`}
+        d={`${rectPath(0, 0, width, height)} ${holePath}`}
         fill={`rgba(${SCRIM_RGB},${SCRIM_ALPHA})`}
         fillRule="evenodd"
       />
-      {rings.map((ring) => (
-        <Path
-          key={ring.key}
-          d={ring.d}
-          fill="none"
-          stroke={`rgba(${SCRIM_RGB},${ring.alpha.toFixed(3)})`}
-          strokeWidth={step + 0.35}
-        />
-      ))}
+      <G clipPath={`url(#${clipId})`}>
+        {rings.map((ring) => (
+          <Path
+            key={ring.key}
+            d={ring.d}
+            fill="none"
+            stroke={`rgba(${SCRIM_RGB},${ring.alpha.toFixed(3)})`}
+            strokeWidth={step + 0.35}
+          />
+        ))}
+      </G>
     </Svg>
   );
 }
@@ -171,6 +202,15 @@ export function HaloRing({ halo, radius }: { halo: HaloRect; radius: number }) {
 
 function expand(h: HaloRect, by: number): HaloRect {
   return { left: h.left - by, top: h.top - by, width: h.width + by * 2, height: h.height + by * 2 };
+}
+
+function expandSides(h: HaloRect, by: FeatherSides): HaloRect {
+  return {
+    left: h.left - by.left,
+    top: h.top - by.top,
+    width: h.width + by.left + by.right,
+    height: h.height + by.top + by.bottom,
+  };
 }
 
 function smoothstep(x: number): number {

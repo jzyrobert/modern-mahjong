@@ -24,16 +24,24 @@ import {
 } from '../../state/tutorial';
 import { COLORS } from '../colors';
 import { HaloRing, PulseRing, SCRIM_ALPHA, SCRIM_RGB, SpotlightScrim } from './SpotlightScrim';
-import { type TargetRect, useTutorialTargetRect } from './TargetRegistry';
+import {
+  type TargetRect,
+  type TargetRegistryApi,
+  useTargetRegistry,
+  useTutorialTargetRect,
+} from './TargetRegistry';
+import { OVERLAY_ATTR, isChromeCandidate } from './chromeRects';
 import {
   type CaptionPlacement,
   HALO_RADIUS,
   type HaloRect,
+  featherFor,
   haloFor,
   placeCaption,
   safeInset,
 } from './placement';
 import type { Lesson, LessonStep } from './types';
+import { useChromeRects } from './useChromeRects';
 import { useReducedMotion } from './useReducedMotion';
 import { useFollowedRect, useSettledRect } from './useTargetTracking';
 import { useTutorialController } from './useTutorialController';
@@ -86,6 +94,10 @@ interface ActiveStepProps {
 }
 
 const GLASS_BG = 'rgba(14,20,17,0.74)';
+/** Deeper tint for a card that has to sit over dimmed chrome: with the
+ *  scrim already flattening what is behind, the blur has little to
+ *  bite on and the tint alone has to stop labels reading through. */
+const GLASS_BG_DENSE = 'rgba(14,20,17,0.88)';
 const GLASS_BORDER = 'rgba(255,255,255,0.12)';
 const TEXT_PRIMARY = 'rgba(255,255,255,0.92)';
 const TEXT_SECONDARY = 'rgba(255,255,255,0.64)';
@@ -109,11 +121,27 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
   const transport = useTransport();
   const window = useWindowDimensions();
   const reducedMotion = useReducedMotion();
+  const registry = useTargetRegistry();
   const stepKey = `${lesson.id}:${step.id}:${stepIndex}`;
+  const targetId = step.targetId ?? null;
 
-  const liveRect = useTutorialTargetRect(step.targetId ?? null);
+  const liveRect = useTutorialTargetRect(targetId);
   const haloRect = useFollowedRect(liveRect, reducedMotion);
   const cardRect = useSettledRect(liveRect, stepKey);
+  const rootRef = useRef<View | null>(null);
+
+  // Chrome the card must not bisect and the feather must not un-dim:
+  // DOM controls / labels on web, plus every other registered target.
+  const domChrome = useChromeRects({
+    active: true,
+    targetId,
+    stepKey,
+    viewport: window,
+    settledRect: cardRect,
+    originNode: () => rootRef.current as unknown as { getBoundingClientRect(): DOMRect } | null,
+  });
+  const registryChrome = otherTargetRects(registry, targetId, window);
+  const avoid = registryChrome.length > 0 ? [...domChrome, ...registryChrome] : domChrome;
 
   // Overlay wrapper size drives the scrim SVG so it spans the actual
   // rendered area on Android edge-to-edge (where `useWindowDimensions`
@@ -129,12 +157,15 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
   const [measured, setMeasured] = useState<{ key: string; height: number } | null>(null);
   const cardHeight = measured?.key === measureKey ? measured.height : null;
 
-  const halo = haloFor(haloRect);
+  const halo = haloFor(haloRect, window);
+  const feather = halo ? featherFor(halo, avoid) : undefined;
   const placement = placeCaption({
     viewport: { width: window.width, height: window.height },
-    halo: haloFor(cardRect),
+    halo: haloFor(cardRect, window),
     cardHeight,
+    avoid,
   });
+  const glassBg = placement.overlapsChrome ? GLASS_BG_DENSE : GLASS_BG;
 
   // Step transition: fade + 8 px slide once the new card is measured.
   // `ready` drops to false on every step change (the measurement is
@@ -188,6 +219,10 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
     // Modal focus-trap backdrop would swallow the taps we want to let
     // through to the spotlit element.
     <View
+      ref={(node) => {
+        rootRef.current = node;
+        markOverlay(node);
+      }}
       onLayout={(e) => {
         const { width, height } = e.nativeEvent.layout;
         setOverlaySize((prev) =>
@@ -202,6 +237,7 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
         height={overlaySize.h}
         halo={halo}
         radius={HALO_RADIUS}
+        feather={feather}
       />
       {tapPanels.map((panel) => (
         <View
@@ -251,7 +287,7 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
           style={[
             {
               width: '100%',
-              backgroundColor: GLASS_BG,
+              backgroundColor: glassBg,
               borderRadius: 16,
               borderWidth: 1,
               borderColor: GLASS_BORDER,
@@ -351,10 +387,33 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
             )}
           </View>
         </View>
-        {placement.notch !== null ? <Notch placement={placement} /> : null}
+        {placement.notch !== null ? <Notch placement={placement} fill={glassBg} /> : null}
       </Animated.View>
     </View>
   );
+}
+
+/** Tag the overlay root on web so the chrome scan skips its own DOM. */
+function markOverlay(node: unknown): void {
+  if (Platform.OS !== 'web') return;
+  const el = node as { setAttribute?: (name: string, value: string) => void } | null;
+  el?.setAttribute?.(OVERLAY_ATTR, '1');
+}
+
+/** Rects of every registered target other than the active one, sized
+ *  like chrome (a tall region such as the discard pool is skipped). */
+function otherTargetRects(
+  registry: TargetRegistryApi,
+  activeId: string | null,
+  viewport: { width: number; height: number },
+): HaloRect[] {
+  const out: HaloRect[] = [];
+  for (const [id, r] of registry.readAll()) {
+    if (id === activeId) continue;
+    const rect = { left: r.x, top: r.y, width: r.w, height: r.h };
+    if (isChromeCandidate({ rect, control: true, text: null }, viewport)) out.push(rect);
+  }
+  return out;
 }
 
 function StepDots({ ids, index }: { ids: string[]; index: number }) {
@@ -396,7 +455,8 @@ interface ButtonProps {
   accessibilityLabel?: string;
   testID?: string;
   stretch?: boolean;
-  /** Narrow side-dock cards: 40 px tall, tighter padding. */
+  /** Narrow side-dock cards: tighter padding (quiet links drop to 36 px;
+   *  the primary CTA keeps the 44 px floor). */
   compact?: boolean;
 }
 
@@ -416,7 +476,7 @@ function PrimaryButton({
       onPress={onPress}
       style={(s: HoverState) => [
         {
-          minHeight: compact ? 40 : 44,
+          minHeight: 44,
           paddingHorizontal: compact ? 14 : 20,
           borderRadius: 12,
           backgroundColor: COLORS.gold,
@@ -481,9 +541,8 @@ const NOTCH_H = 11;
 /** Pointer notch on the card edge that faces the halo. Drawn as an
  *  SVG so the two outer edges carry the glass border while the base
  *  overlaps the card by 1 px and hides the border segment beneath. */
-function Notch({ placement }: { placement: CaptionPlacement }) {
+function Notch({ placement, fill }: { placement: CaptionPlacement; fill: string }) {
   const n = placement.notch ?? 0;
-  const fill = GLASS_BG;
   let style: ViewStyle;
   let body: string;
   let edge: string;

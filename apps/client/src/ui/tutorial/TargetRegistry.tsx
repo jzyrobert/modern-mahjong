@@ -11,6 +11,7 @@ import {
 import { useSyncExternalStore } from 'react';
 import { Platform, type StyleProp, View, type ViewStyle } from 'react-native';
 import { LESSONS, useTutorial } from '../../state/tutorial';
+import { TARGET_ATTR } from './chromeRects';
 import type { TutorialTargetId } from './types';
 
 export interface TargetRect {
@@ -39,6 +40,10 @@ interface TargetRegistryApi {
    *  `requestAnimationFrame` poller detect "something moved" with
    *  one integer compare instead of diffing rects. */
   version(): number;
+  /** Every live rect, keyed by id (additive). `<TutorialOverlay>` uses
+   *  the *other* targets as chrome the caption card should not bisect
+   *  and as opaque neighbours that tighten the spotlight feather. */
+  readAll(): ReadonlyMap<TutorialTargetId, TargetRect>;
   /** Sentinel root the registry uses as the origin for all rects.
    *  Targets store `(target.window.x - root.window.x, target.window.y
    *  - root.window.y)` in the registry; `<TutorialOverlay>` is mounted
@@ -55,6 +60,7 @@ const noopApi: TargetRegistryApi = {
   subscribe: () => () => {},
   subscribeTo: () => () => {},
   version: () => 0,
+  readAll: () => new Map(),
   rootRef: { current: null },
 };
 
@@ -143,6 +149,9 @@ export function TargetRegistryProvider({ children }: TargetRegistryProviderProps
       version() {
         return versionRef.current;
       },
+      readAll() {
+        return map;
+      },
       rootRef,
     }),
     [listeners, idListeners, map],
@@ -199,6 +208,14 @@ interface TutorialTargetProps {
    *  silently overflows instead. Defaults to undefined so existing
    *  content-fit usages keep their previous layout. */
   style?: StyleProp<ViewStyle>;
+}
+
+/** On web the View ref is the DOM element itself; tag it so the
+ *  overlay's chrome scan can skip the spotlit target's own subtree. */
+function markTarget(node: unknown, id: TutorialTargetId): void {
+  if (Platform.OS !== 'web') return;
+  const el = node as { setAttribute?: (name: string, value: string) => void } | null;
+  el?.setAttribute?.(TARGET_ATTR, id);
 }
 
 interface MeasurableNode {
@@ -348,6 +365,7 @@ export function TutorialTarget({ id, children, enabled = true, style }: Tutorial
     <View
       ref={(node) => {
         ref.current = node as unknown as MeasurableNode | null;
+        markTarget(node, id);
       }}
       onLayout={measureAndRegister}
       collapsable={false}
