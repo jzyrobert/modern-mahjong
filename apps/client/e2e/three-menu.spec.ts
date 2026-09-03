@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './_helpers';
 
 /**
  * Three.js menu backdrop (`src/three/menu/`). Pins the 3D renderer,
@@ -34,7 +34,9 @@ function collectErrors(page: import('@playwright/test').Page): () => string[] {
 
 async function readPerf(page: import('@playwright/test').Page): Promise<PerfSnapshot> {
   await page.waitForFunction(
-    () => ((globalThis as { __MAHJONG_PERF__?: { sample: number } }).__MAHJONG_PERF__?.sample ?? 0) >= 2,
+    () =>
+      ((globalThis as { __MAHJONG_PERF__?: { sample: number } }).__MAHJONG_PERF__?.sample ?? 0) >=
+      2,
     null,
     { timeout: 15_000 },
   );
@@ -43,6 +45,8 @@ async function readPerf(page: import('@playwright/test').Page): Promise<PerfSnap
   );
 }
 
+// `_helpers` pins `classic` for the legacy suite; init scripts run in
+// registration order, so this later assignment wins for these specs.
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     (globalThis as { __MAHJONG_TEST_RENDERER__?: string }).__MAHJONG_TEST_RENDERER__ = '3d';
@@ -99,7 +103,9 @@ test.describe('three: menu backdrop', () => {
     await page.waitForTimeout(2200);
     const before = await readPerf(page);
     await page.waitForFunction(
-      (s) => ((globalThis as { __MAHJONG_PERF__?: { sample: number } }).__MAHJONG_PERF__?.sample ?? 0) > s,
+      (s) =>
+        ((globalThis as { __MAHJONG_PERF__?: { sample: number } }).__MAHJONG_PERF__?.sample ?? 0) >
+        s,
       before.sample,
       { timeout: 5000 },
     );
@@ -135,7 +141,9 @@ test.describe('three: menu backdrop', () => {
     await page.waitForTimeout(1500);
     const a = await readPerf(page);
     await page.waitForFunction(
-      (s) => ((globalThis as { __MAHJONG_PERF__?: { sample: number } }).__MAHJONG_PERF__?.sample ?? 0) > s,
+      (s) =>
+        ((globalThis as { __MAHJONG_PERF__?: { sample: number } }).__MAHJONG_PERF__?.sample ?? 0) >
+        s,
       a.sample,
       { timeout: 5000 },
     );
@@ -154,5 +162,7 @@ test.describe('three: menu backdrop', () => {
     await expect(page.getByRole('heading', { name: 'Modern Mahjong' })).toBeVisible();
     await expect(page.getByTestId('lobby-backdrop-classic')).toBeAttached();
     await expect(page.locator('canvas')).toHaveCount(0);
+    // The DOM hero fan fills the band the 3D scene would otherwise own.
+    await expect(page.getByTestId('hero-fan')).toBeAttached();
   });
 });

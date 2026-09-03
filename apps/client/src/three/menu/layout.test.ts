@@ -90,21 +90,24 @@ describe('menu layout', () => {
     ['phone-landscape', 915 / 412],
     ['tablet', 834 / 1194],
     ['desktop', 1440 / 900],
-  ])('menuLayout(%s) frames the fan with margin and keeps the hero in the upper part', (_n, aspect) => {
-    const l = menuLayout(aspect);
-    const perRow = Math.ceil(HERO_COUNT / l.fan.rows);
-    const width = fanWidth(perRow, l.fan.spacing);
-    expect(l.frameWidth).toBeGreaterThan(width);
-    expect(l.viewCenter.y).toBeLessThan(0.7);
-    expect(l.viewCenter.y).toBeGreaterThan(0.2);
-    expect(l.camera.position[2]).toBeGreaterThan(0);
-    expect(l.camera.position[1]).toBeGreaterThan(l.camera.target[1]);
-    expect(l.fogDensity).toBeGreaterThan(0);
-    expect(l.drift.far).toBeGreaterThan(l.drift.near);
-    // Dice sit just outside the fan on the plane.
-    expect(l.dice[0].x).toBeGreaterThan(width / 2);
-    expect(l.dice[0].y).toBeGreaterThan(0);
-  });
+  ])(
+    'menuLayout(%s) frames the fan with margin and keeps the hero in the upper part',
+    (_n, aspect) => {
+      const l = menuLayout(aspect);
+      const perRow = Math.ceil(HERO_COUNT / l.fan.rows);
+      const width = fanWidth(perRow, l.fan.spacing);
+      expect(l.frameWidth).toBeGreaterThan(width);
+      expect(l.viewCenter.y).toBeLessThan(0.7);
+      expect(l.viewCenter.y).toBeGreaterThan(0.2);
+      expect(l.camera.position[2]).toBeGreaterThan(0);
+      expect(l.camera.position[1]).toBeGreaterThan(l.camera.target[1]);
+      expect(l.fogDensity).toBeGreaterThan(0);
+      expect(l.drift.far).toBeGreaterThan(l.drift.near);
+      // Dice sit just outside the fan on the plane.
+      expect(l.dice[0].x).toBeGreaterThan(width / 2);
+      expect(l.dice[0].y).toBeGreaterThan(0);
+    },
+  );
 
   test('drift field is deterministic, bounded and mixes faces with backs', () => {
     const a = driftField(DRIFT_COUNT);

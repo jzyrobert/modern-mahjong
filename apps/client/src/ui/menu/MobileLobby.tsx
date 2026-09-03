@@ -280,7 +280,10 @@ export function MobileLobby({ isLandscape }: MobileLobbyProps) {
         <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }} edges={['top', 'bottom']}>
           <ScrollView
             style={{ flex: 1 }}
-            contentContainerStyle={{ padding: 12, paddingBottom: 20 }}
+            // `flexGrow: 1` + the spacer below pin the credit line to the
+            // bottom-right corner, clear of the hero fan + dice that sit
+            // under the title column (`heroAnchor` → x ≈ 0.21, y ≈ 0.64).
+            contentContainerStyle={{ padding: 12, paddingBottom: 12, flexGrow: 1 }}
           >
             <View style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start' }}>
               <View style={{ width: '30%', minWidth: 220, gap: 14, paddingTop: 2 }}>
@@ -306,7 +309,8 @@ export function MobileLobby({ isLandscape }: MobileLobbyProps) {
                 {lobby ? <LobbyPreview lobby={lobby} matchCode={null} /> : null}
               </View>
             </View>
-            <Footer compact />
+            <View style={{ flex: 1 }} />
+            <Footer compact align="right" />
           </ScrollView>
           {modals}
         </SafeAreaView>

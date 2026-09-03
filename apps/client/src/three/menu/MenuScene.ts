@@ -171,7 +171,8 @@ export function buildMenuScene(ctx: SceneContext, opts: MenuSceneOptions): Scene
     const p = pool.pose(HERO_COUNT + j);
     p.visible = true;
     p.faceCell = d.cell < 0 ? BACK_CELL : d.cell;
-    const shade = lerp(1, 0.7, d.depth);
+    // Far tiles sink toward the void: dimmer body + the fog does the rest.
+    const shade = lerp(0.92, 0.5, d.depth);
     p.tint.setScalar(shade);
   });
 

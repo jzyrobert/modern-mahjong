@@ -60,9 +60,10 @@ function DesktopLobby() {
   }, []);
 
   const columns = width >= 960 ? 3 : 2;
-  // Reserve the upper third for the 3D hero: the title block sits at
-  // the top of this band and the fan renders in the space below it.
-  const heroMinHeight = Math.max(300, Math.round(height * 0.42));
+  // Reserve the upper 40 % for the hero: the title block sits at the
+  // top of this band and the fan renders in the space below it (its
+  // anchor is `heroAnchor` → y ≈ 0.33 on wide viewports).
+  const heroMinHeight = Math.max(300, Math.round(height * 0.4));
 
   const onlineCard = (
     <ModeCard
@@ -152,7 +153,7 @@ function DesktopLobby() {
       <Text style={TYPE.body}>
         {canHostLan
           ? 'Four-player matches over local Wi-Fi. Host shares the URL; guests paste it into any browser on the same network.'
-          : 'Join an in-progress LAN match by pasting the host’s URL. Hosting needs the native app — install the Android build to host one yourself.'}
+          : 'Paste the host’s URL to join a match on your Wi-Fi. Hosting needs the Android app.'}
       </Text>
       <InlineHint icon={<BoxIcon color={MENU.text3} />}>
         Works offline. No accounts. No data leaves your network.
@@ -193,7 +194,9 @@ function DesktopLobby() {
   // Independent column stacks — a tall Tutorial card doesn't stretch
   // its neighbours. The first card of every column shares stagger slot
   // 0 so the Online / Practice / Tutorial titles line up during the
-  // entrance (the lobby-layout spec measures them mid-animation).
+  // entrance (the lobby-layout spec measures them mid-animation). The
+  // taller LAN card goes under the shorter Practice card so the three
+  // columns end within a few px of each other at 1440 × 900.
   const stacks: ReactNode[][] =
     columns === 3
       ? [
@@ -201,16 +204,16 @@ function DesktopLobby() {
             <Reveal key="online" index={0}>
               {onlineCard}
             </Reveal>,
-            <Reveal key="lan" index={1}>
-              {lanCard}
+            <Reveal key="replays" index={1}>
+              {replaysCard}
             </Reveal>,
           ],
           [
             <Reveal key="practice" index={0}>
               {practiceCard}
             </Reveal>,
-            <Reveal key="replays" index={1}>
-              {replaysCard}
+            <Reveal key="lan" index={1}>
+              {lanCard}
             </Reveal>,
           ],
           [
@@ -313,20 +316,22 @@ function DesktopLobby() {
 }
 
 /** Credit lines under the cards — sound licence + the CC0 asset policy. */
-export function Footer({ compact = false }: { compact?: boolean }) {
+export function Footer({
+  compact = false,
+  align = 'center',
+}: { compact?: boolean; align?: 'center' | 'left' | 'right' }) {
+  const items = align === 'center' ? 'center' : align === 'left' ? 'flex-start' : 'flex-end';
   return (
     <View
       style={{
-        alignItems: 'center',
+        alignItems: items,
         gap: 4,
         marginTop: compact ? 18 : 28,
-        paddingHorizontal: 24,
+        paddingHorizontal: compact ? 12 : 24,
       }}
     >
-      <Text style={[TYPE.small, { textAlign: 'center' }]}>
-        Sound by みんなの創作支援サイトＴスタ
-      </Text>
-      <Text style={[TYPE.small, { textAlign: 'center', color: 'rgba(255,255,255,0.32)' }]}>
+      <Text style={[TYPE.small, { textAlign: align }]}>Sound by みんなの創作支援サイトＴスタ</Text>
+      <Text style={[TYPE.small, { textAlign: align, color: 'rgba(255,255,255,0.32)' }]}>
         Procedural tiles &amp; felt · CC0 assets only · open source
       </Text>
     </View>

@@ -310,10 +310,12 @@ async function runStep(page, step, ctx) {
   throw new Error(`unknown step ${JSON.stringify(step)}`);
 }
 
-function judgeBudget(perf, budget, renderer) {
+function judgeBudget(perf, budget, renderer, recipe) {
   const violations = [];
   if (renderer !== '3d')
     return { pass: true, violations, note: 'classic renderer — no WebGL budget' };
+  if (recipe?.scene === false)
+    return { pass: true, violations, note: 'DOM-only state — no WebGL scene expected' };
   if (!perf)
     return {
       pass: false,
@@ -376,7 +378,8 @@ async function shootState(browser, name, recipe, opts, ctx) {
       if (opts.verbose) console.error(`  [${name}] ${JSON.stringify(step).slice(0, 80)}`);
       await runStep(page, step, ctx);
     }
-    if (opts.renderer === '3d') await runStep(page, { waitForPerf: true }, ctx);
+    if (opts.renderer === '3d' && recipe.scene !== false)
+      await runStep(page, { waitForPerf: true }, ctx);
   } catch (e) {
     driveError = String(e?.message || e).split('\n')[0];
   }
@@ -390,6 +393,7 @@ async function shootState(browser, name, recipe, opts, ctx) {
     perf,
     recipe.budget ?? BUDGETS[recipe.owner] ?? BUDGETS.table,
     opts.renderer,
+    recipe,
   );
   const log = {
     state: name,

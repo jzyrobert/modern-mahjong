@@ -1,3 +1,4 @@
+import { type ViewportClass, classifyAspect, heroAnchor } from '../../ui/menu/heroAnchor';
 import type { CameraPreset } from '../core/camera';
 import { TILE_D, TILE_H, TILE_W } from '../tiles/geometry';
 
@@ -123,36 +124,31 @@ export function fanSlots(count: number, p: FanParams): Slot[] {
   return out;
 }
 
-export type ViewportClass = 'portrait' | 'landscape-phone' | 'wide';
-
-export function classifyAspect(aspect: number): ViewportClass {
-  if (aspect < 0.85) return 'portrait';
-  if (aspect > 1.95) return 'landscape-phone';
-  return 'wide';
-}
+/** Viewport classes + the on-screen hero anchor are shared with the
+ *  classic DOM fan — see `ui/menu/heroAnchor.ts`. Re-exported so the
+ *  three-side callers keep one import. */
+export { classifyAspect, type ViewportClass };
 
 export function menuLayout(aspect: number): MenuLayout {
-  const cls = classifyAspect(aspect);
+  const anchor = heroAnchor(aspect);
+  const cls = anchor.cls;
   let fan: FanParams;
   let fov: number;
   let margin: number;
-  let viewCenter: { x: number; y: number };
   if (cls === 'portrait') {
     fan = { spacing: 0.6, lean: 0.5, yaw: 0.075, zStep: 0.16, curve: 0.0, rows: 1, rowGap: 0 };
     fov = 44;
     margin = 1.4;
-    viewCenter = { x: 0.5, y: 0.3 };
   } else if (cls === 'landscape-phone') {
     fan = { spacing: 1.02, lean: 0.46, yaw: 0.03, zStep: 0.0, curve: 0.004, rows: 2, rowGap: 1.15 };
     fov = 30;
     margin = 15;
-    viewCenter = { x: 0.19, y: 0.64 };
   } else {
     fan = { spacing: 1.0, lean: 0.46, yaw: 0.045, zStep: 0.06, curve: 0.006, rows: 1, rowGap: 0 };
     fov = 34;
     margin = 9;
-    viewCenter = { x: 0.5, y: 0.34 };
   }
+  const viewCenter = { x: anchor.x, y: anchor.y };
   const perRow = Math.ceil(HERO_COUNT / fan.rows);
   const width = fanWidth(perRow, fan.spacing);
   const distance = fitDistance(width + margin, fov, aspect);
@@ -176,8 +172,8 @@ export function menuLayout(aspect: number): MenuLayout {
     drift: {
       halfW: frameWidth * 0.55,
       halfH: frameHeight * 0.7,
-      near: 5,
-      far: 26,
+      near: 6,
+      far: 28,
     },
     dice: [
       { x: dieX, y: 0.26, z: 1.1, rx: 0, ry: 0.5, rz: 0 },

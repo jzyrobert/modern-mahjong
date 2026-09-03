@@ -25,6 +25,8 @@
  *
  * `owner` is the subsystem the state belongs to (used by STATUS.json).
  * `budget` overrides the default per-subsystem perf budget.
+ * `scene: false` marks a DOM-only state (no WebGL scene even under the
+ * 3D renderer) so the budget check doesn't wait for `__MAHJONG_PERF__`.
  */
 
 /**
@@ -53,7 +55,9 @@ export const STATES = {
   // ── Menu ─────────────────────────────────────────────────────────────
   menu: {
     owner: 'menu',
-    steps: [{ goto: '/' }, { waitForText: 'Modern Mahjong' }, { waitMs: 900 }],
+    // 1.6 s: past the card stagger (640 ms) and the 3D intro settle
+    // (`MENU_MOTION.settleMs` ≈ 1.43 s) so the shot is the resting state.
+    steps: [{ goto: '/' }, { waitForText: 'Modern Mahjong' }, { waitMs: 1600 }],
   },
   'menu-tutorials': {
     owner: 'menu',
@@ -63,7 +67,7 @@ export const STATES = {
       { goto: '/' },
       { waitForText: 'Modern Mahjong' },
       { click: '[data-testid="mode-tutorial"]' },
-      { waitMs: 900 },
+      { waitMs: 1200 },
     ],
   },
   'menu-reduced-motion': {
@@ -80,7 +84,23 @@ export const STATES = {
   },
   'replay-library': {
     owner: 'menu',
+    // Themed like the lobby but with no 3D scene (ARCHITECTURE.md §0
+    // non-goals) — `scene: false` tells the verifier not to expect
+    // `__MAHJONG_PERF__` here.
+    scene: false,
     steps: [{ goto: '/replays' }, { waitForText: 'Replays' }, { waitMs: 800 }],
+  },
+  'replay-import': {
+    owner: 'menu',
+    scene: false,
+    steps: [
+      { goto: '/replays' },
+      { waitForText: 'Replays' },
+      { click: 'role=button[name="Import replays"]' },
+      { waitForText: 'Paste a JSON-encoded replay' },
+      { waitMs: 500 },
+    ],
+    optional: true,
   },
 
   // ── Settings ─────────────────────────────────────────────────────────
