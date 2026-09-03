@@ -17,7 +17,7 @@ import {
   useGame,
 } from '../../state/game';
 import { SettingsPreview3D } from '../../three/entry';
-import { hasWebGL2, resolveRenderer } from '../../three/renderer';
+import { hasWebGL2, rendererOverride, resolveRenderer } from '../../three/renderer';
 import { Modal } from '../Modal';
 import { COLORS, SWITCH_TRACK } from '../colors';
 import {
@@ -43,7 +43,9 @@ const DESKTOP_HEIGHT = 600;
 const G = {
   text: 'rgba(255,255,255,0.92)',
   text2: 'rgba(255,255,255,0.62)',
-  text3: 'rgba(255,255,255,0.45)',
+  // Muted labels — ≥ 5.5:1 on the glass sheet (0.45 sat exactly at the
+  // 4.5:1 floor and dipped under it over a bright blurred felt).
+  text3: 'rgba(255,255,255,0.58)',
   surface: 'rgba(255,255,255,0.06)',
   surfaceHi: 'rgba(255,255,255,0.12)',
   border: 'rgba(255,255,255,0.1)',
@@ -71,6 +73,7 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
   const webgl2 = Platform.OS === 'web' && hasWebGL2();
   const live3D = webgl2 && SettingsPreview3D !== null;
   const resolved = resolveRenderer(settings.renderer);
+  const override = rendererOverride();
   const previewHeight = height < 520 ? 150 : isDesktop ? 236 : 206;
 
   return (
@@ -111,9 +114,10 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
             onChange={(renderer) => setSettings({ renderer })}
             testIDPrefix="renderer"
             groupLabel="Renderer"
+            compact={isDesktop}
           />
           <Hint>{RENDERER_HINT}</Hint>
-          <Hint muted>{rendererDetail(settings.renderer, webgl2)}</Hint>
+          <Hint muted>{rendererDetail(settings.renderer, webgl2, override)}</Hint>
         </Section>
 
         <Section label="Quality">
@@ -123,6 +127,7 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
             onChange={(quality) => setSettings({ quality })}
             testIDPrefix="quality"
             groupLabel="Quality"
+            compact={isDesktop}
           />
           <Hint>{qualityHint(settings.quality)}</Hint>
         </Section>
@@ -280,6 +285,8 @@ interface SegmentedProps<T extends string> {
   onChange: (v: T) => void;
   testIDPrefix: string;
   groupLabel: string;
+  /** Pointer-driven layouts can drop to 38 px; touch keeps the 44 px minimum. */
+  compact?: boolean;
 }
 
 function Segmented<T extends string>({
@@ -288,6 +295,7 @@ function Segmented<T extends string>({
   onChange,
   testIDPrefix,
   groupLabel,
+  compact = false,
 }: SegmentedProps<T>) {
   return (
     <View
@@ -316,7 +324,7 @@ function Segmented<T extends string>({
             testID={`${testIDPrefix}-${o.value}`}
             style={({ pressed }) => ({
               flex: 1,
-              minHeight: 38,
+              minHeight: compact ? 38 : 44,
               alignItems: 'center',
               justifyContent: 'center',
               borderRadius: 9,

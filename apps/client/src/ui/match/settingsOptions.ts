@@ -25,7 +25,27 @@ export const QUALITY_OPTIONS: readonly SegmentOption<QualityChoice>[] = [
 
 export const RENDERER_HINT = '3D needs WebGL2; Classic is the original table.';
 
-export function rendererDetail(choice: RendererChoice, webgl2: boolean): string {
+export interface RendererOverrideInfo {
+  value: '3d' | 'classic';
+  source: 'test' | 'query';
+}
+
+/**
+ * Second hint line under the renderer control. When a session override
+ * (`?renderer=` or the test harness) is deciding instead of the setting,
+ * say so — otherwise "Resolves to 3D" next to a "Classic active" pill
+ * reads as a contradiction.
+ */
+export function rendererDetail(
+  choice: RendererChoice,
+  webgl2: boolean,
+  override: RendererOverrideInfo | null = null,
+): string {
+  if (override) {
+    const to = override.value === '3d' ? '3D' : 'Classic';
+    const by = override.source === 'query' ? `?renderer=${override.value}` : 'the test harness';
+    return `Overridden to ${to} for this session by ${by}. Your choice applies next visit.`;
+  }
   switch (choice) {
     case 'auto':
       return webgl2

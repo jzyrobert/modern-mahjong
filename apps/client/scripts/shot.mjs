@@ -317,11 +317,15 @@ async function runStep(page, step, ctx) {
     return loc.click({ timeout: 8000 });
   }
   if (step.waitForPerf) {
+    // Resolves to 'stale' (recorded as `perfStale` in the log) instead
+    // of silently continuing when the snapshot never advances — a
+    // "sample: 1, renders: 0" snapshot must not pass as fresh telemetry.
     return page
       .waitForFunction(() => (globalThis.__MAHJONG_PERF__?.sample ?? 0) >= 2, null, {
         timeout: 8000,
       })
-      .catch(() => {});
+      .then(() => 'fresh')
+      .catch(() => 'stale');
   }
   throw new Error(`unknown step ${JSON.stringify(step)}`);
 }
@@ -351,7 +355,20 @@ function judgeBudget(perf, budget, renderer) {
 }
 
 async function shootState(browser, name, recipe, opts, ctx) {
-  const vp = VIEWPORTS[opts.viewport];
+  // A recipe may pin its own viewport (`viewport: 'phone-landscape'` or
+  // `{ width, height, dpr }`) so orientation-specific states are checked
+  // whichever CLI viewport the run uses.
+  const vpName =
+    typeof recipe.viewport === 'string'
+      ? recipe.viewport
+      : recipe.viewport
+        ? 'custom'
+        : opts.viewport;
+  const vp =
+    typeof recipe.viewport === 'string'
+      ? VIEWPORTS[recipe.viewport]
+      : (recipe.viewport ?? VIEWPORTS[opts.viewport]);
+  if (!vp) throw new Error(`unknown recipe viewport ${recipe.viewport}`);
   const consoleErrors = [];
   const consoleWarnings = [];
   const pageErrors = [];
@@ -387,17 +404,21 @@ async function shootState(browser, name, recipe, opts, ctx) {
 
   const started = Date.now();
   let driveError = null;
+  let perfStale = false;
   try {
     for (const step of recipe.steps) {
       if (opts.verbose) console.error(`  [${name}] ${JSON.stringify(step).slice(0, 80)}`);
-      await runStep(page, step, ctx);
+      const r = await runStep(page, step, ctx);
+      if (step.waitForPerf && r === 'stale') perfStale = true;
     }
-    if (opts.renderer === '3d') await runStep(page, { waitForPerf: true }, ctx);
+    if (opts.renderer === '3d') {
+      perfStale = (await runStep(page, { waitForPerf: true }, ctx)) === 'stale';
+    }
   } catch (e) {
     driveError = String(e?.message || e).split('\n')[0];
   }
   const perf = await page.evaluate(() => globalThis.__MAHJONG_PERF__ ?? null).catch(() => null);
-  const base = `${name}.${opts.viewport}.${opts.renderer}`;
+  const base = `${name}.${vpName}.${opts.renderer}`;
   const png = path.join(opts.out, `${base}.png`);
   await page
     .screenshot({ path: png, fullPage: false })
@@ -411,7 +432,7 @@ async function shootState(browser, name, recipe, opts, ctx) {
     state: name,
     owner: recipe.owner,
     renderer: opts.renderer,
-    viewport: { ...vp, name: opts.viewport },
+    viewport: { ...vp, name: vpName },
     url: page.url(),
     driveMs: Date.now() - started,
     driveError,
@@ -419,6 +440,8 @@ async function shootState(browser, name, recipe, opts, ctx) {
     consoleWarnings: consoleWarnings.slice(0, 20),
     pageErrors,
     perf,
+    /** True when `__MAHJONG_PERF__` never advanced past its first sample. */
+    perfStale,
     budget,
     pass: !driveError && consoleErrors.length === 0 && pageErrors.length === 0 && budget.pass,
     png: path.relative(clientRoot, png),

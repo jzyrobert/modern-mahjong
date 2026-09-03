@@ -70,6 +70,9 @@ export function SettingsPreview3D({ felt, tileBack, height = 210 }: SettingsPrev
         initialCamera={PREVIEW_CAMERA}
         transparent
         releaseContextOnUnmount
+        // Full sharpness on every tier: the canvas is small and the
+        // scene is ~6.6k triangles, and the face glyphs must stay crisp.
+        maxDpr={2}
         onFatal={setFatal}
         testID="settings-preview-scene"
       />

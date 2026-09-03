@@ -1,3 +1,6 @@
+import { inflateSync } from 'node:zlib';
+import { type Rgb, gradientDeltaE, hexToRgb, luminance } from '../src/three/settings/colorMath';
+import { TILE_BACK_SKINS } from '../src/ui/match/skins';
 import { expect, test } from './_helpers';
 
 /**
@@ -43,7 +46,16 @@ async function openSettings(page: import('@playwright/test').Page) {
   // first dismiss attempt and eat the menu tap.
   for (let attempt = 0; attempt < 4; attempt++) {
     await dismissDice(page, 500);
-    await page.getByLabel('Open menu').first().click();
+    // Bounded click: if the dice overlay lands mid-tap and intercepts
+    // the pointer, fall through to the next attempt instead of eating
+    // the whole test timeout.
+    const opened = await page
+      .getByLabel('Open menu')
+      .first()
+      .click({ timeout: 5_000 })
+      .then(() => true)
+      .catch(() => false);
+    if (!opened) continue;
     const row = page.getByTestId('open-settings');
     if (await row.isVisible({ timeout: 3_000 }).catch(() => false)) {
       await row.click();
@@ -62,6 +74,78 @@ async function waitForPerfSample(page: import('@playwright/test').Page, min: num
   if (!perf) throw new Error('perf never published');
   return perf;
 }
+
+/**
+ * Colour of one CSS pixel, read from a 1×1 clip screenshot. A 1×1 PNG
+ * has a single scanline whose filter byte is irrelevant (no left / up
+ * neighbours), so the decoded IDAT is `[filter, r, g, b(, a)]`.
+ */
+async function samplePixel(
+  page: import('@playwright/test').Page,
+  x: number,
+  y: number,
+): Promise<Rgb> {
+  const png = await page.screenshot({ clip: { x, y, width: 1, height: 1 }, scale: 'css' });
+  let off = 8;
+  const idat: Buffer[] = [];
+  let channels = 3;
+  while (off < png.length) {
+    const len = png.readUInt32BE(off);
+    const type = png.toString('latin1', off + 4, off + 8);
+    const data = png.subarray(off + 8, off + 8 + len);
+    if (type === 'IHDR') channels = data[9] === 6 ? 4 : data[9] === 2 ? 3 : 1;
+    if (type === 'IDAT') idat.push(Buffer.from(data));
+    if (type === 'IEND') break;
+    off += 12 + len;
+  }
+  const row = inflateSync(Buffer.concat(idat));
+  if (channels === 1) return [row[1] ?? 0, row[1] ?? 0, row[1] ?? 0];
+  return [row[1] ?? 0, row[2] ?? 0, row[3] ?? 0];
+}
+
+/** Median of the 3×3 samples around (x, y) — robust to a single edge pixel. */
+async function sampleArea(
+  page: import('@playwright/test').Page,
+  x: number,
+  y: number,
+): Promise<Rgb> {
+  const out: Rgb[] = [];
+  for (const dx of [-2, 0, 2])
+    for (const dy of [-2, 0, 2]) out.push(await samplePixel(page, x + dx, y + dy));
+  const med = (i: 0 | 1 | 2) => out.map((c) => c[i]).sort((a, b) => a - b)[4] ?? 0;
+  return [med(0), med(1), med(2)];
+}
+
+/**
+ * Scroll the sheet back to the top (Playwright scrolls far-down chips
+ * into view) and wait until the preview's box stops moving (the bottom
+ * sheet slides in), so pixel samples line up with the box we measure.
+ */
+async function settledPreviewBox(page: import('@playwright/test').Page) {
+  await page.evaluate(() => {
+    for (const el of Array.from(document.querySelectorAll('*'))) {
+      if (el.scrollTop > 0) el.scrollTop = 0;
+    }
+  });
+  const preview = page.getByTestId('settings-preview-3d');
+  let last = await preview.boundingBox();
+  for (let i = 0; i < 20; i++) {
+    await page.waitForTimeout(150);
+    const next = await preview.boundingBox();
+    if (last && next && Math.abs(next.y - last.y) < 0.5 && Math.abs(next.x - last.x) < 0.5) {
+      return next;
+    }
+    last = next;
+  }
+  throw new Error('preview never settled');
+}
+
+/**
+ * Where the face-down tile's centre lands inside the preview box (the
+ * stage is static on the low tier the headless GL reports, so the
+ * position is deterministic). Fractions of the preview's width / height.
+ */
+const BACK_TILE_AT = { x: 0.665, y: 0.4 };
 
 function collectErrors(page: import('@playwright/test').Page) {
   const errors: string[] = [];
@@ -128,6 +212,34 @@ test.describe('3D settings panel', () => {
       'true',
     );
 
+    // The face-down tile shows the chosen back skin true to the chip:
+    // its centre lands within ΔE 5 of the skin's gradient (round 1 was
+    // ΔE 11 — washed toward white by the glossy lighting stack).
+    await page.waitForFunction(() => globalThis.__MAHJONG_PERF__?.idle === true, null, {
+      timeout: 10_000,
+    });
+    const box = await settledPreviewBox(page);
+    const plum = TILE_BACK_SKINS.plum;
+    const back = await sampleArea(
+      page,
+      Math.round(box.x + box.width * BACK_TILE_AT.x),
+      Math.round(box.y + box.height * BACK_TILE_AT.y),
+    );
+    expect(
+      gradientDeltaE(back, hexToRgb(plum.top), hexToRgb(plum.bottom)),
+      `back rgb(${back.join(',')}) vs plum ${plum.top}→${plum.bottom}`,
+    ).toBeLessThan(5);
+
+    // Composed stage: parlour void shows beneath the near rail (not wood
+    // running into the frame edge) — dark and not brown.
+    const below = await sampleArea(
+      page,
+      Math.round(box.x + box.width / 2),
+      Math.round(box.y + box.height - 8),
+    );
+    expect(luminance(below), `void rgb(${below.join(',')})`).toBeLessThan(0.02);
+    expect(below[0]).toBeLessThanOrEqual(below[1] + 4);
+
     // Renderer control writes through to the store.
     await page.getByTestId('renderer-classic').click();
     const renderer = await page.evaluate(() => {
@@ -164,6 +276,37 @@ test.describe('3D settings panel', () => {
     // The perf global is cleared on dispose — the last preview is gone.
     const perfAfter = await page.evaluate(() => globalThis.__MAHJONG_PERF__ ?? null);
     expect(perfAfter).toBeNull();
+    expect(errors).toEqual([]);
+  });
+
+  test('phone landscape: letterbox preview keeps both rails in frame', async ({ page }) => {
+    test.setTimeout(60_000);
+    const errors = collectErrors(page);
+    await page.setViewportSize({ width: 915, height: 412 });
+    await startSolo(page);
+    await openSettings(page);
+    const preview = page.getByTestId('settings-preview-3d');
+    await expect(preview.locator('canvas')).toBeVisible();
+    await waitForPerfSample(page, 2);
+    await page.waitForFunction(() => globalThis.__MAHJONG_PERF__?.idle === true, null, {
+      timeout: 10_000,
+    });
+    const box = await settledPreviewBox(page);
+    expect(box.width / box.height).toBeGreaterThan(3);
+    // Void above the far rail and below the near rail — the vertical fov
+    // is floored for letterbox canvases instead of cropping the rails.
+    const cx = Math.round(box.x + box.width / 2);
+    const top = await sampleArea(page, cx, Math.round(box.y + 5));
+    const bottom = await sampleArea(page, cx, Math.round(box.y + box.height - 6));
+    expect(luminance(top), `top rgb(${top.join(',')})`).toBeLessThan(0.02);
+    expect(luminance(bottom), `bottom rgb(${bottom.join(',')})`).toBeLessThan(0.02);
+    // …and the felt is still there between them.
+    const mid = await sampleArea(
+      page,
+      Math.round(box.x + box.width * 0.5),
+      Math.round(box.y + box.height * 0.62),
+    );
+    expect(mid[1], `felt rgb(${mid.join(',')})`).toBeGreaterThan(mid[0]);
     expect(errors).toEqual([]);
   });
 

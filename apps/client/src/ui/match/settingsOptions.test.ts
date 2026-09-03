@@ -31,4 +31,15 @@ describe('settings option copy', () => {
       expect(qualityHint(o.value).length).toBeGreaterThan(10);
     }
   });
+
+  test('a session override explains why the pill disagrees with the setting', () => {
+    const q = rendererDetail('auto', true, { value: 'classic', source: 'query' });
+    expect(q).toContain('Overridden to Classic');
+    expect(q).toContain('?renderer=classic');
+    const t = rendererDetail('classic', true, { value: '3d', source: 'test' });
+    expect(t).toContain('Overridden to 3D');
+    expect(t).toContain('test harness');
+    // No override → the setting-only copy, unchanged.
+    expect(rendererDetail('auto', true, null)).toBe(rendererDetail('auto', true));
+  });
 });

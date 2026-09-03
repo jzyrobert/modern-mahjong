@@ -42,7 +42,9 @@ const COLORS = {
   // backdrop-filter blur.
   scrim: 'rgba(20,15,10,0.55)',
   glassScrim: 'rgba(4,8,6,0.5)',
-  glassBg: Platform.OS === 'web' ? 'rgba(14,20,17,0.66)' : 'rgba(14,20,17,0.94)',
+  // Dense enough that muted text (0.56 white) clears 4.5:1 even when the
+  // blurred backdrop is a bright felt.
+  glassBg: Platform.OS === 'web' ? 'rgba(14,20,17,0.76)' : 'rgba(14,20,17,0.94)',
   glassBorder: 'rgba(255,255,255,0.12)',
   glassText: 'rgba(255,255,255,0.92)',
   glassText2: 'rgba(255,255,255,0.62)',

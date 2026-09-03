@@ -19,15 +19,18 @@ import { type LightRig, buildLights, buildStudioEnv } from '../core/lights';
 import { type SpringState, springStep } from '../core/tween';
 import { TilePool } from '../tiles/TilePool';
 import { TILE_D } from '../tiles/geometry';
-import { feltColors, tileBackColors } from '../tiles/materials';
+import { feltColors, setTileBackFinish, tileBackColors } from '../tiles/materials';
 import {
   AUTO_ORBIT_MS,
   ORBIT_AMPLITUDE,
   ORBIT_SPEED,
+  PREVIEW_BACK_FINISH,
   PREVIEW_CAMERA,
+  PREVIEW_LIGHTS,
   PREVIEW_TABLE,
   PREVIEW_TILES,
   TINT_HALF_LIFE,
+  compensateBackColor,
   verticalFovFor,
 } from './previewConfig';
 import { buildClothNormal, buildFeltVignette, buildWoodGrain } from './textures';
@@ -97,15 +100,15 @@ export class PreviewScene implements SceneHandle {
     // Key from the back-left so the tiles throw their contact shadows
     // toward the camera instead of hiding them behind themselves.
     this.lights.key.position.set(-2.6, 6.2, -2.2);
-    this.lights.key.intensity = 2.4;
-    this.lights.hemi.intensity = 0.75;
+    this.lights.key.intensity = PREVIEW_LIGHTS.keyIntensity;
+    this.lights.hemi.intensity = PREVIEW_LIGHTS.hemiIntensity;
     if (!this.lights.env) {
       // The preview is three tiles; reflections are what sell the
       // clearcoat, so build the studio env even on the low tier.
       this.ownEnv = buildStudioEnv(renderer);
       scene.environment = this.ownEnv;
-      scene.environmentIntensity = 0.45;
     }
+    scene.environmentIntensity = PREVIEW_LIGHTS.envIntensity;
 
     // Felt slab (its square corners hide under the rail's inner edge).
     const fc = feltColors(skins.felt);
@@ -148,9 +151,11 @@ export class PreviewScene implements SceneHandle {
 
     // Tiles.
     this.pool = new TilePool(skins.tileBack);
-    const back = tileBackColors(skins.tileBack);
-    this.backTopTarget.copy(back.top);
-    this.backBottomTarget.copy(back.bottom);
+    // Matte back so the skin colour reads true instead of washing out
+    // under the clearcoat's env reflection.
+    setTileBackFinish(this.pool.material, PREVIEW_BACK_FINISH);
+    this.setBackTargets(skins.tileBack);
+    this.snapTints();
     for (const t of PREVIEW_TILES) {
       const p = this.pool.pose(t.id);
       p.visible = true;
@@ -209,13 +214,18 @@ export class PreviewScene implements SceneHandle {
 
   /** Re-tint felt + tile backs. Uniform writes only — no rebuild. */
   setSkins(skins: PreviewSkins): void {
-    const fc = feltColors(skins.felt);
-    const back = tileBackColors(skins.tileBack);
-    this.feltTarget.copy(fc.top);
-    this.backTopTarget.copy(back.top);
-    this.backBottomTarget.copy(back.bottom);
+    this.feltTarget.copy(feltColors(skins.felt).top);
+    this.setBackTargets(skins.tileBack);
     if (this.reducedMotion) this.snapTints();
     this.wake();
+  }
+
+  private setBackTargets(skin: TileBackSkin): void {
+    const back = tileBackColors(skin);
+    this.backTopTarget.setRGB(...compensateBackColor([back.top.r, back.top.g, back.top.b]));
+    this.backBottomTarget.setRGB(
+      ...compensateBackColor([back.bottom.r, back.bottom.g, back.bottom.b]),
+    );
   }
 
   private snapTints(): void {
