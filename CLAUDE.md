@@ -413,3 +413,37 @@ short edge is near the breakpoint and the keyboard opens.
 - `pnpm test` covers the engine + server unit tests; the server tests in
   particular guard the snapshot/restore round-trip, the host-only action
   gate, and the spectator viewer count.
+
+## Three.js render layer (`apps/client/src/three/`)
+
+ARCHITECTURE.md is the contract: folder-per-subsystem, perf budget,
+CC0-only asset policy, verifier rules. Operational notes:
+
+- **Renderer switch**: `resolveRenderer(settings.renderer)` in
+  `src/three/renderer.ts`. Precedence: `__MAHJONG_TEST_RENDERER__`
+  global > `?renderer=classic|3d` query > persisted setting > auto
+  (3D on web with WebGL2, classic elsewhere / native). The legacy
+  Playwright suite pins `classic` through `e2e/_helpers.ts` (the
+  fixture also wraps `browser.newContext`, so every spec must import
+  `test` from `./_helpers`, never from `@playwright/test`). New 3D specs
+  are `e2e/three-*.spec.ts` and pin `'3d'` themselves.
+- **Platform split**: consumers import from `src/three/entry` (native
+  stub exporting `null`s) — Metro picks `entry.web.tsx` on web. Always
+  null-check the exports. Nothing under `src/three/` other than
+  `renderer.ts` and `entry.tsx` may be imported by universal code.
+- **Evidence rule**: no visual claim without a screenshot from
+  `node scripts/shot.mjs --state <name> --viewport phone|desktop
+  --renderer 3d|classic [--dist dist-x] [--label run]` (writes PNG +
+  JSON with console/page errors, `__MAHJONG_PERF__`, budget verdict to
+  `apps/client/shots/<label>/`). Recipes live in
+  `scripts/shot-states.mjs`; add a recipe rather than hand-driving. The
+  tool needs an export first (`npx expo export --platform web
+  [--output-dir dist-x]`, ~35 s). It runs on SwiftShader — gate on draw
+  calls / triangles / programs / JS frame time, not fps.
+- **Sandboxed containers**: `pnpm install --offline --frozen-lockfile`
+  works in a fresh worktree (store is warm). Point
+  `PW_CHROMIUM_PATH=/opt/pw-browsers/chromium` at the pre-installed
+  browser for `pnpm e2e`; `shot.mjs` auto-detects it.
+- **Critic scoreboard**: `docs/STATUS.json` — every gauntlet round
+  writes scores + ranked open issues there; the next `/loop` iteration
+  resumes from the lowest-scoring subsystem.
