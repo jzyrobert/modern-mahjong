@@ -88,7 +88,7 @@ export const STATES = {
     // non-goals) — `scene: false` tells the verifier not to expect
     // `__MAHJONG_PERF__` here.
     scene: false,
-    steps: [{ goto: '/replays' }, { waitForText: 'Replays' }, { waitMs: 800 }],
+    steps: [{ goto: '/replays' }, { waitForText: 'Replays' }, { waitMs: 1400 }],
   },
   'replay-import': {
     owner: 'menu',
@@ -98,7 +98,7 @@ export const STATES = {
       { waitForText: 'Replays' },
       { click: 'role=button[name="Import replays"]' },
       { waitForText: 'Paste a JSON-encoded replay' },
-      { waitMs: 500 },
+      { waitMs: 900 },
     ],
     optional: true,
   },

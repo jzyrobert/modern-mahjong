@@ -47,13 +47,14 @@ const BACKS: Record<ReturnType<typeof classifyAspect>, ScatteredTile[]> = {
  * Classic-renderer ornament for the dark lobby: a fanned hand of
  * face-up tiles resting in the hero band (same anchor the Three.js
  * scene projects its hand to — `heroAnchor.ts`), plus a handful of
- * dim tile backs drifting in the void around it. Pure decoration — the
- * parent is `pointerEvents: 'none'`.
+ * dim tile backs drifting in the void around it. `fan={false}` keeps
+ * only the backs (replay library — no hero there). Pure decoration —
+ * the parent is `pointerEvents: 'none'`.
  */
-export function ScatteredTiles() {
+export function ScatteredTiles({ fan: showFan = true }: { fan?: boolean }) {
   const { width, height } = useWindowDimensions();
   const tiles = BACKS[classifyAspect(width / Math.max(1, height))];
-  const fan = domFan(width, height);
+  const fan = showFan ? domFan(width, height) : [];
   const first = fan[0];
   const last = fan[fan.length - 1];
   return (
@@ -73,45 +74,47 @@ export function ScatteredTiles() {
           <Tile tile={DUMMY} faceDown width={44 * t.size} height={61 * t.size} rotate={t.rot} />
         </View>
       ))}
-      <View
-        testID="hero-fan"
-        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-      >
-        {first && last ? (
-          // Soft pool of shadow under the hand so it reads as resting on
-          // an unseen table rather than floating in the void.
-          <View
-            style={{
-              position: 'absolute',
-              left: first.left + first.width * 0.4,
-              width: last.left + last.width - first.left - first.width * 0.8,
-              top: first.top + first.height * 0.62,
-              height: first.height * 0.55,
-              borderRadius: 999,
-              backgroundColor: 'rgba(0,0,0,0.38)',
-              boxShadow: '0px 6px 34px 22px rgba(0,0,0,0.38)',
-            }}
-          />
-        ) : null}
-        {fan.map((slot, i) => {
-          const tile = DOM_FAN_TILES[i];
-          if (!tile) return null;
-          return (
+      {showFan ? (
+        <View
+          testID="hero-fan"
+          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+        >
+          {first && last ? (
+            // Soft pool of shadow under the hand so it reads as resting on
+            // an unseen table rather than floating in the void.
             <View
-              key={`fan-${i}-${slot.left}`}
-              style={{ position: 'absolute', left: slot.left, top: slot.top }}
-            >
-              <Tile
-                tile={tile}
-                width={slot.width}
-                height={slot.height}
-                rotate={slot.rotate}
-                elevation="hand"
-              />
-            </View>
-          );
-        })}
-      </View>
+              style={{
+                position: 'absolute',
+                left: first.left + first.width * 0.4,
+                width: last.left + last.width - first.left - first.width * 0.8,
+                top: first.top + first.height * 0.62,
+                height: first.height * 0.55,
+                borderRadius: 999,
+                backgroundColor: 'rgba(0,0,0,0.38)',
+                boxShadow: '0px 6px 34px 22px rgba(0,0,0,0.38)',
+              }}
+            />
+          ) : null}
+          {fan.map((slot, i) => {
+            const tile = DOM_FAN_TILES[i];
+            if (!tile) return null;
+            return (
+              <View
+                key={`fan-${i}-${slot.left}`}
+                style={{ position: 'absolute', left: slot.left, top: slot.top }}
+              >
+                <Tile
+                  tile={tile}
+                  width={slot.width}
+                  height={slot.height}
+                  rotate={slot.rotate}
+                  elevation="hand"
+                />
+              </View>
+            );
+          })}
+        </View>
+      ) : null}
     </View>
   );
 }

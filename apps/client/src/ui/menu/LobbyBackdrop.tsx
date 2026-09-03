@@ -66,7 +66,7 @@ export function LobbyBackdrop({ scene = true }: LobbyBackdropProps) {
           }}
         />
       ) : null}
-      {use3d && Menu3DBackdrop ? <Menu3DBackdrop /> : <ScatteredTiles />}
+      {use3d && Menu3DBackdrop ? <Menu3DBackdrop /> : <ScatteredTiles fan={scene} />}
     </View>
   );
 }
