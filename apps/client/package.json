@@ -17,7 +17,8 @@
     "e2e:install": "playwright install --with-deps chromium",
     "lighthouse": "lhci autorun",
     "shot": "node scripts/shot.mjs",
-    "shot:all": "node scripts/shot.mjs --all"
+    "shot:all": "node scripts/shot.mjs --all",
+    "status": "node scripts/status-update.mjs"
   },
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",
