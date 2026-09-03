@@ -40,15 +40,21 @@ import { useLanHost } from './useLanHost';
  * brand mark), title block over the hero band, then the Online and
  * Practice cards and three secondary rows (Tutorial expands inline to
  * a horizontal lesson rail, LAN expands inline, Replays navigates).
- * Landscape: a title column on the left with the cards + rows in a
- * denser grid on the right; Tutorial / LAN open glass sheets because
- * the inline expansion is taller than a 412 px viewport.
+ * Landscape: an identity row, then a title column on the left (the
+ * 3D rack + dice render under it) with the cards + rows in a denser
+ * grid on the right; Tutorial / LAN open glass sheets because the
+ * inline expansion is taller than a 412 px viewport.
  *
  * Phone cards use `borderRadius: 12` as an inline style — the
  * lobby-layout spec walks up from each row title to its 12 px-radius
  * ancestor to assert the rows stack without overlap.
  */
 const PHONE_RADIUS = 12;
+/** Landscape header row height — the root fullscreen chip is ≈ 52 px
+ *  tall from y = 8, so cards start below y ≈ 66. */
+const LANDSCAPE_HEADER_H = 44;
+/** Width of the top-right strip reserved for that chip. */
+const LANDSCAPE_CHIP_W = 220;
 
 interface MobileLobbyProps {
   isLandscape: boolean;
@@ -110,7 +116,7 @@ export function MobileLobby({ isLandscape }: MobileLobbyProps) {
         Four-player matches over local Wi-Fi. Host shares a URL; guests paste it into any browser on
         the same network.
       </Text>
-      <InlineHint icon={<BoxIcon color={MENU.text3} />}>
+      <InlineHint icon={<BoxIcon color={MENU.text2} />}>
         Works offline. No accounts. No data leaves your network.
       </InlineHint>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
@@ -282,15 +288,30 @@ export function MobileLobby({ isLandscape }: MobileLobbyProps) {
             style={{ flex: 1 }}
             // `flexGrow: 1` + the spacer below pin the credit line to the
             // bottom-right corner, clear of the hero fan + dice that sit
-            // under the title column (`heroAnchor` → x ≈ 0.21, y ≈ 0.64).
+            // under the title column (`heroAnchor` → x ≈ 0.16, y ≈ 0.58).
             contentContainerStyle={{ padding: 12, paddingBottom: 12, flexGrow: 1 }}
           >
-            <View style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start' }}>
-              <View style={{ width: '30%', minWidth: 220, gap: 14, paddingTop: 2 }}>
+            {/* Header row: identity pill left. The right ~220 × 60 px is
+                left empty for the root FULLSCREEN / DISMISS chip
+                (`FullscreenPrompt`, landscape phones only) so it never
+                lands on a card header. */}
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                minHeight: LANDSCAPE_HEADER_H,
+                paddingRight: LANDSCAPE_CHIP_W,
+              }}
+            >
+              <View style={{ width: '30%', minWidth: 220 }}>
                 <IdentityPill name={name} onChangeName={onChangeName} compact grow />
-                <View style={{ paddingLeft: 4 }}>
-                  <TitleBlock size="sm" align="left" tagline={false} />
-                </View>
+              </View>
+            </View>
+            <View
+              style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start', marginTop: 10 }}
+            >
+              <View style={{ width: '30%', minWidth: 220, paddingLeft: 4, paddingTop: 6 }}>
+                <TitleBlock size="sm" align="left" tagline={false} />
               </View>
               <View style={{ flex: 1, minWidth: 0, gap: 10 }}>
                 <Reveal index={0}>
@@ -444,7 +465,7 @@ function SecondaryRow({ icon, title, subtitle, onPress, testID }: SecondaryRowPr
           {subtitle}
         </Text>
       </View>
-      <ChevronRightIcon size={11} color={MENU.text3} />
+      <ChevronRightIcon size={11} color={MENU.text4} />
     </Pressable>
   );
 }
@@ -477,7 +498,7 @@ function ExpandedCard({ icon, title, subtitle, onCollapse, children }: ExpandedC
           compact
           trailing={
             <View style={{ transform: [{ rotate: '90deg' }] }}>
-              <ChevronRightIcon size={11} color={MENU.text3} />
+              <ChevronRightIcon size={11} color={MENU.text4} />
             </View>
           }
         />

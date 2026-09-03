@@ -66,7 +66,84 @@ export interface MenuLayout {
   /** Half-extents of the drift field at the hero depth; grows with
    *  depth in `driftField`. */
   drift: { halfW: number; halfH: number; near: number; far: number };
+  /** Normalised drift-field rect the tiles must stay out of (the DOM
+   *  title block) — see `driftKeepOut`. */
+  keepOut: DriftKeepOut;
+  /** How many of the `DRIFT_COUNT` field tiles are shown — narrow
+   *  viewports get fewer so the field stays sparse (`driftVisible`). */
+  driftVisible: number;
   dice: [Slot, Slot];
+}
+
+/**
+ * The field is seeded for a wide frame; a portrait phone shows the same
+ * tiles across a quarter of the area, and the title keep-out squeezes
+ * them into the lower two thirds. Cap the visible count per class so
+ * the field reads as a few tiles adrift in fog, not a shower behind
+ * the cards.
+ */
+export function driftVisible(cls: ViewportClass): number {
+  if (cls === 'portrait') return 14;
+  if (cls === 'landscape-phone') return 18;
+  return DRIFT_COUNT;
+}
+
+/**
+ * Region of the normalised drift field (`ux`, `uy` ∈ −1.15..1.15, y
+ * down — screen x ≈ (ux + 1) / 2, screen y ≈ (uy + 1) / 2) that sits
+ * under the DOM title block. Tiles are kept out of it so no tile-back
+ * ever drifts behind the heading or tagline: seeds inside are remapped
+ * below it and the vertical wrap re-enters below it while the tile's
+ * `ux` is within the band (`wrapDriftY`).
+ */
+export interface DriftKeepOut {
+  x0: number;
+  x1: number;
+  /** Lower edge of the band (tiles must have uy ≥ y1 while inside x0..x1). */
+  y1: number;
+}
+
+export const DRIFT_LIMIT = 1.15;
+
+export function driftKeepOut(cls: ViewportClass): DriftKeepOut {
+  // Screen fraction ≈ viewCenter + (u + 1 − 2·viewCenter) · 0.54 (see
+  // `writeDrift`), so with the anchors from `heroAnchor`:
+  // Portrait (vc 0.5 / 0.3): app bar + left-aligned title block span
+  // the full width down to y ≈ 0.31 → band to y1 −0.3 (≈ 0.35).
+  if (cls === 'portrait') return { x0: -DRIFT_LIMIT, x1: DRIFT_LIMIT, y1: -0.3 };
+  // Landscape phone (vc 0.16 / 0.58): identity pill + title column,
+  // x < 0.36, down to y ≈ 0.31 → x1 −0.3, y1 −0.25 (≈ 0.36).
+  if (cls === 'landscape-phone') return { x0: -DRIFT_LIMIT, x1: -0.3, y1: -0.25 };
+  // Wide (vc 0.5 / 0.33): centred title block, x 0.26..0.74, tagline
+  // ends y ≈ 0.21 → y1 −0.5 (≈ 0.28).
+  return { x0: -0.44, x1: 0.44, y1: -0.5 };
+}
+
+export function inKeepOut(ux: number, uy: number, k: DriftKeepOut): boolean {
+  return ux >= k.x0 && ux <= k.x1 && uy < k.y1;
+}
+
+/** Remap a seed that starts inside the keep-out band to the same
+ *  relative position in the free range below it. */
+export function placeOutsideKeepOut<T extends { ux: number; uy: number }>(
+  t: T,
+  k: DriftKeepOut,
+): T {
+  if (!inKeepOut(t.ux, t.uy, k)) return t;
+  const rel = (t.uy + DRIFT_LIMIT) / (k.y1 + DRIFT_LIMIT);
+  return { ...t, uy: k.y1 + rel * (DRIFT_LIMIT - k.y1) };
+}
+
+/** Vertical wrap for a drifting tile: past the bottom it re-enters at
+ *  the top — or just below the keep-out band when its `ux` is inside
+ *  the band, so the title never gains a tile behind it. */
+export function wrapDriftY(uy: number, ux: number, k: DriftKeepOut, limit = DRIFT_LIMIT): number {
+  if (uy > limit) {
+    const lo = ux >= k.x0 && ux <= k.x1 ? k.y1 : -limit;
+    return lo + (uy - limit);
+  }
+  if (uy < -limit) return limit - (-limit - uy);
+  return uy;
 }
 
 export const HERO_ELEVATION = 0.44; // radians the camera looks down from
@@ -140,9 +217,12 @@ export function menuLayout(aspect: number): MenuLayout {
     fov = 44;
     margin = 1.4;
   } else if (cls === 'landscape-phone') {
+    // Two-tier rack under the title column. The margin pulls the
+    // camera back until the rack spans ≈ 25 % of the width so it
+    // clears the card stack (x ≥ 0.32) even with parallax applied.
     fan = { spacing: 1.02, lean: 0.46, yaw: 0.03, zStep: 0.0, curve: 0.004, rows: 2, rowGap: 1.15 };
     fov = 30;
-    margin = 15;
+    margin = 21;
   } else {
     fan = { spacing: 1.0, lean: 0.46, yaw: 0.045, zStep: 0.06, curve: 0.006, rows: 1, rowGap: 0 };
     fov = 34;
@@ -160,7 +240,6 @@ export function menuLayout(aspect: number): MenuLayout {
   ];
   const frameWidth = frameWidthAt(distance, fov, aspect);
   const frameHeight = frameWidth / aspect;
-  const dieX = width / 2 + 0.9;
   return {
     aspect,
     fan,
@@ -175,11 +254,38 @@ export function menuLayout(aspect: number): MenuLayout {
       near: 6,
       far: 28,
     },
-    dice: [
+    keepOut: driftKeepOut(cls),
+    driftVisible: driftVisible(cls),
+    dice: diceSlots(cls, width),
+  };
+}
+
+/**
+ * Where the two dice rest. Wide viewports have room to the right of
+ * the fan; phones don't (the fan spans most of the width on portrait
+ * and the card stack starts at x ≈ 0.32 on landscape), so there the
+ * dice are tossed in front of the hand's right half — closer to the
+ * camera than the front row and always inside the frame.
+ */
+export function diceSlots(cls: ViewportClass, fanWidthUnits: number): [Slot, Slot] {
+  if (cls === 'wide') {
+    const dieX = fanWidthUnits / 2 + 0.9;
+    return [
       { x: dieX, y: 0.26, z: 1.1, rx: 0, ry: 0.5, rz: 0 },
       { x: dieX + 0.55, y: 0.26, z: 0.45, rx: 0, ry: -0.35, rz: 0 },
-    ],
-  };
+    ];
+  }
+  const right = fanWidthUnits / 2;
+  if (cls === 'portrait') {
+    return [
+      { x: right - 1.35, y: 0.26, z: 1.85, rx: 0, ry: 0.5, rz: 0 },
+      { x: right - 0.65, y: 0.26, z: 1.35, rx: 0, ry: -0.35, rz: 0 },
+    ];
+  }
+  return [
+    { x: right - 1.6, y: 0.26, z: 1.8, rx: 0, ry: 0.5, rz: 0 },
+    { x: right - 0.95, y: 0.26, z: 1.3, rx: 0, ry: -0.35, rz: 0 },
+  ];
 }
 
 /** Deterministic drift-field seeds so the field looks the same every

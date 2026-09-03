@@ -1,7 +1,7 @@
 import { SEATS, type Seat } from '@mahjong/game-logic';
 import { useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
+import { Platform, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { deleteRecord, listHeaders } from '../../replay/storage';
 import type { ReplayHeader } from '../../replay/types';
@@ -112,6 +112,8 @@ export function ReplayLibrary() {
 // ─── Hero ──────────────────────────────────────────────────────────
 
 const HERO_PHONE_BREAKPOINT = 480;
+/** Extra top padding under the root fullscreen chip (≈ 60 px tall). */
+const CHIP_CLEARANCE = 40;
 
 function Hero({
   count,
@@ -124,8 +126,14 @@ function Hero({
   onBack: () => void;
   onImport: () => void;
 }) {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const phone = width <= HERO_PHONE_BREAKPOINT;
+  // Landscape phones (web) show the root FULLSCREEN / DISMISS chip in
+  // the top-right corner (`FullscreenPrompt`: landscape && height <
+  // 600). Start the header below it so the chip never sits on the
+  // Import button.
+  const chipClearance =
+    Platform.OS === 'web' && width > height && height < 600 ? CHIP_CLEARANCE : 0;
   const title = (
     <View style={{ flex: 1, minWidth: 0, gap: 6 }}>
       <Text style={[TYPE.label, { color: MENU.gold }]}>Library</Text>
@@ -135,9 +143,15 @@ function Hero({
       <Text style={TYPE.body}>{summaryLine(count, summary)}</Text>
     </View>
   );
+  // Icon + "Lobby"; the accessible name keeps the legacy "← Lobby".
   const back = (
-    <GlassButton size="sm" onPress={onBack} icon={<ChevronLeftIcon size={10} color={MENU.text2} />}>
-      ← Lobby
+    <GlassButton
+      size="sm"
+      onPress={onBack}
+      accessibilityLabel="← Lobby"
+      icon={<ChevronLeftIcon size={10} color={MENU.text2} />}
+    >
+      Lobby
     </GlassButton>
   );
   const importBtn = (
@@ -169,7 +183,7 @@ function Hero({
         alignItems: 'center',
         gap: 18,
         paddingHorizontal: 20,
-        paddingTop: 24,
+        paddingTop: 24 + chipClearance,
         paddingBottom: 18,
       }}
     >
@@ -367,7 +381,7 @@ function ReplayRow({
               borderWidth: 1,
             }}
           >
-            <Text style={{ fontSize: 20, fontWeight: '800', color: MENU.text3 }}>—</Text>
+            <Text style={{ fontSize: 20, fontWeight: '800', color: MENU.text4 }}>—</Text>
           </View>
         )}
         {localWon ? <Pill tone="gold">★ WON</Pill> : isDraw ? <Pill>DRAW</Pill> : null}

@@ -26,9 +26,11 @@ export interface HeroAnchor {
 export function heroAnchor(aspect: number): HeroAnchor {
   const cls = classifyAspect(aspect);
   if (cls === 'portrait') return { cls, x: 0.5, y: 0.3 };
-  // Landscape phone: title column on the left, cards on the right —
-  // the fan lives under the title, clear of the 12 px safe area.
-  if (cls === 'landscape-phone') return { cls, x: 0.21, y: 0.64 };
+  // Landscape phone: title column on the left (≈ 30 % of the width),
+  // cards on the right from x ≈ 0.32 — the fan lives under the title
+  // and must clear both the 12 px safe area and the Tutorial row, so
+  // it is centred well inside the column (`MobileLobby` landscape).
+  if (cls === 'landscape-phone') return { cls, x: 0.16, y: 0.58 };
   return { cls, x: 0.5, y: 0.33 };
 }
 
@@ -72,7 +74,9 @@ export function domFan(
   const a = heroAnchor(width / Math.max(1, height));
   const tileW = a.cls === 'wide' ? 56 : 44;
   const tileH = Math.round(tileW * TILE_ASPECT);
-  const spacing = tileW * (a.cls === 'wide' ? 0.94 : 0.8);
+  // Landscape phones pack tighter so seven 44 px tiles fit the title
+  // column (≈ 245 px) without reaching the card stack at x ≈ 0.32.
+  const spacing = tileW * (a.cls === 'wide' ? 0.94 : a.cls === 'landscape-phone' ? 0.76 : 0.8);
   const rotStep = a.cls === 'portrait' ? 4.5 : 3;
   const bow = a.cls === 'wide' ? 1.1 : 1.5;
   const cx = width * a.x;

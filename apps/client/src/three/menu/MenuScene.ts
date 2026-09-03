@@ -28,7 +28,9 @@ import {
   fanSlots,
   frameWidthAt,
   menuLayout,
+  placeOutsideKeepOut,
   seededRandom,
+  wrapDriftY,
   wrapUnit,
 } from './layout';
 
@@ -59,6 +61,18 @@ const DRIFT_STEP_MS = 90;
 /** Pointer movement keeps full-rate rendering alive for this long. */
 const POINTER_HOT_MS = 700;
 const FOG_COLOR = 0x0f1914;
+/** Intro is fully settled (hero + dice) by this many ms after mount. */
+const MENU_MOTION_SETTLE_MS = Math.max(
+  INTRO_DELAY_MS + (HERO_COUNT - 1) * INTRO_STAGGER_MS + INTRO_TILE_MS,
+  520 + 160 + INTRO_DICE_MS,
+);
+
+declare global {
+  /** `'running'` from scene build until the intro tweens finish, then
+   *  `'settled'`; `undefined` when no menu scene is mounted. */
+  // eslint-disable-next-line no-var
+  var __MAHJONG_MENU_INTRO__: 'running' | 'settled' | undefined;
+}
 
 interface Tween {
   start: number;
@@ -132,6 +146,10 @@ export function buildMenuScene(ctx: SceneContext, opts: MenuSceneOptions): Scene
 
   const rnd = seededRandom(31);
   const introStart = performance.now();
+  // Verifier hook: the shot recipes wait for the intro to settle
+  // instead of sleeping a fixed time (`scripts/shot-states.mjs`).
+  globalThis.__MAHJONG_MENU_INTRO__ = 'running';
+  const settleAt = introStart + (snap ? 0 : MENU_MOTION_SETTLE_MS) + 50;
   const hero: HeroTile[] = [];
   const slots = fanSlots(HERO_COUNT, layout.fan);
   for (let i = 0; i < HERO_COUNT; i++) {
@@ -159,7 +177,7 @@ export function buildMenuScene(ctx: SceneContext, opts: MenuSceneOptions): Scene
   }
 
   const drift: DriftState[] = driftField(DRIFT_COUNT).map((d) => ({
-    ...d,
+    ...placeOutsideKeepOut(d, layout.keepOut),
     ax: d.rx,
     ay: d.ry,
     scaleTween: {
@@ -227,28 +245,39 @@ export function buildMenuScene(ctx: SceneContext, opts: MenuSceneOptions): Scene
     let live = false;
     const cam = layout.camera;
     const cosE = Math.cos(HERO_ELEVATION);
+    const tanE = Math.tan(HERO_ELEVATION);
     for (let j = 0; j < drift.length; j++) {
       const d = drift[j]!;
       if (dt > 0) {
         d.ux = wrapUnit(d.ux + d.vx * dt);
-        d.uy = wrapUnit(d.uy + d.vy * dt);
+        d.uy = wrapDriftY(d.uy + d.vy * dt, d.ux, layout.keepOut);
         d.ax += d.wx * dt;
         d.ay += d.wy * dt;
       }
       const depth = layout.drift.near + d.depth * (layout.drift.far - layout.drift.near);
-      const halfW = (frameWidthAt(layout.distance + depth, cam.fov, layout.aspect) / 2) * 1.08;
+      // The field is a vertical plane `depth` behind the hero. The
+      // camera looks down by HERO_ELEVATION, so its optical axis meets
+      // that plane `depth · tan(e)` below the target and the frustum's
+      // vertical extent on the plane stretches by 1 / cos(e). Centring
+      // the field on that point keeps screen position ≈ (ux, uy) at
+      // every depth — far tiles don't bunch toward the top, and the
+      // title keep-out (`layout.keepOut`) means what it says.
+      const dist = layout.distance + depth / cosE;
+      const halfW = (frameWidthAt(dist, cam.fov, layout.aspect) / 2) * 1.08;
       const halfH = halfW / layout.aspect / cosE;
+      const yc = cam.target[1] - depth * tanE;
       const par = parallaxOn ? 0.35 + d.depth * 1.1 : 0;
       const e = tweenProgress(d.scaleTween, now);
       if (e < 1) live = true;
       const p = pool.pose(HERO_COUNT + j);
+      p.visible = j < layout.driftVisible;
       // Map the normalised field onto the (off-centre) frustum so the
       // tiles cover the whole viewport, not just the region around
       // the hero.
       const vc = layout.viewCenter;
       p.position.set(
         (d.ux + 1 - 2 * vc.x) * halfW + pointerSmooth.x * par,
-        cam.target[1] + (2 * vc.y - 1 - d.uy) * halfH + pointerSmooth.y * par * 0.5,
+        yc + (2 * vc.y - 1 - d.uy) * halfH + pointerSmooth.y * par * 0.5,
         -depth,
       );
       p.quaternion.setFromEuler(_euler.set(d.ax, d.ay, d.rz, 'XYZ'));
@@ -299,6 +328,11 @@ export function buildMenuScene(ctx: SceneContext, opts: MenuSceneOptions): Scene
     rig.setPreset(layout.camera);
     (scene.fog as FogExp2).density = layout.fogDensity;
     applyViewOffset(width, height);
+    // A rotation moves the title block — keep the field out from under it.
+    for (const d of drift) {
+      const moved = placeOutsideKeepOut(d, layout.keepOut);
+      d.uy = moved.uy;
+    }
     const next = fanSlots(HERO_COUNT, layout.fan);
     for (let i = 0; i < HERO_COUNT; i++) {
       const h = hero[i]!;
@@ -361,6 +395,9 @@ export function buildMenuScene(ctx: SceneContext, opts: MenuSceneOptions): Scene
         pool.markDirty();
         pool.commit();
       }
+      if (globalThis.__MAHJONG_MENU_INTRO__ === 'running' && !heroLive && now >= settleAt) {
+        globalThis.__MAHJONG_MENU_INTRO__ = 'settled';
+      }
       firstFrame = false;
       return live;
     },
@@ -368,6 +405,7 @@ export function buildMenuScene(ctx: SceneContext, opts: MenuSceneOptions): Scene
       applyLayout(width, height, performance.now());
     },
     dispose() {
+      globalThis.__MAHJONG_MENU_INTRO__ = undefined;
       if (parallaxOn) window.removeEventListener('pointermove', onPointer);
       lights.dispose();
       pool.dispose();
@@ -388,8 +426,5 @@ export const MENU_MOTION = {
   INTRO_DICE_MS,
   DRIFT_STEP_MS,
   /** Intro is fully settled (hero + dice) by this many ms after mount. */
-  settleMs: Math.max(
-    INTRO_DELAY_MS + (HERO_COUNT - 1) * INTRO_STAGGER_MS + INTRO_TILE_MS,
-    520 + 160 + INTRO_DICE_MS,
-  ),
+  settleMs: MENU_MOTION_SETTLE_MS,
 };

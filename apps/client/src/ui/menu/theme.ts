@@ -13,7 +13,11 @@ export const MENU = {
   voidMid: '#101a15',
   text: 'rgba(255,255,255,0.92)',
   text2: 'rgba(255,255,255,0.62)',
-  text3: 'rgba(255,255,255,0.42)',
+  /** Quietest text that still carries meaning (hints, credits, meta) —
+   *  ≥ 4.5:1 on the glass + void grounds. */
+  text3: 'rgba(255,255,255,0.56)',
+  /** Decorative only: lesson numerals, chevrons, icon tints. */
+  text4: 'rgba(255,255,255,0.42)',
   hairline: 'rgba(255,255,255,0.12)',
   hairlineSoft: 'rgba(255,255,255,0.07)',
   fill: 'rgba(255,255,255,0.06)',
@@ -96,7 +100,15 @@ export const TYPE = {
   cardTitle: { fontSize: 17, lineHeight: 20, fontWeight: '800', color: MENU.text } as TextStyle,
   cardSubtitle: { fontSize: 12, lineHeight: 16, fontWeight: '600', color: MENU.text2 } as TextStyle,
   serif: { fontFamily: 'Noto Serif TC', fontWeight: '700' } as TextStyle,
-  mono: { fontFamily: 'JetBrains Mono' } as TextStyle,
+  mono: {
+    // The app ships no mono face, so name the system stacks explicitly:
+    // a bare `'JetBrains Mono'` falls back to the browser default (a
+    // serif) when it isn't installed.
+    fontFamily:
+      Platform.OS === 'web'
+        ? "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace"
+        : 'monospace',
+  } as TextStyle,
 };
 
 /** Display heading style at a given size (≥ 28 → −0.5 tracking). */

@@ -22,6 +22,14 @@ describe('hero anchor', () => {
     expect(land.y).toBeGreaterThan(0.5);
   });
 
+  test('landscape-phone fan stays inside the title column (clear of the card stack at x ≈ 0.32)', () => {
+    const slots = domFan(915, 412);
+    const last = slots[slots.length - 1]!;
+    expect(last.left + last.width).toBeLessThan(915 * 0.315);
+    // …and below the title block (label + heading end ≈ y 130).
+    expect(Math.min(...slots.map((s) => s.top))).toBeGreaterThan(150);
+  });
+
   test.each([
     ['phone', 412, 915],
     ['phone-landscape', 915, 412],

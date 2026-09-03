@@ -3,7 +3,7 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useGame } from '../../state/game';
 import { LESSONS, LESSON_ORDER } from '../../state/tutorial';
 import { CheckIcon } from './icons';
-import { HOVER_TRANSITION, MENU, TYPE } from './theme';
+import { HOVER_TRANSITION, MENU, TYPE, webStyle } from './theme';
 
 /**
  * Tutorial lesson picker shared by both lobby layouts. Every lesson in
@@ -103,7 +103,7 @@ export function LessonCard({
       })}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Text style={[TYPE.label, { fontSize: 10, letterSpacing: 1.6, color: MENU.text3 }]}>
+        <Text style={[TYPE.label, { fontSize: 10, letterSpacing: 1.6, color: MENU.text4 }]}>
           {String(item.index).padStart(2, '0')}
         </Text>
         <TickBadge done={item.done} size={18} />
@@ -159,7 +159,7 @@ export function LessonChip({ item, onPress }: LessonPressableProps) {
       >
         {item.title}
       </Text>
-      <Text style={{ fontSize: 10, fontWeight: '700', color: MENU.text3, letterSpacing: 1 }}>
+      <Text style={{ fontSize: 10, fontWeight: '700', color: MENU.text4, letterSpacing: 1 }}>
         {String(item.index).padStart(2, '0')}
       </Text>
     </Pressable>
@@ -171,13 +171,22 @@ interface PickerProps {
   onStart: (id: string) => void;
 }
 
-/** Horizontal card row — phone. Bleeds to the card edge with 12 px gutters. */
+/**
+ * Horizontal card row — phone. Bleeds to the card edge with `gutter`
+ * px of side padding; on web the edges fade out over the gutter (a
+ * CSS mask) so a card cut by the panel edge reads as intentional
+ * overflow rather than a hard clip against the panel's border.
+ */
 export function LessonRail({ items, onStart, gutter = 12 }: PickerProps & { gutter?: number }) {
+  const fade = `linear-gradient(to right, transparent 0px, #000 ${gutter}px, #000 calc(100% - ${gutter + 10}px), transparent 100%)`;
   return (
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
-      style={{ marginHorizontal: -gutter }}
+      style={{
+        marginHorizontal: -gutter,
+        ...webStyle({ maskImage: fade, WebkitMaskImage: fade }),
+      }}
       contentContainerStyle={{ paddingHorizontal: gutter, gap: 8 }}
     >
       {items.map((item) => (

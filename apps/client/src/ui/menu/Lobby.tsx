@@ -155,7 +155,7 @@ function DesktopLobby() {
           ? 'Four-player matches over local Wi-Fi. Host shares the URL; guests paste it into any browser on the same network.'
           : 'Paste the host’s URL to join a match on your Wi-Fi. Hosting needs the Android app.'}
       </Text>
-      <InlineHint icon={<BoxIcon color={MENU.text3} />}>
+      <InlineHint icon={<BoxIcon color={MENU.text2} />}>
         Works offline. No accounts. No data leaves your network.
       </InlineHint>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
@@ -331,7 +331,7 @@ export function Footer({
       }}
     >
       <Text style={[TYPE.small, { textAlign: align }]}>Sound by みんなの創作支援サイトＴスタ</Text>
-      <Text style={[TYPE.small, { textAlign: align, color: 'rgba(255,255,255,0.32)' }]}>
+      <Text style={[TYPE.small, { textAlign: align }]}>
         Procedural tiles &amp; felt · CC0 assets only · open source
       </Text>
     </View>

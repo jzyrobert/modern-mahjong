@@ -32,6 +32,18 @@ function collectErrors(page: import('@playwright/test').Page): () => string[] {
   return () => errors;
 }
 
+/** True once every `Reveal` wrapper has finished its CSS entrance. */
+function allRevealsSettled(page: import('@playwright/test').Page): Promise<boolean> {
+  return page.evaluate(() =>
+    Array.from(document.querySelectorAll('[data-reveal]')).every((el) => {
+      const running = el
+        .getAnimations()
+        .some((a) => a.playState !== 'finished' && a.playState !== 'idle');
+      return !running && getComputedStyle(el).opacity === '1';
+    }),
+  );
+}
+
 async function readPerf(page: import('@playwright/test').Page): Promise<PerfSnapshot> {
   await page.waitForFunction(
     () =>
@@ -80,12 +92,57 @@ test.describe('three: menu backdrop', () => {
     await expect(page.getByRole('button', { name: 'Tutorial' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Replays' })).toBeVisible();
 
+    // Card stagger is CSS-driven and finishes within ~0.7 s of the
+    // heading painting, even with three loading in the background.
+    await expect.poll(() => allRevealsSettled(page), { timeout: 2500 }).toBe(true);
+
+    // The scene publishes its intro state for the verifier and settles.
+    await page.waitForFunction(
+      () =>
+        (globalThis as { __MAHJONG_MENU_INTRO__?: string }).__MAHJONG_MENU_INTRO__ === 'settled',
+      null,
+      { timeout: 6000 },
+    );
+
     // Tutorial row expands into the lesson rail with the testIDs the
     // verifier's `startTutorial` step uses.
     await page.getByRole('button', { name: 'Tutorial' }).click();
     await expect(page.getByTestId('lesson-basics')).toBeVisible();
     await expect(page.getByLabel('Start Basics: a guided hand')).toBeVisible();
 
+    expect(errors()).toEqual([]);
+  });
+
+  test('landscape phone: the card stack clears the hero column and the top-right chip strip', async ({
+    page,
+  }) => {
+    const errors = collectErrors(page);
+    await page.setViewportSize({ width: 915, height: 412 });
+    await page.goto('/');
+    await expect(page.getByRole('heading', { name: 'Modern Mahjong' })).toBeVisible();
+    await expect(page.getByTestId('menu-3d').locator('canvas')).toBeAttached({ timeout: 15_000 });
+    await expect.poll(() => allRevealsSettled(page), { timeout: 2500 }).toBe(true);
+
+    // Cards start below the root FULLSCREEN / DISMISS chip (≈ y 60) and
+    // right of the title column where the 3D rack + dice render.
+    const online = await page.getByTestId('mode-online').boundingBox();
+    const practice = await page.getByTestId('mode-practice').boundingBox();
+    const tutorial = await page.getByTestId('mode-tutorial').boundingBox();
+    if (!online || !practice || !tutorial) throw new Error('missing card boxes');
+    expect(online.y).toBeGreaterThanOrEqual(60);
+    expect(practice.y).toBeGreaterThanOrEqual(60);
+    expect(online.x).toBeGreaterThanOrEqual(915 * 0.31);
+    expect(tutorial.x).toBeGreaterThanOrEqual(915 * 0.31);
+    // The Replays row never ellipsises its landscape copy.
+    await expect(page.getByText('No replays yet', { exact: true })).toBeVisible();
+
+    // Tutorial opens the glass sheet with the lesson rail.
+    await page.getByRole('button', { name: 'Tutorial' }).click();
+    await expect(page.getByTestId('lesson-basics')).toBeVisible();
+
+    const perf = await readPerf(page);
+    expect(perf.drawCalls).toBeLessThanOrEqual(MENU_BUDGET.drawCalls);
+    expect(perf.triangles).toBeLessThanOrEqual(MENU_BUDGET.triangles);
     expect(errors()).toEqual([]);
   });
 

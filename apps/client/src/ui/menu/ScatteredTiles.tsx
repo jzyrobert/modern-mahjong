@@ -17,21 +17,24 @@ interface ScatteredTile {
   opacity: number;
 }
 
-/** Tile-back positions per viewport class, kept clear of the title
- *  block and the fan (`heroAnchor`) so nothing peeks out from behind
- *  the hand or sits under the heading. */
-const BACKS: Record<ReturnType<typeof classifyAspect>, ScatteredTile[]> = {
+type Backs = Record<ReturnType<typeof classifyAspect>, ScatteredTile[]>;
+
+/** Tile-back positions per viewport class for the menu, kept clear of
+ *  the title block, the fan (`heroAnchor`) and the card stack so
+ *  nothing peeks out from behind the hand or blurs through a card. */
+const MENU_BACKS: Backs = {
   portrait: [
     { fx: 0.06, fy: 0.165, rot: -16, size: 0.9, opacity: 0.3 },
     { fx: 0.9, fy: 0.175, rot: 14, size: 0.8, opacity: 0.26 },
-    { fx: 0.92, fy: 0.345, rot: -9, size: 0.95, opacity: 0.22 },
+    { fx: 0.92, fy: 0.29, rot: -9, size: 0.95, opacity: 0.22 },
   ],
+  // Landscape: title column + fan on the left, cards from x ≈ 0.32 down
+  // to y ≈ 0.76, credits bottom-right — the backs live in the strip
+  // under the cards, left of the credits.
   'landscape-phone': [
-    { fx: 0.27, fy: 0.08, rot: 12, size: 0.8, opacity: 0.22 },
     { fx: 0.05, fy: 0.86, rot: -14, size: 0.9, opacity: 0.24 },
-    { fx: 0.4, fy: 0.76, rot: 8, size: 0.85, opacity: 0.2 },
-    { fx: 0.64, fy: 0.7, rot: -6, size: 0.75, opacity: 0.16 },
-    { fx: 0.9, fy: 0.16, rot: 15, size: 0.85, opacity: 0.2 },
+    { fx: 0.4, fy: 0.8, rot: 8, size: 0.85, opacity: 0.22 },
+    { fx: 0.6, fy: 0.85, rot: -6, size: 0.75, opacity: 0.18 },
   ],
   wide: [
     { fx: 0.08, fy: 0.16, rot: -16, size: 0.9, opacity: 0.32 },
@@ -43,17 +46,53 @@ const BACKS: Record<ReturnType<typeof classifyAspect>, ScatteredTile[]> = {
   ],
 };
 
+/** Replay library: no hero, content is a centred column (max 960 px)
+ *  with the header row at the top — backs sit in the side margins and
+ *  the lower void, never under the heading, the Import button or the
+ *  glass cards (a back blurred through glass reads as a smudge). */
+const LIBRARY_BACKS: Backs = {
+  // Portrait: header + ribbon + empty-state card end near y ≈ 0.72;
+  // the backs anchor the void below.
+  portrait: [
+    { fx: 0.88, fy: 0.14, rot: 14, size: 0.8, opacity: 0.22 },
+    { fx: 0.14, fy: 0.78, rot: -16, size: 0.95, opacity: 0.3 },
+    { fx: 0.84, fy: 0.82, rot: 9, size: 0.85, opacity: 0.26 },
+    { fx: 0.5, fy: 0.92, rot: -7, size: 0.75, opacity: 0.2 },
+  ],
+  // Landscape: glass spans the full width from y ≈ 0.4; only the gap
+  // between the summary and the Import button is free.
+  'landscape-phone': [
+    { fx: 0.42, fy: 0.1, rot: -14, size: 0.85, opacity: 0.24 },
+    { fx: 0.62, fy: 0.05, rot: 8, size: 0.7, opacity: 0.18 },
+    { fx: 0.7, fy: 0.24, rot: 15, size: 0.6, opacity: 0.16 },
+  ],
+  wide: [
+    { fx: 0.06, fy: 0.14, rot: -16, size: 0.9, opacity: 0.32 },
+    { fx: 0.93, fy: 0.1, rot: 14, size: 0.8, opacity: 0.26 },
+    { fx: 0.04, fy: 0.5, rot: 9, size: 0.7, opacity: 0.18 },
+    { fx: 0.95, fy: 0.55, rot: -7, size: 1.05, opacity: 0.3 },
+    { fx: 0.08, fy: 0.84, rot: 6, size: 0.85, opacity: 0.18 },
+    { fx: 0.9, fy: 0.88, rot: -12, size: 0.95, opacity: 0.22 },
+  ],
+};
+
 /**
  * Classic-renderer ornament for the dark lobby: a fanned hand of
  * face-up tiles resting in the hero band (same anchor the Three.js
  * scene projects its hand to — `heroAnchor.ts`), plus a handful of
  * dim tile backs drifting in the void around it. `fan={false}` keeps
- * only the backs (replay library — no hero there). Pure decoration —
+ * only the backs, placed for the replay library's column layout (no
+ * hero there — `variant` picks the set). Pure decoration —
  * the parent is `pointerEvents: 'none'`.
  */
-export function ScatteredTiles({ fan: showFan = true }: { fan?: boolean }) {
+export function ScatteredTiles({
+  fan: showFan = true,
+  variant = showFan ? 'menu' : 'library',
+}: { fan?: boolean; variant?: 'menu' | 'library' }) {
   const { width, height } = useWindowDimensions();
-  const tiles = BACKS[classifyAspect(width / Math.max(1, height))];
+  const tiles = (variant === 'menu' ? MENU_BACKS : LIBRARY_BACKS)[
+    classifyAspect(width / Math.max(1, height))
+  ];
   const fan = showFan ? domFan(width, height) : [];
   const first = fan[0];
   const last = fan[fan.length - 1];

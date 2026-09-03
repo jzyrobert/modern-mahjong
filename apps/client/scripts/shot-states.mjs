@@ -11,6 +11,8 @@
  *   { waitFor: selector, state?: 'visible'|'hidden', timeout? }
  *   { waitForText: 'Lobby' }
  *   { waitMs: 400 }                        settle animations (use sparingly)
+ *   { waitForSettled: '[data-reveal]' }    every match has finished its CSS animations and is opaque
+ *   { waitForFunction: 'js expression' }   polls until the expression is truthy
  *   { evaluate: 'js source' }              runs in page
  *   { setSettings: { felt: 'jade' } }      patches useGame.settings via the test hook
  *   { waitForPerf: true }                  waits until __MAHJONG_PERF__ published ≥ 2 samples
@@ -51,23 +53,45 @@ const START_SOLO = [
   { dismissDice: true },
 ];
 
+/**
+ * Menu settle: the card stagger (`Reveal`, CSS-driven) has finished and,
+ * when the 3D backdrop is mounted, its intro tweens have too
+ * (`MenuScene` flips `__MAHJONG_MENU_INTRO__` to 'settled'). Under the
+ * classic renderer there is no scene, so only the DOM half applies.
+ * Waiting on these instead of a fixed sleep means a cold-start stall
+ * can't hand the verifier a half-faded frame.
+ */
+const MENU_INTRO_SETTLED = `(() => {
+  if (!document.querySelector('[data-testid="lobby-backdrop-3d"]')) return true;
+  return globalThis.__MAHJONG_MENU_INTRO__ === 'settled';
+})()`;
+const MENU_SETTLED = [
+  { waitForSettled: '[data-reveal]' },
+  { waitForFunction: MENU_INTRO_SETTLED },
+  // One drift step + the canvas fade-in (400 ms) after the intro.
+  { waitMs: 450 },
+];
+
 export const STATES = {
   // ── Menu ─────────────────────────────────────────────────────────────
   menu: {
     owner: 'menu',
-    // 1.6 s: past the card stagger (640 ms) and the 3D intro settle
-    // (`MENU_MOTION.settleMs` ≈ 1.43 s) so the shot is the resting state.
-    steps: [{ goto: '/' }, { waitForText: 'Modern Mahjong' }, { waitMs: 1600 }],
+    steps: [{ goto: '/' }, { waitForText: 'Modern Mahjong' }, ...MENU_SETTLED],
   },
   'menu-tutorials': {
     owner: 'menu',
-    // Phone: the Tutorial row expands into the lesson rail. Desktop /
-    // tablet: the lesson grid is always visible, the click is a no-op.
+    // Phone: the Tutorial row expands into the lesson rail (portrait)
+    // or a glass sheet (landscape). Desktop / tablet: the lesson grid
+    // is always visible, the click is a no-op. Settle first so the tap
+    // doesn't scroll a still-moving row into view.
     steps: [
       { goto: '/' },
       { waitForText: 'Modern Mahjong' },
+      ...MENU_SETTLED,
       { click: '[data-testid="mode-tutorial"]' },
-      { waitMs: 1200 },
+      { waitFor: '[data-testid="lesson-basics"]' },
+      { waitForSettled: '[data-reveal]' },
+      { waitMs: 500 },
     ],
   },
   'menu-reduced-motion': {
@@ -78,7 +102,8 @@ export const STATES = {
       { setSettings: { animations: false } },
       { goto: '/' },
       { waitForText: 'Modern Mahjong' },
-      { waitMs: 1600 },
+      ...MENU_SETTLED,
+      { waitMs: 800 },
     ],
     optional: true,
   },
@@ -88,7 +113,12 @@ export const STATES = {
     // non-goals) — `scene: false` tells the verifier not to expect
     // `__MAHJONG_PERF__` here.
     scene: false,
-    steps: [{ goto: '/replays' }, { waitForText: 'Replays' }, { waitMs: 1400 }],
+    steps: [
+      { goto: '/replays' },
+      { waitForText: 'Replays' },
+      { waitForSettled: '[data-reveal]' },
+      { waitMs: 300 },
+    ],
   },
   'replay-import': {
     owner: 'menu',
@@ -96,9 +126,10 @@ export const STATES = {
     steps: [
       { goto: '/replays' },
       { waitForText: 'Replays' },
+      { waitForSettled: '[data-reveal]' },
       { click: 'role=button[name="Import replays"]' },
       { waitForText: 'Paste a JSON-encoded replay' },
-      { waitMs: 900 },
+      { waitMs: 700 },
     ],
     optional: true,
   },

@@ -1,18 +1,25 @@
 import { describe, expect, test } from 'vitest';
 import {
   DRIFT_COUNT,
+  DRIFT_LIMIT,
   HERO_COUNT,
   HERO_HAND_CELLS,
   MENU_TILE_COUNT,
   classifyAspect,
+  diceSlots,
   driftField,
+  driftKeepOut,
+  driftVisible,
   fanSlots,
   fanWidth,
   fitDistance,
   fogDensityFor,
   frameWidthAt,
+  inKeepOut,
   menuLayout,
+  placeOutsideKeepOut,
   seededRandom,
+  wrapDriftY,
   wrapUnit,
 } from './layout';
 
@@ -103,11 +110,70 @@ describe('menu layout', () => {
       expect(l.camera.position[1]).toBeGreaterThan(l.camera.target[1]);
       expect(l.fogDensity).toBeGreaterThan(0);
       expect(l.drift.far).toBeGreaterThan(l.drift.near);
-      // Dice sit just outside the fan on the plane.
-      expect(l.dice[0].x).toBeGreaterThan(width / 2);
-      expect(l.dice[0].y).toBeGreaterThan(0);
+      // Dice rest on the plane, inside the framed width, and never
+      // inside the rack's footprint (right of it on wide viewports,
+      // in front of its right half — closer to the camera — on phones).
+      for (const die of l.dice) {
+        expect(die.y).toBeGreaterThan(0);
+        expect(Math.abs(die.x) + 0.3).toBeLessThan(l.frameWidth / 2);
+        if (l.viewCenter.x === 0.5 && l.aspect > 0.85) expect(die.x).toBeGreaterThan(width / 2);
+        else expect(die.z).toBeGreaterThan(1);
+      }
+      expect(l.keepOut).toEqual(driftKeepOut(classifyAspect(aspect)));
     },
   );
+
+  test('landscape-phone rack spans ≤ 26 % of the frame so it clears the card stack', () => {
+    const l = menuLayout(915 / 412);
+    const perRow = Math.ceil(HERO_COUNT / l.fan.rows);
+    const width = fanWidth(perRow, l.fan.spacing);
+    const frac = width / l.frameWidth;
+    expect(frac).toBeLessThan(0.26);
+    // Centre 0.16 → right edge (plus ~0.02 of parallax) stays left of 0.32.
+    expect(l.viewCenter.x + frac / 2 + 0.02).toBeLessThan(0.32);
+  });
+
+  test('driftVisible thins the field on phones and never exceeds the pool', () => {
+    expect(driftVisible('portrait')).toBeLessThan(driftVisible('landscape-phone'));
+    expect(driftVisible('landscape-phone')).toBeLessThan(driftVisible('wide'));
+    expect(driftVisible('wide')).toBe(DRIFT_COUNT);
+    expect(driftVisible('portrait')).toBeGreaterThanOrEqual(12);
+    expect(menuLayout(412 / 915).driftVisible).toBe(driftVisible('portrait'));
+  });
+
+  test('diceSlots keeps the two dice apart on every class', () => {
+    for (const cls of ['portrait', 'landscape-phone', 'wide'] as const) {
+      const [a, b] = diceSlots(cls, 8);
+      const gap = Math.hypot(a.x - b.x, a.z - b.z);
+      expect(gap).toBeGreaterThan(0.6);
+    }
+  });
+
+  test('drift keep-out: seeds under the title are remapped below it and wraps re-enter below it', () => {
+    for (const cls of ['portrait', 'landscape-phone', 'wide'] as const) {
+      const k = driftKeepOut(cls);
+      expect(k.y1).toBeGreaterThan(-DRIFT_LIMIT);
+      expect(k.y1).toBeLessThan(0);
+      for (const t of driftField(DRIFT_COUNT).map((d) => placeOutsideKeepOut(d, k))) {
+        expect(inKeepOut(t.ux, t.uy, k)).toBe(false);
+        expect(t.uy).toBeLessThanOrEqual(DRIFT_LIMIT);
+      }
+      // Inside the band on x: wrap lands just below the band.
+      const xIn = (k.x0 + k.x1) / 2;
+      expect(wrapDriftY(DRIFT_LIMIT + 0.05, xIn, k)).toBeCloseTo(k.y1 + 0.05, 9);
+      // Untouched inside the range.
+      expect(wrapDriftY(0.3, xIn, k)).toBe(0.3);
+    }
+    // Outside the band on x (wide class leaves the sides free): plain wrap.
+    const wide = driftKeepOut('wide');
+    expect(wrapDriftY(DRIFT_LIMIT + 0.05, 0.9, wide)).toBeCloseTo(-DRIFT_LIMIT + 0.05, 9);
+    // Remap preserves order and never leaves the field.
+    const moved = placeOutsideKeepOut({ ux: 0, uy: -1.0 }, wide);
+    expect(moved.uy).toBeGreaterThanOrEqual(wide.y1);
+    expect(moved.uy).toBeLessThan(DRIFT_LIMIT);
+    // A seed already outside is returned unchanged.
+    expect(placeOutsideKeepOut({ ux: 0, uy: 0.5 }, wide)).toEqual({ ux: 0, uy: 0.5 });
+  });
 
   test('drift field is deterministic, bounded and mixes faces with backs', () => {
     const a = driftField(DRIFT_COUNT);
