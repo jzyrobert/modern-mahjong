@@ -1,30 +1,65 @@
 {
   "schema": 1,
-  "updatedAt": "2026-09-03T21:30:00Z",
+  "updatedAt": "2026-09-03T22:05:00Z",
   "round": 0,
   "passThreshold": 8.5,
   "subsystems": {
     "core": {
       "score": null,
-      "errors": 1,
+      "errors": 0,
       "pass": false,
       "issues": [
         {
           "rank": 1,
-          "severity": "high",
-          "title": "React #419 hydration error on every page load (pre-existing in baseline)",
-          "state": "menu",
-          "detail": "dist/index.html carries a <!--$!--> client-rendered Suspense marker from expo-router's static export, so hydration logs 'Minified React error #419' on first load. Present in dist-baseline too. Find the component that throws during static render (window/localStorage/matchMedia at render time) and guard it, or wrap it so it renders client-only."
+          "severity": "medium",
+          "title": "Placeholder 3D table exceeds triangle budget (159,938 > 150,000)",
+          "state": "match-dealt",
+          "detail": "RoundedBoxGeometry with 3 segments \u00d7 136 instances. The table agent replaces the geometry (segments 2 or a cheaper rounded slab)."
         }
       ],
+      "history": [
+        {
+          "round": 0,
+          "note": "React #419 fixed: identity.ts guarded localStorage for the static render; _layout.tsx mounts the route tree after hydration via useIsHydrated(). Verified zero page/console errors on menu, match-lobby, replay-library (classic) and match-dealt (3d); full legacy Playwright suite 103 passed / 1 skipped.",
+          "at": "2026-09-03T22:05:00Z"
+        }
+      ]
+    },
+    "table": {
+      "score": null,
+      "errors": 0,
+      "pass": false,
+      "issues": [],
       "history": []
     },
-    "table": { "score": null, "errors": 0, "pass": false, "issues": [], "history": [] },
-    "menu": { "score": null, "errors": 0, "pass": false, "issues": [], "history": [] },
-    "settings": { "score": null, "errors": 0, "pass": false, "issues": [], "history": [] },
-    "tutorial": { "score": null, "errors": 0, "pass": false, "issues": [], "history": [] }
+    "menu": {
+      "score": null,
+      "errors": 0,
+      "pass": false,
+      "issues": [],
+      "history": []
+    },
+    "settings": {
+      "score": null,
+      "errors": 0,
+      "pass": false,
+      "issues": [],
+      "history": []
+    },
+    "tutorial": {
+      "score": null,
+      "errors": 0,
+      "pass": false,
+      "issues": [],
+      "history": []
+    }
   },
-  "wholeGame": { "score": null, "pass": false, "issues": [], "history": [] },
+  "wholeGame": {
+    "score": null,
+    "pass": false,
+    "issues": [],
+    "history": []
+  },
   "blindJudges": [],
   "baseline": {
     "dist": "apps/client/dist-baseline",
