@@ -102,7 +102,7 @@ async function serveDist(distDir, port) {
   }
   // Detached so the whole `npx → serve` process group can be killed at
   // teardown; otherwise the grandchild keeps the event loop alive.
-  const child = spawn('npx', ['--yes', 'serve', distAbs, '-l', String(port), '-s', '-n'], {
+  const child = spawn('npx', ['serve', distAbs, '-l', String(port), '-s', '-n'], {
     stdio: 'ignore',
     cwd: clientRoot,
     detached: true,

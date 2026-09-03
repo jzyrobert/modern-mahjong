@@ -96,14 +96,14 @@ export default defineConfig({
       : {},
   },
   // Serve the Expo Web export (`expo export --platform web` writes to
-  // `dist/`). Replaces the legacy `pnpm preview` (Vite). Uses `npx
-  // serve` from the runtime so we don't add a new devDep — `serve`
-  // is bundled with `npm`/`pnpm` distributions and starts faster
-  // than wiring a custom Express handler. CI runs `pnpm --filter
-  // @mahjong/client export-web` before Playwright, so `dist/`
-  // already exists when this fires.
+  // `dist/`). `serve` is a pinned devDependency so `npx serve`
+  // resolves to node_modules/.bin without touching the npm registry —
+  // the old `npx --yes serve` fetched it at test time and a registry
+  // stall once timed out every e2e shard and the Lighthouse job in the
+  // same minute. CI runs `pnpm --filter @mahjong/client export-web`
+  // before Playwright, so `dist/` already exists when this fires.
   webServer: {
-    command: 'npx --yes serve dist -l 4173 -s',
+    command: 'npx serve dist -l 4173 -s',
     url: 'http://127.0.0.1:4173',
     timeout: 60_000,
     reuseExistingServer: !process.env.CI,
