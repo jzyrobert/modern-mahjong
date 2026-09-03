@@ -61,6 +61,10 @@ async function readPerf(page: Page): Promise<PerfSnapshot> {
   );
 }
 
+// SwiftShader renders the table at a few fps, so actionability waits
+// and bot turns take real wall-clock time on CI shards.
+test.setTimeout(60_000);
+
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     const g = globalThis as {
