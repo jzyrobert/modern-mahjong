@@ -2,66 +2,53 @@ import type { Tile as MTile } from '@mahjong/game-logic';
 import { View, useWindowDimensions } from 'react-native';
 import { Tile } from '../Tile';
 
-// Tile only renders the back when `faceDown`, so the engine values here
-// are placeholders — the back gradient is what actually paints.
+// Tile only renders the back when `faceDown`, so the engine value here
+// is a placeholder — the tile-back skin gradient is what paints.
 const DUMMY: MTile = { kind: 'suit', suit: 'man', rank: 1, copy: 0 };
 
 interface ScatteredTile {
-  /** Anchor side. */
-  side: 'left' | 'right';
-  /** Distance from `side`, in CSS pixels (RN absolute positioning). */
-  offset: number;
-  /** Distance from top, in CSS pixels. */
-  top: number;
-  /** Rotation in degrees. */
+  /** Horizontal anchor as a fraction of the width. */
+  fx: number;
+  /** Vertical anchor as a fraction of the height. */
+  fy: number;
   rot: number;
-  /** Tile width scale (height auto-derives at 50/36 ratio). */
   size: number;
+  opacity: number;
 }
 
 const TILES: ScatteredTile[] = [
-  { side: 'left', offset: 24, top: 80, rot: -14, size: 0.9 },
-  { side: 'left', offset: 40, top: 480, rot: 8, size: 1.0 },
-  { side: 'right', offset: 28, top: 120, rot: 16, size: 0.85 },
-  { side: 'right', offset: 48, top: 520, rot: -6, size: 1.1 },
+  { fx: 0.08, fy: 0.16, rot: -16, size: 0.9, opacity: 0.32 },
+  { fx: 0.88, fy: 0.12, rot: 14, size: 0.8, opacity: 0.26 },
+  { fx: 0.18, fy: 0.3, rot: 9, size: 0.7, opacity: 0.18 },
+  { fx: 0.78, fy: 0.27, rot: -7, size: 1.05, opacity: 0.3 },
+  { fx: 0.06, fy: 0.62, rot: 6, size: 0.85, opacity: 0.16 },
+  { fx: 0.92, fy: 0.7, rot: -12, size: 0.95, opacity: 0.2 },
 ];
 
 /**
- * Decorative face-down tile-backs scattered in the lobby corners. Pure
- * decoration — `pointerEvents: 'none'` so the tiles never block taps on
- * the mode cards beneath.
- *
- * On viewports narrower than ~480px (small phones in portrait), the
- * scatter is suppressed — the tile-backs would otherwise overlap the
- * mode cards. On wider screens they sit behind the content with
- * pointerEvents: 'none' so taps on the lobby still go through.
+ * Classic-renderer ornament for the dark lobby: a handful of face-down
+ * tile backs drifting in the void where the Three.js hero would sit.
+ * Pure decoration — the parent is `pointerEvents: 'none'`.
  */
 export function ScatteredTiles() {
-  const { width } = useWindowDimensions();
-  if (width < 480) return null;
+  const { width, height } = useWindowDimensions();
+  const dense = width >= 600;
+  const tiles = dense ? TILES : TILES.slice(0, 4);
   return (
     <View
-      style={{
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        overflow: 'hidden',
-        pointerEvents: 'none',
-      }}
+      style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflow: 'hidden' }}
     >
-      {TILES.map((t) => (
+      {tiles.map((t) => (
         <View
-          key={`${t.side}-${t.offset}-${t.top}`}
+          key={`${t.fx}-${t.fy}`}
           style={{
             position: 'absolute',
-            top: t.top,
-            ...(t.side === 'left' ? { left: t.offset } : { right: t.offset }),
-            opacity: 0.55,
+            left: width * t.fx - 22 * t.size,
+            top: height * t.fy,
+            opacity: t.opacity,
           }}
         >
-          <Tile tile={DUMMY} faceDown width={36 * t.size} height={50 * t.size} rotate={t.rot} />
+          <Tile tile={DUMMY} faceDown width={44 * t.size} height={61 * t.size} rotate={t.rot} />
         </View>
       ))}
     </View>

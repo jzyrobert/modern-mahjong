@@ -477,7 +477,9 @@ export function TransportProvider({ children }: { children: ReactNode }) {
   // Playwright specs launch a lesson without scripting the lobby UI.
   // Mirrors the `__MAHJONG_TEST_GET_STATE__` hook in `state/game.ts`.
   useEffect(() => {
-    const g = globalThis as { __MAHJONG_TEST_START_TUTORIAL__?: ((id: string) => void) | undefined };
+    const g = globalThis as {
+      __MAHJONG_TEST_START_TUTORIAL__?: ((id: string) => void) | undefined;
+    };
     g.__MAHJONG_TEST_START_TUTORIAL__ = joinSoloTutorial;
     return () => {
       g.__MAHJONG_TEST_START_TUTORIAL__ = undefined;

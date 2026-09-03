@@ -72,6 +72,8 @@ const SHARD_3_SPECS = [
   'replay-screenshot-desktop.spec.ts',
   'shuffle-on-rejoin.spec.ts',
   'solo-match.spec.ts',
+  // 3D menu backdrop smoke (~8 s): budget + DOM contract over the canvas.
+  'three-menu.spec.ts',
 ];
 
 const ASSIGNED_SPECS = [...SHARD_1_SPECS, ...SHARD_2_SPECS, ...SHARD_3_SPECS];

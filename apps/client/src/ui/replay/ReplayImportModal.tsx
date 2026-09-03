@@ -1,11 +1,11 @@
 import * as Clipboard from 'expo-clipboard';
 import { useState } from 'react';
-import { Pressable, Text, TextInput, View } from 'react-native';
+import { Text, TextInput, View } from 'react-native';
 import { tryImportRecord } from '../../replay/exportImport';
 import { useGame } from '../../state/game';
-import { Modal } from '../Modal';
-import { GhostButton, PrimaryButton } from '../buttons';
-import { COLORS } from '../colors';
+import { GlassSheet } from '../menu/GlassSheet';
+import { GlassButton, GoldButton } from '../menu/MenuButtons';
+import { MENU, TYPE } from '../menu/theme';
 
 interface ReplayImportModalProps {
   open: boolean;
@@ -16,15 +16,14 @@ interface ReplayImportModalProps {
 /**
  * Paste-JSON import flow. The replay format is just `JSON.stringify` of
  * a `ReplayRecord`, so the user can copy it from one device's clipboard
- * (via the export action), paste here on another, and import. We assign
- * a fresh id on import so duplicates don't collide; we don't validate
- * with zod yet (the Action / GameState shapes are deeply nested and
- * the engine catches malformed states at render time anyway). A
- * lightweight envelope check covers the common case.
+ * (via the export action), paste here on another, and import. A fresh
+ * id is assigned on import so duplicates don't collide; a lightweight
+ * envelope check covers the common malformed-paste case.
  */
 export function ReplayImportModal({ open, onClose, onImported }: ReplayImportModalProps) {
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [focused, setFocused] = useState(false);
   const replayQuota = useGame((s) => s.settings.replayQuota);
 
   const onPasteFromClipboard = async () => {
@@ -54,9 +53,9 @@ export function ReplayImportModal({ open, onClose, onImported }: ReplayImportMod
   };
 
   return (
-    <Modal open={open} title="Import replay" onClose={onCancel} maxWidth={560}>
+    <GlassSheet open={open} title="Import replay" onClose={onCancel} maxWidth={560}>
       <View style={{ padding: 16, gap: 12 }}>
-        <Text style={{ fontSize: 12, color: COLORS.ink3, lineHeight: 18 }}>
+        <Text style={TYPE.body}>
           Paste a JSON-encoded replay below. Replays exported from another device (or another
           install) work as long as the engine version matches.
         </Text>
@@ -66,43 +65,52 @@ export function ReplayImportModal({ open, onClose, onImported }: ReplayImportMod
           multiline
           numberOfLines={6}
           placeholder='{"header":{...},"frames":[...],"bookmarks":[...]}'
-          placeholderTextColor={COLORS.ink3}
+          placeholderTextColor={MENU.text3}
           accessibilityLabel="Paste replay JSON"
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
           style={{
-            borderColor: COLORS.hairline,
+            borderColor: focused ? MENU.gold : MENU.hairline,
             borderWidth: 1,
-            borderRadius: 8,
-            padding: 10,
-            backgroundColor: COLORS.paperHi,
-            color: COLORS.ink,
-            fontFamily: 'Courier',
+            borderRadius: 12,
+            padding: 12,
+            backgroundColor: MENU.fill,
+            color: MENU.text,
+            ...TYPE.mono,
             fontSize: 11,
-            minHeight: 120,
+            lineHeight: 16,
+            minHeight: 140,
             textAlignVertical: 'top',
           }}
         />
         {error ? (
           <View
             style={{
-              backgroundColor: COLORS.accentSalmonSwatch,
-              borderColor: COLORS.accentSalmonEdge,
+              backgroundColor: MENU.redTint,
+              borderColor: MENU.redEdge,
               borderWidth: 1,
-              borderRadius: 6,
-              padding: 8,
+              borderRadius: 10,
+              padding: 10,
             }}
           >
-            <Text style={{ fontSize: 11, color: COLORS.red, fontWeight: '700' }}>{error}</Text>
+            <Text style={{ fontSize: 12, color: '#e59a8b', fontWeight: '700', lineHeight: 16 }}>
+              {error}
+            </Text>
           </View>
         ) : null}
-        <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-          <GhostButton onPress={onPasteFromClipboard}>Paste from clipboard</GhostButton>
+        <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <GlassButton size="sm" onPress={onPasteFromClipboard}>
+            Paste from clipboard
+          </GlassButton>
           <View style={{ flex: 1 }} />
-          <GhostButton onPress={onCancel}>Cancel</GhostButton>
-          <PrimaryButton onPress={onImport} disabled={text.trim().length === 0}>
+          <GlassButton size="sm" onPress={onCancel}>
+            Cancel
+          </GlassButton>
+          <GoldButton size="sm" onPress={onImport} disabled={text.trim().length === 0}>
             Import
-          </PrimaryButton>
+          </GoldButton>
         </View>
       </View>
-    </Modal>
+    </GlassSheet>
   );
 }

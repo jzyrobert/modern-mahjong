@@ -57,17 +57,30 @@ export const STATES = {
   },
   'menu-tutorials': {
     owner: 'menu',
+    // Phone: the Tutorial row expands into the lesson rail. Desktop /
+    // tablet: the lesson grid is always visible, the click is a no-op.
     steps: [
       { goto: '/' },
       { waitForText: 'Modern Mahjong' },
-      { click: 'text=Tutorial' },
-      { waitMs: 600 },
+      { click: '[data-testid="mode-tutorial"]' },
+      { waitMs: 900 },
+    ],
+  },
+  'menu-reduced-motion': {
+    owner: 'menu',
+    // `animations: false` → no intro, no drift, no parallax: the loop
+    // must report idle (0 renders/s) once the first frame has painted.
+    steps: [
+      { setSettings: { animations: false } },
+      { goto: '/' },
+      { waitForText: 'Modern Mahjong' },
+      { waitMs: 1600 },
     ],
     optional: true,
   },
   'replay-library': {
     owner: 'menu',
-    steps: [{ goto: '/replays' }, { waitMs: 600 }],
+    steps: [{ goto: '/replays' }, { waitForText: 'Replays' }, { waitMs: 800 }],
   },
 
   // ── Settings ─────────────────────────────────────────────────────────
