@@ -43,7 +43,7 @@ export function createTileMaterial(
     uBodyColor: { value: new Color('#efe6d2') },
     uBackColor: { value: back.top },
     uBackColor2: { value: back.bottom },
-    uHighlightColor: { value: new Color('#ffcf6b') },
+    uHighlightColor: { value: new Color('#f2b240') },
   };
   const mat = new MeshPhysicalMaterial({
     color: 0xffffff,
@@ -71,7 +71,8 @@ export function createTileMaterial(
         varying float vHighlight;
         varying float vFace;
         varying float vBack;
-        varying float vBackGrad;`,
+        varying float vBackGrad;
+        varying float vBackCell;`,
       )
       .replace(
         '#include <beginnormal_vertex>',
@@ -79,7 +80,11 @@ export function createTileMaterial(
         vFace = step(0.92, objectNormal.z);
         vBack = step(0.92, -objectNormal.z);
         vBackGrad = clamp(position.y / 1.36 + 0.5, 0.0, 1.0);
-        vAtlasUv = uv * uCellScale + aFaceCell;
+        // A negative cell offset is the "show the back on +Z" sentinel
+        // (TilePool writes it for BACK_CELL poses) — the fragment stage
+        // swaps the atlas sample for the skin gradient.
+        vBackCell = step(aFaceCell.x, -0.5);
+        vAtlasUv = uv * uCellScale + max(aFaceCell, vec2(0.0));
         vTint = aTint;
         vHighlight = aHighlight;`,
       );
@@ -97,15 +102,26 @@ export function createTileMaterial(
         varying float vHighlight;
         varying float vFace;
         varying float vBack;
-        varying float vBackGrad;`,
+        varying float vBackGrad;
+        varying float vBackCell;`,
       )
       .replace(
         '#include <color_fragment>',
         `#include <color_fragment>
         vec4 faceTexel = texture2D(uAtlas, vAtlasUv);
         vec3 backCol = mix(uBackColor2, uBackColor, vBackGrad);
-        vec3 body = mix(uBodyColor, backCol, vBack);
-        diffuseColor.rgb = mix(body, faceTexel.rgb, vFace) * vTint;`,
+        // Faint inset border on the back so face-down tiles read as
+        // separate pieces in a wall / opponent row.
+        vec2 edge = abs(vUv - 0.5) * 2.0;
+        float rim = smoothstep(0.86, 0.97, max(edge.x, edge.y));
+        backCol = mix(backCol, backCol * 0.82, rim * 0.6);
+        float showBack = max(vBack, vFace * vBackCell);
+        vec3 body = mix(uBodyColor, backCol, showBack);
+        float showFace = vFace * (1.0 - vBackCell);
+        diffuseColor.rgb = mix(body, faceTexel.rgb, showFace) * vTint;
+        // Cue glow: warm the albedo toward gold as well as adding
+        // emissive so blue / plum backs read gold, not washed-out white.
+        diffuseColor.rgb = mix(diffuseColor.rgb, uHighlightColor, vHighlight * 0.7);`,
       )
       .replace(
         '#include <emissivemap_fragment>',
@@ -115,7 +131,7 @@ export function createTileMaterial(
   };
   // Distinct cache key so three doesn't share the program with a stock
   // MeshPhysicalMaterial.
-  mat.customProgramCacheKey = () => 'mahjong-tile-v1';
+  mat.customProgramCacheKey = () => 'mahjong-tile-v3';
   return mat;
 }
 

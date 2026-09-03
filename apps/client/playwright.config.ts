@@ -72,6 +72,8 @@ const SHARD_3_SPECS = [
   'replay-screenshot-desktop.spec.ts',
   'shuffle-on-rejoin.spec.ts',
   'solo-match.spec.ts',
+  // 3D table smoke (~20 s on SwiftShader).
+  'three-table.spec.ts',
 ];
 
 const ASSIGNED_SPECS = [...SHARD_1_SPECS, ...SHARD_2_SPECS, ...SHARD_3_SPECS];

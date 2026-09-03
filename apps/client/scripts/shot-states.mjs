@@ -21,31 +21,58 @@
    { openSettings: true }                 opens the in-match settings surface
    { startTutorial: 'basics' }            launches a lesson from the lobby
    { clickTutorialNext: true }            presses the caption card's CTA
+   { initScript: 'js source' }            addInitScript — globals the app reads at boot
  *   { viewport: { width, height, dpr } }   override the CLI viewport for this recipe
  *
  * `owner` is the subsystem the state belongs to (used by STATUS.json).
- * `budget` overrides the default per-subsystem perf budget.
+ * `budget` overrides the default per-subsystem perf budget. `noScene`
+ * marks a state that renders a classic DOM view even under the 3D
+ * renderer (pre-game lobby) so the WebGL budget isn't applied.
  */
 
 /**
- * Bot scripts that make seat 1 discard a face the user can peng on the
- * very first bot turn. Uses seed 5 (user is dealer, holds pair(s)).
- * Sets the hook before the match starts; `solo-transport` reads it.
+ * Claim state: seed 30 deals the user (dealer, seat 0) a pair that bot 1
+ * also holds one copy of. After the deal, read the hands, script bot 1
+ * to discard that face on its first turn (`__MAHJONG_TEST_BOT_SCRIPTS__`,
+ * the same hook `e2e/claim-bar-options.spec.ts` uses) and discard a
+ * *different* face from the user's hand so the peng stays legal.
  */
-const CLAIM_SCRIPT = `
+const CLAIM_INIT = `
+globalThis.__MAHJONG_TEST_SEED__ = 30;
+globalThis.__MAHJONG_TEST_BOT_SCRIPTS__ = { 1: {}, 2: {}, 3: {} };
+`;
+const CLAIM_SETUP = `
 (() => {
-  globalThis.__MAHJONG_TEST_SEED__ = 5;
-  // Let the shot tool's post-start hook compute a peng-able face.
-  globalThis.__MAHJONG_SHOT_WANT_CLAIM__ = true;
+  const s = globalThis.__MAHJONG_TEST_GET_STATE__();
+  if (!s.state || s.you === null) throw new Error('no state');
+  const key = (t) => (t.kind === 'suit' ? 's:' + t.suit + ':' + t.rank : 'h:' + t.honor);
+  const mine = s.state.hands[s.you];
+  const counts = new Map();
+  for (const t of mine) counts.set(key(t), (counts.get(key(t)) ?? 0) + 1);
+  const botFaces = new Set(s.state.hands[1].map(key));
+  const target = mine.find((t) => counts.get(key(t)) >= 2 && botFaces.has(key(t)));
+  if (!target) throw new Error('no peng-able face in dealt hand');
+  globalThis.__MAHJONG_TEST_BOT_SCRIPTS__[1] = { discards: [target] };
+  // Discard a tile of another face via its projected hit-target (the
+  // buttons' accessible names start with the tile name, e.g. "5 pin").
+  const name = (t) => (t.kind === 'suit' ? t.rank + ' ' + t.suit : ({ E: 'East wind', S: 'South wind', W: 'West wind', N: 'North wind', Z: 'Red dragon', F: 'Green dragon', B: 'White dragon' })[t.honor]);
+  const avoid = name(target);
+  const buttons = [...document.querySelectorAll('[data-testid="own-hand-tile"]')];
+  const btn = buttons.find((b) => !(b.getAttribute('aria-label') || '').startsWith(avoid));
+  if (!btn) throw new Error('no discardable hit-target');
+  btn.click();
 })();
 `;
 
 const START_SOLO = [
   { goto: '/' },
   { waitForText: 'Modern Mahjong' },
-  { click: 'role=button[name="Play vs bots"]' },
+  // Generous click timeouts: the menu's 3D backdrop renders at a few
+  // fps on SwiftShader and Playwright's actionability checks wait on
+  // animation frames.
+  { click: 'role=button[name="Play vs bots"]', timeout: 20000 },
   { waitForText: 'Lobby' },
-  { click: 'role=button[name="Start match"]' },
+  { click: 'role=button[name="Start match"]', timeout: 20000 },
   { dismissDice: true },
 ];
 
@@ -140,31 +167,61 @@ export const STATES = {
   'match-claim': {
     owner: 'table',
     steps: [
-      { evaluate: CLAIM_SCRIPT },
+      { initScript: CLAIM_INIT },
       ...START_SOLO,
       { waitForOwnHand: true },
-      { clickTestId: 'own-hand-tile', nth: 0 },
+      { waitMs: 1600 },
+      { evaluate: CLAIM_SETUP },
       { waitFor: '[data-testid="claim-bar"]', timeout: 20000 },
-      { waitMs: 500 },
+      { waitMs: 700 },
     ],
   },
   'match-result': {
     owner: 'table',
+    // Step 0 of the scoring lesson is an intro caption; the first
+    // "Got it" stages `phase: 'resolved'` with a rigged winning hand,
+    // so the shot shows the reveal + result panel.
     steps: [
       { goto: '/' },
       { waitForText: 'Modern Mahjong' },
       { startTutorial: 'scoring-intro' },
-      { waitMs: 1500 },
+      { waitForOwnHand: true },
+      { waitMs: 900 },
+      { clickTutorialNext: true },
+      { waitFor: '[data-testid="winning-hand"]', timeout: 15000 },
+      { waitMs: 1400 },
     ],
   },
   'match-lobby': {
     owner: 'table',
+    noScene: true,
     steps: [
       { goto: '/' },
       { waitForText: 'Modern Mahjong' },
       { click: 'role=button[name="Play vs bots"]' },
       { waitForText: 'Lobby' },
       { waitMs: 600 },
+    ],
+  },
+  'match-dealt-jade-plum': {
+    owner: 'table',
+    // Skin coverage: jade felt + plum tile backs (the scene re-tints the
+    // felt colour uniform + back gradient live, no rebuild).
+    steps: [
+      { setSettings: { felt: 'jade', tileBack: 'plum' } },
+      ...START_SOLO,
+      { waitForOwnHand: true },
+      { waitMs: 1500 },
+    ],
+  },
+  'tile-sheet': {
+    owner: 'table',
+    // Debug: every distinct face standing in rows for glyph inspection.
+    steps: [
+      { initScript: 'globalThis.__MAHJONG_DEBUG_TILE_SHEET__ = true;' },
+      ...START_SOLO,
+      { waitFor: '[data-testid="table-3d-scene"]', timeout: 20000 },
+      { waitMs: 1200 },
     ],
   },
 };

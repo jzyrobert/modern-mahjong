@@ -14,7 +14,48 @@ interface ClaimBarProps {
    *  column. Desktop also bumps tile + button sizes for the larger
    *  viewport. Defaults to 'portrait'. */
   orientation?: 'portrait' | 'landscape' | 'desktop';
+  /** Surface palette. `paper` (default) is the classic cream card;
+   *  `glass` is the dark translucent panel the Three.js HUD uses.
+   *  Only chrome colours change — the per-kind action buttons, tile
+   *  previews and layout are identical. */
+  theme?: ClaimBarTheme;
 }
+
+export type ClaimBarTheme = 'paper' | 'glass';
+
+interface ClaimPalette {
+  panelBg: string;
+  panelBorder: string;
+  label: string;
+  divider: string;
+  ghostBorder: string;
+  ghostFg: string;
+  track: string;
+  chiFg: string;
+}
+
+const PALETTES: Record<ClaimBarTheme, ClaimPalette> = {
+  paper: {
+    panelBg: COLORS.paperHi,
+    panelBorder: COLORS.hairline,
+    label: COLORS.ink3,
+    divider: COLORS.hairline,
+    ghostBorder: COLORS.hairline,
+    ghostFg: COLORS.ink3,
+    track: 'rgba(0,0,0,0.06)',
+    chiFg: '#2d7a52',
+  },
+  glass: {
+    panelBg: 'rgba(14,20,17,0.78)',
+    panelBorder: 'rgba(216,168,90,0.5)',
+    label: 'rgba(255,255,255,0.62)',
+    divider: 'rgba(255,255,255,0.14)',
+    ghostBorder: 'rgba(255,255,255,0.24)',
+    ghostFg: 'rgba(255,255,255,0.86)',
+    track: 'rgba(255,255,255,0.08)',
+    chiFg: '#8fe0b0',
+  },
+};
 
 type CallKind = 'chi' | 'peng' | 'gang' | 'hu' | 'pass';
 
@@ -34,7 +75,6 @@ const CHI_CHIP = {
   bg: 'rgba(88,194,128,0.1)',
   bgPressed: 'rgba(88,194,128,0.2)',
   border: 'rgba(88,194,128,0.35)',
-  fg: '#2d7a52',
 } as const;
 
 /**
@@ -70,7 +110,13 @@ const CHI_CHIP = {
  * `drewThisTurn`). In HK rules you'd always declare hu when you can,
  * so we collapse the visible options to WIN + PASS in that case.
  */
-export function ClaimBar({ onAction, seat, orientation = 'portrait' }: ClaimBarProps) {
+export function ClaimBar({
+  onAction,
+  seat,
+  orientation = 'portrait',
+  theme = 'paper',
+}: ClaimBarProps) {
+  const pal = PALETTES[theme];
   const state = useGame((s) => s.state);
   const legal = new Set<CallKind>(state ? legalClaimsFor(state, seat) : []);
   let huFaan: number | null = null;
@@ -159,12 +205,12 @@ export function ClaimBar({ onAction, seat, orientation = 'portrait' }: ClaimBarP
       >
         <Tile tile={discard} width={tileW} height={tileH} />
       </View>
-      <Text style={{ fontSize: 9, fontWeight: '800', color: COLORS.ink3, letterSpacing: 0.4 }}>
+      <Text style={{ fontSize: 9, fontWeight: '800', color: pal.label, letterSpacing: 0.4 }}>
         CLAIM?
       </Text>
     </View>
   ) : (
-    <Text style={{ fontSize: 11, fontWeight: '800', color: COLORS.ink3, letterSpacing: 0.5 }}>
+    <Text style={{ fontSize: 11, fontWeight: '800', color: pal.label, letterSpacing: 0.5 }}>
       CLAIM?
     </Text>
   );
@@ -186,6 +232,7 @@ export function ClaimBar({ onAction, seat, orientation = 'portrait' }: ClaimBarP
         meldTiles={[discard, discard, discard]}
         fullWidth={isVertical}
         sizing={actionSizing}
+        pal={pal}
         onPress={() => onAction({ t: 'declareClaim', seat, claim: { kind: 'peng' } })}
       />,
     );
@@ -201,6 +248,7 @@ export function ClaimBar({ onAction, seat, orientation = 'portrait' }: ClaimBarP
           meldTiles={run}
           fullWidth={isVertical}
           sizing={actionSizing}
+          pal={pal}
           onPress={() => onAction({ t: 'declareClaim', seat, claim: { kind: 'chi', with: opt } })}
         />,
       );
@@ -212,6 +260,7 @@ export function ClaimBar({ onAction, seat, orientation = 'portrait' }: ClaimBarP
           options={chiOpts}
           fullWidth={isVertical}
           sizing={actionSizing}
+          pal={pal}
           onPick={(opt) => onAction({ t: 'declareClaim', seat, claim: { kind: 'chi', with: opt } })}
         />,
       );
@@ -225,6 +274,7 @@ export function ClaimBar({ onAction, seat, orientation = 'portrait' }: ClaimBarP
         meldTiles={[discard, discard, discard, discard]}
         fullWidth={isVertical}
         sizing={actionSizing}
+        pal={pal}
         onPress={() => onAction({ t: 'declareClaim', seat, claim: { kind: 'gang' } })}
       />,
     );
@@ -239,6 +289,7 @@ export function ClaimBar({ onAction, seat, orientation = 'portrait' }: ClaimBarP
         amplified
         fullWidth={isVertical}
         sizing={actionSizing}
+        pal={pal}
         onPress={() => onAction({ t: 'declareClaim', seat, claim: { kind: 'hu' } })}
       />,
     );
@@ -252,6 +303,7 @@ export function ClaimBar({ onAction, seat, orientation = 'portrait' }: ClaimBarP
         ghost
         fullWidth={isVertical}
         sizing={actionSizing}
+        pal={pal}
         onPress={() => onAction({ t: 'declareClaim', seat, claim: { kind: 'pass' } })}
       />,
     );
@@ -267,9 +319,9 @@ export function ClaimBar({ onAction, seat, orientation = 'portrait' }: ClaimBarP
       testID="claim-bar"
       style={{
         borderRadius: 12,
-        backgroundColor: COLORS.paperHi,
+        backgroundColor: pal.panelBg,
         borderWidth: 1,
-        borderColor: COLORS.hairline,
+        borderColor: pal.panelBorder,
         boxShadow: cardShadow,
         overflow: 'hidden',
         ...(landscapeFill ? { flex: 1, minHeight: 0 } : {}),
@@ -278,6 +330,7 @@ export function ClaimBar({ onAction, seat, orientation = 'portrait' }: ClaimBarP
       <CountdownBar
         hardDeadlineMs={state?.pendingClaims?.hardDeadlineMs ?? null}
         totalWindowMs={state?.rules.claimHardWindowMs ?? null}
+        track={pal.track}
       />
       {isVertical ? (
         <View
@@ -340,6 +393,7 @@ interface ClaimActionProps {
   ghost?: boolean;
   fullWidth?: boolean;
   sizing: ClaimActionSizing;
+  pal: ClaimPalette;
   onPress: () => void;
 }
 
@@ -351,9 +405,11 @@ function ClaimAction({
   ghost = false,
   fullWidth = false,
   sizing,
+  pal,
   onPress,
 }: ClaimActionProps) {
   const meta = KIND[kind];
+  const fg = ghost ? pal.ghostFg : meta.fg;
   return (
     <View style={{ alignItems: 'center', gap: 3, width: fullWidth ? '100%' : undefined }}>
       <Pressable
@@ -371,7 +427,7 @@ function ClaimAction({
           width: fullWidth ? '100%' : undefined,
           backgroundColor: pressed ? meta.pressed : meta.bg,
           borderWidth: ghost ? 1.5 : 0,
-          borderColor: ghost ? COLORS.hairline : 'transparent',
+          borderColor: ghost ? pal.ghostBorder : 'transparent',
           boxShadow: amplified
             ? '0px 2px 8px rgba(220,159,79,0.55)'
             : ghost
@@ -384,7 +440,7 @@ function ClaimAction({
             fontFamily: 'Noto Serif TC',
             fontSize: sizing.glyphSize,
             fontWeight: '700',
-            color: meta.fg,
+            color: fg,
           }}
         >
           {meta.glyph}
@@ -393,7 +449,7 @@ function ClaimAction({
           style={{
             fontSize: sizing.labelSize,
             fontWeight: '900',
-            color: meta.fg,
+            color: fg,
             letterSpacing: 0.4,
             textTransform: 'uppercase',
           }}
@@ -433,6 +489,7 @@ interface ChiChipGroupProps {
   options: [MTile, MTile][];
   fullWidth: boolean;
   sizing: ClaimActionSizing;
+  pal: ClaimPalette;
   onPick: (option: [MTile, MTile]) => void;
 }
 
@@ -442,7 +499,7 @@ interface ChiChipGroupProps {
  *  label so the player can pick from the visible options without
  *  uncovering anything. Portrait flexes into a wrap row; landscape /
  *  desktop stack full-width chips inside the vertical column. */
-function ChiChipGroup({ discard, options, fullWidth, sizing, onPick }: ChiChipGroupProps) {
+function ChiChipGroup({ discard, options, fullWidth, sizing, pal, onPick }: ChiChipGroupProps) {
   // Chi chip tiles ride a hair smaller than the main meld preview so
   // the chip itself stays compact even at desktop sizing — the chip
   // is already showing 3 tiles + a numeric label inside a Pressable.
@@ -465,13 +522,13 @@ function ChiChipGroup({ discard, options, fullWidth, sizing, onPick }: ChiChipGr
           width: fullWidth ? '100%' : undefined,
         }}
       >
-        <View style={{ flex: 1, height: 1, backgroundColor: COLORS.hairline, opacity: 0.6 }} />
+        <View style={{ flex: 1, height: 1, backgroundColor: pal.divider, opacity: 0.6 }} />
         <Text
           style={{
             fontFamily: 'Noto Serif TC',
             fontSize: 11,
             fontWeight: '700',
-            color: CHI_CHIP.fg,
+            color: pal.chiFg,
           }}
         >
           吃
@@ -480,13 +537,13 @@ function ChiChipGroup({ discard, options, fullWidth, sizing, onPick }: ChiChipGr
           style={{
             fontSize: 9,
             fontWeight: '800',
-            color: CHI_CHIP.fg,
+            color: pal.chiFg,
             letterSpacing: 0.5,
           }}
         >
           CHI
         </Text>
-        <View style={{ flex: 1, height: 1, backgroundColor: COLORS.hairline, opacity: 0.6 }} />
+        <View style={{ flex: 1, height: 1, backgroundColor: pal.divider, opacity: 0.6 }} />
       </View>
       {options.map((opt, i) => {
         const run = sortRun(discard, opt[0], opt[1]);
@@ -525,7 +582,7 @@ function ChiChipGroup({ discard, options, fullWidth, sizing, onPick }: ChiChipGr
               style={{
                 fontSize: 8,
                 fontWeight: '800',
-                color: CHI_CHIP.fg,
+                color: pal.chiFg,
                 letterSpacing: 0.3,
               }}
             >
@@ -563,6 +620,8 @@ interface CountdownBarProps {
    *  bar starts at the correct fill if the user mounts mid-claim
    *  (e.g. tab refresh, late-attached spectator). Null in solo. */
   totalWindowMs: number | null;
+  /** Empty-track colour behind the shrinking bar. */
+  track: string;
 }
 
 /** Thin 3-px progress strip at the top of the claim card. Animated
@@ -583,7 +642,7 @@ function initialFraction(hardDeadlineMs: number | null, totalWindowMs: number | 
   return Math.min(1, Math.max(0, remaining / totalWindowMs));
 }
 
-function CountdownBar({ hardDeadlineMs, totalWindowMs }: CountdownBarProps) {
+function CountdownBar({ hardDeadlineMs, totalWindowMs, track }: CountdownBarProps) {
   // Seed the Animated.Value at the correct starting fraction so the
   // very first paint already shows the right fill — without the lazy
   // initialiser, the ref captured `0`, the useEffect ran after commit,
@@ -617,7 +676,7 @@ function CountdownBar({ hardDeadlineMs, totalWindowMs }: CountdownBarProps) {
   }, [hardDeadlineMs, totalWindowMs, fraction]);
   if (hardDeadlineMs === null || totalWindowMs === null) return null;
   return (
-    <View style={{ height: 3, backgroundColor: 'rgba(0,0,0,0.06)', width: '100%' }}>
+    <View style={{ height: 3, backgroundColor: track, width: '100%' }}>
       <Animated.View
         style={{
           height: '100%',

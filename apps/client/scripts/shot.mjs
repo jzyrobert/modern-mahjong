@@ -184,6 +184,11 @@ async function runStep(page, step, ctx) {
       .waitFor({ timeout: step.timeout ?? 15_000 });
   if (step.waitMs) return page.waitForTimeout(step.waitMs);
   if (step.evaluate) return page.evaluate(step.evaluate);
+  if (step.initScript) {
+    // Runs before every navigation in this page — for globals the app
+    // reads at boot (debug recipes, test seams). Order it before `goto`.
+    return page.addInitScript(step.initScript);
+  }
   if (step.setSettings) {
     // Settings must be in localStorage before the app boots so the
     // renderer + skins pick them up on first render.
@@ -198,9 +203,13 @@ async function runStep(page, step, ctx) {
   if (step.dismissDice) {
     // The root-level DiceCeremony overlay covers the table after
     // `Start match`; tap it away so the shot shows the scene.
+    // Tap the viewport rather than the hint element: the ceremony
+    // auto-dismisses after a beat and a detached element makes
+    // `locator.click` retry until it times out.
     const hint = page.getByText('Tap anywhere to dismiss', { exact: true });
     if (await hint.isVisible({ timeout: step.timeout ?? 4000 }).catch(() => false)) {
-      await hint.click().catch(() => {});
+      const vp = page.viewportSize() ?? { width: 412, height: 915 };
+      await page.mouse.click(vp.width / 2, vp.height / 2).catch(() => {});
       await hint.waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {});
     }
     return;
@@ -293,12 +302,25 @@ async function runStep(page, step, ctx) {
     }, step.startTutorial);
   }
   if (step.clickTutorialNext) {
-    const loc = page
-      .locator(
-        '[data-testid="tutorial-next"], role=button[name="Got it"], role=button[name="Next"]',
-      )
-      .first();
-    return loc.click({ timeout: 8000 });
+    // Playwright can't mix CSS and `role=` engines in one selector
+    // string; try each candidate in turn.
+    const candidates = [
+      page.getByTestId('tutorial-next'),
+      page.getByRole('button', { name: 'Got it' }),
+      page.getByRole('button', { name: 'Next' }),
+      page.getByRole('button', { name: 'Done' }),
+    ];
+    for (const loc of candidates) {
+      if (
+        await loc
+          .first()
+          .isVisible()
+          .catch(() => false)
+      ) {
+        return loc.first().click({ timeout: step.timeout ?? 8000 });
+      }
+    }
+    throw new Error('no tutorial CTA visible');
   }
   if (step.waitForPerf) {
     return page
@@ -310,10 +332,16 @@ async function runStep(page, step, ctx) {
   throw new Error(`unknown step ${JSON.stringify(step)}`);
 }
 
-function judgeBudget(perf, budget, renderer) {
+function judgeBudget(perf, budget, renderer, recipe) {
   const violations = [];
   if (renderer !== '3d')
     return { pass: true, violations, note: 'classic renderer — no WebGL budget' };
+  if (recipe?.noScene)
+    return {
+      pass: true,
+      violations,
+      note: 'state renders no WebGL scene (classic DOM view) — budget not applicable',
+    };
   if (!perf)
     return {
       pass: false,
@@ -376,7 +404,7 @@ async function shootState(browser, name, recipe, opts, ctx) {
       if (opts.verbose) console.error(`  [${name}] ${JSON.stringify(step).slice(0, 80)}`);
       await runStep(page, step, ctx);
     }
-    if (opts.renderer === '3d') await runStep(page, { waitForPerf: true }, ctx);
+    if (opts.renderer === '3d' && !recipe.noScene) await runStep(page, { waitForPerf: true }, ctx);
   } catch (e) {
     driveError = String(e?.message || e).split('\n')[0];
   }
@@ -390,6 +418,7 @@ async function shootState(browser, name, recipe, opts, ctx) {
     perf,
     recipe.budget ?? BUDGETS[recipe.owner] ?? BUDGETS.table,
     opts.renderer,
+    recipe,
   );
   const log = {
     state: name,

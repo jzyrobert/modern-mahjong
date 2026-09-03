@@ -1,0 +1,366 @@
+import { type GameState, type Seat, emptyState, startHand, tileId } from '@mahjong/game-logic';
+import { describe, expect, test } from 'vitest';
+import { TILE_D, TILE_H, TILE_W } from '../tiles/geometry';
+import {
+  DEAD_GAP,
+  FELT_HALF,
+  HAND_Z,
+  STACKS_PER_WALL,
+  computeLayout,
+  fullWallLayout,
+  layoutMeld,
+  orderOwnHand,
+  relOf,
+  tileSheetLayout,
+  toWorld,
+  wallSlotPosition,
+  wallSlotRefs,
+} from './layout';
+
+function dealt(seed = 5, dealer: Seat = 0): GameState {
+  return startHand(emptyState(), seed, dealer).state;
+}
+
+const OPTS = { sortMode: 'suit' as const, manualOrder: [], drawnTileId: null, reveal: false };
+
+describe('toWorld / relOf', () => {
+  test('rotates seat-local coordinates counter-clockwise per seat', () => {
+    expect(toWorld(0, 1, 2)).toEqual([1, 2]);
+    // The right seat's "toward me" (+z local) points +x in the world.
+    expect(toWorld(1, 0, 5)).toEqual([5, -0]);
+    expect(toWorld(2, 1, 2)).toEqual([-1, -2]);
+    expect(toWorld(3, 0, 5)).toEqual([-5, 0]);
+  });
+  test('relOf mirrors seatPlacement order (next seat sits to the right)', () => {
+    expect(relOf(1, 0)).toBe(1);
+    expect(relOf(2, 0)).toBe(2);
+    expect(relOf(3, 0)).toBe(3);
+    expect(relOf(0, 3)).toBe(1);
+  });
+});
+
+describe('wallSlotRefs', () => {
+  test('live k=0 is the stack left of the break, top tile first', () => {
+    const { live } = wallSlotRefs(0, 7, 122, 14);
+    // break wall = (0 + 6) % 4 = 2, break stack = 17 - 7 = 10 → live starts at 9.
+    expect(live[0]).toEqual({ wallSeat: 2, stack: 9, level: 1, dead: false });
+    expect(live[1]).toEqual({ wallSeat: 2, stack: 9, level: 0, dead: false });
+    expect(live[2]).toEqual({ wallSeat: 2, stack: 8, level: 1, dead: false });
+  });
+  test('dead wall is the 7 stacks right of the break; index 0 is the far end', () => {
+    const { dead } = wallSlotRefs(0, 7, 122, 14);
+    expect(dead).toHaveLength(14);
+    expect(dead.every((d) => d.dead)).toBe(true);
+    // Far end: stack 16 on the break wall (seat 2).
+    expect(dead[0]).toEqual({ wallSeat: 2, stack: 16, level: 1, dead: true });
+    expect(dead[13]).toEqual({ wallSeat: 2, stack: 10, level: 0, dead: true });
+  });
+  test('wraps onto the next seat when the dead wall overruns the corner', () => {
+    const { dead } = wallSlotRefs(0, 3, 122, 14);
+    // break stack 14 → dead stacks 14,15,16 on seat 2 then 0..3 on seat 3.
+    const seats = new Set(dead.map((d) => d.wallSeat));
+    expect(seats).toEqual(new Set([2, 3]));
+    expect(dead[0]!.wallSeat).toBe(3);
+    expect(dead[0]!.stack).toBe(3);
+  });
+  test('live wall wraps onto the previous seat and never overlaps the dead wall', () => {
+    const { live, dead } = wallSlotRefs(1, 12, 122, 14);
+    const key = (r: { wallSeat: number; stack: number; level: number }) =>
+      `${r.wallSeat}:${r.stack}:${r.level}`;
+    const all = new Set([...live, ...dead].map(key));
+    expect(all.size).toBe(136);
+    expect(live.filter((r) => r.stack === 0).length).toBeGreaterThan(0);
+  });
+  test('covers all 136 physical slots exactly once for every break', () => {
+    for (let n = 2; n <= 12; n++) {
+      for (const dealer of [0, 1, 2, 3] as Seat[]) {
+        const { live, dead } = wallSlotRefs(dealer, n, 122, 14);
+        const all = new Set([...live, ...dead].map((r) => `${r.wallSeat}:${r.stack}:${r.level}`));
+        expect(all.size).toBe(136);
+        expect(live.length + dead.length).toBe(136);
+      }
+    }
+  });
+  test('falls back to a default break when the roll is missing', () => {
+    const a = wallSlotRefs(0, undefined, 100, 14);
+    const b = wallSlotRefs(0, 7, 100, 14);
+    expect(a).toEqual(b);
+  });
+});
+
+describe('wallSlotPosition', () => {
+  test('stacks sit two-high on the near wall for the viewer', () => {
+    const bottom = wallSlotPosition({ wallSeat: 0, stack: 8, level: 0, dead: false }, 0);
+    const top = wallSlotPosition({ wallSeat: 0, stack: 8, level: 1, dead: false }, 0);
+    expect(bottom.z).toBeGreaterThan(8);
+    expect(top.y - bottom.y).toBeCloseTo(TILE_D);
+    expect(bottom.rel).toBe(0);
+  });
+  test('dead stacks carry the visual gap', () => {
+    const live = wallSlotPosition({ wallSeat: 0, stack: 8, level: 0, dead: false }, 0);
+    const dead = wallSlotPosition({ wallSeat: 0, stack: 8, level: 0, dead: true }, 0);
+    expect(dead.x - live.x).toBeCloseTo(DEAD_GAP);
+  });
+  test('the four walls form a pinwheel that never overlaps at the corners', () => {
+    // Near wall's right end vs. right wall's near end.
+    const nearEnd = wallSlotPosition(
+      { wallSeat: 0, stack: STACKS_PER_WALL - 1, level: 0, dead: true },
+      0,
+    );
+    const rightNear = wallSlotPosition({ wallSeat: 1, stack: 0, level: 0, dead: false }, 0);
+    // Right wall tiles occupy z ≤ rightNear.z + TILE_W/2; near wall tiles
+    // occupy z ≥ nearEnd.z − TILE_H/2.
+    expect(rightNear.z + TILE_W / 2).toBeLessThan(nearEnd.z - TILE_H / 2);
+    expect(Math.abs(nearEnd.x) + TILE_W / 2).toBeLessThan(FELT_HALF);
+  });
+});
+
+describe('layoutMeld', () => {
+  const t = (rank: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9, copy: 0 | 1 | 2 | 3 = 0) =>
+    ({ kind: 'suit', suit: 'pin', rank, copy }) as const;
+  test('peng from the next seat rotates the right-hand tile', () => {
+    const m = layoutMeld({ kind: 'peng', tiles: [t(5), t(5, 1), t(5, 2)], from: 1 }, 0);
+    expect(m.tiles.map((x) => x.rotated)).toEqual([false, false, true]);
+    expect(m.width).toBeCloseTo(TILE_W * 2 + TILE_H + 2 * 0.03);
+  });
+  test('chi from the previous seat rotates the left-hand tile', () => {
+    const m = layoutMeld({ kind: 'chi', tiles: [t(3), t(4), t(5)], from: 3 }, 0);
+    expect(m.tiles.map((x) => x.rotated)).toEqual([true, false, false]);
+  });
+  test('across-seat claim rotates the middle tile', () => {
+    const m = layoutMeld({ kind: 'peng', tiles: [t(3), t(3, 1), t(3, 2)], from: 2 }, 0);
+    expect(m.tiles.map((x) => x.rotated)).toEqual([false, true, false]);
+  });
+  test('gang stacks the 4th tile on the claimed tile', () => {
+    const m = layoutMeld(
+      { kind: 'gang-exposed', tiles: [t(7), t(7, 1), t(7, 2), t(7, 3)], from: 2 },
+      0,
+    );
+    expect(m.tiles).toHaveLength(4);
+    const stacked = m.tiles[3]!;
+    expect(stacked.stacked).toBe(true);
+    expect(stacked.dx).toBeCloseTo(m.tiles[1]!.dx);
+    expect(stacked.rotated).toBe(true);
+  });
+  test('concealed gang lies face down with the 4th on the middle', () => {
+    const m = layoutMeld({ kind: 'gang-concealed', tiles: [t(1), t(1, 1), t(1, 2), t(1, 3)] }, 0);
+    expect(m.tiles.every((x) => x.faceDown)).toBe(true);
+    expect(m.tiles[3]!.dx).toBeCloseTo(m.tiles[1]!.dx);
+    expect(m.tiles.some((x) => x.rotated)).toBe(false);
+  });
+});
+
+describe('orderOwnHand', () => {
+  test('keeps the drawn tile at the right end regardless of sort', () => {
+    const st = dealt();
+    const hand = st.hands[0];
+    const drawn = hand[3]!;
+    const ordered = orderOwnHand(hand, {
+      sortMode: 'suit',
+      manualOrder: [],
+      drawnTileId: tileId(drawn),
+    });
+    expect(ordered).toHaveLength(hand.length);
+    expect(tileId(ordered[ordered.length - 1]!)).toBe(tileId(drawn));
+  });
+  test('manual mode honours the stored order', () => {
+    const st = dealt();
+    const hand = st.hands[0];
+    const rev = [...hand].reverse().map(tileId);
+    const ordered = orderOwnHand(hand, { sortMode: 'manual', manualOrder: rev, drawnTileId: null });
+    expect(ordered.map(tileId)).toEqual(rev);
+  });
+});
+
+describe('computeLayout', () => {
+  test('places every tile in the state exactly once', () => {
+    const st = dealt();
+    const layout = computeLayout(st, 0, OPTS);
+    const placed = layout.filter((s) => s !== null);
+    const total =
+      st.wall.length +
+      st.deadWall.length +
+      [0, 1, 2, 3].reduce(
+        (acc, s) =>
+          acc +
+          st.hands[s as Seat].length +
+          st.discards[s as Seat].length +
+          st.melds[s as Seat].reduce((a, m) => a + m.tiles.length, 0),
+        0,
+      );
+    expect(placed).toHaveLength(total);
+    expect(total).toBe(136);
+    // Every entry sits at its own id.
+    layout.forEach((s, i) => {
+      if (s) expect(s.id).toBe(i);
+    });
+  });
+  test("the user's hand stands in a centred row at the near edge", () => {
+    const st = dealt();
+    const layout = computeLayout(st, 0, OPTS);
+    const hand = layout.filter((s) => s?.zone === 'hand');
+    expect(hand).toHaveLength(st.hands[0].length);
+    for (const s of hand) {
+      expect(s!.base).toBe('standing');
+      expect(s!.z).toBeCloseTo(HAND_Z);
+      expect(s!.back).toBe(false);
+    }
+    const xs = hand.map((s) => s!.x).sort((a, b) => a - b);
+    expect(xs[0]! + xs[xs.length - 1]!).toBeCloseTo(0, 5);
+    expect(xs[1]! - xs[0]!).toBeCloseTo(TILE_W + 0.06);
+  });
+  test('opponent hands stand face-away (back shown) at their edges', () => {
+    const st = dealt();
+    const layout = computeLayout(st, 0, OPTS);
+    const right = layout.filter((s) => s?.zone === 'oppHand' && s.seat === 1);
+    expect(right.length).toBe(st.hands[1].length);
+    for (const s of right) {
+      expect(s!.base).toBe('standing');
+      expect(s!.back).toBe(true);
+      expect(s!.x).toBeCloseTo(HAND_Z);
+      expect(s!.yaw).toBeCloseTo(Math.PI / 2);
+    }
+  });
+  test('reveal lays opponents flat face up', () => {
+    const st = { ...dealt(), phase: 'resolved' as const };
+    const layout = computeLayout(st, 0, { ...OPTS, reveal: true });
+    const opp = layout.filter((s) => s?.zone === 'oppHand');
+    for (const s of opp) {
+      expect(s!.base).toBe('flatUp');
+      expect(s!.back).toBe(false);
+    }
+  });
+  test('discards flow 6 per row toward the owner', () => {
+    const st = dealt();
+    const hand = st.hands[0];
+    const discards = hand.slice(0, 8);
+    const withRiver: GameState = {
+      ...st,
+      hands: { ...st.hands, 0: hand.slice(8) },
+      discards: { ...st.discards, 0: discards },
+    };
+    const layout = computeLayout(withRiver, 0, OPTS);
+    const river = layout.filter((s) => s?.zone === 'discard');
+    expect(river).toHaveLength(8);
+    const rows = new Set(river.map((s) => s!.z.toFixed(3)));
+    expect(rows.size).toBe(2);
+    const first = river.find((s) => s!.index === 0)!;
+    const seventh = river.find((s) => s!.index === 6)!;
+    expect(seventh.z).toBeGreaterThan(first.z);
+    expect(seventh.x).toBeCloseTo(first.x);
+  });
+  test('the drawn tile is offset from the rest of the hand', () => {
+    const st = dealt();
+    const hand = st.hands[0];
+    const drawn = hand[0]!;
+    const layout = computeLayout(st, 0, { ...OPTS, drawnTileId: tileId(drawn) });
+    const slots = layout
+      .filter((s) => s?.zone === 'hand')
+      .sort((a, b) => a!.x - b!.x)
+      .map((s) => s!);
+    const last = slots[slots.length - 1]!;
+    expect(last.id).toBe(tileId(drawn));
+    const gapLast = last.x - slots[slots.length - 2]!.x;
+    const gapNormal = slots[1]!.x - slots[0]!.x;
+    expect(gapLast).toBeGreaterThan(gapNormal + 0.3);
+  });
+  test('everything stays inside the felt', () => {
+    const st = dealt(9, 2);
+    const layout = computeLayout(st, 1, OPTS);
+    for (const s of layout) {
+      if (!s) continue;
+      expect(Math.abs(s.x)).toBeLessThan(FELT_HALF);
+      expect(Math.abs(s.z)).toBeLessThan(FELT_HALF);
+    }
+  });
+  test('the next tile to draw is live index 0', () => {
+    const st = dealt();
+    const layout = computeLayout(st, 0, OPTS);
+    const next = st.wall[st.wall.length - 1]!;
+    const slot = layout[tileId(next)]!;
+    expect(slot.zone).toBe('wall');
+    expect(slot.index).toBe(0);
+  });
+  test('drawing a tile leaves the rest of the wall in place (gap grows from the break)', () => {
+    const st = dealt();
+    const before = computeLayout(st, 0, OPTS);
+    const drawnTile = st.wall[st.wall.length - 1]!;
+    const after = computeLayout(
+      { ...st, wall: st.wall.slice(0, -1), hands: { ...st.hands, 0: [...st.hands[0], drawnTile] } },
+      0,
+      OPTS,
+    );
+    for (const t of st.wall.slice(0, -1)) {
+      const a = before[tileId(t)]!;
+      const b = after[tileId(t)]!;
+      expect([b.x, b.y, b.z]).toEqual([a.x, a.y, a.z]);
+    }
+    // The dealt tiles' former slots (next to the break) stay empty.
+    const drawnSlot = before[tileId(drawnTile)]!;
+    const occupied = after.some(
+      (s) =>
+        s && s.zone === 'wall' && s.x === drawnSlot.x && s.z === drawnSlot.z && s.y === drawnSlot.y,
+    );
+    expect(occupied).toBe(false);
+  });
+  test('gang replacements shrink the dead wall from its far end', () => {
+    const st = dealt();
+    const before = computeLayout(st, 0, OPTS);
+    const taken = st.deadWall[0]!;
+    const after = computeLayout(
+      { ...st, deadWall: st.deadWall.slice(1), hands: { ...st.hands, 0: [...st.hands[0], taken] } },
+      0,
+      OPTS,
+    );
+    for (const t of st.deadWall.slice(1)) {
+      const a = before[tileId(t)]!;
+      const b = after[tileId(t)]!;
+      expect([b.x, b.y, b.z]).toEqual([a.x, a.y, a.z]);
+    }
+  });
+  test('standing tiles lean back away from their owner', () => {
+    const st = dealt();
+    const layout = computeLayout(st, 0, OPTS);
+    const mine = layout.find((s) => s?.zone === 'hand')!;
+    const opp = layout.find((s) => s?.zone === 'oppHand')!;
+    expect(mine.tilt).toBeGreaterThan(0.3);
+    expect(opp.tilt).toBeGreaterThan(0);
+    expect(opp.tilt).toBeLessThan(mine.tilt);
+  });
+});
+
+describe('fullWallLayout / tileSheetLayout', () => {
+  test('full wall places all 136 tiles face down in the walls', () => {
+    const st = dealt();
+    const layout = fullWallLayout(st, 0);
+    const placed = layout.filter((s) => s !== null);
+    expect(placed).toHaveLength(136);
+    expect(placed.every((s) => s!.base === 'flatDown')).toBe(true);
+    // Every physical slot is used exactly once.
+    const keys = new Set(
+      placed.map((s) => `${s!.x.toFixed(3)}:${s!.y.toFixed(3)}:${s!.z.toFixed(3)}`),
+    );
+    expect(keys.size).toBe(136);
+  });
+  test("the dealer's first tiles fly out of the slots next to the break", () => {
+    const st = dealt(5, 1);
+    const full = fullWallLayout(st, 0);
+    const live = computeLayout(st, 0, OPTS);
+    // Remaining wall tiles keep their live positions in the full layout.
+    for (const t of st.wall) {
+      const a = live[tileId(t)]!;
+      const b = full[tileId(t)]!;
+      expect([b.x, b.z]).toEqual([a.x, a.z]);
+    }
+    // The dealer's first dealt tile occupies live slot 0.
+    const first = full[tileId(st.hands[1][0]!)]!;
+    expect(first.zone).toBe('wall');
+    expect(first.index).toBe(0);
+  });
+  test('tile sheet shows every distinct face once', () => {
+    const layout = tileSheetLayout();
+    const placed = layout.filter((s) => s !== null);
+    expect(placed).toHaveLength(34);
+    expect(new Set(placed.map((s) => s!.id >> 2)).size).toBe(34);
+  });
+});

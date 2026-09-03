@@ -38,6 +38,13 @@ declare global {
 }
 
 const RING = 120;
+/**
+ * Rendered frames skipped before the ring starts sampling. The first
+ * frames pay for shader compilation + texture upload (hundreds of ms
+ * on SwiftShader); a scene that then idles would otherwise report
+ * that warm-up as its steady-state p95 forever.
+ */
+export const WARMUP_FRAMES = 4;
 
 export class PerfMonitor {
   private times = new Float32Array(RING);
@@ -54,12 +61,13 @@ export class PerfMonitor {
 
   /** Call once per rendered frame with the JS time the frame took. */
   recordFrame(frameMs: number, now: number): void {
-    this.times[this.head] = frameMs;
-    this.head = (this.head + 1) % RING;
-    if (this.count < RING) this.count++;
     this.framesThisSecond++;
     this.renders++;
     this.lastRenderAt = now;
+    if (this.renders <= WARMUP_FRAMES) return;
+    this.times[this.head] = frameMs;
+    this.head = (this.head + 1) % RING;
+    if (this.count < RING) this.count++;
   }
 
   /** p95 over the ring — used by the auto-downgrade in the loop. */

@@ -40,6 +40,13 @@ export interface TilePose {
   highlight: number;
 }
 
+export interface TilePoolOptions {
+  /** Face-atlas raster scale (1 default, ≤ 1.25 on high tier). */
+  atlasScale?: number | undefined;
+  /** Anisotropic filtering for the face atlas. */
+  anisotropy?: number | undefined;
+}
+
 const _obj = new Object3D();
 const _m = new Matrix4();
 
@@ -52,8 +59,8 @@ export class TilePool {
   private highlightAttr: InstancedBufferAttribute;
   private dirty = true;
 
-  constructor(backSkin: TileBackSkin) {
-    const atlas = buildFaceAtlas();
+  constructor(backSkin: TileBackSkin, opts: TilePoolOptions = {}) {
+    const atlas = buildFaceAtlas({ scale: opts.atlasScale, anisotropy: opts.anisotropy });
     this.material = createTileMaterial(atlas.texture, backSkin);
     const geo = tileGeometry();
     this.mesh = new InstancedMesh(geo, this.material, TOTAL_TILES);
@@ -132,9 +139,16 @@ export class TilePool {
       _obj.scale.setScalar(s);
       _obj.updateMatrix();
       this.mesh.setMatrixAt(id, _obj.matrix);
-      const [ox, oy] = cellOffset(p.faceCell);
-      fc[id * 2] = ox;
-      fc[id * 2 + 1] = oy;
+      if (p.faceCell === BACK_CELL) {
+        // Sentinel: the material swaps the atlas sample for the skin
+        // gradient on the +Z side (see `materials.ts`).
+        fc[id * 2] = -1;
+        fc[id * 2 + 1] = -1;
+      } else {
+        const [ox, oy] = cellOffset(p.faceCell);
+        fc[id * 2] = ox;
+        fc[id * 2 + 1] = oy;
+      }
       tn[id * 3] = p.tint.r;
       tn[id * 3 + 1] = p.tint.g;
       tn[id * 3 + 2] = p.tint.b;
