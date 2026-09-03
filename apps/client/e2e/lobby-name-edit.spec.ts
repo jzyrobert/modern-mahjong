@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './_helpers';
 
 /**
  * The mobile lobby's identity-pill EDIT badge is a `Pressable` that

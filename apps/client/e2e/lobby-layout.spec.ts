@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './_helpers';
 
 // Phone-width lobby uses `MobileLobby`'s app-bar + collapsed-row
 // layout (see `apps/client/src/ui/menu/MobileLobby.tsx`). At this

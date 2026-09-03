@@ -84,6 +84,14 @@ export default defineConfig({
   use: {
     baseURL: 'http://127.0.0.1:4173',
     trace: 'retain-on-failure',
+    // Sandboxed dev containers ship a pre-installed Chromium whose
+    // build number may not match the one this @playwright/test
+    // version wants (`playwright install` is blocked there). Point
+    // `PW_CHROMIUM_PATH` at that binary to reuse it; CI leaves the
+    // variable unset and uses the browsers it installed itself.
+    launchOptions: process.env.PW_CHROMIUM_PATH
+      ? { executablePath: process.env.PW_CHROMIUM_PATH }
+      : {},
   },
   // Serve the Expo Web export (`expo export --platform web` writes to
   // `dist/`). Replaces the legacy `pnpm preview` (Vite). Uses `npx

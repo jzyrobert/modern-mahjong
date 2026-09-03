@@ -1,4 +1,5 @@
-import { chromium, expect, test } from '@playwright/test';
+import { chromium } from '@playwright/test';
+import { expect, legacyInitScript, test } from './_helpers';
 
 /**
  * End-to-end check for the "browser guest opens the host's URL"
@@ -46,6 +47,7 @@ test('LAN-origin browser at /match?code=… infers host and opens LAN WS', async
 
   try {
     const page = await browser.newPage();
+    await page.addInitScript(legacyInitScript);
 
     const wsUrlPromise = new Promise<string>((resolve, reject) => {
       page.once('websocket', (ws) => resolve(ws.url()));
@@ -86,6 +88,7 @@ test('LAN-origin browser at bare /match with no code shows the stranded screen',
 
   try {
     const page = await browser.newPage();
+    await page.addInitScript(legacyInitScript);
     await page.goto(`http://${fakeLanHost}:${port}/match`);
     await expect(page.getByRole('heading', { name: 'No active match' })).toBeVisible({
       timeout: 10_000,

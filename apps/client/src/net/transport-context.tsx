@@ -473,6 +473,17 @@ export function TransportProvider({ children }: { children: ReactNode }) {
 
   useReconnectOnForeground({ reconnectInfoRef, joinOnline, joinLan });
 
+  // Test / verifier hook: lets `scripts/shot.mjs` and the `three-*`
+  // Playwright specs launch a lesson without scripting the lobby UI.
+  // Mirrors the `__MAHJONG_TEST_GET_STATE__` hook in `state/game.ts`.
+  useEffect(() => {
+    const g = globalThis as { __MAHJONG_TEST_START_TUTORIAL__?: ((id: string) => void) | undefined };
+    g.__MAHJONG_TEST_START_TUTORIAL__ = joinSoloTutorial;
+    return () => {
+      g.__MAHJONG_TEST_START_TUTORIAL__ = undefined;
+    };
+  }, [joinSoloTutorial]);
+
   const value = useMemo<TransportContextValue>(
     () => ({
       matchCode,
