@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef } from 'react';
-import { Animated, Easing, View } from 'react-native';
+import { Animated, Easing, Platform, StyleSheet, View, type ViewStyle } from 'react-native';
 import Svg, { ClipPath, Defs, G, Path } from 'react-native-svg';
 import { COLORS } from '../colors';
 import { FEATHER_OUT, type FeatherSides, type HaloRect } from './placement';
@@ -123,8 +123,75 @@ interface PulseRingProps {
   reducedMotion: boolean;
 }
 
-/** Slow breathing ring hugging the halo. Static under reduced motion. */
-export function PulseRing({ halo, radius, reducedMotion }: PulseRingProps) {
+/**
+ * Slow breathing ring hugging the halo. Static under reduced motion.
+ *
+ * On web the loop is a CSS keyframe animation (transform + opacity,
+ * compositor-driven, no per-frame JS); native runs the same curve
+ * through `Animated`. The web keyframes scale the ring out by ~11 px on
+ * every side, so the class is keyed by halo-size bucket and cached.
+ */
+export function PulseRing(props: PulseRingProps) {
+  return Platform.OS === 'web' ? <WebPulseRing {...props} /> : <NativePulseRing {...props} />;
+}
+
+const PULSE_GROW_PX = 22;
+const PULSE_BUCKET_PX = 40;
+const pulseStyles = new Map<string, ViewStyle>();
+
+function webPulseStyle(width: number, height: number): ViewStyle {
+  const bw = Math.max(PULSE_BUCKET_PX, Math.round(width / PULSE_BUCKET_PX) * PULSE_BUCKET_PX);
+  const bh = Math.max(PULSE_BUCKET_PX, Math.round(height / PULSE_BUCKET_PX) * PULSE_BUCKET_PX);
+  const key = `${bw}x${bh}`;
+  let style = pulseStyles.get(key);
+  if (!style) {
+    const sx = (1 + PULSE_GROW_PX / bw).toFixed(4);
+    const sy = (1 + PULSE_GROW_PX / bh).toFixed(4);
+    // `animationKeyframes` is a react-native-web extension, only honoured
+    // through StyleSheet.create (compiled class), hence the cache + cast.
+    const sheet = StyleSheet.create({
+      ring: {
+        animationKeyframes: [
+          {
+            '0%': { opacity: 0, transform: 'scale(1, 1)' },
+            '15%': { opacity: 0.8 },
+            '100%': { opacity: 0, transform: `scale(${sx}, ${sy})` },
+          },
+        ],
+        animationDuration: '1600ms',
+        animationTimingFunction: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)',
+        animationIterationCount: 'infinite',
+        animationFillMode: 'both',
+      },
+    } as unknown as Record<string, ViewStyle>);
+    style = sheet.ring as ViewStyle;
+    pulseStyles.set(key, style);
+  }
+  return style;
+}
+
+function WebPulseRing({ halo, radius, reducedMotion }: PulseRingProps) {
+  return (
+    <View
+      pointerEvents="none"
+      style={[
+        {
+          position: 'absolute',
+          left: halo.left,
+          top: halo.top,
+          width: halo.width,
+          height: halo.height,
+          borderRadius: radius,
+          borderWidth: 2,
+          borderColor: COLORS.gold,
+        },
+        reducedMotion ? { opacity: 0.4 } : webPulseStyle(halo.width, halo.height),
+      ]}
+    />
+  );
+}
+
+function NativePulseRing({ halo, radius, reducedMotion }: PulseRingProps) {
   const t = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     if (reducedMotion) {

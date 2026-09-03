@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   Animated,
   Easing,
@@ -7,6 +7,7 @@ import {
   Pressable,
   type PressableStateCallbackType,
   ScrollView,
+  StyleSheet,
   Text,
   View,
   type ViewStyle,
@@ -45,6 +46,44 @@ import { useChromeRects } from './useChromeRects';
 import { useReducedMotion } from './useReducedMotion';
 import { useFollowedRect, useSettledRect } from './useTargetTracking';
 import { useTutorialController } from './useTutorialController';
+
+/** Ease-out curve for the card entrance. */
+const CARD_EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
+
+/**
+ * Web card entrance: fade + 8 px slide as a compiled CSS keyframe class
+ * (`animationKeyframes` is a react-native-web extension that only works
+ * through StyleSheet.create). Compositor-driven, starts on the element's
+ * first frame, and needs no painted "from" state or JS ticks — a
+ * JS-driven `Animated.timing` depends on requestAnimationFrame, which a
+ * software-rendered or CPU-starved page can stall for hundreds of ms
+ * (the verifier caught the card frozen at opacity 0).
+ */
+const webEntrance =
+  Platform.OS === 'web'
+    ? (() => {
+        const frames = [
+          {
+            from: { opacity: 0, transform: 'translateY(8px)' },
+            to: { opacity: 1, transform: 'translateY(0px)' },
+          },
+        ];
+        return StyleSheet.create({
+          normal: {
+            animationKeyframes: frames,
+            animationDuration: '220ms',
+            animationTimingFunction: CARD_EASE,
+            animationFillMode: 'both',
+          },
+          reduced: {
+            animationKeyframes: frames,
+            animationDuration: '100ms',
+            animationTimingFunction: CARD_EASE,
+            animationFillMode: 'both',
+          },
+        } as unknown as Record<'normal' | 'reduced', ViewStyle>);
+      })()
+    : null;
 
 /**
  * Full-screen tutorial coach-mark overlay. Mounted once at the app
@@ -97,7 +136,7 @@ const GLASS_BG = 'rgba(14,20,17,0.74)';
 /** Deeper tint for a card that has to sit over dimmed chrome: with the
  *  scrim already flattening what is behind, the blur has little to
  *  bite on and the tint alone has to stop labels reading through. */
-const GLASS_BG_DENSE = 'rgba(14,20,17,0.88)';
+const GLASS_BG_DENSE = 'rgba(14,20,17,0.94)';
 const GLASS_BORDER = 'rgba(255,255,255,0.12)';
 const TEXT_PRIMARY = 'rgba(255,255,255,0.92)';
 const TEXT_SECONDARY = 'rgba(255,255,255,0.64)';
@@ -156,6 +195,21 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
   const measureKey = `${stepKey}|${window.width}x${window.height}`;
   const [measured, setMeasured] = useState<{ key: string; height: number } | null>(null);
   const cardHeight = measured?.key === measureKey ? measured.height : null;
+  const cardRef = useRef<View | null>(null);
+
+  // Web: measure synchronously before paint. RNW's `onLayout` goes
+  // through ResizeObserver + setTimeout, i.e. it waits for a frame — on a
+  // starved renderer that is hundreds of ms of invisible card. Reading
+  // the rect here positions the card correctly on its very first paint;
+  // `onLayout` stays attached for later size changes (font load).
+  useLayoutEffect(() => {
+    if (Platform.OS !== 'web' || cardHeight !== null) return;
+    const node = cardRef.current as unknown as {
+      getBoundingClientRect?: () => { height: number };
+    } | null;
+    const h = node?.getBoundingClientRect?.().height ?? 0;
+    if (h > 0) setMeasured({ key: measureKey, height: h });
+  }, [cardHeight, measureKey]);
 
   const halo = haloFor(haloRect, window);
   const feather = halo ? featherFor(halo, avoid) : undefined;
@@ -171,11 +225,15 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
   // `ready` drops to false on every step change (the measurement is
   // keyed per step), so the effect re-fires per step without an extra
   // key dependency.
+  //
+  // On web the motion is the `webEntrance` keyframe class on a wrapper
+  // that remounts per step (`key={stepKey}`); native keeps the Animated
+  // path below.
   const opacity = useRef(new Animated.Value(0)).current;
   const slide = useRef(new Animated.Value(8)).current;
   const ready = cardHeight !== null;
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || Platform.OS === 'web') return;
     opacity.setValue(0);
     slide.setValue(8);
     const duration = reducedMotion ? 100 : 220;
@@ -261,20 +319,33 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
       ) : null}
 
       <Animated.View
+        // Remount per step so web `onLayout` (ResizeObserver, size
+        // changes only) re-fires even when two consecutive cards happen
+        // to be the same height, and so the CSS transition has a painted
+        // "from" state to ease out of.
+        key={stepKey}
         pointerEvents="box-none"
-        style={{
-          position: 'absolute',
-          left: placement.left,
-          top: placement.top,
-          width: placement.width,
-          opacity: ready ? opacity : 0,
-          transform: [{ translateY: slide }],
-        }}
+        style={[
+          {
+            position: 'absolute',
+            left: placement.left,
+            top: placement.top,
+            width: placement.width,
+          },
+          webEntrance
+            ? ready
+              ? reducedMotion
+                ? webEntrance.reduced
+                : webEntrance.normal
+              : { opacity: 0 }
+            : { opacity: ready ? opacity : 0, transform: [{ translateY: slide }] },
+        ]}
       >
         <View
           // Tap-eater so taps on the card never fall through to the
           // scrim. Also the CTA's grandparent — the scoring specs
           // measure the card via `xpath=ancestor::*[2]` of "Got it".
+          ref={cardRef}
           pointerEvents="auto"
           onLayout={(e) => {
             const { height } = e.nativeEvent.layout;
