@@ -293,12 +293,15 @@ async function runStep(page, step, ctx) {
     }, step.startTutorial);
   }
   if (step.clickTutorialNext) {
-    const loc = page
-      .locator(
-        '[data-testid="tutorial-next"], role=button[name="Got it"], role=button[name="Next"]',
-      )
-      .first();
-    return loc.click({ timeout: 8000 });
+    // The coach-mark CTA carries `tutorial-next`; fall back to the
+    // accessible names for an overlay that predates the testID.
+    const byId = page.getByTestId('tutorial-next').first();
+    if (await byId.isVisible({ timeout: 4000 }).catch(() => false))
+      return byId.click({ timeout: 8000 });
+    return page
+      .getByRole('button', { name: /^(Got it|Next|Done)$/ })
+      .first()
+      .click({ timeout: 8000 });
   }
   if (step.waitForPerf) {
     return page

@@ -72,6 +72,8 @@ const SHARD_3_SPECS = [
   'replay-screenshot-desktop.spec.ts',
   'shuffle-on-rejoin.spec.ts',
   'solo-match.spec.ts',
+  // 3D tutorial coach-marks (~8 s); shard 3 is the lightest.
+  'three-tutorial.spec.ts',
 ];
 
 const ASSIGNED_SPECS = [...SHARD_1_SPECS, ...SHARD_2_SPECS, ...SHARD_3_SPECS];
