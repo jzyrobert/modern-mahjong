@@ -25,6 +25,7 @@ import {
   ORBIT_AMPLITUDE,
   ORBIT_SPEED,
   PREVIEW_BACK_FINISH,
+  PREVIEW_BACK_HUE_TRIM,
   PREVIEW_CAMERA,
   PREVIEW_LIGHTS,
   PREVIEW_TABLE,
@@ -222,9 +223,17 @@ export class PreviewScene implements SceneHandle {
 
   private setBackTargets(skin: TileBackSkin): void {
     const back = tileBackColors(skin);
-    this.backTopTarget.setRGB(...compensateBackColor([back.top.r, back.top.g, back.top.b]));
+    const trim = PREVIEW_BACK_HUE_TRIM[skin];
+    this.backTopTarget.setRGB(
+      ...compensateBackColor([back.top.r, back.top.g, back.top.b], undefined, undefined, trim),
+    );
     this.backBottomTarget.setRGB(
-      ...compensateBackColor([back.bottom.r, back.bottom.g, back.bottom.b]),
+      ...compensateBackColor(
+        [back.bottom.r, back.bottom.g, back.bottom.b],
+        undefined,
+        undefined,
+        trim,
+      ),
     );
   }
 

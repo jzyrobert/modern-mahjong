@@ -23,6 +23,71 @@ interface PerfSnapshot {
 
 const MENU_BUDGET = { drawCalls: 20, triangles: 80_000, programs: 10, textures: 10 };
 
+interface MenuDebug {
+  occluders: number;
+  reseeded: boolean;
+  visible: number;
+  parked: number;
+  fades: number[];
+  tiles: { x: number; y: number; r: number; fade: number }[];
+  dice: number[];
+  diceRects: { x: number; y: number; r: number }[];
+  rack: { x: number; y: number; w: number; h: number };
+}
+
+interface ShelfDebug {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+  width: number;
+  height: number;
+  settled: boolean;
+}
+
+function readShelfDebug(page: import('@playwright/test').Page): Promise<ShelfDebug | undefined> {
+  return page.evaluate(
+    () => (globalThis as { __MAHJONG_SHELF_DEBUG__?: ShelfDebug }).__MAHJONG_SHELF_DEBUG__,
+  );
+}
+
+/** Drift tiles that are actually showing (fade > 0.05). */
+function shownTiles(debug: MenuDebug): MenuDebug['tiles'] {
+  return debug.tiles.filter((t) => t.fade > 0.05);
+}
+
+/** Discs (tiles or dice) whose visible area overlaps `box`. */
+function discsOver(
+  discs: readonly { x: number; y: number; r: number }[],
+  box: { x: number; y: number; width: number; height: number },
+  slack = 0,
+): { x: number; y: number; r: number }[] {
+  return discs.filter((t) => {
+    const dx = Math.max(box.x - t.x, 0, t.x - (box.x + box.width));
+    const dy = Math.max(box.y - t.y, 0, t.y - (box.y + box.height));
+    return Math.hypot(dx, dy) < t.r + slack;
+  });
+}
+
+function readMenuDebug(page: import('@playwright/test').Page): Promise<MenuDebug | undefined> {
+  return page.evaluate(
+    () => (globalThis as { __MAHJONG_MENU_DEBUG__?: MenuDebug }).__MAHJONG_MENU_DEBUG__,
+  );
+}
+
+/** Drift tiles whose visible disc overlaps `box` (fade > 0.05 counts). */
+function tilesOver(
+  debug: MenuDebug,
+  box: { x: number; y: number; width: number; height: number },
+): MenuDebug['tiles'] {
+  return debug.tiles.filter((t) => {
+    if (t.fade <= 0.05) return false;
+    const dx = Math.max(box.x - t.x, 0, t.x - (box.x + box.width));
+    const dy = Math.max(box.y - t.y, 0, t.y - (box.y + box.height));
+    return Math.hypot(dx, dy) < t.r;
+  });
+}
+
 function collectErrors(page: import('@playwright/test').Page): () => string[] {
   const errors: string[] = [];
   page.on('console', (m) => {
@@ -107,16 +172,39 @@ test.describe('three: menu backdrop', () => {
       { timeout: 6000 },
     );
 
-    // The lobby's glass cards, title and footer register as occluders
-    // and the drift field has been re-seeded around them, so no tile
-    // straddles a card edge or crosses the credits.
-    const debug = await page.evaluate(
-      () =>
-        (globalThis as { __MAHJONG_MENU_DEBUG__?: { occluders: number; reseeded: boolean } })
-          .__MAHJONG_MENU_DEBUG__,
-    );
-    expect(debug?.occluders ?? 0).toBeGreaterThanOrEqual(6);
-    expect(debug?.reseeded).toBe(true);
+    // The lobby's glass cards, title, footer, match-code field and
+    // primary CTAs register as occluders and the drift field has been
+    // re-seeded around them, so no tile straddles a card edge, crosses
+    // the credits, or ghosts inside the form (round-2 critic: a 索 face
+    // sat beside the ABCDE placeholder and a back crossed "Join match").
+    await page.waitForTimeout(300);
+    const debug = await readMenuDebug(page);
+    if (!debug) throw new Error('menu debug never published');
+    expect(debug.occluders).toBeGreaterThanOrEqual(8);
+    expect(debug.reseeded).toBe(true);
+    const input = await page.getByLabel('Match code').boundingBox();
+    const join = await page.getByRole('button', { name: 'Join match' }).boundingBox();
+    const play = await page.getByRole('button', { name: 'Play vs bots' }).boundingBox();
+    if (!input || !join || !play) throw new Error('missing form boxes');
+    expect(tilesOver(debug, input)).toEqual([]);
+    expect(tilesOver(debug, join)).toEqual([]);
+    expect(tilesOver(debug, play)).toEqual([]);
+    // On phones the field stays out of the card column entirely.
+    const online = await page.getByTestId('mode-online').boundingBox();
+    if (!online) throw new Error('missing online card box');
+    expect(tilesOver(debug, online)).toEqual([]);
+    // The dice pair clears every glass edge too.
+    for (const f of debug.dice) expect(f).toBeGreaterThanOrEqual(0.9);
+    // No drift disc touches the hero rack's footprint (a far back used to
+    // poke out from under the bottom-right 中 and read as debris).
+    expect(
+      discsOver(shownTiles(debug), {
+        x: debug.rack.x,
+        y: debug.rack.y,
+        width: debug.rack.w,
+        height: debug.rack.h,
+      }),
+    ).toEqual([]);
 
     // Tutorial row expands into the lesson rail with the testIDs the
     // verifier's `startTutorial` step uses.
@@ -189,6 +277,20 @@ test.describe('three: menu backdrop', () => {
     expect(settled.drawCalls).toBeLessThanOrEqual(MENU_BUDGET.drawCalls);
     expect(settled.triangles).toBeLessThanOrEqual(MENU_BUDGET.triangles);
 
+    // The hero dice never straddle a card edge (they used to sit on the
+    // Tutorial card's top-right corner at 1440×900).
+    const debug = await readMenuDebug(page);
+    if (!debug) throw new Error('menu debug never published');
+    for (const f of debug.dice) expect(f).toBeGreaterThanOrEqual(0.9);
+    const tutorial = await page.getByTestId('mode-tutorial').boundingBox();
+    const input = await page.getByLabel('Match code').boundingBox();
+    if (!tutorial || !input) throw new Error('missing desktop boxes');
+    expect(discsOver(debug.diceRects, tutorial)).toEqual([]);
+    expect(tilesOver(debug, input)).toEqual([]);
+    // No ghost tiles behind the desktop glass: at 40 % size under a 16 px
+    // blur they read as smudges under the card copy, not as depth.
+    expect(tilesOver(debug, tutorial)).toEqual([]);
+
     // Desktop lobby contract.
     await expect(page.getByRole('button', { name: 'Create new match' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Browse open lobbies' })).toBeVisible();
@@ -225,6 +327,154 @@ test.describe('three: menu backdrop', () => {
     const b = await readPerf(page);
     expect(b.idle).toBe(true);
     expect(b.renders).toBe(a.renders);
+    // The frozen frame is the only frame: the dice must have been run
+    // through the keep-out in it (the deferred 450 ms pass never ran
+    // once the loop idled, leaving a die on the Tutorial card's corner)…
+    const debug = await readMenuDebug(page);
+    if (!debug) throw new Error('menu debug never published');
+    expect(debug.reseeded).toBe(true);
+    for (const f of debug.dice) expect(f).toBeGreaterThanOrEqual(0.9);
+    const tutorial = await page.getByTestId('mode-tutorial').boundingBox();
+    if (!tutorial) throw new Error('missing tutorial box');
+    expect(discsOver(debug.diceRects, tutorial)).toEqual([]);
+    // …and every shown drift tile sits wholly inside the frame instead of
+    // staying half-cut by the edge forever.
+    for (const t of shownTiles(debug)) {
+      expect(t.x - t.r).toBeGreaterThanOrEqual(-1);
+      expect(t.x + t.r).toBeLessThanOrEqual(1441);
+      expect(t.y - t.r).toBeGreaterThanOrEqual(-1);
+      expect(t.y + t.r).toBeLessThanOrEqual(901);
+    }
+    expect(shownTiles(debug).length).toBeGreaterThanOrEqual(12);
+    expect(errors()).toEqual([]);
+  });
+
+  test('reduced motion, portrait: the frozen field still shows tiles in the hero band', async ({
+    page,
+  }) => {
+    const errors = collectErrors(page);
+    await page.addInitScript(() => {
+      try {
+        const key = 'mj.settings.v1';
+        const cur = JSON.parse(localStorage.getItem(key) || '{}');
+        localStorage.setItem(key, JSON.stringify({ ...cur, animations: false }));
+      } catch {
+        /* private mode */
+      }
+    });
+    await page.setViewportSize({ width: 412, height: 915 });
+    await page.goto('/');
+    await expect(page.getByTestId('menu-3d').locator('canvas')).toBeAttached({ timeout: 15_000 });
+    await expect.poll(() => allRevealsSettled(page), { timeout: 2500 }).toBe(true);
+    await page.waitForTimeout(800);
+    const debug = await readMenuDebug(page);
+    if (!debug) throw new Error('menu debug never published');
+    expect(debug.reseeded).toBe(true);
+    // The frozen portrait field is whatever fits whole in the hero band's
+    // side margins, clear of the rack and every card — and nothing else:
+    // a tile that could only show as a half-cut disc at the frame edge or
+    // a sliver under the rack is parked (round-3 critic), which on a
+    // 412 px phone usually means the frame shows the rack alone.
+    const shown = shownTiles(debug);
+    const online = await page.getByTestId('mode-online').boundingBox();
+    if (!online) throw new Error('missing online card box');
+    for (const t of shown) {
+      expect(t.fade).toBeGreaterThanOrEqual(0.75);
+      expect(t.y).toBeLessThan(online.y);
+      // ≥ 70 % of the disc inside the frame (the disc over-bounds the tile).
+      expect(t.x - 0.4 * t.r).toBeGreaterThanOrEqual(0);
+      expect(t.x + 0.4 * t.r).toBeLessThanOrEqual(412);
+    }
+    expect(
+      discsOver(shown, {
+        x: debug.rack.x,
+        y: debug.rack.y,
+        width: debug.rack.w,
+        height: debug.rack.h,
+      }),
+    ).toEqual([]);
+    expect(shown.length + debug.parked).toBe(debug.visible);
+    expect(errors()).toEqual([]);
+  });
+
+  for (const vp of [
+    { name: 'phone', width: 412, height: 915 },
+    { name: 'phone landscape', width: 915, height: 412 },
+    { name: 'desktop', width: 1440, height: 900 },
+  ]) {
+    test(`replay shelf @ ${vp.name}: the tiles sit inside the canvas with air above and below`, async ({
+      page,
+    }) => {
+      const errors = collectErrors(page);
+      await page.setViewportSize({ width: vp.width, height: vp.height });
+      await page.goto('/replays');
+      await expect(page.getByTestId('replay-shelf-3d').locator('canvas')).toBeAttached({
+        timeout: 15_000,
+      });
+      await page.waitForFunction(
+        () =>
+          (globalThis as { __MAHJONG_SHELF_DEBUG__?: ShelfDebug }).__MAHJONG_SHELF_DEBUG__
+            ?.settled === true,
+        null,
+        { timeout: 15_000 },
+      );
+      const shelf = await readShelfDebug(page);
+      if (!shelf) throw new Error('shelf debug never published');
+      // Round-1 critic: the tile tops started on the very first canvas
+      // row (the 東 glyph sliced) and the canvas was a 92 px strip. The
+      // frame is now derived from the leaning tile's projected height.
+      expect(shelf.top).toBeGreaterThanOrEqual(8);
+      expect(shelf.bottom).toBeLessThanOrEqual(shelf.height - 8);
+      expect(shelf.left).toBeGreaterThanOrEqual(4);
+      expect(shelf.right).toBeLessThanOrEqual(shelf.width - 4);
+      // Faces read square-on: the tiles are taller than they are wide.
+      const tileH = shelf.bottom - shelf.top;
+      const tileW = (shelf.right - shelf.left) / 7;
+      expect(tileH).toBeGreaterThan(tileW * 1.05);
+      expect(shelf.height).toBeGreaterThanOrEqual(100);
+      // The card is a focal object, not a full-height slab: where the
+      // page fits the viewport (portrait phone, desktop) the parlour
+      // gradient shows under it. (Landscape phones scroll.)
+      const card = await page.getByText('Nothing on the shelf yet').locator('..').boundingBox();
+      if (!card) throw new Error('missing empty-state card');
+      if (vp.height >= 600) expect(card.y + card.height).toBeLessThan(vp.height - 40);
+      expect(errors()).toEqual([]);
+    });
+  }
+
+  test('replay library: 3D shelf in the empty state, landscape header aligned to the chip', async ({
+    page,
+  }) => {
+    const errors = collectErrors(page);
+    await page.setViewportSize({ width: 915, height: 412 });
+    await page.goto('/replays');
+    await expect(page.getByRole('heading', { name: 'Replays' })).toBeVisible();
+    // Empty state renders the tiles as a real scene, not classic art.
+    await expect(page.getByTestId('replay-shelf-3d').locator('canvas')).toBeAttached({
+      timeout: 15_000,
+    });
+    await expect(page.getByText('Nothing on the shelf yet')).toBeVisible();
+    const perf = await readPerf(page);
+    expect(perf.drawCalls).toBeLessThanOrEqual(MENU_BUDGET.drawCalls);
+    expect(perf.triangles).toBeLessThan(10_000);
+    // Import sits 12 px left of the FULLSCREEN chip instead of floating
+    // mid-header (round-2 critic: a 145 px void).
+    const imp = await page.getByRole('button', { name: 'Import replays' }).boundingBox();
+    const chip = await page.getByRole('button', { name: 'Enter fullscreen' }).boundingBox();
+    if (!imp || !chip) throw new Error('missing header boxes');
+    const gap = chip.x - (imp.x + imp.width);
+    expect(gap).toBeGreaterThanOrEqual(6);
+    expect(gap).toBeLessThanOrEqual(28);
+    // The lobby's landscape lesson sheet fades its trailing edge.
+    await page.goto('/');
+    await expect(page.getByRole('heading', { name: 'Modern Mahjong' })).toBeVisible();
+    await page.getByRole('button', { name: 'Tutorial' }).click();
+    await expect(page.getByTestId('lesson-basics')).toBeVisible();
+    const mask = await page.getByTestId('lesson-rail').evaluate((el) => {
+      const cs = getComputedStyle(el);
+      return cs.maskImage || cs.webkitMaskImage || '';
+    });
+    expect(mask).toContain('linear-gradient');
     expect(errors()).toEqual([]);
   });
 

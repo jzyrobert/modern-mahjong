@@ -1,5 +1,6 @@
 import { type ReactNode, useState } from 'react';
 import {
+  Platform,
   Pressable,
   Text,
   TextInput,
@@ -8,6 +9,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { HOVER_TRANSITION, MENU, TYPE } from './theme';
+import { useMenuOccluder } from './useMenuOccluder';
 
 type Size = 'sm' | 'md' | 'lg';
 
@@ -28,6 +30,12 @@ interface ButtonProps {
   /** Leading icon slot. */
   icon?: ReactNode | undefined;
   style?: ViewStyle | undefined;
+  /**
+   * Register the button as a `solid` occluder for the 3D menu backdrop
+   * (`menuOccluders.ts`) — the primary CTAs on the lobby cards, where a
+   * drift tile ghosting through the label read as debris.
+   */
+  occlude?: boolean;
 }
 
 interface ChromeState {
@@ -61,11 +69,15 @@ export function GoldButton({
   testID,
   icon,
   style,
+  occlude = false,
 }: ButtonProps) {
   const p = PAD[size];
   const [hovered, hoverProps] = useHover();
+  const occluder = useMenuOccluder('solid', occlude && Platform.OS === 'web');
   return (
     <Pressable
+      ref={occluder.ref}
+      onLayout={occlude ? occluder.onLayout : undefined}
       onPress={disabled ? undefined : onPress}
       disabled={disabled}
       accessibilityRole="button"
@@ -225,8 +237,11 @@ export function MenuTextField({
 }: MenuTextFieldProps) {
   const [focused, setFocused] = useState(false);
   const monoEmpty = mono && value.length === 0;
+  // Solid occluder: the field is the highest-attention spot on the
+  // lobby, so the 3D drift field never shows a tile inside it.
+  const occluder = useMenuOccluder('solid');
   return (
-    <View>
+    <View ref={occluder.ref} onLayout={occluder.onLayout}>
       {hideLabel ? null : <Text style={[TYPE.label, { marginBottom: 6 }]}>{label}</Text>}
       <TextInput
         value={value}

@@ -77,4 +77,18 @@ describe('menu occluders', () => {
     setOccluder('b', footer);
     expect(fired).toBe(3);
   });
+
+  test('glassInterior caps a disc fully inside a glass rect, leaves edges and solids alone', () => {
+    // Deep inside the card: capped.
+    expect(occluderFactor(200, 150, 6, [card], OCCLUDER_BAND_PX, 0.4)).toBe(0.4);
+    expect(occluderFactor(200, 150, 6, [card], OCCLUDER_BAND_PX, 0)).toBe(0);
+    // Straddling the edge still fades to nothing; the ramp never
+    // exceeds the cap on the inside.
+    expect(occluderFactor(100, 150, 6, [card], OCCLUDER_BAND_PX, 0.4)).toBe(0);
+    expect(occluderFactor(100 + 6 + 6, 150, 6, [card], OCCLUDER_BAND_PX, 0.4)).toBeCloseTo(0.25, 9);
+    // Outside the card the cap does not apply.
+    expect(occluderFactor(20, 150, 6, [card], OCCLUDER_BAND_PX, 0.4)).toBe(1);
+    // Solid rects are unaffected by the cap (already zero inside).
+    expect(occluderFactor(200, 415, 8, [footer], OCCLUDER_BAND_PX, 0.4)).toBe(0);
+  });
 });

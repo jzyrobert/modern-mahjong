@@ -115,8 +115,13 @@ export function IdentityPill({
     else inputRef.current?.focus();
   };
   const avatar = compact ? 26 : 30;
+  // Glass occluder: the pill is small, so a drift tile straddling it
+  // would read as a smudge behind the name.
+  const occluder = useMenuOccluder('glass');
   return (
     <View
+      ref={occluder.ref}
+      onLayout={occluder.onLayout}
       style={{
         ...glass({ quiet: true, radius: 999, flat: true }),
         borderColor: focused ? MENU.goldEdge : MENU.hairline,
@@ -195,8 +200,11 @@ export function IdentityPill({
 
 /** Small serif 麻 brand chip for app bars. */
 export function BrandMark({ size = 30 }: { size?: number }) {
+  const occluder = useMenuOccluder('solid');
   return (
     <View
+      ref={occluder.ref}
+      onLayout={occluder.onLayout}
       style={{
         width: size,
         height: size * 1.3,

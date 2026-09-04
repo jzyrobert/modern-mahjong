@@ -7,7 +7,9 @@ import {
   HERO_HAND_CELLS,
   MENU_TILE_COUNT,
   classifyAspect,
+  diceCandidateOffsets,
   diceSlots,
+  driftCandidates,
   driftField,
   driftKeepOut,
   driftVisible,
@@ -308,5 +310,40 @@ describe('menu layout', () => {
     expect(wrapUnit(1.2)).toBeCloseTo(-1.1, 9);
     expect(wrapUnit(-1.2)).toBeCloseTo(1.1, 9);
     expect(wrapUnit(0.3)).toBe(0.3);
+  });
+
+  test('driftCandidates is a deterministic stratified lattice inside the field', () => {
+    const a = driftCandidates();
+    const b = driftCandidates();
+    expect(a).toEqual(b);
+    expect(a).toHaveLength(14 * 20);
+    for (const c of a) {
+      expect(Math.abs(c.ux)).toBeLessThanOrEqual(1);
+      expect(Math.abs(c.uy)).toBeLessThanOrEqual(DRIFT_LIMIT);
+    }
+    // Every column of the lattice is populated — the narrow side
+    // margins a portrait phone leaves open are always probed.
+    const leftEdge = a.filter((c) => c.ux < -0.85).length;
+    const rightEdge = a.filter((c) => c.ux > 0.85).length;
+    expect(leftEdge).toBeGreaterThanOrEqual(20);
+    expect(rightEdge).toBeGreaterThanOrEqual(20);
+  });
+
+  test('diceCandidateOffsets starts at the layout slot and grows outward, preferring the open side', () => {
+    for (const cls of ['portrait', 'landscape-phone', 'wide'] as const) {
+      const offs = diceCandidateOffsets(cls);
+      expect(offs[0]).toEqual({ dx: 0, dz: 0 });
+      // No duplicates.
+      const keys = new Set(offs.map((o) => `${o.dx.toFixed(3)}:${o.dz.toFixed(3)}`));
+      expect(keys.size).toBe(offs.length);
+      // Nearer nudges first (non-decreasing distance within a step).
+      const first = offs[1]!;
+      const last = offs[offs.length - 1]!;
+      expect(Math.hypot(first.dx, first.dz)).toBeLessThan(Math.hypot(last.dx, last.dz));
+      // The first pure-z nudge goes up-screen (−z) except on landscape
+      // phones, where the cards sit above the rack.
+      const firstZ = offs.find((o) => o.dx === 0 && o.dz !== 0)!;
+      expect(Math.sign(firstZ.dz)).toBe(cls === 'landscape-phone' ? 1 : -1);
+    }
   });
 });

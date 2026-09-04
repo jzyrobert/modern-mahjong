@@ -89,6 +89,7 @@ function DesktopLobby() {
         full
         onPress={() => code && transport.joinOnline(code)}
         disabled={code.length !== 5}
+        occlude
       >
         Join match
       </GoldButton>
@@ -127,7 +128,7 @@ function DesktopLobby() {
         <Pill>{BOT_LABELS.simple}</Pill>
         <Pill>{BOT_LABELS.passive}</Pill>
       </View>
-      <GoldButton full onPress={transport.joinSolo}>
+      <GoldButton full onPress={transport.joinSolo} occlude>
         Play vs bots
       </GoldButton>
     </ModeCard>

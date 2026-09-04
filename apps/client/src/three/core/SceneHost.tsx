@@ -86,6 +86,13 @@ export interface SceneHostProps {
    */
   maxDpr?: number;
   /**
+   * Floor for the device-pixel-ratio — supersampling for a small canvas
+   * on a dpr-1 display (the settings preview at 1440×900 showed stair-
+   * step tile edges; `antialias: true` is not honoured everywhere).
+   * Applied after `maxDpr`, so `minDpr: 2, maxDpr: 2` pins 2×.
+   */
+  minDpr?: number;
+  /**
    * Share one renderer (canvas, WebGL context, compiled programs, loop,
    * camera rig) between successive hosts that pass the same key. On
    * unmount the runtime is *parked* instead of destroyed — the canvas
@@ -128,6 +135,7 @@ interface Runtime {
   handle: SceneHandle | null;
   build: ((ctx: SceneContext) => SceneHandle) | null;
   maxDpr: number | undefined;
+  minDpr: number | undefined;
   awaitingFirstFrame: boolean;
   onReady: (() => void) | null;
   onFatal: ((reason: string) => void) | null;
@@ -205,6 +213,7 @@ function createRuntime(
     handle: null,
     build: null,
     maxDpr: undefined,
+    minDpr: undefined,
     awaitingFirstFrame: true,
     onReady: null,
     onFatal: null,
@@ -287,7 +296,10 @@ function applySize(rt: Runtime): void {
   if (!host) return;
   const w = host.clientWidth || 1;
   const h = host.clientHeight || 1;
-  const dpr = Math.min(window.devicePixelRatio || 1, rt.maxDpr ?? rt.quality.maxDpr);
+  const dpr = Math.max(
+    rt.minDpr ?? 0,
+    Math.min(window.devicePixelRatio || 1, rt.maxDpr ?? rt.quality.maxDpr),
+  );
   // The ResizeObserver's initial callback and a `resize` event that
   // didn't touch this host would otherwise re-render an identical
   // frame — skip them (the quality downgrade changes `dpr`, so it
@@ -336,6 +348,7 @@ export function SceneHost({
   testID,
   releaseContextOnUnmount = false,
   maxDpr,
+  minDpr,
   poolKey,
 }: SceneHostProps) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -402,6 +415,7 @@ export function SceneHost({
 
     runtime.host = host;
     runtime.maxDpr = maxDpr;
+    runtime.minDpr = minDpr;
     runtime.build = (ctx) => buildRef.current(ctx);
     runtime.onReady = () => {
       if (!disposed) onReadyRef.current?.();
@@ -461,6 +475,7 @@ export function SceneHost({
     clearColor,
     releaseContextOnUnmount,
     maxDpr,
+    minDpr,
     poolKey,
   ]);
 

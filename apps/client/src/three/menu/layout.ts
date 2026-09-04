@@ -409,6 +409,72 @@ export function driftField(count: number, seed = 7): DriftTile[] {
   return out;
 }
 
+/**
+ * Deterministic, stratified candidate spots for re-seeding the drift
+ * field around the DOM occluders (`MenuScene.reseedForOccluders`): a
+ * `cols` × `rows` lattice over the normalised field with a seeded
+ * jitter inside every cell. A lattice finds the narrow open bands a
+ * portrait phone has (the hero band's side margins) that 40 random
+ * probes usually miss, so the frozen reduced-motion field still shows
+ * tiles instead of parking them all behind glass.
+ */
+export function driftCandidates(
+  cols = 14,
+  rows = 20,
+  seed = 131,
+  limit = DRIFT_LIMIT,
+): { ux: number; uy: number }[] {
+  const rnd = seededRandom(seed);
+  const out: { ux: number; uy: number }[] = [];
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const ux = -1 + ((c + 0.2 + rnd() * 0.6) / cols) * 2;
+      const uy = -limit + ((r + 0.2 + rnd() * 0.6) / rows) * 2 * limit;
+      out.push({ ux, uy });
+    }
+  }
+  return out;
+}
+
+export interface DiceOffset {
+  dx: number;
+  dz: number;
+}
+
+/**
+ * Ordered nudges for the dice pair when their resting slot straddles a
+ * DOM card edge (the desktop pair used to sit on the Tutorial card's
+ * corner). The pair moves together; nearer offsets come first, and the
+ * open direction for the class (away from the card column — up-screen
+ * / toward the fan end on wide + portrait, toward the camera on
+ * landscape phones where the cards sit above the rack) is preferred at
+ * equal distance. The first entry is the untouched slot.
+ */
+export function diceCandidateOffsets(cls: ViewportClass, steps = 7): DiceOffset[] {
+  const preferZ = cls === 'landscape-phone' ? 1 : -1;
+  const out: (DiceOffset & { cost: number })[] = [{ dx: 0, dz: 0, cost: 0 }];
+  for (let i = 1; i <= steps; i++) {
+    for (const dz of [0, -0.4 * i, 0.4 * i]) {
+      for (const dx of [0, 0.3 * i, -0.3 * i]) {
+        if (dx === 0 && dz === 0) continue;
+        const wz = dz === 0 || Math.sign(dz) === preferZ ? 1 : 1.8;
+        const wx = dx <= 0 ? 1.6 : 1;
+        out.push({ dx, dz, cost: Math.hypot(dx * wx, dz * wz) });
+      }
+    }
+  }
+  const seen = new Set<string>();
+  return out
+    .sort((a, b) => a.cost - b.cost)
+    .filter((o) => {
+      const k = `${o.dx.toFixed(3)}:${o.dz.toFixed(3)}`;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    })
+    .map(({ dx, dz }) => ({ dx, dz }));
+}
+
 /** Wrap a normalised coordinate back into −1.15..1.15. */
 export function wrapUnit(v: number, limit = 1.15): number {
   if (v > limit) return -limit + (v - limit);

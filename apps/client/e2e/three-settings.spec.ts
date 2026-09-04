@@ -44,7 +44,7 @@ async function startSolo(page: import('@playwright/test').Page) {
 async function openSettings(page: import('@playwright/test').Page) {
   // Retry: under heavy CI load the dice overlay can land after the
   // first dismiss attempt and eat the menu tap.
-  for (let attempt = 0; attempt < 4; attempt++) {
+  for (let attempt = 0; attempt < 6; attempt++) {
     await dismissDice(page, 500);
     // Bounded click: if the dice overlay lands mid-tap and intercepts
     // the pointer, fall through to the next attempt instead of eating
@@ -57,7 +57,7 @@ async function openSettings(page: import('@playwright/test').Page) {
       .catch(() => false);
     if (!opened) continue;
     const row = page.getByTestId('open-settings');
-    if (await row.isVisible({ timeout: 3_000 }).catch(() => false)) {
+    if (await row.isVisible({ timeout: 6_000 }).catch(() => false)) {
       await row.click();
       await expect(page.getByTestId('settings-panel')).toBeVisible();
       return;
@@ -158,7 +158,8 @@ function collectErrors(page: import('@playwright/test').Page) {
 
 test.describe('3D settings panel', () => {
   test('phone: panel controls, live preview and perf budget', async ({ page }) => {
-    test.setTimeout(60_000);
+    // ~40 clip screenshots of colour sampling on SwiftShader.
+    test.setTimeout(120_000);
     const errors = collectErrors(page);
     await page.setViewportSize({ width: 412, height: 915 });
     await startSolo(page);
@@ -229,6 +230,19 @@ test.describe('3D settings panel', () => {
       gradientDeltaE(back, hexToRgb(plum.top), hexToRgb(plum.bottom)),
       `back rgb(${back.join(',')}) vs plum ${plum.top}→${plum.bottom}`,
     ).toBeLessThan(5);
+    // …and at both edges, not just the centre (round-2 critic: the far
+    // edge read cooler than the chip).
+    for (const fy of [BACK_TILE_AT.y - 0.05, BACK_TILE_AT.y + 0.035]) {
+      const edge = await sampleArea(
+        page,
+        Math.round(box.x + box.width * BACK_TILE_AT.x),
+        Math.round(box.y + box.height * fy),
+      );
+      expect(
+        gradientDeltaE(edge, hexToRgb(plum.top), hexToRgb(plum.bottom)),
+        `back edge rgb(${edge.join(',')}) at y ${fy} vs plum`,
+      ).toBeLessThan(5);
+    }
 
     // Composed stage: parlour void shows beneath the near rail (not wood
     // running into the frame edge) — dark and not brown.
@@ -239,6 +253,36 @@ test.describe('3D settings panel', () => {
     );
     expect(luminance(below), `void rgb(${below.join(',')})`).toBeLessThan(0.02);
     expect(below[0]).toBeLessThanOrEqual(below[1] + 4);
+    // …and either side of the rail at its widest point (round-2 critic:
+    // the rounded corners ran into the frame's left and right edges).
+    for (const x of [box.x + 4, box.x + box.width - 5]) {
+      const side = await sampleArea(page, Math.round(x), Math.round(box.y + box.height * 0.78));
+      expect(luminance(side), `void rgb(${side.join(',')}) at x ${x}`).toBeLessThan(0.02);
+    }
+    // The LIVE PREVIEW badge floats in the void top-left, 11 px label.
+    const badge = page.getByTestId('settings-preview-badge');
+    const badgeBox = await badge.boundingBox();
+    if (!badgeBox) throw new Error('badge has no box');
+    expect(badgeBox.y - box.y).toBeLessThan(20);
+    expect(badgeBox.x - box.x).toBeLessThan(20);
+    expect(await badge.evaluate((el) => getComputedStyle(el).fontSize)).toBe('11px');
+    // …and the far rail's top edge stays ≥ 6 px under the pill along its
+    // whole width (round-1 critic: the pill's lower third sat on the wood
+    // at the rail's rounded corner). Void, not wood, 5 px below the pill.
+    for (const fx of [0.1, 0.5, 0.9]) {
+      const under = await sampleArea(
+        page,
+        Math.round(badgeBox.x + badgeBox.width * fx),
+        Math.round(badgeBox.y + badgeBox.height + 5),
+      );
+      expect(luminance(under), `under badge rgb(${under.join(',')}) at ${fx}`).toBeLessThan(0.02);
+      expect(under[0]).toBeLessThanOrEqual(under[1] + 4);
+    }
+    // The status pill reads "Classic active" here (the legacy fixture
+    // pins the classic shells) — either label is the same 11 px pill.
+    expect(
+      await page.getByText(/^(3D|Classic) active$/).evaluate((el) => getComputedStyle(el).fontSize),
+    ).toBe('11px');
 
     // Renderer control writes through to the store.
     await page.getByTestId('renderer-classic').click();
@@ -253,7 +297,7 @@ test.describe('3D settings panel', () => {
   });
 
   test('desktop: right-hand sheet, open/close ×5 leaks nothing', async ({ page }) => {
-    test.setTimeout(90_000);
+    test.setTimeout(120_000);
     const errors = collectErrors(page);
     await page.setViewportSize({ width: 1440, height: 900 });
     await startSolo(page);
@@ -268,6 +312,26 @@ test.describe('3D settings panel', () => {
         if (!box) throw new Error('settings panel has no box');
         expect(box.x + box.width).toBeGreaterThan(1400);
         expect(box.x).toBeGreaterThan(900);
+        // dpr-1 desktop: the small canvas supersamples 2× (`minDpr`) so
+        // tile edges and glyph strokes don't stair-step.
+        const canvas = preview.locator('canvas');
+        const [backing, css] = await canvas.evaluate((c: HTMLCanvasElement) => [
+          c.width,
+          c.getBoundingClientRect().width,
+        ]);
+        expect(backing).toBeGreaterThanOrEqual(Math.floor(css * 2) - 2);
+        // Pointer hover lifts skin chips and segments by 1 px (160 ms).
+        const chip = page.getByRole('radio', { name: 'Felt skin: Jade' });
+        await chip.hover();
+        await expect
+          .poll(() => chip.evaluate((el) => getComputedStyle(el).transform), { timeout: 2000 })
+          .toContain('-1)');
+        const seg = page.getByTestId('quality-high');
+        await seg.hover();
+        await expect
+          .poll(() => seg.evaluate((el) => getComputedStyle(el).transform), { timeout: 2000 })
+          .toContain('-1)');
+        await page.mouse.move(5, 5);
       }
       await waitForPerfSample(page, 1);
       await page.getByRole('button', { name: 'Close', exact: true }).click();
@@ -293,6 +357,8 @@ test.describe('3D settings panel', () => {
     });
     const box = await settledPreviewBox(page);
     expect(box.width / box.height).toBeGreaterThan(3);
+    // Short sheets grow the stage to 170 px (round-2 critic: ~45 % void).
+    expect(box.height).toBeGreaterThanOrEqual(168);
     // Void above the far rail and below the near rail — the vertical fov
     // is floored for letterbox canvases instead of cropping the rails.
     const cx = Math.round(box.x + box.width / 2);
