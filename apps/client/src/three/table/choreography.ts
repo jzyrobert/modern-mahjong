@@ -54,6 +54,22 @@ export interface ChoreographyOptions {
   reducedMotion: boolean;
 }
 
+declare global {
+  // eslint-disable-next-line no-var
+  var __MAHJONG_TEST_MOTION_SLOWMO__: number | undefined;
+}
+
+/**
+ * Test seam: stretch zone-transition flights (draw / discard / claim /
+ * reveal) by this factor so a screenshot can catch a tile mid-arc on a
+ * software rasteriser. Dispense, slides and pops are untouched so the
+ * deal still settles in time. 1 in the app.
+ */
+function motionSlowMo(): number {
+  const v = globalThis.__MAHJONG_TEST_MOTION_SLOWMO__;
+  return typeof v === 'number' && v > 1 ? v : 1;
+}
+
 /** Landing-bounce duration, seconds. */
 const BOUNCE_S = 0.6;
 
@@ -308,7 +324,7 @@ export class Choreographer {
           from: { pos: t.pos.clone(), quat: t.quat.clone() },
           to,
           start: now + stagger,
-          duration: f.duration,
+          duration: f.duration * (this.reducedMotion ? 1 : motionSlowMo()),
           arc: f.arc,
           spin: f.spin,
           ease: f.ease,

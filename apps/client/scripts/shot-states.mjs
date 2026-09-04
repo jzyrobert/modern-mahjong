@@ -378,6 +378,45 @@ export const STATES = {
     owner: 'table',
     steps: [...START_SOLO, { waitForOwnHand: true }, { playTurns: 6 }, { waitMs: 600 }],
   },
+  'match-late-hand': {
+    owner: 'table',
+    // Twelve of the user's turns in: every river holds two rows
+    // (pinwheel, no corner collisions), the walls are drawn down to the
+    // break, and on desktop / landscape the footer claim strip and the
+    // chrome-row toasts must still sit clear of the user's own river.
+    // The bots pass every claim window (the tutorial's force-pass seam)
+    // so nobody melds or wins before the twelfth turn on any seed.
+    steps: [
+      {
+        initScript:
+          'globalThis.__MAHJONG_TEST_BOT_SCRIPTS__ = { 1: {}, 2: {}, 3: {} }; globalThis.__MAHJONG_TUTORIAL_FORCE_PASS__ = true;',
+      },
+      ...START_SOLO,
+      { waitForOwnHand: true },
+      { playTurns: 12 },
+      { waitMs: 600 },
+    ],
+  },
+  'match-discard-flight': {
+    owner: 'table',
+    // Motion still: the user's first discard caught mid-arc. Flights are
+    // stretched 8× through the test seam (dispense untouched), bots are
+    // paced out of the frame, and the shot lands ~0.25 of the way along
+    // the 520 ms arc (≈ 130 ms at real speed): tile in the air with its
+    // spin, the gold latest-discard pulse already on it, its shadow on
+    // the felt, and the gap it left in the hand row closing behind it.
+    steps: [
+      {
+        initScript:
+          'globalThis.__MAHJONG_TEST_MOTION_SLOWMO__ = 8; globalThis.__MAHJONG_TEST_BOT_PACE_MS__ = 8000;',
+      },
+      ...START_SOLO,
+      { waitForOwnHand: true },
+      { waitMs: 1500 },
+      { clickTestId: 'own-hand-tile', nth: 3 },
+      { waitMs: 900 },
+    ],
+  },
   'match-claim': {
     owner: 'table',
     steps: [

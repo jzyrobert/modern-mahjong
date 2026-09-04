@@ -9,8 +9,12 @@ import {
   MELD_Z,
   OWN_HAND_Z,
   OWN_MELD_RIGHT,
+  RIVER_COLS,
+  RIVER_ROWS,
   STACKS_PER_WALL,
+  WALL_D,
   computeLayout,
+  dealerChipLocal,
   fullWallLayout,
   heldHandSlots,
   heldRowSplit,
@@ -18,6 +22,7 @@ import {
   orderOwnHand,
   quatFromBasis,
   relOf,
+  riverMetrics,
   tileSheetLayout,
   toWorld,
   wallSlotPosition,
@@ -296,6 +301,81 @@ describe('computeLayout', () => {
     const seventh = river.find((s) => s!.index === 6)!;
     expect(seventh.z).toBeGreaterThan(first.z);
     expect(seventh.x).toBeCloseTo(first.x);
+  });
+  /** Flat-tile footprint: the long axis runs along the owner's z (world z for rel 0 / 2, world x for the side seats). */
+  function footprint(s: { x: number; z: number; rel: number; scale?: number }) {
+    const k = s.scale ?? 1;
+    const side = s.rel === 1 || s.rel === 3;
+    const hx = ((side ? TILE_H : TILE_W) / 2) * k;
+    const hz = ((side ? TILE_W : TILE_H) / 2) * k;
+    return { x0: s.x - hx, x1: s.x + hx, z0: s.z - hz, z1: s.z + hz };
+  }
+  /** Four full rivers (18 each) so every corner of the pinwheel is loaded. */
+  function fullRivers(scale: number) {
+    const st = dealt();
+    const pool = [...st.wall, ...st.deadWall];
+    const discards = { ...st.discards };
+    for (const seat of [0, 1, 2, 3] as Seat[])
+      discards[seat] = pool.splice(0, RIVER_COLS * RIVER_ROWS);
+    const state: GameState = { ...st, wall: pool, deadWall: [], discards };
+    const layout = computeLayout(state, 0, { ...OPTS, riverScale: scale });
+    return layout.filter((s) => s?.zone === 'discard').map((s) => s!);
+  }
+  test('the four rivers form a pinwheel that never collides at the corners', () => {
+    for (const scale of [1, 1.1, 1.28]) {
+      const river = fullRivers(scale);
+      expect(river).toHaveLength(4 * RIVER_COLS * RIVER_ROWS);
+      for (let i = 0; i < river.length; i++) {
+        for (let j = i + 1; j < river.length; j++) {
+          const a = footprint(river[i]!);
+          const b = footprint(river[j]!);
+          const overlap =
+            a.x0 < b.x1 - 1e-6 && b.x0 < a.x1 - 1e-6 && a.z0 < b.z1 - 1e-6 && b.z0 < a.z1 - 1e-6;
+          expect(overlap, `tiles ${river[i]!.id} / ${river[j]!.id} overlap at scale ${scale}`).toBe(
+            false,
+          );
+        }
+      }
+      // Every river stays inside the walls' inner faces and off the plate.
+      const m = riverMetrics(scale);
+      expect(m.farEdge).toBeLessThan(WALL_D - TILE_H / 2);
+      expect(m.nearEdge).toBeGreaterThan(1.9);
+      for (const s of river) {
+        expect(Math.max(Math.abs(s.x), Math.abs(s.z))).toBeLessThan(WALL_D - TILE_H / 2);
+      }
+    }
+  });
+  test('a 19th discard extends the last row instead of starting a fourth on the wall', () => {
+    const st = dealt();
+    const pool = [...st.wall];
+    const state: GameState = {
+      ...st,
+      wall: pool.slice(20),
+      discards: { ...st.discards, 0: pool.slice(0, 20) },
+    };
+    const river = computeLayout(state, 0, OPTS).filter((s) => s?.zone === 'discard');
+    const rows = new Set(river.map((s) => s!.z.toFixed(3)));
+    expect(rows.size).toBe(RIVER_ROWS);
+    const last = river.find((s) => s!.index === 19)!;
+    const lastRegular = river.find((s) => s!.index === RIVER_COLS * RIVER_ROWS - 1)!;
+    expect(last.z).toBeCloseTo(lastRegular.z, 6);
+    expect(last.x).toBeGreaterThan(lastRegular.x + 1.5);
+  });
+  test('the dealer chip pocket clears every river and the wall', () => {
+    for (const scale of [1, 1.28]) {
+      const [cx, cz] = dealerChipLocal(scale, 0.62);
+      const r = 0.62;
+      for (const s of fullRivers(scale)) {
+        const f = footprint(s);
+        const hit = cx + r > f.x0 && cx - r < f.x1 && cz + r > f.z0 && cz - r < f.z1;
+        expect(hit, `chip overlaps discard ${s.id} at scale ${scale}`).toBe(false);
+      }
+      expect(cz + r).toBeLessThan(WALL_D - TILE_H / 2);
+      expect(Math.abs(cx) + r).toBeLessThan(WALL_D - TILE_H / 2);
+    }
+    // Wide presets keep the chip's near edge above the near wall's top
+    // from a 30° camera: edge z ≤ 6.35 (see TableScene CHIP_RADIUS note).
+    expect(dealerChipLocal(1, 0.62)[1] + 0.62).toBeLessThan(6.35);
   });
   test('the drawn tile is offset from the rest of the hand', () => {
     const st = dealt();

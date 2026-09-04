@@ -1,10 +1,16 @@
-import { type GameState, buildWall, emptyState } from '@mahjong/game-logic';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { type GameState, type Seat, buildWall, emptyState } from '@mahjong/game-logic';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useGame } from '../../../state/game';
 import { type SceneContext, type SceneHandle, SceneHost } from '../../core/SceneHost';
 import type { CameraPreset } from '../../core/camera';
-import { TABLE_POOL_KEY, acquireTableScene, releaseTableScene } from '../TableScene';
-import { DEAD_TILES } from '../layout';
+import {
+  TABLE_POOL_KEY,
+  type TableScene,
+  acquireTableScene,
+  releaseTableScene,
+} from '../TableScene';
+import { projectPreset } from '../cameraPresets';
+import { DEAD_TILES, FELT_HALF, RAIL_H, RAIL_WIDTH } from '../layout';
 
 /**
  * The waiting room's scene: the match table itself, walls built and
@@ -22,35 +28,85 @@ export interface LobbyTableBackdropProps {
    * right half of the frame so the glass never straddles the plate.
    */
   side?: boolean | undefined;
+  /**
+   * Seats that have a player or a bot in them. Each filled seat gets a
+   * concealed 13-tile rack in front of it (dealt from the wall, backs
+   * out), so the waiting table fills up as the room does and the empty
+   * seats read as empty.
+   */
+  filled?: readonly boolean[] | undefined;
 }
 
-/** Full walls, no hands: the table between hands. Pure + deterministic. */
-export function waitingTableState(): GameState {
+/** Tiles per rack on the waiting table (a dealt hand, before the dealer's 14th). */
+const WAITING_RACK = 13;
+
+/**
+ * The table between hands: full walls, plus a concealed rack for every
+ * filled seat, dealt from the wall the way the real deal will be (so
+ * the walls show the matching gaps). Pure + deterministic.
+ */
+export function waitingTableState(filled: readonly boolean[] = []): GameState {
   const tiles = buildWall();
   const state = emptyState();
-  return { ...state, deadWall: tiles.slice(0, DEAD_TILES), wall: tiles.slice(DEAD_TILES) };
+  const wall = tiles.slice(DEAD_TILES);
+  const hands = { ...state.hands };
+  for (const seat of [0, 1, 2, 3] as Seat[]) {
+    if (!filled[seat]) continue;
+    // Pop from the end, as the engine deals.
+    hands[seat] = wall.splice(wall.length - WAITING_RACK, WAITING_RACK);
+  }
+  return { ...state, deadWall: tiles.slice(0, DEAD_TILES), wall, hands };
 }
 
 /**
- * Low three-quarter view. `shiftX` pans the table toward +x on screen
- * (both camera and target move by −shiftX so perspective is unchanged).
- * The dealer chip and dice are hidden in the waiting state (`waiting`
- * on `SyncInput`), so nothing crisp straddles the glass edge on phones.
+ * Low three-quarter view. Portrait: the table fills the width and is
+ * panned so its *near* rail and near wall fill the band under the
+ * Start / Leave row (round-2 #8: a flat void sat there while the far
+ * half hid behind the panels). Wide: the whole table in frame; with a
+ * side column (`side`) the table is panned right until its near-right
+ * rail corner — the widest point of the low perspective — sits 24 px
+ * inside the viewport, so the right and near rails frame it while the
+ * left third tucks behind the glass column (round-3: the table used to
+ * slide off the right edge while 110 px of void sat left of the
+ * column). The dealer chip and dice are hidden in the waiting state
+ * (`waiting` on `SyncInput`), so nothing crisp straddles the glass edge
+ * on phones.
  */
 export function lobbyCameraFor(width: number, height: number, side: boolean): CameraPreset {
   const aspect = width / Math.max(1, height);
-  const shift = side ? -7.5 : 0;
   if (aspect < 0.9) {
-    // Portrait: the table fills the width and is panned so its *near*
-    // rail and near wall fill the band under the Start / Leave row
-    // (round-2 #8: a flat void sat there while the far half hid behind
-    // the panels).
     return { position: [0, 21, 21], target: [0, 0, -1], fov: 46 };
   }
-  return { position: [shift, 14.5, 27], target: [shift, 0, 1.5], fov: 40 };
+  const fov = 40;
+  if (!side) {
+    return { position: [0, 14.5, 27], target: [0, 0, 1.5], fov };
+  }
+  // 30° elevation from 37.5 units — far enough that the near rail (the
+  // widest projected edge) spans ~1180 px at 1440×900 and fits right of
+  // the column — panned along x: camera and target move together so
+  // the perspective is unchanged.
+  const dist = 37.5;
+  const elev = Math.PI / 6;
+  const make = (shift: number): CameraPreset => ({
+    position: [-shift, dist * Math.sin(elev), 1.5 + dist * Math.cos(elev)],
+    target: [-shift, 0, 1.5],
+    fov,
+  });
+  const corner: [number, number, number] = [FELT_HALF + RAIL_WIDTH, RAIL_H, FELT_HALF + RAIL_WIDTH];
+  const limit = width - 24;
+  // Larger shift → table further right on screen (monotonic): bisect
+  // for the largest shift that keeps the near-right corner inside.
+  let lo = 0;
+  let hi = 14;
+  for (let i = 0; i < 40; i++) {
+    const mid = (lo + hi) / 2;
+    if (projectPreset(make(mid), width, height, corner).x <= limit) lo = mid;
+    else hi = mid;
+  }
+  return make(lo);
 }
 
-export function LobbyTableBackdrop({ side = false }: LobbyTableBackdropProps) {
+export function LobbyTableBackdrop({ side = false, filled }: LobbyTableBackdropProps) {
   const felt = useGame((s) => s.settings.felt);
   const tileBack = useGame((s) => s.settings.tileBack);
   const [ready, setReady] = useState(false);
@@ -78,12 +134,45 @@ export function LobbyTableBackdrop({ side = false }: LobbyTableBackdropProps) {
       if (timer !== null) clearTimeout(timer);
     };
   }, []);
-  const state = useMemo(() => waitingTableState(), []);
+  const filledKey = (filled ?? []).map((f) => (f ? '1' : '0')).join('');
+  // biome-ignore lint/correctness/useExhaustiveDependencies: filledKey is the stable projection of `filled`
+  const state = useMemo(
+    () => waitingTableState(filledKey.split('').map((c) => c === '1')),
+    [filledKey],
+  );
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const sceneRef = useRef<TableScene | null>(null);
   const initialCamera = useMemo(() => {
     const w = typeof window !== 'undefined' ? window.innerWidth : 1440;
     const h = typeof window !== 'undefined' ? window.innerHeight : 900;
     return lobbyCameraFor(w, h, side);
   }, [side]);
+
+  // Project the waiting state. `snap` lays the tiles out without motion
+  // (the first frame of a fresh or rebuilt scene); a later seat change
+  // flies the rack's tiles between the wall and the seat, so the room
+  // visibly fills up.
+  const project = useCallback((scene: TableScene, snap: boolean) => {
+    scene.sync(
+      {
+        state: stateRef.current,
+        me: 0,
+        sortMode: 'suit',
+        manualOrder: [],
+        drawnTileId: null,
+        latestDiscardId: null,
+        hintTileId: null,
+        needsDraw: false,
+        shuffling: false,
+        heldHand: null,
+        waiting: true,
+        snap,
+        concealOwn: true,
+      },
+      performance.now(),
+    );
+  }, []);
 
   const build = useCallback(
     (ctx: SceneContext): SceneHandle => {
@@ -92,36 +181,27 @@ export function LobbyTableBackdrop({ side = false }: LobbyTableBackdropProps) {
         tileBack: useGame.getState().settings.tileBack,
         reducedMotion: ctx.reducedMotion,
       });
+      sceneRef.current = scene;
       ctx.rig.snap(lobbyCameraFor(ctx.size.width, ctx.size.height, side));
       ctx.rig.halfLife = ctx.reducedMotion ? 0.04 : 0.22;
       ctx.rig.parallaxStrength = 0.25;
-      const sync = () =>
-        scene.sync(
-          {
-            state,
-            me: 0,
-            sortMode: 'suit',
-            manualOrder: [],
-            drawnTileId: null,
-            latestDiscardId: null,
-            hintTileId: null,
-            needsDraw: false,
-            shuffling: false,
-            heldHand: null,
-            waiting: true,
-          },
-          performance.now(),
-        );
-      sync();
+      project(scene, true);
       return {
         update: (dt, now) => scene.update(dt, now),
         resize: (w, h) => ctx.rig.setPreset(lobbyCameraFor(w, h, side)),
         setQuality: (q) => scene.setQuality(q),
-        dispose: () => releaseTableScene(ctx, scene),
+        dispose: () => {
+          if (sceneRef.current === scene) sceneRef.current = null;
+          releaseTableScene(ctx, scene);
+        },
       };
     },
-    [state, side],
+    [side, project],
   );
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (scene) project(scene, false);
+  }, [state, project]);
 
   if (failed || !mount) return null;
   return (

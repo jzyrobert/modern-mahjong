@@ -1,13 +1,14 @@
 import type { GameState, Seat, Wind } from '@mahjong/game-logic';
 import {
   BoxGeometry,
-  type BufferGeometry,
+  BufferGeometry,
   CircleGeometry,
   CylinderGeometry,
   Float32BufferAttribute,
   InstancedMesh,
   Matrix4,
   Mesh,
+  MeshBasicMaterial,
   MeshPhysicalMaterial,
   MeshStandardMaterial,
   Object3D,
@@ -27,7 +28,7 @@ import type { QualityProfile } from '../core/quality';
 import { publishRiverInterior } from '../core/sceneRects';
 import { getSpotlightTiles, spotlightPulse, spotlightVersion } from '../core/spotlight';
 import { TilePool } from '../tiles/TilePool';
-import { TILE_D, TILE_H } from '../tiles/geometry';
+import { TILE_D, TILE_H, TILE_W } from '../tiles/geometry';
 import { feltColors, setTileBackFinish } from '../tiles/materials';
 import { Choreographer, slotPose } from './choreography';
 import {
@@ -40,6 +41,7 @@ import {
   type Rel,
   WALL_D,
   computeLayout,
+  dealerChipLocal,
   relOf,
   tileSheetLayout,
   toWorld,
@@ -85,6 +87,13 @@ export interface SyncInput {
    * hidden, and the layout is applied without a dispense.
    */
   waiting?: boolean | undefined;
+  /**
+   * Apply the layout without motion (default: `waiting`). The lobby
+   * snaps its first layout and lets later seat changes animate.
+   */
+  snap?: boolean | undefined;
+  /** Show the user's own hand backs-out (the waiting table's racks). */
+  concealOwn?: boolean | undefined;
   /** Portrait river zoom — see `LayoutOptions.hideSideWallsBeyondZ`. */
   hideSideWallsBeyondZ?: number | undefined;
   /**
@@ -133,15 +142,13 @@ export const TABLE_POOL_KEY = 'table';
  */
 export const TABLE_BACK_FINISH = { clearcoat: 0.12, roughness: 0.72 } as const;
 /**
- * Dealer chip centre in the dealer's seat frame (x right, z toward
- * them): the near-right corner pocket inside the walls. Every river
- * grows within |x| ≤ 3.2 of its owner's axis and toward its owner, so
- * the pocket x, z ∈ [3.2, 8.1] in the dealer's frame is the one patch
- * no river ever reaches. 5.2 (not deeper into the corner) keeps the
- * chip's near edge above the near wall's inner top edge from the low
- * phone-landscape camera, so the glyph is never half-occluded.
+ * Dealer chip: a red lacquer disc parked in the dealer's near-left
+ * corner pocket — the patch the pinwheel rivers never reach (see
+ * `layout.dealerChipLocal`). At the wide presets' river scale it sits at
+ * z ≈ 5.6, which keeps its near edge above the near wall's inner top
+ * edge from the low phone-landscape camera, so the glyph is never
+ * half-occluded.
  */
-export const MARKER_LOCAL: [number, number] = [5.2, 5.2];
 export const CHIP_RADIUS = 0.62;
 export const CHIP_H = 0.22;
 /**
@@ -189,14 +196,26 @@ export class TableScene {
   private plateInfo: { wind: Wind | null; count: number | null } = { wind: null, count: -1 };
   private marker: Mesh;
   private markerRel: Rel | null = null;
+  private markerScale = 1;
   private dice: InstancedMesh;
   private diceValues: [number, number] | null = null;
+  /** Gold hairline on the felt along the dead-wall stacks (`syncDeadMarker`). */
+  private deadMarker: Mesh;
+  private deadMarkerKey = '';
   private textures: Texture[] = [];
   private geometries: BufferGeometry[] = [];
   private disposed = false;
 
   private tileSheet: boolean;
   private latestDiscardId: number | null = null;
+  /**
+   * The tile that most recently landed in a river, derived from the
+   * layout diff. The engine-side `latestDiscardId` only lives for the
+   * claim window (gone the instant the next seat draws), so this keeps
+   * the gold cue on the newest discard through its flight and for
+   * `PULSE_MS` after it lands — the still a player reads the table by.
+   */
+  private cueDiscardId: number | null = null;
   private drawnTileId: number | null = null;
   private hintTileId: number | null = null;
   private nextDrawId: number | null = null;
@@ -377,6 +396,22 @@ export class TableScene {
     this.dice.name = 'dice';
     scene.add(this.dice);
 
+    // Dead-wall marker: a gold hairline on the felt along the outer edge
+    // of the dead stacks, rebuilt (two quads at most) when the segment
+    // changes. Together with the darker back shade it marks the segment
+    // without a second tile colour or a positional kink.
+    const deadMat = new MeshBasicMaterial({
+      color: 0xd8a85a,
+      transparent: true,
+      opacity: 0.85,
+      depthWrite: false,
+    });
+    this.deadMarker = new Mesh(new BufferGeometry(), deadMat);
+    this.deadMarker.visible = false;
+    this.deadMarker.name = 'dead-wall-marker';
+    this.deadMarker.renderOrder = 1;
+    scene.add(this.deadMarker);
+
     // Tiles. River glyphs are minified 3–4× and seen at 30–45° on the
     // wide presets, so the atlas takes the strongest anisotropy the GPU
     // offers (mid / high tiers; low keeps the profile's value) — the
@@ -411,6 +446,7 @@ export class TableScene {
     this.choreo.reducedMotion = opts.reducedMotion;
     this.lastLayout = null;
     this.latestDiscardId = null;
+    this.cueDiscardId = null;
     this.drawnTileId = null;
     this.hintTileId = null;
     this.nextDrawId = null;
@@ -424,6 +460,9 @@ export class TableScene {
     this.plateInfo = { wind: null, count: -1 };
     this.marker.visible = false;
     this.markerRel = null;
+    this.markerScale = 1;
+    this.deadMarker.visible = false;
+    this.deadMarkerKey = '';
     this.dice.visible = false;
     this.diceValues = null;
     this.pool.hideAll();
@@ -473,10 +512,28 @@ export class TableScene {
       heldHand: input.heldHand ?? null,
       riverScale: input.riverScale ?? 1,
       hideSideWallsBeyondZ: input.hideSideWallsBeyondZ,
+      concealOwn: input.concealOwn,
     });
+    const prevLayout = this.lastLayout;
     this.lastLayout = layout;
     const waiting = input.waiting === true;
-    this.choreo.setLayout(layout, state, me, now, { shuffling: input.shuffling, snap: waiting });
+    this.choreo.setLayout(layout, state, me, now, {
+      shuffling: input.shuffling,
+      snap: input.snap ?? waiting,
+    });
+    // Newest discard: a tile whose zone just became `discard`. A claimed
+    // (or otherwise moved) cue tile drops the cue.
+    if (prevLayout) {
+      for (let id = 0; id < 136; id++) {
+        if (layout[id]?.zone === 'discard' && prevLayout[id]?.zone !== 'discard') {
+          this.cueDiscardId = id;
+          this.pulseUntil = now + PULSE_MS;
+        }
+      }
+    }
+    if (this.cueDiscardId !== null && layout[this.cueDiscardId]?.zone !== 'discard') {
+      this.cueDiscardId = null;
+    }
     if (input.latestDiscardId !== this.latestDiscardId || input.needsDraw !== this.needsDraw) {
       this.pulseUntil = now + PULSE_MS;
     }
@@ -499,18 +556,23 @@ export class TableScene {
       else this.pool.showFace(id);
     }
 
+    this.syncDeadMarker(layout, waiting);
+
     // Centre plate + marker + dice. No dealer exists before the opening
     // roll, so the waiting table shows neither chip nor dice.
     this.updatePlate(state.prevailingWind, waiting ? null : state.wall.length);
     const rel = relOf(state.dealer, me);
+    const riverScale = input.riverScale ?? 1;
     if (waiting) {
       this.marker.visible = false;
       this.markerRel = null;
-    } else if (rel !== this.markerRel) {
+    } else if (rel !== this.markerRel || riverScale !== this.markerScale) {
       this.markerRel = rel;
-      // Parked in the dealer's near-right corner pocket, glyph facing
+      this.markerScale = riverScale;
+      // Parked in the dealer's near-left corner pocket, glyph facing
       // the dealer.
-      const [mx, mz] = toWorld(rel, MARKER_LOCAL[0], MARKER_LOCAL[1]);
+      const [lx, lz] = dealerChipLocal(riverScale, CHIP_RADIUS);
+      const [mx, mz] = toWorld(rel, lx, lz);
       this.marker.position.set(mx, CHIP_H / 2, mz);
       this.marker.quaternion.setFromAxisAngle(Y_AXIS, (rel * Math.PI) / 2);
       this.marker.visible = true;
@@ -531,6 +593,64 @@ export class TableScene {
     }
     this.ctx.renderer.shadowMap.needsUpdate = true;
     this.ctx.loop.requestRender();
+  }
+
+  /**
+   * Rebuild the dead-wall hairline for the current layout: one quad per
+   * wall side the dead stacks occupy (the segment wraps a corner at
+   * most once), laid on the felt just outside the stacks' outer edge.
+   * Hidden on the waiting table (no break yet).
+   */
+  private syncDeadMarker(layout: Layout, waiting: boolean): void {
+    const byRel = new Map<Rel, { min: number; max: number }>();
+    if (!waiting) {
+      for (const slot of layout) {
+        if (!slot || slot.zone !== 'deadWall') continue;
+        // Along-the-wall coordinate in the wall seat's frame.
+        const along =
+          slot.rel === 0 ? slot.x : slot.rel === 1 ? -slot.z : slot.rel === 2 ? -slot.x : slot.z;
+        const e = byRel.get(slot.rel);
+        if (!e) byRel.set(slot.rel, { min: along, max: along });
+        else {
+          e.min = Math.min(e.min, along);
+          e.max = Math.max(e.max, along);
+        }
+      }
+    }
+    const key = [...byRel.entries()]
+      .map(([rel, e]) => `${rel}:${e.min.toFixed(2)}:${e.max.toFixed(2)}`)
+      .sort()
+      .join('|');
+    if (key === this.deadMarkerKey) return;
+    this.deadMarkerKey = key;
+    if (byRel.size === 0) {
+      this.deadMarker.visible = false;
+      return;
+    }
+    const pos: number[] = [];
+    const idx: number[] = [];
+    const half = TILE_W / 2 + 0.02;
+    const zOut = WALL_D + TILE_H / 2 + 0.14;
+    const w = 0.09;
+    const y = 0.012;
+    for (const [rel, e] of byRel) {
+      const corners: [number, number][] = [
+        toWorld(rel, e.min - half, zOut),
+        toWorld(rel, e.max + half, zOut),
+        toWorld(rel, e.max + half, zOut + w),
+        toWorld(rel, e.min - half, zOut + w),
+      ];
+      const base = pos.length / 3;
+      for (const [cx, cz] of corners) pos.push(cx, y, cz);
+      idx.push(base, base + 2, base + 1, base, base + 3, base + 2);
+    }
+    const geo = new BufferGeometry();
+    geo.setAttribute('position', new Float32BufferAttribute(pos, 3));
+    geo.setIndex(idx);
+    geo.computeVertexNormals();
+    this.deadMarker.geometry.dispose();
+    this.deadMarker.geometry = geo;
+    this.deadMarker.visible = true;
   }
 
   private updatePlate(wind: Wind, count: number | null): void {
@@ -568,7 +688,9 @@ export class TableScene {
     const pulsing =
       !this.choreo.reducedMotion &&
       now < this.pulseUntil &&
-      (this.latestDiscardId !== null || (this.needsDraw && this.nextDrawId !== null));
+      (this.latestDiscardId !== null ||
+        this.cueDiscardId !== null ||
+        (this.needsDraw && this.nextDrawId !== null));
     if (pulsing) {
       this.pulseT += dt;
       live = true;
@@ -647,6 +769,7 @@ export class TableScene {
       for (const id of spotIds) this.spotMask[id] = 1;
     }
     const spotLevel = spotIds.length > 0 ? spotlightPulse(now, this.choreo.reducedMotion) : 0;
+    const cueId = this.latestDiscardId ?? this.cueDiscardId;
     const tiles = this.choreo.tiles;
     for (let id = 0; id < 136; id++) {
       const t = tiles[id]!;
@@ -673,18 +796,18 @@ export class TableScene {
         // Primary cue: strong gold pulse plus a small lift off the stack.
         hl = 0.7 + 0.3 * pulse;
         p.position.y += 0.06 + 0.06 * pulse;
-      } else if (id === this.latestDiscardId) hl = 0.4 + 0.45 * pulse;
+      } else if (id === cueId) hl = 0.5 + 0.45 * pulse;
       else if (id === this.drawnTileId) hl = 0.22;
       else if (id === this.hintTileId) hl = 0.12;
       if (spotLevel > 0 && this.spotMask[id] === 1) hl = Math.max(hl, spotLevel);
       p.highlight = hl;
       p.tint.setScalar(1);
       const zone = t.slot?.zone;
-      // Dead wall reads as a separate block: its backs take the warm
-      // ivory-tan variant (`uDeadBack*` in the tile material) instead of
-      // the skin gradient — a real second back colour rather than a
-      // multiply on blue, which only ever reached khaki-grey. No
-      // positional step (see `wallSlotPosition`).
+      // Dead wall reads as a shaded segment of the same set: its backs
+      // take the skin's darker shade (`uDeadBack*`, derived from the skin
+      // in `materials.deadBackColors`) and a gold hairline runs along
+      // the felt beside the stacks (`syncDeadMarker`). No positional
+      // step (see `wallSlotPosition`).
       p.backVariant = zone === 'deadWall' ? 1 : 0;
       if ((zone === 'wall' || zone === 'deadWall') && t.slot?.rel === 0 && this.nearWallDim !== 1)
         p.tint.setScalar(this.nearWallDim);
@@ -776,6 +899,7 @@ export class TableScene {
       this.plate,
       this.plateTopMesh,
       this.marker,
+      this.deadMarker,
       this.dice,
       this.pool.mesh,
     );
@@ -788,6 +912,8 @@ export class TableScene {
     (this.plate.material as MeshPhysicalMaterial).dispose();
     (this.plateTopMesh.material as MeshPhysicalMaterial).dispose();
     (this.marker.material as MeshPhysicalMaterial).dispose();
+    this.deadMarker.geometry.dispose();
+    (this.deadMarker.material as MeshBasicMaterial).dispose();
     (this.dice.material as MeshPhysicalMaterial).dispose();
     this.dice.dispose();
     this.ctx.renderer.shadowMap.autoUpdate = true;

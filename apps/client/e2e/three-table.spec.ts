@@ -28,7 +28,9 @@ interface PerfSnapshot {
  */
 async function dismissDice(page: Page) {
   const hint = page.getByText('Tap anywhere to dismiss', { exact: true });
-  if (await hint.isVisible({ timeout: 4000 }).catch(() => false)) {
+  // `isVisible` does not wait; give the modal a moment to mount first.
+  await hint.waitFor({ timeout: 6000 }).catch(() => {});
+  if (await hint.isVisible().catch(() => false)) {
     const vp = page.viewportSize() ?? { width: 1280, height: 720 };
     await page.mouse.click(vp.width / 2, vp.height / 2);
     await expect(hint).toBeHidden({ timeout: 10_000 });
@@ -256,6 +258,20 @@ test('phone portrait holds the hand near the camera at ≥ 44 px per tile', asyn
   expect(stripBox.y).toBeLessThan(120);
   // The hand sits below the table band: the strip and the hand never overlap.
   expect(Math.min(...boxes.map((b) => b.top))).toBeGreaterThan(stripBox.y + stripBox.height);
+  // The action tray sits between the hand and the footer: the turn chip
+  // (it is the user's turn — dealer) reads "Your turn · discard" below
+  // every hand tile and above the sort control; the chrome pill carries
+  // no turn chip on portrait.
+  const chip = page.getByTestId('turn-chip');
+  await expect(chip).toBeVisible();
+  await expect(chip).toContainText(/your turn · discard/i);
+  const chipBox = (await chip.boundingBox())!;
+  const handBottom = Math.max(...boxes.map((b) => b.top + b.height));
+  expect(chipBox.y).toBeGreaterThanOrEqual(handBottom);
+  const sortBox = (await page.getByRole('button', { name: 'Sort by Suit' }).boundingBox())!;
+  expect(chipBox.y + chipBox.height).toBeLessThanOrEqual(sortBox.y);
+  expect(chipBox.height).toBeGreaterThanOrEqual(36);
+  await expect(page.getByLabel('Open players panel').getByText(/discard/i)).toHaveCount(0);
 
   // River zoom: tapping the discards region eases the camera into the
   // river block; the hand stays put (same hit-target rects, within a
@@ -373,12 +389,25 @@ test('landscape opening rolls sit in one row clear of the chrome', async ({ page
   await expect(seats).toHaveCount(4);
   const tops = await seats.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().top));
   for (const t of tops) expect(Math.abs(t - tops[0]!)).toBeLessThan(1.5);
-  // … so the panel clears the 46 px chrome row (☰ / status pill / far
-  // badge) instead of covering it, and stays inside the viewport.
+  // … so the compact card (≤ 160 px tall) clears the 46 px chrome row
+  // (☰ / status pill / far badge) and stops ≥ 12 px above the hand row's
+  // top edge instead of cutting across the tiles.
   const box = (await glass.boundingBox())!;
   expect(box.y).toBeGreaterThanOrEqual(52);
-  expect(box.y + box.height).toBeLessThanOrEqual(412 - 40);
+  expect(box.height).toBeLessThanOrEqual(160);
   expect(box.width).toBeGreaterThan(480);
+  await expect(page.getByTestId('own-hand-tile').first()).toBeAttached();
+  // Hidden hit-targets (tiles still in flight) report an empty box — skip them.
+  const handTop = await page.getByTestId('own-hand-tile').evaluateAll((els) => {
+    const tops = els
+      .map((el) => el.getBoundingClientRect())
+      .filter((r) => r.height > 0)
+      .map((r) => r.top);
+    return tops.length ? Math.min(...tops) : Number.POSITIVE_INFINITY;
+  });
+  expect(box.y + box.height).toBeLessThanOrEqual(handTop - 12);
+  // The dismiss hint is its own exact text node (recipes tap it).
+  await expect(glass.getByText('Tap anywhere to dismiss', { exact: true })).toBeVisible();
   // Dense landscape badges mark the dealer with the 莊 chip, not a dot.
   const chips = page.locator('[aria-label="Dealer"]');
   await expect(chips.first()).toBeVisible();
@@ -465,13 +494,59 @@ test('landscape claim window moves the strip into the footer, off the near wall'
   const handBottom = await page
     .getByTestId('own-hand-tile')
     .evaluateAll((els) => Math.max(...els.map((el) => el.getBoundingClientRect().bottom)));
-  // The strip sits in the 41 px footer row under the hand — never on the
-  // near wall's backs above it — and replaces the sort control there.
-  expect(barBox.y).toBeGreaterThanOrEqual(handBottom - 3);
-  expect(barBox.y + barBox.height).toBeLessThanOrEqual(412 - 4);
-  expect(barBox.height).toBeLessThanOrEqual(46);
+  // The strip sits in the 37 px footer row under the hand — never on the
+  // near wall's backs above it, and ≥ 6 px below the tiles' bottom edge
+  // so they do not read as standing on the panel — and replaces the sort
+  // control there.
+  expect(barBox.y).toBeGreaterThanOrEqual(handBottom + 6);
+  expect(barBox.y + barBox.height).toBeLessThanOrEqual(412 - 3);
+  expect(barBox.height).toBeLessThanOrEqual(40);
   await expect(page.getByRole('button', { name: 'Sort by Suit' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Peng' })).toBeVisible();
+  expect(errors, 'console / page errors').toEqual([]);
+});
+
+test('the discard flight stretches under the slow-motion seam and carries the gold pulse', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const g = globalThis as {
+      __MAHJONG_TEST_MOTION_SLOWMO__?: number;
+      __MAHJONG_TEST_BOT_PACE_MS__?: number;
+    };
+    g.__MAHJONG_TEST_MOTION_SLOWMO__ = 8;
+    g.__MAHJONG_TEST_BOT_PACE_MS__ = 8000;
+  });
+  const errors: string[] = [];
+  await startSolo(page, errors);
+  await page.waitForTimeout(1500);
+  const tileId = Number(
+    await page.getByTestId('own-hand-tile').nth(3).getAttribute('data-tile-id'),
+  );
+  await page.getByTestId('own-hand-tile').nth(3).click();
+  // The tapped tile leaves the hand on a stretched discard arc (520 ms ×
+  // 8) — the `match-discard-flight` recipe relies on catching it mid-air.
+  await expect
+    .poll(
+      () =>
+        page.evaluate((id) => {
+          const dbg = (
+            globalThis as {
+              __MAHJONG_TABLE_3D_DEBUG__?: () => {
+                tiles: {
+                  id: number;
+                  zone: string | null;
+                  flight: { kind: string; ms: number } | null;
+                }[];
+              } | null;
+            }
+          ).__MAHJONG_TABLE_3D_DEBUG__?.();
+          const t = dbg?.tiles.find((x) => x.id === id);
+          return t ? `${t.zone}:${t.flight?.kind ?? 'none'}:${t.flight?.ms ?? 0}` : 'missing';
+        }, tileId),
+      { timeout: 5_000 },
+    )
+    .toBe('discard:discard:4160');
   expect(errors, 'console / page errors').toEqual([]);
 });
 

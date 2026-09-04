@@ -96,11 +96,14 @@ export const HAND_Z = 10.55;
  */
 export const OWN_HAND_Z = HAND_Z + 0.5;
 /**
- * Exposed melds lie flat, tucked toward the table centre: a flat tile
- * reaches ±TILE_H/2 from this line, so 10.3 keeps the meld off the wall
- * (outer edge 9.48) and inside the portrait frame (|x| ≤ 11.0).
+ * Exposed melds lie flat in the rack line: a flat tile reaches ±TILE_H/2
+ * from this centre line, so 10.5 keeps the meld's inner edge (9.82) a
+ * clear third of a tile off the wall's outer edge (9.48) — round-3: at
+ * 10.3 the side seats' melds sat within 2 px of the wall and read as
+ * wedged under it — while the outer edge (11.18) stays on the felt and
+ * inside the portrait frame (see `PORTRAIT_X_HALF`).
  */
-export const MELD_Z = 10.3;
+export const MELD_Z = 10.5;
 /**
  * Dead-wall stacks step this far toward the rail so the block reads as
  * distinct from the live wall at every viewport (with the darker tint).
@@ -127,7 +130,17 @@ export const MELD_PITCH = TILE_W + 0.03;
 export const RIVER_COLS = 6;
 export const RIVER_PITCH_X = TILE_W + 0.06;
 export const RIVER_PITCH_Z = TILE_H + 0.1;
-export const RIVER_Z0 = 2.6;
+/**
+ * Centre line of the first river row (owner's frame). 3.0 leaves a
+ * third of a tile between the row's near edge and the centre plate
+ * (radius 1.9) and keeps three full rows inside the wall's inner edge
+ * (8.12) at every river scale the shells use (≤ 1.25).
+ */
+export const RIVER_Z0 = 3.0;
+/** Clearance kept between neighbouring seats' rivers at the corners. */
+export const RIVER_CORNER_GAP = 0.15;
+/** Rows the river fills before overflowing along the last row. */
+export const RIVER_ROWS = 3;
 /** Felt half-size and rail dimensions, shared with `TableScene`. */
 export const FELT_HALF = 11.9;
 export const RAIL_WIDTH = 1.1;
@@ -360,6 +373,11 @@ export interface LayoutOptions extends HandOrderOptions {
    * header's bottom edge clean. `undefined` keeps every stack.
    */
   hideSideWallsBeyondZ?: number | undefined;
+  /**
+   * Show the user's own concealed hand backs-out (the pre-game waiting
+   * table deals every filled seat a rack, the user's included).
+   */
+  concealOwn?: boolean | undefined;
 }
 
 /**
@@ -630,7 +648,7 @@ export function computeLayout(state: GameState, me: Seat, opts: LayoutOptions): 
         base: revealOpp ? 'flatUp' : 'standing',
         yaw,
         tilt: revealOpp ? 0 : isMe ? HAND_TILT : OPP_TILT,
-        back: !isMe && !revealOpp,
+        back: (!isMe || opts.concealOwn === true) && !revealOpp,
         index: i,
       });
     });
@@ -664,7 +682,61 @@ export function computeLayout(state: GameState, me: Seat, opts: LayoutOptions): 
   return layout;
 }
 
-/** River: 6 per row, rows marching toward the owner. */
+/**
+ * River metrics for a tile scale, in the owner's frame. The four rivers
+ * are laid out as a pinwheel: each row is shifted toward its owner's
+ * right by `shift`, chosen so the row's *left* end never reaches past
+ * the near edge of the neighbouring seat's first row (rotated 90°, that
+ * neighbour's river occupies the strip |lx| ≤ its half-width beside
+ * ours). Centred rows collided at the corners once both rivers held
+ * six tiles — round-3: the right seat's rotated 六萬 sat on the user's
+ * fifth discard.
+ */
+export function riverMetrics(scale: number): {
+  pitchX: number;
+  pitchZ: number;
+  /** Half-width of a full row (edge to edge). */
+  halfWidth: number;
+  /** Rightward pinwheel shift of every row. */
+  shift: number;
+  /** Near edge (toward the table centre) of the first row. */
+  nearEdge: number;
+  /** Far edge of the last regular row. */
+  farEdge: number;
+  /** Right edge of a full row (the far end of the owner's pinwheel arm). */
+  rightEdge: number;
+} {
+  const pitchX = RIVER_PITCH_X * scale;
+  const pitchZ = RIVER_PITCH_Z * scale;
+  const halfWidth = (RIVER_COLS * pitchX - (pitchX - TILE_W * scale)) / 2;
+  const z0 = RIVER_Z0 + (scale - 1) * (TILE_H / 2) * scale;
+  const nearEdge = z0 - (TILE_H / 2) * scale;
+  const shift = Math.max(0, halfWidth - nearEdge + RIVER_CORNER_GAP);
+  const farEdge = z0 + (RIVER_ROWS - 1) * pitchZ + (TILE_H / 2) * scale;
+  return { pitchX, pitchZ, halfWidth, shift, nearEdge, farEdge, rightEdge: shift + halfWidth };
+}
+
+/**
+ * Dealer chip centre in the dealer's seat frame (x right, z toward
+ * them): the near-*left* corner pocket, just beyond the right end of
+ * the left neighbour's pinwheel arm (which runs along our left side at
+ * z ≤ `rightEdge`) and left of our own river (which starts at
+ * lx ≥ shift − halfWidth). Depends on the river scale, so the phone
+ * portrait table (1.25×) parks it a little further out than the wide
+ * presets; both stay well inside the wall's inner edge.
+ */
+export function dealerChipLocal(riverScale: number, chipRadius: number): [number, number] {
+  const m = riverMetrics(riverScale);
+  return [-5.2, m.rightEdge + chipRadius + 0.2];
+}
+
+/**
+ * River: 6 per row, rows marching toward the owner, every row shifted
+ * right into the pinwheel (`riverMetrics`). Past `RIVER_ROWS` rows the
+ * extra tiles continue along the last row's right end (the near wall
+ * in that corner is long gone by then) instead of starting a fourth
+ * row on the wall.
+ */
 function placeRiver(
   layout: Layout,
   state: GameState,
@@ -673,11 +745,15 @@ function placeRiver(
   yaw: number,
   scale: number,
 ): void {
+  const m = riverMetrics(scale);
+  const z0 = RIVER_Z0 + (scale - 1) * (TILE_H / 2) * scale;
+  const regular = RIVER_COLS * RIVER_ROWS;
   state.discards[seat].forEach((t, i) => {
-    const col = i % RIVER_COLS;
-    const row = Math.floor(i / RIVER_COLS);
-    const lx = (col - (RIVER_COLS - 1) / 2) * RIVER_PITCH_X * scale;
-    const lz = RIVER_Z0 + (row * RIVER_PITCH_Z + (scale - 1) * (TILE_H / 2)) * scale;
+    const overflow = i >= regular;
+    const col = overflow ? RIVER_COLS + (i - regular) : i % RIVER_COLS;
+    const row = overflow ? RIVER_ROWS - 1 : Math.floor(i / RIVER_COLS);
+    const lx = (col - (RIVER_COLS - 1) / 2) * m.pitchX + m.shift;
+    const lz = z0 + row * m.pitchZ;
     const [x, z] = toWorld(rel, lx, lz);
     put(layout, {
       id: tileId(t),

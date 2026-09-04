@@ -360,8 +360,9 @@ export function LobbyGlass(props: Lobby3DViewProps) {
   );
 
   const column: CSSProperties = { display: 'grid', gap: 12, alignContent: 'start', minWidth: 0 };
-  // Wide viewports: one 560 px content column on the left, the waiting
-  // table panned into the right half behind it (`LobbyTableBackdrop`).
+  // Wide viewports: one 560 px content column at a 48 px inset on the
+  // left, the whole waiting table framed in the free area right of it
+  // (`LobbyTableBackdrop`, `lobbyCameraFor`).
   const sideScene = !compact && width >= 1100;
 
   return (
@@ -383,7 +384,13 @@ export function LobbyGlass(props: Lobby3DViewProps) {
         aria-hidden="true"
         style={{ position: 'absolute', inset: 0, pointerEvents: 'none', opacity: 0.85 }}
       >
-        <LobbyTableBackdrop side={sideScene} />
+        <LobbyTableBackdrop
+          side={sideScene}
+          filled={SEATS.map((s) => {
+            const p = lobby?.players.find((x) => x.seat === s);
+            return !!p && (p.isBot || p.connected);
+          })}
+        />
       </div>
       <div
         style={{
@@ -397,7 +404,7 @@ export function LobbyGlass(props: Lobby3DViewProps) {
         <div
           style={{
             maxWidth: sideScene ? 560 : twoCol ? 1040 : 720,
-            margin: sideScene ? `0 0 0 ${Math.max(0, width * 0.06)}px` : '0 auto',
+            margin: sideScene ? '0 0 0 24px' : '0 auto',
             minHeight: compact ? undefined : '100%',
             display: 'grid',
             alignContent: compact ? 'start' : 'center',

@@ -5,14 +5,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Matrix4 } from 'three';
-import { type LobbyState, useGame } from '../../state/game';
+import { type LobbyState, nameForSeat, useGame } from '../../state/game';
 import { ClaimBar } from '../../ui/ClaimBar';
 import { ChatBubbles } from '../../ui/match/ChatBubbles';
 import { ClaimAnnouncementToast } from '../../ui/match/ClaimAnnouncementToast';
 import { ClaimMissedToast } from '../../ui/match/ClaimMissedToast';
 import { MatchModals } from '../../ui/match/MatchModals';
 import type { SortMode } from '../../ui/match/SortPicker';
-import type { Position } from '../../ui/match/seatColor';
+import { type Position, SEAT_COLOR } from '../../ui/match/seatColor';
 import { layoutFor } from '../../ui/match/seatPlacement';
 import { TutorialTarget } from '../../ui/tutorial/TargetRegistry';
 import { type SceneContext, type SceneHandle, SceneHost } from '../core/SceneHost';
@@ -29,6 +29,8 @@ import {
   PORTRAIT_BAND_TOP,
   PORTRAIT_FAR_RAIL_POINT,
   PORTRAIT_RIVER_SCALE,
+  PORTRAIT_TRAY_GAP,
+  PORTRAIT_TRAY_H,
   type ViewportClass,
   cameraFor,
   classifyViewport,
@@ -43,6 +45,7 @@ import { MenuButtons } from './hud/MenuButtons';
 import { ResultVeil } from './hud/ResultVeil';
 import { SeatBadge, type SeatBadgeModel } from './hud/SeatBadges';
 import { StatusPill } from './hud/StatusPill';
+import { TurnChip } from './hud/TurnChip';
 import { GLASS, GlassButton, HUD_CSS } from './hud/glass';
 import {
   CENTRE_PLATE_RADIUS,
@@ -72,8 +75,10 @@ import { type ScreenRect, padRect, rectsClose, unionRects } from './picking';
  * Three viewport classes, three compositions:
  *   - phone portrait — the whole table fills the width under a chrome
  *     row + seat strip; the user's hand is *held* near the camera in
- *     two rows (`heldHandFrameFor`) so tiles stay ≥ 44 CSS px; claims
- *     and CTAs float in the band between the near rail and the hand.
+ *     two rows (`heldHandFrameFor`) so tiles stay ≥ 44 CSS px, a lit
+ *     apron with the table's contact shadow between the near rail and
+ *     the hand, and an action tray under the hand (turn chip, or the
+ *     claim strip / declare CTAs) above the footer row.
  *   - phone landscape — low wide camera, hand across the bottom, 38 px
  *     chrome in the top-left (the root `FullscreenPrompt` owns the
  *     top-right), side badges in the top corners, a dense claim strip
@@ -136,26 +141,26 @@ declare global {
 const VOID_BG =
   'radial-gradient(ellipse 80% 45% at 50% 34%, rgba(58,74,58,0.28), rgba(58,74,58,0) 70%), linear-gradient(180deg, #0b120f 0%, #16241d 100%)';
 /**
- * Portrait void: the table is width-bound, so the bands above and below
- * it are structural (toast slot / claim slot). A warm lamp glow centred
- * on the table (`centrePct` of the height) and a fall-off to near-black
- * at the chrome and footer make them read as the shadowed edge of a
- * lamp-lit parlour rather than empty canvas.
+ * Portrait void. The table is width-bound, so the band above it (toast
+ * slot on the far rail) and the apron below it (between the near rail
+ * and the held hand) are structural. The apron is painted as the lit
+ * edge of the parlour floor under the table — a warm, faintly lit
+ * surface rather than canvas black — with a real contact shadow hugging
+ * the near rail (peak alpha 0.6, ~60 % of the width), so the table reads
+ * as an object standing on something and the hand as held in front of
+ * it. Round-3: a shadow painted on near-black was below perceptual
+ * threshold; the apron light is what makes it read.
  */
 function portraitVoidBg(centrePct: number, nearRailBottom: number | null): string {
   const c = Math.round(centrePct * 10) / 10;
-  // The table's shadow on the parlour floor: a soft dark ellipse hugging
-  // the near rail's bottom edge, so the band between the rail and the
-  // held hand reads as the table's drop shadow rather than empty canvas.
-  // (The canvas is transparent only off the table, so the ellipse's
-  // upper half hides behind the rail itself.)
-  const shadow =
+  const apron =
     nearRailBottom !== null
-      ? `radial-gradient(ellipse 66% 96px at 50% ${Math.round(nearRailBottom + 4)}px, rgba(0,0,0,0.78) 0%, rgba(0,0,0,0.46) 40%, rgba(0,0,0,0) 100%), `
+      ? `radial-gradient(ellipse 62% 34px at 50% ${Math.round(nearRailBottom + 12)}px, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0.36) 45%, rgba(0,0,0,0) 100%), ` +
+        `radial-gradient(ellipse 110% 150px at 50% ${Math.round(nearRailBottom + 96)}px, rgba(146,118,70,0.26) 0%, rgba(110,96,60,0.13) 55%, rgba(58,74,58,0) 100%), `
       : '';
   return (
-    `${shadow}radial-gradient(ellipse 150% 46% at 50% ${c}%, rgba(138,118,72,0.5) 0%, rgba(98,108,68,0.3) 40%, rgba(58,74,58,0.1) 62%, rgba(58,74,58,0) 78%), ` +
-    `linear-gradient(180deg, #080c0a 0%, #16241c ${c}%, #080c0a 100%)`
+    `${apron}radial-gradient(ellipse 150% 46% at 50% ${c}%, rgba(138,118,72,0.5) 0%, rgba(98,108,68,0.3) 40%, rgba(58,74,58,0.1) 62%, rgba(58,74,58,0) 78%), ` +
+    `linear-gradient(180deg, #080c0a 0%, #16241c ${c}%, #0d1511 100%)`
   );
 }
 /**
@@ -188,8 +193,12 @@ const CHROME_H = 44;
  * instead of touching it.
  */
 const CHROME_H_LANDSCAPE = 38;
-/** Landscape footer: 6 px safe pad + 40 px dense pills fit under the hand. */
-const LANDSCAPE_FOOTER_PAD = 6;
+/**
+ * Landscape footer: 5 px safe pad + 40 px dense pills (37 px claim
+ * strip) fit under the hand with ≥ 8 px between the strip's top border
+ * and the tiles' bottom edge.
+ */
+const LANDSCAPE_FOOTER_PAD = 5;
 /**
  * Portrait phones ≤ 420 CSS px wide render at DPR 2 even on the `low`
  * tier: the canvas is small (≈ 1.5 MP) and the full-table river tiles
@@ -578,6 +587,8 @@ export function Table3DShell(props: Table3DShellProps) {
     isYou: pl.seat === seat,
   }));
   const badgeAt = (pos: Position) => badges.find((b) => b.position === pos);
+  const activeSeat: Seat | null =
+    state.phase === 'turn' && state.turn !== seat ? (state.turn as Seat) : null;
   // biome-ignore lint/correctness/useExhaustiveDependencies: the scene layout is read imperatively; sort mode / manual order / drawn tile drive its order
   const ownHand = useMemo(() => {
     const scene = sceneRef.current;
@@ -609,15 +620,7 @@ export function Table3DShell(props: Table3DShellProps) {
     compact,
   };
   const showCtas = hasActionCtas(ctaProps);
-  // Phones float claims + CTAs in the band just above the hand's
-  // projected top edge (portrait: between the near rail and the held
-  // hand; landscape: over the near felt).
-  const handTop = hudRects.ownHand?.top ?? null;
   const resolved = state.lastResult !== null && state.lastResult !== undefined;
-  const aboveHandBottom =
-    handTop !== null
-      ? Math.max(pad + insets.bottom + 60, height - handTop + (landscape ? 6 : 10))
-      : height * 0.32;
 
   // Landscape lifts the chrome row to an 8 px pad so its bottom edge
   // clears the far wall's projected top by ≥ 8 px.
@@ -637,10 +640,11 @@ export function Table3DShell(props: Table3DShellProps) {
   // badge. Desktop: the chrome row between the status pill and the
   // menu cluster — off the felt entirely, so a toast never lands on
   // the own-river growth zone or stacks with the footer claim strip.
-  // Portrait floats claims + CTAs above the held hand; landscape and
-  // desktop host them in the footer row (landscape replaces the sort
-  // control for the claim window — see `ActionRow` `sortAlign="replace"`).
-  const claimFloating = portrait && (props.hasClaimOption || showCtas);
+  // Portrait hosts claims + CTAs in the action tray under the hand;
+  // landscape and desktop host them in the footer row (landscape
+  // replaces the sort control for the claim window — see `ActionRow`
+  // `sortAlign="replace"`).
+  const trayActions = portrait && (props.hasClaimOption || showCtas);
   const landscapeFooterClaim = landscape && (props.hasClaimOption || showCtas);
   const desktopStrip = !compact && props.hasClaimOption;
   // Portrait-only offset; landscape and desktop park toasts in the
@@ -648,7 +652,7 @@ export function Table3DShell(props: Table3DShellProps) {
   // or a discard-to-be.
   const farRailTop = hudRects.farRailTop;
   const toastTop = portrait
-    ? zoomed && nearWallBottom !== null && !claimFloating
+    ? zoomed && nearWallBottom !== null
       ? nearWallBottom + 10
       : farRailTop !== null && !zoomed
         ? Math.max(stripTop + 34 + 6, farRailTop - TOAST_H / 2)
@@ -816,6 +820,7 @@ export function Table3DShell(props: Table3DShellProps) {
               turnCountdown={props.turnCountdown}
               onPress={() => props.setPlayersOpen(true)}
               compact={compact}
+              showTurn={!portrait}
               style={landscape ? { minHeight: chromeH, padding: '4px 10px 4px 4px' } : undefined}
             />
             {compact ? null : (
@@ -907,17 +912,20 @@ export function Table3DShell(props: Table3DShellProps) {
               ))
           )}
 
-          {/* Portrait: claims + CTAs float just above the held hand's
-              projected top edge, in the band between the near rail and
-              the hand. */}
-          {claimFloating ? (
+          {/* Portrait action tray: the slot between the held hand and the
+              footer row. Quiet table → the turn chip; a call → the claim
+              strip (+ declare CTAs) replaces it. Fixed height so the hand
+              never jumps; the slot is HUD, never table, so the strip can
+              never cover a discard. */}
+          {portrait && !resolved ? (
             <div
-              data-testid="claim-float"
+              data-testid={trayActions ? 'claim-float' : 'action-tray'}
               style={{
                 position: 'absolute',
                 left: pad + insets.left,
                 right: pad + insets.right,
-                bottom: aboveHandBottom,
+                bottom: pad + insets.bottom + 44 + PORTRAIT_TRAY_GAP,
+                height: PORTRAIT_TRAY_H,
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
@@ -927,26 +935,51 @@ export function Table3DShell(props: Table3DShellProps) {
                 zIndex: 4,
               }}
             >
-              {showCtas ? <ActionCtas {...ctaProps} /> : null}
-              {props.hasClaimOption ? (
-                <TutorialTarget id="claim-bar" style={{ maxWidth: '100%' }}>
-                  <div className="mj-hud-fade" style={{ pointerEvents: 'auto', maxWidth: '100%' }}>
-                    <ClaimBar
-                      onAction={props.onAction}
-                      seat={seat}
-                      orientation="portrait"
-                      theme="glass"
-                    />
-                  </div>
-                </TutorialTarget>
-              ) : null}
+              {trayActions ? (
+                <>
+                  {/* The claim strip owns the slot during a call; the
+                      ready-hand badge / declare CTAs return with the turn. */}
+                  {showCtas && !props.hasClaimOption ? <ActionCtas {...ctaProps} /> : null}
+                  {props.hasClaimOption ? (
+                    <TutorialTarget id="claim-bar" style={{ maxWidth: '100%' }}>
+                      <div
+                        className="mj-hud-fade"
+                        style={{ pointerEvents: 'auto', maxWidth: '100%' }}
+                      >
+                        <ClaimBar
+                          onAction={props.onAction}
+                          seat={seat}
+                          orientation="portrait"
+                          theme="glass"
+                        />
+                      </div>
+                    </TutorialTarget>
+                  ) : null}
+                </>
+              ) : (
+                <div
+                  className="mj-hud-fade"
+                  style={{ display: 'flex', alignItems: 'center', height: 44 }}
+                >
+                  <TurnChip
+                    isMyTurn={props.myTurn}
+                    needsDraw={props.needsDraw}
+                    turnCountdown={props.turnCountdown}
+                    activeName={activeSeat !== null ? nameForSeat(lobby, activeSeat) : null}
+                    activeColour={
+                      activeSeat !== null ? SEAT_COLOR[seatToPosition[activeSeat]] : null
+                    }
+                    claimsOpen={state.pendingClaims !== undefined && state.pendingClaims !== null}
+                  />
+                </div>
+              )}
             </div>
           ) : null}
 
           {/* Bottom action row. Landscape runs a dense 40 px footer under
-              a 6 px pad so the pills sit in the rail gap below the hand
+              a 5 px pad so the pills sit in the rail gap below the hand
               instead of over its end tiles; during a claim window the
-              41 px claim strip (+ CTAs) replaces the sort control there,
+              37 px claim strip (+ CTAs) replaces the sort control there,
               centred under the hand — the one landscape slot that holds
               no tile (the felt band above the hand is the near wall's).
               Desktop hosts the claim strip in the footer's centre slot —

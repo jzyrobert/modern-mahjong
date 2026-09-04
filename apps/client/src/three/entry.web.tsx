@@ -8,6 +8,7 @@ import {
   type SettingsPreview3DProps,
 } from './settings/SettingsPreview3D';
 import { Table3DShell as Shell, type Table3DShellProps } from './table/Table3DShell';
+import { classifyViewport, heldHandTopPx } from './table/cameraPresets';
 import { type Lobby3DViewProps, LobbyGlass } from './table/hud/LobbyGlass';
 import { Tutorial3D as Tutorial } from './tutorial/Tutorial3D';
 
@@ -27,3 +28,8 @@ export const tutorialSceneRects: TutorialSceneRects | null = {
   subscribe: subscribeRiverInterior,
   getRiverInterior,
 };
+/** Top of the held hand on phone portrait (see `entry.tsx`). */
+export const portraitHeldHandTop: ((width: number, height: number) => number | null) | null = (
+  width,
+  height,
+) => (classifyViewport(width, height) === 'phone-portrait' ? heldHandTopPx(width, height) : null);

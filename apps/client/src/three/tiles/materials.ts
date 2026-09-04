@@ -33,9 +33,11 @@ export interface TileMaterialUniforms {
   uBackRoughness: { value: number };
   /**
    * Second back colour, selected per instance by `aBackVariant` (1):
-   * the warm ivory-tan the table marks its dead-wall stacks with,
-   * independent of the skin so it reads as a marked block on blue, plum
-   * or mint rather than a tinted (greyed) copy of them.
+   * the shade the table marks its dead-wall stacks with. Derived from
+   * the skin (`deadBackColors`): the same hue a step darker and a touch
+   * less saturated, so the block reads as a shaded segment of the *same*
+   * set — round-3 critique: an independent ivory-tan read as mixed tile
+   * sets.
    */
   uDeadBack: { value: Color };
   uDeadBack2: { value: Color };
@@ -49,6 +51,21 @@ export function tileBackColors(skin: TileBackSkin): { top: Color; bottom: Color 
   return { top: new Color(s.top), bottom: new Color(s.bottom) };
 }
 
+/**
+ * Dead-wall back shade for a skin: same hue, lightness × 0.68,
+ * saturation × 0.8 — unmistakably darker beside the live stacks under
+ * the same key light, never a different colour.
+ */
+export function deadBackColors(skin: TileBackSkin): { top: Color; bottom: Color } {
+  const back = tileBackColors(skin);
+  const shade = (c: Color) => {
+    const hsl = { h: 0, s: 0, l: 0 };
+    c.getHSL(hsl);
+    return new Color().setHSL(hsl.h, hsl.s * 0.8, hsl.l * 0.68);
+  };
+  return { top: shade(back.top), bottom: shade(back.bottom) };
+}
+
 export function feltColors(skin: FeltSkin): { top: Color; bottom: Color } {
   const s = FELT_SKINS[skin];
   return { top: new Color(s.top), bottom: new Color(s.bottom) };
@@ -59,17 +76,20 @@ export function createTileMaterial(
   backSkin: TileBackSkin,
 ): MeshPhysicalMaterial & { tileUniforms: TileMaterialUniforms } {
   const back = tileBackColors(backSkin);
+  const dead = deadBackColors(backSkin);
   const uniforms: TileMaterialUniforms = {
     uAtlas: { value: atlas },
     uCellScale: { value: new Vector2(CELL_SCALE[0], CELL_SCALE[1]) },
     uBodyColor: { value: new Color('#efe6d2') },
     uBackColor: { value: back.top },
     uBackColor2: { value: back.bottom },
-    uHighlightColor: { value: new Color('#ffcf6b') },
+    // A saturated lacquer gold: the cue rim must read *gold* on an
+    // ivory face under the bright key + ACES, not a whiter white.
+    uHighlightColor: { value: new Color('#f3b74a') },
     uBackClearcoat: { value: 1 },
     uBackRoughness: { value: TILE_BODY_ROUGHNESS },
-    uDeadBack: { value: new Color('#dccaa4') },
-    uDeadBack2: { value: new Color('#bda57c') },
+    uDeadBack: { value: dead.top },
+    uDeadBack2: { value: dead.bottom },
   };
   const mat = new MeshPhysicalMaterial({
     color: 0xffffff,
@@ -213,8 +233,11 @@ export function setTileBackSkin(
   skin: TileBackSkin,
 ): void {
   const back = tileBackColors(skin);
+  const dead = deadBackColors(skin);
   mat.tileUniforms.uBackColor.value.copy(back.top);
   mat.tileUniforms.uBackColor2.value.copy(back.bottom);
+  mat.tileUniforms.uDeadBack.value.copy(dead.top);
+  mat.tileUniforms.uDeadBack2.value.copy(dead.bottom);
 }
 
 /**

@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest';
 import { TILE_D, TILE_H } from '../tiles/geometry';
 import {
   HELD_BOTTOM_PX,
+  PORTRAIT_APRON_MIN,
   PORTRAIT_BAND_BIAS,
   PORTRAIT_BAND_GAP,
   PORTRAIT_BAND_TOP,
@@ -88,6 +89,21 @@ describe('table presets keep the hand and the far rail in frame', () => {
   }
 });
 
+describe('cameraFor with a degenerate host', () => {
+  test('a 0×0 or NaN measurement still yields a finite preset', () => {
+    for (const [w, h] of [
+      [0, 0],
+      [1, 915],
+      [Number.NaN, Number.NaN],
+    ] as const) {
+      const p = cameraFor(w, h);
+      expect(p.position.every(Number.isFinite)).toBe(true);
+      expect(p.target.every(Number.isFinite)).toBe(true);
+      expect(Number.isFinite(p.fov)).toBe(true);
+    }
+  });
+});
+
 describe('sheetCameraFor', () => {
   test('fits the 9-column sheet at any aspect', () => {
     for (const [w, h] of [
@@ -158,37 +174,58 @@ describe('heldHandFrameFor', () => {
         return { x: (p.x * 0.5 + 0.5) * w, y: (-p.y * 0.5 + 0.5) * h };
       };
       // Side seats' rows (hands + flat melds) stay inside the viewport
-      // while the rails (|x| = 13) crop off-screen.
+      // while the rails (|x| = 13) crop off-screen (a short phone zooms
+      // out a little so the rail never runs under the hand — see
+      // `cameraFor`).
       expect(px(PORTRAIT_X_HALF, 0, 0).x).toBeLessThanOrEqual(w + 1);
       expect(px(-PORTRAIT_X_HALF, 0, 0).x).toBeGreaterThanOrEqual(-1);
-      expect(px(13, 0, 0).x).toBeGreaterThan(w);
+      if (h >= 900) expect(px(13, 0, 0).x).toBeGreaterThan(w);
       // The far rail's top edge is pinned PORTRAIT_FAR_RAIL_GAP under the
-      // seat strip whenever the table leaves slack in the band (every
-      // phone here); the table never sits lower than the centred fit.
+      // seat strip whenever the table leaves slack in the band (the
+      // 412 / 430 px phones); a short phone whose table fills the band
+      // keeps the centred fit, which never lifts the rail *above* the
+      // pinned line. The table never sits lower than the centred fit.
       const bandTop = PORTRAIT_BAND_TOP;
       const bandBottom = heldHandTopPx(w, h) - PORTRAIT_BAND_GAP;
       const centreY = bandTop + PORTRAIT_BAND_BIAS * (bandBottom - bandTop);
       const railY = PORTRAIT_STRIP_TOP + PORTRAIT_STRIP_H + PORTRAIT_FAR_RAIL_GAP;
       const farRail = px(...PORTRAIT_FAR_RAIL_POINT).y;
-      expect(Math.abs(farRail - railY)).toBeLessThan(1);
-      expect(px(0, 0, 0).y).toBeLessThanOrEqual(centreY + 1);
-      // The near rail's bottom edge stays clear of the held hand.
-      expect(px(0, 0, FELT_HALF + RAIL_WIDTH).y).toBeLessThan(bandBottom);
+      const nearRailBottom = px(0, 0, FELT_HALF + RAIL_WIDTH).y;
+      // Pinned whenever pinning leaves the minimum apron; otherwise the
+      // table is height-bound and sits as low as the apron allows.
+      const pinned = Math.abs(farRail - railY) < 1;
+      const heightBound = nearRailBottom > bandBottom - PORTRAIT_APRON_MIN - 1;
+      expect(pinned || heightBound).toBe(true);
+      if (w === 412) expect(pinned).toBe(true);
+      expect(farRail).toBeGreaterThan(bandTop - PORTRAIT_STRIP_H);
+      // The table centre lands inside the band (the pinned view sits a
+      // little below the centred fit by design — the apron closes).
+      expect(px(0, 0, 0).y).toBeGreaterThan(bandTop);
+      expect(px(0, 0, 0).y).toBeLessThan(centreY + 40);
+      // The near rail's bottom edge stays clear of the held hand, and on
+      // the reference phone the apron between them is a deliberate
+      // 24–44 px (contact shadow + breathing room), not a void band.
+      expect(nearRailBottom).toBeLessThan(bandBottom);
+      if (w === 412) {
+        const apron = heldHandTopPx(w, h) - nearRailBottom;
+        expect(apron).toBeGreaterThanOrEqual(24);
+        expect(apron).toBeLessThanOrEqual(44);
+      }
       // Far row below the seat strip, near row above the held hand.
       expect(px(0, 0, -HAND_Z - 0.7).y).toBeGreaterThan(bandTop);
       expect(px(0, 0, HAND_Z + 0.7).y).toBeLessThan(bandBottom);
-      // A river tile (drawn at PORTRAIT_RIVER_SCALE) is at least 18 CSS px
-      // wide on a 412 px phone.
+      // A river tile (drawn at PORTRAIT_RIVER_SCALE) is at least 22 CSS px
+      // wide on a 412 px phone — readable, not guessable.
       if (w === 412)
         expect((px(1, 0.3, 0).x - px(0, 0.3, 0).x) * PORTRAIT_RIVER_SCALE).toBeGreaterThanOrEqual(
-          18,
+          22,
         );
-      // The side seats' flat melds (tucked to MELD_Z, reaching a flat
-      // tile's half-height further out) stay ≥ 6 px inside the viewport
+      // The side seats' flat melds (in the rack line at MELD_Z, reaching
+      // a flat tile's half-height further out) stay inside the viewport
       // at their nearest corner, where perspective scale is largest
       // (round-3: the left meld was half-clipped at ±11.2).
       const meldNear = px(-(MELD_Z + TILE_H / 2), TILE_D, 8.0);
-      expect(meldNear.x).toBeGreaterThanOrEqual(6);
+      expect(meldNear.x).toBeGreaterThanOrEqual(2);
       const handNear = px(-(HAND_Z + TILE_D / 2), 0, 7.5);
       expect(handNear.x).toBeGreaterThanOrEqual(6);
     }
@@ -214,12 +251,12 @@ describe('heldHandFrameFor', () => {
     // the far river's last row clears the strip.
     const anchor = px(...ZOOM_WALL_ANCHOR);
     expect(Math.abs(anchor.y - ZOOM_WALL_ANCHOR_Y)).toBeLessThan(1);
-    expect(px(0, 2 * TILE_D, -(WALL_D + TILE_H / 2)).y).toBeGreaterThan(PORTRAIT_STRIP_TOP - 6);
+    expect(px(0, 2 * TILE_D, -(WALL_D + TILE_H / 2)).y).toBeGreaterThan(PORTRAIT_STRIP_TOP - 14);
     expect(px(0, TILE_D, -7.6).y).toBeGreaterThan(PORTRAIT_STRIP_TOP + PORTRAIT_STRIP_H + 2);
-    // The near wall's front edge leaves ≥ 60 px of free felt above the
-    // held hand for the zoom-mode toast slot.
+    // The near wall's front edge leaves a toast's height (52 px) of free
+    // felt above the held hand for the zoom-mode toast slot.
     const nearWallBottom = px(0, 0, WALL_D + TILE_H / 2).y;
-    expect(heldHandTopPx(w, h) - PORTRAIT_BAND_GAP - nearWallBottom).toBeGreaterThanOrEqual(60);
+    expect(heldHandTopPx(w, h) - PORTRAIT_BAND_GAP - nearWallBottom).toBeGreaterThanOrEqual(52);
     // Same elevation as the full view, so the held hand only translates.
     const full = cameraFor(w, h);
     const elev = (p: typeof preset) =>
