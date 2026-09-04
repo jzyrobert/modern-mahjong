@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "updatedAt": "2026-09-04T07:22:00Z",
+  "updatedAt": "2026-09-04T10:50:00Z",
   "round": 2,
   "passThreshold": 8.5,
   "subsystems": {
@@ -259,51 +259,58 @@
       ]
     },
     "tutorial": {
-      "score": 8.3,
+      "score": 8.7,
       "errors": 0,
-      "pass": false,
+      "pass": true,
       "issues": [
         {
           "rank": 1,
           "severity": "medium",
-          "title": "Landscape basics-0: spotlight ring bisects the hand row",
-          "state": "tutorial-basics-0 @ phone-landscape (classic)",
-          "detail": "The dice modal overlaps the own-hand row in landscape (table-owned), but the ring drawn around it is tutorial-owned and its bottom stroke at y≈375 CSS cuts straight through every hand tile: pixel sample of tile 東 body is 251,248,240 (lit) at y≈356 and 41,42,37 (dimmed) at y≈385. Tiles 六..發 read as half-lit / half-dark with a gold line across them — this is the very first coach-mark a landscape user sees. encloseStraddlers does not help because the hand rect straddles by far more than STRADDLE_MAX (24 px). Fix: when the target rect intersects a large avoid rect (hand row) by more than STRADDLE_MAX, trim the focus/ring to the modal's portion above that rect and treat the bottom side as 'tight' (drop the stroke + feather it the way the screen-edge open side is handled), or move the landscape dice modal above the hand in the table shell. Either way the ring must not cross tiles."
+          "title": "3D landscape own-hand ring runs through the footer badge and the SUIT sort pill",
+          "state": "tutorial-basics-2 @ phone-landscape 915x412 (3d)",
+          "detail": "The hand tiles end at y~365 CSS but the halo's bottom stroke sits at y~376 (HALO_PAD + overhang), while the footer chrome — 'Sharp Carp 東 莊' badge (x 12-165) and the SUIT/NUMBER/MANUAL pill (x 705-905) — starts at y~370. Crop shots/crops/ls-b2-footer.png shows the 1.5 px gold line crossing the avatar and the top of the SUIT pill, and the pill reads half-lit inside the hole. The spec's 'never bisect' rule is about tiles, but a gold ring slicing HUD controls is the same visual defect. Fix: when the footer chrome rect is within ~12 px of the target's bottom, clamp the halo bottom to that rect's top and treat the side as tight (drop the stroke and feather it, as the strip/hand case already does), or register the footer badge + sort pill as avoid rects so trimStraddlers cuts the ring back. Pin with a landscape case in placement.test.ts."
         },
         {
           "rank": 2,
-          "severity": "medium",
-          "title": "Phone scoring-1: card floats 90 px below the ring, notch points at dimmed Rules chips",
-          "state": "tutorial-scoring-1 @ phone (classic)",
-          "detail": "The focus band ring ends at y≈440 CSS and the card starts at y≈530; the intervening 90 px is the dimmed 'Rules / Minimum faan 0 1 3 5' remainder of the result panel (column sample at x=206: gold at 440, scrim-grey 77,78,74 from 450–520, card at 530). The notch tip lands between the faan pills and visually points at 'Rules', not at the spotlit score header. The keepNotch-over-keepClear rule keeps the arrow but the composition still reads as 'look at the rules chips'. Fix: when the gap is entirely the target's own dimmed remainder, dock snug — top = haloBottom + CARD_GAP — and let the (already solid) card cover the remainder; the buttons below are hidden by the scrim anyway. Alternatively drop the notch when gap > NOTCH_MAX_GAP regardless of keepClear."
+          "severity": "low",
+          "title": "Green dragon 發 ink is 3.8-3.9:1 on the spotlit hand (and unlit); landscape red 萬 sits right at 4.5",
+          "state": "tutorial-basics-2 @ phone, phone-landscape, desktop (3d)",
+          "detail": "Per-tile probe: 發 core-median green (84,116,78) on face (230,218,190) = 3.80:1 at phone, 5.9 only for its black outline; at landscape the red 萬 darkest pixel (158,56,42) is 4.54:1 with most glyph pixels blended lower because the mark is ~14 px tall. Black numerals 9.9-13.2:1 and suit greens 5.7-6.4:1 clear comfortably, so the spotlight fix is sound — this is atlas ink. Fix: darken the 發 atlas green from ~#54744e toward ~#2f6a3a (target >= 4.5:1 on #e6dabe) and deepen the red 萬 ink one step (~#9e2a1e) so the small landscape mark keeps >= 4.5 after mip blending; re-run the per-tile probe."
         },
         {
           "rank": 3,
           "severity": "low",
-          "title": "Landscape scoring-1: ring lights the opponent seat strip and desktop seat badges",
-          "state": "tutorial-scoring-1 @ phone-landscape and desktop (classic)",
-          "detail": "Landscape: the ring top sits at y≈13 CSS while the result panel top is at ≈33, so '西 Niko  Bot (Easy)' and '北 Tao' from the seat strip sit inside the lit hole (sample 51,60,52 vs 39,49,41 dimmed) and read as part of the lesson target. Desktop: the tops of the Kai 北 / Tao 南 seat badges peek lit above the panel edge inside the ring. Looks like the straddler enclosure pulling unrelated chrome in. Fix: only enclose straddlers whose centre lies inside the ring, or exclude seat-strip / seat-badge rects from candidates so the ring hugs the focus band (HALO_PAD 8) on the top side."
+          "title": "Scroll-cue chevron is painted over the last visible line instead of in the fade gutter",
+          "state": "tutorial-scoring-0 @ phone-landscape (3d and classic); tutorial-scoring-1 / match-result side dock @ phone-landscape (classic)",
+          "detail": "The 24 px fade + chevron is the right cue, but the chevron's tip lands on the text itself — over 'common' in 'six common scoring rules' (crop ls-s0-chevron.png) and over 'lowest' in 'The cleanest, lowest-faan' (cls-ls-s1-chevron.png). It reads as a glyph collision rather than an affordance. Fix: reserve ~14 px below the capped body for the chevron (bodyMaxHeight -= 14 when capped) and centre it in that gutter beneath the gradient, so the third line stays whole and the chevron sits on glass."
         },
         {
           "rank": 4,
           "severity": "low",
-          "title": "Landscape scoring-intro step 0: centred card reads off-centre and kisses the hand row",
-          "state": "match-result (scoring-intro step 0) @ phone-landscape (classic)",
-          "detail": "placeCentred slides the 'Scoring 101' card left/up to clear the Order/Player toggle: it now spans x 163–601 CSS in a 915 px viewport (centre 382 vs 457) and its bottom edge at ≈345 sits 5 px above the hand tiles at ≈350. The intent is clear from the code but the result looks accidentally misaligned next to the perfectly centred basics-1 / claims-0 cards. Fix: prefer a purely vertical shift or a slightly narrower card when the only conflict is a small toggle, or treat the toggle as coverable (card already paints solid when overlapsChrome) and keep the card horizontally centred; keep ≥ 12 px to the hand row."
+          "title": "Compact side dock says 'STEP 5/6' while every other card says 'STEP n OF m'",
+          "state": "tutorial-basics-4 @ phone-landscape (3d and classic)",
+          "detail": "The narrow (<260 px) side-docked card switches the header to the 'STEP 5/6' form (TutorialOverlay.tsx ~line 890), so a user who sees 'STEP 1 OF 6' … 'STEP 3 OF 6' then 'STEP 5/6' within one lesson gets two label grammars. Fix: keep 'STEP n OF m' and let the stacked header wrap, or use the slash form everywhere. Related: the same 3D landscape card is only ~167 CSS px wide (title wraps to two lines, eight body lines) although the dimmed right wall stack beside the ring is not chrome — let side docks cover non-chrome scene geometry so the card can take >= 240 px."
         },
         {
           "rank": 5,
           "severity": "low",
-          "title": "Progress dots and 'LESSON N/14' label count different things",
-          "state": "all tutorial states, all viewports",
-          "detail": "Header reads 'LESSON 1/14' while the dot row shows 6 dots (steps within the lesson); on basics-1 the label still says 1/14 but the 2nd dot is active. First-time users will read the dots as lesson progress. Fix: add a tiny 'Step 2 of 6' caption beside the dots or move the lesson counter to the lesson-picker and keep the card header about steps only."
+          "title": "Desktop river ring clips the dealer chip's edge; chip inclusion differs per viewport",
+          "state": "tutorial-basics-4 @ desktop 1440x900 (3d); compare phone and phone-landscape",
+          "detail": "Crop desk-b4-chip.png: the 莊 chip spans x 913-965 and the ring's right stroke sits at x~962, so the gold line crosses the chip's right rim by ~3 px. At phone the chip is fully inside the hole, at landscape fully outside (dimmed) — three different treatments of the same object. Fix: either include the dealer-chip pocket in the published river interior rect at every viewport (it is part of the pool's frame) or subtract its projected rect so the ring never lands on it; pick one and pin it in targets.test.ts."
         },
         {
           "rank": 6,
           "severity": "low",
-          "title": "3D renderer: targeted steps still fall back to the centred card (known gap)",
-          "state": "tutorial-basics-0 @ phone / desktop (3d)",
-          "detail": "Zero errors and budget passes (3 draw calls, 159,938 tris, programs 3, idle on desktop) and the dice-modal step rings correctly because the modal is DOM. But per the engineer's own gap list the 3D table registers no <TutorialTarget> rects, so own-hand / wall / discard steps will show a targetless card once the 3D table lands. Not scored heavily this pre-integration round, but it is the next blocker for the tutorial on the real renderer: mount Tutorial3D / setSpotlightTiles and register projected tile rects."
+          "title": "Card settles 6 px after measurement during the entrance",
+          "state": "tutorial-basics-0 @ desktop (3d), observed under x1/x4/x8 CPU throttle",
+          "detail": "The throttled probe saw the CTA rect move from y 518 to y 512 (estimate-placed card refined by the measured height) while the opacity entrance was still running — a small visible hop of the whole card at the moment the user's eye lands on it. Fix: derive CARD_HEIGHT_ESTIMATE from the step's line count (title lines + wrapped body lines at the card width) so the estimate matches the measurement for standard cards, or animate the refine with the same 220 ms ease instead of snapping."
+        },
+        {
+          "rank": 7,
+          "severity": "low",
+          "title": "Classic desktop scoring-1 ring top crosses the 北/南 seat badges (round-1 #3 residual)",
+          "state": "tutorial-scoring-1 / match-result @ desktop 1440x900 (classic)",
+          "detail": "Crop cls-desk-s1-top.png: the halo's top stroke at y~245 passes through the lower halves of the 'Jin 北' and 'Dao 南' badges (y 222-265), which are dimmed but still bisected by the gold line. Landscape classic is now clean (seat strip sits above the ring). Classic shells were out of scope this round; noting it so the scoreboard stays honest. Fix: exclude seat-badge rects from straddler enclosure or start the halo at the result panel's own top edge (HALO_PAD 8) on the desktop classic layout."
         }
       ],
       "history": [
@@ -317,6 +324,17 @@
           "openIssues": 6,
           "notes": "4 rounds: 8.4 → 8.4 → 8.3 → 8.3. Zero errors, perf ok, all tutorial specs green; merged into integration so the next loop resumes from these issues. 3D targeted steps depend on the table registering TutorialTarget rects.",
           "at": "2026-09-04T01:40:00Z"
+        },
+        {
+          "round": 2,
+          "score": 8.7,
+          "errors": 0,
+          "perfPass": true,
+          "pass": true,
+          "critic": "art-director",
+          "openIssues": 7,
+          "notes": "Round-2 gauntlet passed at iteration 2 (8.2 → 8.7): spotlit glyph ink ≥ 4.5:1, landscape dice strip dock, scroll cue, synchronous overlay readiness with a CPU-throttled e2e, river ring clipped to the walls, deterministic desktop dock. Merged into integration.",
+          "at": "2026-09-04T10:50:00Z"
         }
       ]
     }
