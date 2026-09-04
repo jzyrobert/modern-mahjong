@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "updatedAt": "2026-09-04T18:50:00Z",
+  "updatedAt": "2026-09-04T19:40:58.336Z",
   "round": 3,
   "passThreshold": 8.5,
   "subsystems": {
@@ -344,112 +344,112 @@
     }
   },
   "wholeGame": {
-    "score": 8.6,
+    "score": 8.7,
     "pass": true,
     "issues": [
       {
         "rank": 1,
         "severity": "medium",
-        "title": "Portrait: 140 CSS px near-black void between the near rail and the hand on the default phone view",
-        "state": "match-dealt, match-my-turn, match-mid-hand, match-dealt-jade-plum @ phone 412x915 (3d)",
+        "title": "Dead-wall marker is effectively portrait-only: desktop and landscape dead stacks differ from live stacks only by a faint top-face shade",
+        "state": "match-dealt, match-claim, match-late-hand @ desktop 1440x900 and phone-landscape 915x412 (3d)",
         "subsystem": "table",
-        "detail": "Centre-column luminance scan of match-dealt.phone: rail wood ends at y~550 CSS (rgb 48,20,6), then y 575-690 samples rgb(10-15,14-24,10-19) (lum 13-22) until the hand's top row at y~700. The table now reads as a table (rails on all sides, far rail pinned 55 px under the seat strip - good) but it occupies only ~44% of the screen height and the slack collapsed into one dead band below it (crop wg2-crops/p-dealt-band.png). The contact-shadow ellipse is below perceptual threshold. match-claim.phone shows the answer: when the ClaimBar mounts in that band it looks intentional. Fix: treat the band as a permanent action tray - move the hand block up to rail-bottom + 28 px and park the turn-status pill / ClaimBar slot / footer (badge + sort) in the recovered ~110 px so HUD always occupies it; or scale the portrait fit from x +-11.65 to ~+-10.6 (racks at ~+-10.2 stay in frame) and paint a real warm-black shadow (peak alpha >= 0.35, ~60% viewport width, 20 px under the rail)."
+        "detail": "Crops of the near wall (desktop x 700-1200 / y 600-720; landscape x 900-1700 / y 440-640) show 7 dead stacks with slightly greyer blue tops next to 2 live stacks with lighter tops, and no gold hairline on either viewport; portrait shows the hairline clearly. From the 44 deg / 31 deg cameras the outer felt edge is occluded by the stacks' own front faces, so the felt-only hairline never reaches the eye. Fix: when the outer-edge probe fails, fall back to (a) a hairline along the inner (centre-facing) edge of the dead run, or (b) a 2 px warm-gold band on the visible near side faces of the dead stacks via the instance tint (side-face UV band, still one draw call); additionally raise the dead back-variant delta to >= 25 luminance with a warm hue shift so the two-shade read survives without the line. Acceptance: mean top-face luminance delta >= 0.12 AND a visible marker in all three viewport captures."
       },
       {
         "rank": 2,
         "severity": "medium",
-        "title": "Landscape opening-rolls modal sits on the hand tile tops, and landscape gets no scene veil",
-        "state": "match-dice, match-dealt-jade-plum (dice held), tutorial-basics-0 @ phone-landscape 915x412 (3d); compare match-dice @ phone and desktop",
+        "title": "Landscape pre-game lobby hides the 3D waiting table entirely and hard-clips a gold segmented control at the viewport bottom",
+        "state": "match-lobby @ phone-landscape 915x412 (3d)",
         "subsystem": "table",
-        "detail": "The glass panel spans y~107-302 CSS and the hand tiles' tops start at y~300, so the panel's bottom edge and gold hairline cut the top of every hand tile 六..發 (crop wg2-crops/l-dice-handtop.png). Every landscape hand starts like this. Veil inconsistency measured: mean image luminance match-dealt vs match-dice is 70.8 -> 43.5 on phone and 61.3 -> 34.2 on desktop, but 44.4 -> 44.3 on landscape - identical, so the landscape scene is not dimmed behind the modal while the other two viewports are. Fix: a landscape size variant (56 px dice, 8 px paddings, 11 px name labels, single row) capped at ~180 px tall and anchored so bottom <= hand top - 12 px; apply the same 0.45 veil on every viewport."
+        "detail": "The merged glass panel spans the whole viewport; behind it only a dark blur is visible (no rail, no wall, no plate), so the one landscape screen that should sell the 3D room shows none of it. At y 805-824 the BOT SKILL row's gold segmented control is cut by the viewport edge with no fade. Fix: cap the panel at ~88% viewport height with a 10 px bottom margin so the scroll edge is inside glass, add a 24 px bottom fade as the scroll cue, and leave a 44-56 px felt/near-wall band visible under the panel (or shrink the RULES column to ~40% so the right rail shows in a gutter, matching the desktop composition)."
       },
       {
         "rank": 3,
-        "severity": "medium",
-        "title": "Desktop pre-game lobby: the waiting table slides off the right edge while 110 px of void sits left of the glass column",
-        "state": "match-lobby @ desktop 1440x900 (3d)",
-        "subsystem": "table",
-        "detail": "Crop wg2-crops/d-lobby-table.png: far wall runs from behind the Seats panel to a corner at x~1230, the right wall exits the frame at x=1440, the near wall (blue tops, y 570-660) runs straight off the right edge with no rail visible, and x 0-110 is empty beside the glass column. The backdrop exists (good) but the composition reads as a table half out of shot. Phone-landscape already frames it acceptably (rail visible right of the Rules panel). Fix: recentre the desktop lobby camera so the right rail is >= 24 px inside the viewport (plate near x~1050, the centre of the free column) and pull the glass column to a 48 px inset, or centre column + table as a pair."
+        "severity": "low",
+        "title": "Desktop menu: a drift tile back still lands on the hero rack's 一萬 corner (unchanged since round 2)",
+        "state": "menu, menu-tutorials @ desktop 1440x900 (3d)",
+        "subsystem": "menu",
+        "detail": "Crop x 230-420 / y 160-330: an edge-on blue tile back sits at (265-320, 195-240), overlapping the top-left corner of the first hero tile. It reads as clutter on the single most-seen composition. Fix: apply the phone rack+dice keep-out to desktop/landscape too - project the rack's world AABB to NDC each layout pass and reject spawn/drift positions within 0.6 tile widths of it (the keep-out disc already exists for phone; make it viewport-agnostic)."
       },
       {
         "rank": 4,
-        "severity": "medium",
-        "title": "tutorial-claims-0 shows a half-dollied table: hand clipped at desktop, touching the footer on phone, entirely off-screen on landscape",
-        "state": "tutorial-claims-0 @ desktop 1440x900, phone 412x915, phone-landscape 915x412 (3d) - reproduced deterministically in shots/wg2-extra",
+        "severity": "low",
+        "title": "Coach-card glass is still transparent enough for scene geometry to read through the header and action rows",
+        "state": "tutorial-drawn-game-2 @ phone (6-pin discard between LESSON 11/14 and the step dots); tutorial-basics-1, scoring-0 @ desktop (dice plate behind the header); tutorial-basics-1 @ phone-landscape (near-wall tiles behind the Skip/Restart/Got it row)",
         "subsystem": "tutorial",
-        "detail": "Compared with every other table state the whole scene is shifted down and ~10% larger: far seat badge first-light row at y=192 vs 168 (basics-1) / 162 (match-dealt); desktop hand bottoms at y~890 against the 900 px edge (crop wg2-crops/d-claims0-footer.png); phone second hand row ends at y~860 CSS, flush with the badge/sort footer (p-claims0-footer.png); landscape shows only the tile tops at y~395-412 - the hand the card tells you to discard from is not visible (l-claims0-footer.png). Perf JSON shows renders=3 in 1200 ms, and the camera rig eases with an exponential spring (halfLife 0.22 s, dt capped 0.5 s per rendered frame), so this is most likely the intro camera move caught mid-flight under SwiftShader - the recipe is the only tutorial state that neither waits for the own hand nor for a modal. On a 60 fps device the ease settles in ~1.2 s. Actions: (a) make the recipe waitForOwnHand + settle like tutorial-scoring-0 so the evidence is honest; (b) product hardening: gate the coach card's entrance on rig.update() returning false (camera settled), or snap the camera when intro travel exceeds a threshold, so lesson step 1 never appears over a half-dollied table on slow devices; (c) confirm on a real GPU before closing."
+        "detail": "Text stays legible (white on dark) but the card loses its authority when a tile or the plate is visible under the label row. Fix: raise the card backdrop to ~rgba(12,16,14,0.86) with 18 px blur, or add a 0.35-alpha inner scrim behind the header and action rows only, keeping the body glass as is."
       },
       {
         "rank": 5,
         "severity": "low",
-        "title": "Desktop menu: a drift tile back lands on the hero rack's 一萬 corner (keep-out is phone-only)",
-        "state": "menu, menu-tutorials @ desktop 1440x900 (3d)",
-        "subsystem": "menu",
-        "detail": "Crop wg2-crops/d-menu-rackcorner.png: a blue tile back at (275-330, 195-235) CSS overlaps the top-left bevel of the rack's first tile. Deterministic seed, so every first paint shows it. The MATCH CODE input (phone) and the Tutorial card corner (desktop) are now clean - only the rack silhouette is unprotected on desktop/landscape. Fix: apply the projected rack + dice keep-out on every viewport and assert in three-menu.spec's desktop case that no drift disc intersects the rack rect."
+        "title": "Tutorial first-step captures on desktop show the camera mid-dolly, not the settled table pose",
+        "state": "tutorial-basics-0, tutorial-claims-0 @ desktop 1440x900 (3d); compare tutorial-basics-1 / match-dealt @ desktop",
+        "subsystem": "tutorial",
+        "detail": "Corner crops (x 0-500 / y 600-900): left rail corner at x~100 and near-rail bottom at y~830 in basics-0/claims-0 vs x~40 / y~855 in every settled desktop state; hand tiles sit at y 695-765 vs 715-790 and seat badges shift 5-10 px. Nothing is clipped any more, but the first coach card appears while the rig is still easing in. Fix: either start the tutorial rig at the settled table preset (skip the lobby->table ease when the overlay mounts), or delay the first coach card until rig.isSettled(); if the intro dolly is intended, make the shot recipe await settle so the evidence reflects the resting pose."
       },
       {
         "rank": 6,
         "severity": "low",
-        "title": "Side-seat melds are wedged between the side wall and the rack, glyphs sideways at ~18 CSS px",
-        "state": "match-mid-hand, match-claim @ phone (南 meld x~362-385 CSS); match-claim @ desktop (Kai's meld x 1045-1090); match-claim @ phone-landscape (Bao's meld x~1320-1380)",
+        "title": "Full-table river glyphs remain marginal for mid-value 索/筒 on portrait side rivers and landscape rivers/side melds",
+        "state": "match-mid-hand, match-late-hand @ phone 412x915 (side rivers ~22 CSS px); match-mid-hand, match-late-hand @ phone-landscape (rivers ~22-25 CSS px, side melds sideways ~20 CSS px) (3d)",
         "subsystem": "table",
-        "detail": "With a full 18-stack side wall the meld's inner edge is within ~2 px of the wall's projected top edge, so it reads as jammed under the wall (crop wg2-crops/p-midhand-river-meld.png shows the right-side stack line). Far/near seats have room; only side seats suffer. Fix: when the side wall is >= 12 stacks, offset side-seat melds 0.6 world units outward or scale them 1.1x; or place melds at the near end of the rack where the wall is usually drawn down."
+        "detail": "Clearly improved: far row at 1.4x and own river ~25 CSS px now read; characters and honours read everywhere. Bamboo 3-7 and dots 5-8 are still pattern-counted on the rotated side rivers (crop x 120-720 / y 380-920 on phone mid-hand). The river-zoom hatch exists on both phone orientations, which is the right escape valve. Fix: scale side rivers 1.15x on portrait while they hold <= 8 tiles; thicken glyph ink ~8% in atlas mips 1-2 so small rotated tiles keep stroke contrast."
       },
       {
         "rank": 7,
         "severity": "low",
-        "title": "Landscape footer ClaimBar strip top touches the hand's bottom edge (0-2 px)",
-        "state": "match-claim, match-mid-hand @ phone-landscape 915x412 (3d)",
-        "subsystem": "table",
-        "detail": "Crop wg2-crops/l-midhand-footer.png: the strip is the right solution (on the rail, not the wall) but its top border coincides with the hand tiles' bottom edge so the tiles look like they stand on the panel. Fix: reserve a 6 px gap in the landscape camera solve during a claim window (hand bottom >= strip top - 6) or trim the strip to 38 px; cap the strip to one row by hiding preview tiles when width > 480 so the three-option chi + PASS + long-name case can't grow into the hand."
+        "title": "Landscape chrome residuals: DISMISS pill contrast, DISMISS spilling below the header onto the felt in river zoom, two DRAW affordances",
+        "state": "menu, menu-tutorials, replay-library, settings, match-lobby, match-river-zoom-landscape @ phone-landscape 915x412 (3d)",
+        "subsystem": "menu",
+        "detail": "Crop of the zoom header (x 1500-1830 / y 0-200): DISMISS text is ~0.55 alpha grey (spec 0.62+ for secondary text) and the pill sits below the glass header strip, over the wood rail/felt. In river zoom the header shows a gold 'DRAW' status pill while the footer shows a gold-outlined 'DRAW' action button. STEP n OF m grammar and the tile-sheet dice-modal capture from round 2 are fixed. Fix: DISMISS text alpha 0.72; dock DISMISS inside the header row (right of FULLSCREEN, or as an x on the FULLSCREEN pill); relabel the zoom action 'DRAW TILE' or hide the header status pill while zoomed."
       },
       {
         "rank": 8,
         "severity": "low",
-        "title": "Coach-card glass is transparent enough for scene geometry to read through the header",
-        "state": "tutorial-drawn-game-2, tutorial-basics-1 @ phone 412x915 (3d)",
+        "title": "Landscape own-hand spotlight ring overlaps the footer badge and SUIT pill top edges",
+        "state": "tutorial-basics-2 @ phone-landscape 915x412 (3d)",
         "subsystem": "tutorial",
-        "detail": "Crop wg2-crops/p-dg2-cardheader.png: a river tile (dots face) shows through the card between 'LESSON 11/14' and the step dots, sitting on the header row like a stray glyph; in basics-1 the far wall's stacks show through the body copy. Desktop/landscape cards sit over darker felt so it is less visible there. Fix: raise the card fill to ~0.86 alpha (or add a 12 px backdrop blur where supported) so the veil-dimmed scene becomes texture, not shapes; keep the 0.62 secondary text token."
+        "detail": "Crops x 150-450 and x 1350-1700 at y 680-824: the ring's bottom corners cross the badge's top-right outline and the SUIT pill's top edge by ~5-8 px. Fix: clamp the ring's bottom to footerTop - 6 px, or shrink the ring's vertical padding when the projected hand rect bottom exceeds footerTop - 12."
       },
       {
         "rank": 9,
         "severity": "low",
-        "title": "Portrait full-table river glyphs (~20 CSS px) are pattern-recognised, not read",
-        "state": "match-mid-hand @ phone 412x915 (3d)",
+        "title": "Desktop lobby: far rail wood and wall tiles read through the gutters between the SEATS / BOT SKILL / RULES panels",
+        "state": "match-lobby @ desktop 1440x900 (3d)",
         "subsystem": "table",
-        "detail": "dpr 2 sharpened the atlas (六七八萬, 中, 東 read) but bamboo/dots faces and the upside-down far river are still identified by colour pattern; the river-zoom view is the real fix and works. A 1.1x river tile scale in portrait only would tip these to readable without touching the budget."
+        "detail": "Crops y 330-400 and y 585-650 (x 40-640): a brown rail smear plus a blue wall tile show in the 12 px gap between SEATS and BOT SKILL, and near-wall tops peek between BOT SKILL and RULES. Fix: merge the three panels into one glass column with hairline dividers (as the landscape lobby already does), or give the gutters the same glass fill so the backdrop reads continuously."
       },
       {
         "rank": 10,
         "severity": "low",
-        "title": "River zoom: a ~5 px sliver of far-wall tile tops peeks under the seat strip",
-        "state": "match-river-zoom @ phone 412x915 (3d)",
+        "title": "Phone lobby CTA row sits directly on the waiting table's near wall with tile tops peeking around the buttons",
+        "state": "match-lobby @ phone 412x915 (3d)",
         "subsystem": "table",
-        "detail": "Crop wg2-crops/p-zoom-sliver.png: five ivory tile edges show for ~5 px directly under the strip at x~272-390 CSS. Push the zoom anchor 8 px further or extend the header glass 8 px below the strip."
+        "detail": "Crop y 1050-1600: blue wall tops show in the ~30 CSS px band between the RULES panel and Start match / Leave, and a tile pokes out left of Leave. Reads cluttered rather than 'sitting at the table'. Fix: put the CTA row on a full-width footer glass strip, or raise the lobby camera ~0.4 units so the near wall sits under the strip and only felt shows in the gap."
       },
       {
         "rank": 11,
         "severity": "low",
-        "title": "Dead-wall tan segment reads as a second tile set rather than a marked segment",
-        "state": "match-dealt, match-my-turn, match-mid-hand @ all viewports (3d)",
-        "subsystem": "table",
-        "detail": "Seven strongly tan stacks against sky-blue live stacks are instantly identifiable (the round-1 kink is gone) but look like mixed sets. Consider mixing 0.6 toward the tan plus a 2 px gold hairline on the felt under the dead segment, or keep as-is if clarity is preferred - design note only."
+        "title": "Scroll-cue chevron painted over the faded last text line instead of in a gutter",
+        "state": "tutorial-scoring-0 @ phone-landscape 915x412 (3d)",
+        "subsystem": "tutorial",
+        "detail": "The chevron at y~400 overlaps 'lesson walks you through six common scoring rules - each one is a'. Fix: reserve a 20 px gutter below the text clip and centre the chevron there; keep the 24 px fade above it."
       },
       {
         "rank": 12,
         "severity": "low",
-        "title": "Landscape chrome residuals: DISMISS pill contrast, side-dock 'STEP 5/6' grammar, tile-sheet capture with the dice modal undismissed",
-        "state": "menu, replay-library, settings @ phone-landscape (DISMISS); tutorial-basics-4 @ phone-landscape (side dock); tile-sheet @ phone-landscape",
-        "subsystem": "menu",
-        "detail": "DISMISS label is still ~0.55-alpha grey (#8c908e on #0d1310, 6.0:1 - passes AA but below the 0.62 secondary token used by EDIT and the micro-labels). The narrow (~167 px) side-docked card in basics-4 switches to 'STEP 5/6' while every other card says 'STEP n OF m', and its title wraps to two lines - let side docks cover non-chrome scene geometry so the card can take >= 240 px. The landscape tile-sheet capture shows the OPENING ROLLS modal still up over the debug sheet (phone and desktop tile-sheet are clean) - the dismiss tap did not land in landscape; check the recipe's dismiss hit target / the modal's tap-anywhere surface under that aspect."
+        "title": "Settings/replay residuals: Blue back grades to near-white at the far edge, dpr-1 stair-steps on the preview, replay empty-state card floats in void",
+        "state": "settings, settings-jade-plum @ phone + desktop; replay-library @ phone (140 CSS px above / 245 below the card) and desktop (130 / 235 px) (3d)",
+        "subsystem": "settings",
+        "detail": "Preview crops confirm the blue back's top face still reads pale-sky toward the far edge (env reflection), rail/glyph edges alias at dpr 1 on desktop, and the replay card is neither centred nor top-anchored. Rail corners are now inside the card and the LIVE PREVIEW pill clears the wood (fixed). Fix: clamp the back material (roughness ~0.35, envMapIntensity ~0.6) or bake a darker gradient; enable 4x MSAA / FXAA on the preview canvas when dpr < 1.5; vertically centre the replay card in the remaining viewport or anchor at top+24 and let the shelf canvas grow."
       },
       {
         "rank": 13,
         "severity": "low",
-        "title": "Settings/replay residuals: Blue back reads pale toward the far edge, dpr-1 stair-steps, phone replay page gap",
-        "state": "settings @ phone + desktop; settings, settings-jade-plum, replay-library @ desktop (dpr 1); replay-library @ phone",
-        "subsystem": "settings",
-        "detail": "The face-down Blue tile in the preview is visibly cooler/paler at its far edge than the Blue chip (compensateBackColor's global chroma x1.4 over-saturates cool hues - compensate per hue or raise back roughness to ~0.85). On desktop at dpr 1 the preview tiles/glyph strokes and the replay shelf show stair-stepped edges (SwiftShader ignores MSAA; supersample 2x when dpr < 1.5 - both scenes are 5-7 draw calls so it is cheap). On phone the replay library leaves ~280 CSS px of void between the Auto-record card and the shelf card (crop wg2-crops/p-replay-gap.png) - pull the shelf card up under the toggle or centre the pair vertically."
+        "title": "Bot discard in flight renders as a dark floating block under the tutorial veil",
+        "state": "tutorial-basics-4 @ phone 412x915 (3d)",
+        "subsystem": "tutorial",
+        "detail": "Crop x 100-400 / y 250-450: Haru's discard is mid-arc above the far wall while the coach card is up; dimmed by the veil it reads as a stray dark box. Fix: exempt in-flight tiles from the veil dim (they are what the 'watch the pool' step is teaching), or pause bot turns while a non-'watch' card is showing."
       }
     ],
     "history": [
@@ -474,6 +474,17 @@
         "openIssues": 13,
         "notes": "Round-2 integrated build: visual 8.6 / motion 8.6 / legibility 8.3 / polish 8.4 / cohesion 9.0; 10 of 13 round-1 issues verified fixed; zero errors; perf budget met on all 72 captures. Weakest subsystem: table (portrait band, landscape dice modal, desktop lobby framing) — round-3 table gauntlet in progress.",
         "at": "2026-09-04T12:10:00Z"
+      },
+      {
+        "round": 3,
+        "score": 8.7,
+        "errors": 0,
+        "perfPass": true,
+        "pass": true,
+        "critic": "whole-game-art-director",
+        "openIssues": 13,
+        "notes": "Rubric visual 8.8 / motion 8.7 / legibility 8.4 / polish 8.4 / cohesion 9.1. Verified 8 of 13 round-2 issues fixed (portrait band, landscape dice modal, desktop lobby framing, tutorial-claims-0 clip, side melds, landscape ClaimBar gap, zoom sliver, dead-wall tint). Weakest subsystem: menu (two low residuals). Zero errors, perf budget met on all 81 captures.",
+        "at": "2026-09-04T19:40:58.336Z"
       }
     ],
     "errors": 0,

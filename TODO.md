@@ -33,32 +33,33 @@ Live tracker for queued and out-of-scope work. The full design lives in [`docs/P
 
 ### Three.js rewrite follow-ups (PR #434 gauntlet — see `docs/STATUS.json`)
 
-The art-director critics left these open after the per-subsystem gauntlet. The next `/loop` iteration resumes from the lowest-scoring subsystem; each item names the state and viewport where the critic saw it.
+Every subsystem and the whole game pass their art-director critic (≥ 8.5, zero console errors, perf budget met). The residuals below are what the critics left open, ranked; each names the state and viewport where the critic saw it. The next `/loop` iteration resumes from the lowest-scoring subsystem (`docs/STATUS.json`).
 
-- **table** (final 8.3/10, below 8.5):
-  - [ ] [high] Desktop claim: toast stacks ON the ClaimBar, covering the PENG button — _match-claim @ desktop 1440x900 (3d)_
-  - [ ] [medium] Landscape ClaimBar lies on the near wall's tile backs — _match-claim, match-mid-hand @ phone-landscape 915x412 (3d)_
-  - [ ] [medium] River-zoom header: chrome row is not glass — rail and far-wall tops show between the pills — _match-river-zoom @ phone 412x915 (3d)_
-  - [ ] [medium] Landscape footer pills cover the bottom of the outer hand tiles — _match-dealt, match-my-turn, match-mid-hand, match-claim @ phone-landscape 915x412 (3d)_
-  - [ ] [medium] Portrait composition: ~155 px of dead void above and below the table — _match-dealt, match-my-turn, match-dealt-jade-plum @ phone 412x915 (3d)_
-  - [ ] [low] Dead-wall 0.18 step reads as misaligned stacks, not a marker — _match-dealt @ desktop (near wall right end), match-dealt @ phone (far wall right end)_
-  - [ ] [low] Portrait full-table river glyphs are soft at ~17.7 px — _match-mid-hand @ phone 412x915 (3d)_
-  - [ ] [low] Landscape chrome ☰ button crowds the far wall's top-left corner — _match-dealt @ phone-landscape 915x412 (3d)_
-  - [ ] [low] DISMISS pill text contrast looks under 4.5:1 — _all landscape states with the FullscreenPrompt_
-- **tutorial** (final 8.3/10, below 8.5):
-  - [ ] [medium] Landscape basics-0: spotlight ring bisects the hand row — _tutorial-basics-0 @ phone-landscape (classic)_
-  - [ ] [medium] Phone scoring-1: card floats 90 px below the ring, notch points at dimmed Rules chips — _tutorial-scoring-1 @ phone (classic)_
-  - [ ] [low] Landscape scoring-1: ring lights the opponent seat strip and desktop seat badges — _tutorial-scoring-1 @ phone-landscape and desktop (classic)_
-  - [ ] [low] Landscape scoring-intro step 0: centred card reads off-centre and kisses the hand row — _match-result (scoring-intro step 0) @ phone-landscape (classic)_
-  - [ ] [low] Progress dots and 'LESSON N/14' label count different things — _all tutorial states, all viewports_
-  - [ ] [low] 3D renderer: targeted steps still fall back to the centred card (known gap) — _tutorial-basics-0 @ phone / desktop (3d)_
-- **menu** (final 8.5/10, pass):
-  - [ ] [medium] Desktop: dice pair straddles the Tutorial card's top-right corner — _menu, menu-tutorials, menu-reduced-motion @ desktop 1440x900 (3d)_
-  - [ ] [medium] Phone portrait: drift tiles ghost inside the MATCH CODE input and across the Join match CTA — _menu, menu-tutorials @ phone 412x915 (3d)_
-  - [ ] [low] Landscape phone lesson sheet hard-clips the third card with no trailing inset — _menu-tutorials @ phone-landscape 915x412 (3d)_
-  - [ ] [low] Landscape replay library: Import button floats mid-header — _replay-library @ phone-landscape 915x412 (3d)_
-  - [ ] [low] Reduced-motion portrait backdrop has no visible drift field (known gap confirmed) — _menu-reduced-motion @ phone 412x915 (3d)_
-- **settings** (final 8.6/10, pass):
+- **table** (round 3: **8.6/10, pass**; 8.3 → 8.6 → 8.6):
+  - [ ] [medium] Dead-wall marker is portrait-only in practice; desktop and landscape dead stacks are a 12-luminance shade away from live stacks — _match-dealt, match-claim, match-late-hand @ desktop 1440x900; match-dealt, match-claim, match-late-hand @ phone-landscape 915x412 (3d)_
+  - [ ] [medium] Landscape lobby: the 3D waiting table is invisible behind the panel and the merged panel clips a gold segmented control at the viewport's bottom edge — _match-lobby @ phone-landscape 915x412 (3d)_
+  - [ ] [low] Portrait claim toast sits 4 CSS px above the far-wall tile tops, flush on the far rail — _match-mid-hand, match-claim @ phone 412x915 (3d) - 吃 CHI toast_
+  - [ ] [low] Landscape river zoom shows two DRAW affordances and the FULLSCREEN/DISMISS prompt spills out of the glass header onto the felt — _match-river-zoom-landscape @ phone-landscape 915x412 (3d)_
+  - [ ] [low] Desktop lobby: the far rail's wood line passes behind the seam between the SEATS and BOT SKILL panels as a brown smear — _match-lobby @ desktop 1440x900 (3d)_
+  - [ ] [low] Portrait 1x river glyphs: characters/honors read, 索 3-5 and 筒 5-7 are still pattern-counted at ~22-25 CSS px — _match-mid-hand, match-late-hand @ phone 412x915 (3d) - side rivers and far row_
+  - [ ] [low] Landscape zoom hand-rail thumbnails at 24x33 CSS px are marginal for dots/bamboo — _match-river-zoom-landscape @ phone-landscape 915x412 (3d)_
+- **tutorial** (round 2: **8.7/10, pass**; 8.3 → 8.7):
+  - [ ] [medium] 3D landscape own-hand ring runs through the footer badge and the SUIT sort pill — _tutorial-basics-2 @ phone-landscape 915x412 (3d)_
+  - [ ] [low] Green dragon 發 ink is 3.8-3.9:1 on the spotlit hand (and unlit); landscape red 萬 sits right at 4.5 — _tutorial-basics-2 @ phone, phone-landscape, desktop (3d)_
+  - [ ] [low] Scroll-cue chevron is painted over the last visible line instead of in the fade gutter — _tutorial-scoring-0 @ phone-landscape (3d and classic); tutorial-scoring-1 / match-result side dock @ phone-landscape (classic)_
+  - [ ] [low] Compact side dock says 'STEP 5/6' while every other card says 'STEP n OF m' — _tutorial-basics-4 @ phone-landscape (3d and classic)_
+  - [ ] [low] Desktop river ring clips the dealer chip's edge; chip inclusion differs per viewport — _tutorial-basics-4 @ desktop 1440x900 (3d); compare phone and phone-landscape_
+  - [ ] [low] Card settles 6 px after measurement during the entrance — _tutorial-basics-0 @ desktop (3d), observed under x1/x4/x8 CPU throttle_
+  - [ ] [low] Classic desktop scoring-1 ring top crosses the 北/南 seat badges (round-1 #3 residual) — _tutorial-scoring-1 / match-result @ desktop 1440x900 (classic)_
+- **menu** (round 2: **8.6/10, pass**; 8.5 → 8.6):
+  - [ ] [medium] Desktop: a drift tile back sits on the hero rack's 一萬 corner (rack keep-out is phone-only) — _menu, menu-tutorials @ desktop 1440x900 (3d)_
+  - [ ] [medium] Desktop replay shelf reads small and aliased inside a 620 px card — _replay-library @ desktop 1440x900 (3d, dpr 1)_
+  - [ ] [low] Reduced-motion portrait field is one lone edge-on tile in the left margin — _menu-reduced-motion @ phone 412x915 (3d)_
+  - [ ] [low] DISMISS pill label is ~0.55-alpha grey, below the 0.62 secondary-text spec — _menu, menu-tutorials, replay-library, settings @ phone-landscape 915x412 (3d)_
+  - [ ] [low] Settings landscape letterbox still leaves ~38 % of the preview canvas as void — _settings, settings-jade-plum, settings-landscape @ phone-landscape 915x412 (3d)_
+  - [ ] [low] Desktop dpr 1 preview: stair-step edges on tiles and glyph strokes — _settings, settings-jade-plum @ desktop 1440x900 (3d)_
+  - [ ] [low] Regression run hijacked by a stale serve on 4173 (process hazard, not a menu defect) — _npx playwright test three-menu/three-settings/... from the menu worktree_
+- **settings** (round 2: **8.6/10, pass**; 8.6):
   - [ ] [medium] Phone portrait: rail corners clip the frame edge and the Live preview pill sits on the wood — _settings / settings-jade-plum @ phone (412x915)_
   - [ ] [low] Blue back still reads cyan/pale toward the far edge — _settings @ phone + desktop_
   - [ ] [low] Desktop dpr 1 preview shows stair-step aliasing on tile edges and glyph strokes — _settings / settings-jade-plum @ desktop (1440x900, dpr 1)_
@@ -66,7 +67,7 @@ The art-director critics left these open after the per-subsystem gauntlet. The n
   - [ ] [low] Status pill and Live preview badge use 10 px labels (spec is 11 px) — _settings @ all viewports_
   - [ ] [low] match-dealt (table-owned) exceeds the triangle budget: 159,938 > 150,000 — _match-dealt @ phone, desktop, phone-landscape (--renderer 3d)_
   - [ ] [low] Phone landscape stage is small with ~45% of the canvas as empty void — _settings-landscape @ 915x412_
-- **whole game** (round 2: **8.6/10, pass** — visual 8.6 / motion 8.6 / legibility 8.3 / polish 8.4 / cohesion 9.0; round 1 was 8.2): remaining ranked issues in `docs/STATUS.json` → `wholeGame.issues`; the mediums are all table framing (portrait band under the near rail, landscape opening-rolls modal on the hand tops, desktop lobby table cropped) plus a tutorial-claims-0 capture caught mid camera-dolly — a round-3 table gauntlet is closing them.
+- **whole game** (round 3: **8.7/10, pass** — visual 8.8 / motion 8.7 / legibility 8.4 / polish 8.4 / cohesion 9.1; rounds 8.2 → 8.6 → 8.7): the round-3 critic verified 8 of 13 round-2 issues fixed; 13 ranked residuals remain in `docs/STATUS.json` → `wholeGame.issues`. The two mediums are both table: the dead-wall marker is only visible from the portrait camera (desktop / landscape need an inner-edge hairline or a side-face band), and the landscape pre-game lobby panel covers the whole waiting table and clips the BOT SKILL control at the viewport edge.
 - **blind judges**: 3 judges × 15 A/B pairs (3D vs pre-rewrite baseline, labels shuffled) → 45/45 preferred the rewrite (`docs/STATUS.json` → `blindJudges`).
 - [ ] Native (Android) still uses the classic shells — `expo-gl` port of `src/three/` is out of scope for this pass (ARCHITECTURE.md §0).
 
