@@ -164,7 +164,21 @@ export function createTileMaterial(
         diffuseColor.rgb = mix(body, faceTexel.rgb, showFace) * vTint;
         // Cue glow: warm the albedo toward gold as well as adding
         // emissive so blue / plum backs read gold, not washed-out white.
-        diffuseColor.rgb = mix(diffuseColor.rgb, uHighlightColor, vHighlight * 0.7);`,
+        // On a face the warming is masked by the texel's luminance so
+        // only the ivory body takes the gold: printed ink — black
+        // numerals, the red 萬, green bamboo — keeps its own colour and
+        // a spotlit hand stays legible (glyph contrast ≥ 4.5:1 at the
+        // top of the tutorial breath instead of ~1.4:1).
+        float faceLuma = dot(faceTexel.rgb, vec3(0.299, 0.587, 0.114));
+        float inkMask = mix(1.0, smoothstep(0.3, 0.6, faceLuma), showFace);
+        // Glow band along the face's edge — where the emissive gold read
+        // comes from on a lit face, instead of a flat wash over the ink.
+        float glowRim = smoothstep(0.72, 0.97, max(edge.x, edge.y));
+        diffuseColor.rgb = mix(diffuseColor.rgb, uHighlightColor, vHighlight * 0.7 * inkMask);
+        // …and the ink itself deepens a little under the light, so the
+        // lit face gains contrast (red 萬 ≥ 5:1 against the ivory) the
+        // way a printed glyph does under a lamp, rather than flattening.
+        diffuseColor.rgb *= 1.0 - 0.4 * vHighlight * (1.0 - inkMask);`,
       )
       .replace(
         '#include <roughnessmap_fragment>',
@@ -182,12 +196,15 @@ export function createTileMaterial(
       .replace(
         '#include <emissivemap_fragment>',
         `#include <emissivemap_fragment>
-        totalEmissiveRadiance += uHighlightColor * vHighlight * 0.55;`,
+        // Backs / sides: flat gold emissive. Faces: a rim glow plus a
+        // gentle lift on the ivory body only (masked off the ink).
+        float glowAmt = mix(0.55, 0.2 * inkMask + 0.5 * glowRim, showFace);
+        totalEmissiveRadiance += uHighlightColor * vHighlight * glowAmt;`,
       );
   };
   // Distinct cache key so three doesn't share the program with a stock
   // MeshPhysicalMaterial.
-  mat.customProgramCacheKey = () => 'mahjong-tile-v5';
+  mat.customProgramCacheKey = () => 'mahjong-tile-v7';
   return mat;
 }
 

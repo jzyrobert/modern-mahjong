@@ -100,6 +100,7 @@ export function SpotlightScrim({
   if (!halo) {
     return (
       <Svg
+        testID="tutorial-scrim"
         width={width}
         height={height}
         pointerEvents="none"
@@ -160,6 +161,10 @@ export function SpotlightScrim({
   // Side bands span between the corner centres; next to a square corner
   // they run to the halo edge (and the side bands past the outer edge,
   // so the corner square outside the hole is ramped, not left clear).
+  // An *open* (trimmed) side starts its ramp at the trim line itself
+  // rather than `FEATHER_IN` inside it: the content just above the cut
+  // (the dice modal's dismiss hint) stays fully lit and the neighbour
+  // below it fully dimmed, with no grey band across either.
   const topX = hLeft + rTL;
   const topW = Math.max(0, halo.width - rTL - rTR);
   const botX = hLeft + rBL;
@@ -185,6 +190,7 @@ export function SpotlightScrim({
 
   return (
     <Svg
+      testID="tutorial-scrim"
       width={width}
       height={height}
       pointerEvents="none"
@@ -218,16 +224,16 @@ export function SpotlightScrim({
             <Rect
               x={outer.left - seam}
               y={leftY}
-              width={rxL - inR + seam}
+              width={open.left ? f.left + seam : rxL - inR + seam}
               height={leftH}
               fill={`url(#${uid}-l)`}
             />
           ) : null}
           {rightH > 0 ? (
             <Rect
-              x={hRight - R + inR}
+              x={open.right ? hRight : hRight - R + inR}
               y={rightY}
-              width={rxR - inR + seam}
+              width={open.right ? f.right + seam : rxR - inR + seam}
               height={rightH}
               fill={`url(#${uid}-r)`}
             />
@@ -237,16 +243,16 @@ export function SpotlightScrim({
               x={topX}
               y={outer.top - seam}
               width={topW}
-              height={ryT - inR + seam}
+              height={open.top ? f.top + seam : ryT - inR + seam}
               fill={`url(#${uid}-t)`}
             />
           ) : null}
           {botW > 0 ? (
             <Rect
               x={botX}
-              y={hBottom - R + inR}
+              y={open.bottom ? hBottom : hBottom - R + inR}
               width={botW}
-              height={ryB - inR + seam}
+              height={open.bottom ? f.bottom + seam : ryB - inR + seam}
               fill={`url(#${uid}-b)`}
             />
           ) : null}

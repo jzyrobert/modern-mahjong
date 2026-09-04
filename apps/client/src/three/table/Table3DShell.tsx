@@ -336,7 +336,12 @@ export function Table3DShell(props: Table3DShellProps) {
           if (s.zone === 'hand') {
             const r = scene.tileRect(s.id);
             hitRef.current?.setTileRect(s.id, r);
-            if (r) handRects.push({ ...r });
+            // The tutorial's `own-hand` rect unions the *settled* poses,
+            // so it is stable from the first frame of the deal (the
+            // tap targets above still follow the visible tiles).
+            const settled = scene.settledTileRect(s.id);
+            if (settled) handRects.push({ ...settled });
+            else if (r) handRects.push({ ...r });
           } else if ((s.zone === 'wall' || s.zone === 'deadWall') && s.rel === 0) {
             const r = scene.tileRect(s.id);
             if (r) nearWallRects.push({ ...r });

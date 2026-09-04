@@ -1,7 +1,15 @@
 import type { OpeningRolls, Seat } from '@mahjong/game-logic';
 import { SEATS } from '@mahjong/game-logic';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Pressable, Text, View, useWindowDimensions } from 'react-native';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import {
+  Animated,
+  Easing,
+  Platform,
+  Pressable,
+  Text,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 import { nameForSeat, useGame } from '../state/game';
 import { LESSONS, useActiveTutorialStep, useTutorial } from '../state/tutorial';
 import { resolveRenderer } from '../three/renderer';
@@ -75,6 +83,9 @@ const GLASS_DICE = {
 // triggers the ceremony — only the exact seed the user dismissed is
 // suppressed.
 const DISMISSED_STORAGE_KEY = 'mj.dismissedDiceSeed.v1';
+
+/** Tags the fading-out panel for the tutorial chrome scan (`IGNORE_ATTR`). */
+const IGNORE_PROPS: Record<string, unknown> = { dataSet: { tutorialIgnore: '1' } };
 
 declare global {
   // eslint-disable-next-line no-var
@@ -168,6 +179,9 @@ export function DiceCeremony() {
   // fading. The dismiss timer is unchanged so on-screen duration is
   // the same either way.
   const { fade, fadeOut } = useFadeInOut({ visible: open });
+  // Seed whose dismissal is fading out: the panel is tagged so the
+  // tutorial's chrome scan ignores it while it goes (see `IGNORE_ATTR`).
+  const [dismissingSeed, setDismissingSeed] = useState<number | null>(null);
 
   // Fade out then commit the dismissal. In a tutorial session the
   // dismissal pins `dismissedTutorialSeed` in the tutorial store
@@ -177,6 +191,7 @@ export function DiceCeremony() {
   // tap-to-dismiss handler.
   const dismiss = useCallback(
     (s: number) => {
+      setDismissingSeed(s);
       fadeOut(() => {
         if (tutorialLessonId) {
           setDismissedTutorialSeed(s);
@@ -230,8 +245,32 @@ export function DiceCeremony() {
       registry.set('dice-ceremony', null);
     };
   }, [registry]);
-
   const visible = open && dealer !== undefined;
+  // Web: register the rect synchronously in the commit that mounts the
+  // card, so the coach-mark's spotlight hole opens on the modal's first
+  // paint. The `onLayout` path below runs through RNW's ResizeObserver +
+  // `setTimeout`, which a CPU-starved page (software GL, a low-end
+  // phone) can hold for hundreds of ms — the user sat behind a blank
+  // full-screen dim meanwhile. Native has no DOM and keeps `onLayout`.
+  useLayoutEffect(() => {
+    if (Platform.OS !== 'web' || !visible) return;
+    const rootEl = registry.rootRef.current as unknown as {
+      getBoundingClientRect?: () => { left: number; top: number };
+    } | null;
+    const el = cardRef.current as unknown as {
+      getBoundingClientRect?: () => { left: number; top: number; width: number; height: number };
+    } | null;
+    if (!rootEl?.getBoundingClientRect || !el?.getBoundingClientRect) return;
+    const r = rootEl.getBoundingClientRect();
+    const t = el.getBoundingClientRect();
+    if (t.width <= 0 || t.height <= 0) return;
+    registry.set('dice-ceremony', {
+      x: t.left - r.left,
+      y: t.top - r.top,
+      w: t.width,
+      h: t.height,
+    });
+  }, [registry, visible]);
   if (!visible) return null;
   const rolling = SEATS.filter((s) => rolls.dice[s]);
   const title = rolls.fullRoll ? 'Opening rolls' : 'Dealer rolls';
@@ -250,6 +289,9 @@ export function DiceCeremony() {
         dismiss(seed);
       }}
       testID="dice-ceremony"
+      // `dataSet` is a react-native-web extension (renders `data-*`),
+      // absent from Pressable's cross-platform prop types.
+      {...(dismissingSeed === seed ? IGNORE_PROPS : null)}
       style={{
         position: 'absolute',
         left: 0,
@@ -429,15 +471,25 @@ export function DiceCeremony() {
           })}
         </View>
         {glass ? (
+          // Short (landscape phone): the dealer line and the dismiss hint
+          // share one row, so the panel ends ~20 px sooner and the
+          // tutorial's bottom strip (`placement.kind === 'strip'`) sits
+          // clear of it below the hand row instead of over its footer.
           <View
             style={{
-              marginTop: short ? 12 : 18,
+              marginTop: short ? 10 : 18,
               paddingTop: short ? 8 : 12,
               borderTopWidth: 1,
               borderTopColor: 'rgba(255,255,255,0.12)',
               alignSelf: 'stretch',
               alignItems: 'center',
-              gap: short ? 4 : 6,
+              justifyContent: 'center',
+              flexDirection: short ? 'row' : 'column',
+              // Wrap only in the row layout: a wrapping column packs its
+              // single line at the start and left-aligns the two lines.
+              flexWrap: short ? 'wrap' : 'nowrap',
+              columnGap: 10,
+              rowGap: short ? 4 : 6,
             }}
           >
             <Text style={{ fontSize: 13, color: GLASS_DICE.text, fontFamily: GLASS_DICE.font }}>
@@ -446,8 +498,15 @@ export function DiceCeremony() {
                 {SEAT_WIND_GLYPH[dealer as Seat]} {dealerName}
               </Text>
             </Text>
-            <Text style={{ fontSize: 11, color: GLASS_DICE.text2, fontFamily: GLASS_DICE.font }}>
-              Tap anywhere to dismiss
+            <Text
+              style={{
+                fontSize: 11,
+                lineHeight: short ? 16 : undefined,
+                color: GLASS_DICE.text2,
+                fontFamily: GLASS_DICE.font,
+              }}
+            >
+              {short ? '·  Tap anywhere to dismiss' : 'Tap anywhere to dismiss'}
             </Text>
           </View>
         ) : (

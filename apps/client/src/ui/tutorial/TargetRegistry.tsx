@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
 } from 'react';
@@ -258,9 +259,32 @@ export function TutorialTarget({ id, children, enabled = true, style }: Tutorial
     return step?.targetId === id;
   });
 
+  // Web: the View refs are DOM elements and `getBoundingClientRect` is
+  // synchronous, so the rect lands in the registry inside the same
+  // commit — the spotlight hole opens on the target's first paint. RNW's
+  // `measureInWindow` goes through `setTimeout`, and the rAF hop below
+  // adds a frame on top; on a CPU-starved page (three software-GL tabs,
+  // a low-end phone) that left the user behind a full-screen dim with no
+  // ring for hundreds of ms.
+  const measureSync = useCallback((): boolean => {
+    if (Platform.OS !== 'web' || !enabled || cancelledRef.current) return false;
+    const rootEl = api.rootRef.current as unknown as {
+      getBoundingClientRect?: () => { left: number; top: number };
+    } | null;
+    const el = ref.current as unknown as {
+      getBoundingClientRect?: () => { left: number; top: number; width: number; height: number };
+    } | null;
+    if (!rootEl?.getBoundingClientRect || !el?.getBoundingClientRect) return false;
+    const r = rootEl.getBoundingClientRect();
+    const t = el.getBoundingClientRect();
+    api.set(id, { x: t.left - r.left, y: t.top - r.top, w: t.width, h: t.height });
+    return true;
+  }, [api, id, enabled]);
+
   const measureAndRegister = useCallback(() => {
     if (!enabled || !ref.current) return;
     if (cancelledRef.current) return;
+    if (measureSync()) return;
     const rootNode = api.rootRef.current as unknown as MeasurableNode | null;
     if (!rootNode) return;
     // Defer to the next frame so any pending layout commits (a sibling
@@ -291,7 +315,7 @@ export function TutorialTarget({ id, children, enabled = true, style }: Tutorial
         });
       });
     });
-  }, [api, id, enabled]);
+  }, [api, id, enabled, measureSync]);
 
   // Re-measure after every render commit. `onLayout` only fires when
   // the wrapper's own frame changes, but the *screen* position can
@@ -302,7 +326,11 @@ export function TutorialTarget({ id, children, enabled = true, style }: Tutorial
   // dedupes identical rects, so this is cheap and self-healing.
   // useLayoutEffect would run before paint, but `measureInWindow` is
   // async on native, so a regular useEffect is sufficient.
-  useEffect(() => {
+  // (Web runs this before paint — see `measureSync` — so the overlay's
+  // first frame already has the rect; native measures asynchronously
+  // anyway, so the effect timing there is immaterial.)
+  const useCommitEffect = Platform.OS === 'web' ? useLayoutEffect : useEffect;
+  useCommitEffect(() => {
     measureAndRegister();
   });
 

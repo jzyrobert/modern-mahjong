@@ -48,6 +48,27 @@ export class CameraRig {
     this.goal = p;
   }
 
+  /**
+   * A scratch camera parked at the *goal* preset (no spring lag, no
+   * parallax), sharing this rig's aspect. Projections through it give
+   * the rect a world point will settle at once the ease-in finishes —
+   * the tutorial overlay keys its keep-outs off that, so a coach-mark
+   * placed during the intro camera move never has to re-dock.
+   */
+  goalCamera(out: PerspectiveCamera = this.scratch): PerspectiveCamera {
+    const g = this.goal;
+    out.aspect = this.camera.aspect;
+    out.fov = g.fov;
+    out.near = this.camera.near;
+    out.far = this.camera.far;
+    out.position.set(g.position[0], g.position[1], g.position[2]);
+    out.lookAt(g.target[0], g.target[1], g.target[2]);
+    out.updateProjectionMatrix();
+    out.updateMatrixWorld();
+    return out;
+  }
+  private readonly scratch = new PerspectiveCamera(45, 1, 0.1, 100);
+
   /** Pointer in normalised device coords (-1..1). */
   setPointer(nx: number, ny: number): void {
     this.parallaxGoal.set(nx * this.parallaxStrength, ny * this.parallaxStrength * 0.5, 0);

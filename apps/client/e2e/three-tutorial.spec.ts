@@ -607,3 +607,102 @@ test.describe('classic coach-marks: landscape side dock', () => {
     expect(c.y + c.height + 12).toBeLessThanOrEqual(handTop + 0.5);
   });
 });
+
+/**
+ * Readiness under CPU pressure (round-2 critic, issue 4). With three
+ * software-GL Chromiums in parallel the first coach-mark sat behind a
+ * full-screen dim with no ring and no card for over a second, and the
+ * CTA was not clickable for eight. The overlay now registers target
+ * rects and measures the card synchronously on web, paints the card at
+ * once and animates opacity only, so the hole, the card and a working
+ * CTA all land within `READY_BUDGET_MS` of the scrim — asserted here
+ * under a 4× CDP CPU throttle on top of SwiftShader.
+ */
+test.describe('3D coach-marks: readiness under CPU throttling', () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+  const READY_BUDGET_MS = 1500;
+
+  test('scrim hole, card and clickable CTA land together under a 4x CPU throttle', async ({
+    page,
+  }) => {
+    const pageErrors: string[] = [];
+    page.on('pageerror', (e) => pageErrors.push(String(e)));
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+
+    await page.goto('/');
+    await expect(page.getByRole('heading', { name: 'Modern Mahjong' })).toBeVisible();
+    await page.evaluate(() => {
+      (
+        globalThis as { __MAHJONG_TEST_START_TUTORIAL__?: (id: string) => void }
+      ).__MAHJONG_TEST_START_TUTORIAL__?.('basics');
+    });
+
+    // In-page sampler: the first frame with the scrim, the first with the
+    // ring (the hole is cut), and the first with a CTA that is laid out
+    // and at least half opaque (the entrance fades from 0.55, not 0).
+    const t = await page.evaluate(async () => {
+      const q = (id: string) =>
+        document.querySelector(`[data-testid="${id}"]`) as HTMLElement | null;
+      const opacityOf = (el: HTMLElement): number => {
+        let o = 1;
+        let n: HTMLElement | null = el;
+        for (let i = 0; i < 8 && n; i++, n = n.parentElement)
+          o = Math.min(o, Number(getComputedStyle(n).opacity));
+        return o;
+      };
+      const start = performance.now();
+      let scrimAt: number | null = null;
+      let ringAt: number | null = null;
+      let ctaAt: number | null = null;
+      while (performance.now() - start < 15_000) {
+        const now = performance.now();
+        if (scrimAt === null && q('tutorial-scrim')) scrimAt = now;
+        if (ringAt === null && q('tutorial-halo')) ringAt = now;
+        if (ctaAt === null) {
+          const c = q('tutorial-next');
+          const r = c?.getBoundingClientRect();
+          if (c && r && r.width > 0 && r.height > 0 && opacityOf(c) >= 0.5) ctaAt = now;
+        }
+        if (scrimAt !== null && ringAt !== null && ctaAt !== null) break;
+        await new Promise((r) => setTimeout(r, 16));
+      }
+      return { scrimAt, ringAt, ctaAt };
+    });
+    expect(t.scrimAt, 'scrim never appeared').not.toBeNull();
+    expect(t.ringAt, 'ring never appeared').not.toBeNull();
+    expect(t.ctaAt, 'CTA never appeared').not.toBeNull();
+    const ringLag = t.ringAt! - t.scrimAt!;
+    const ctaLag = t.ctaAt! - t.scrimAt!;
+    expect(ringLag, `hole cut ${Math.round(ringLag)} ms after the scrim`).toBeLessThanOrEqual(
+      READY_BUDGET_MS,
+    );
+    expect(ctaLag, `card up ${Math.round(ctaLag)} ms after the scrim`).toBeLessThanOrEqual(
+      READY_BUDGET_MS,
+    );
+
+    // The CTA is clickable at once — the entrance fade never gates
+    // pointer events, so a hit test at its centre resolves to the button
+    // itself (not the scrim, not a fading wrapper) and a tap there
+    // advances the lesson. A raw pointer click, as a user's tap would be:
+    // Playwright's actionability wait needs two settled animation frames,
+    // which the 3D scene's first (throttled) frames can hold up for
+    // longer than the budget without the button being any less tappable.
+    const cta = page.getByTestId('tutorial-next');
+    const box = await cta.boundingBox();
+    expect(box).not.toBeNull();
+    const cx = box!.x + box!.width / 2;
+    const cy = box!.y + box!.height / 2;
+    const hit = await page.evaluate(
+      ([x, y]) => {
+        const el = document.elementFromPoint(x, y);
+        return el?.closest('[data-testid="tutorial-next"]') ? 'cta' : (el?.tagName ?? 'nothing');
+      },
+      [cx, cy] as const,
+    );
+    expect(hit, 'hit test at the CTA centre').toBe('cta');
+    await page.mouse.click(cx, cy);
+    await expect(page.getByText('Welcome to mahjong')).toBeVisible({ timeout: 5_000 });
+    expect(pageErrors, pageErrors.join('\n')).toEqual([]);
+  });
+});

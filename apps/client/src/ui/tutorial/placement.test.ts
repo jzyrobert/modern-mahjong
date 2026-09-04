@@ -3,6 +3,7 @@ import {
   CARD_GAP,
   CENTRE_CHROME_GAP,
   CENTRE_DRIFT_MAX,
+  CENTRE_MAX_WIDTH_SHORT,
   CHROME_GAP,
   FEATHER_OUT,
   FEATHER_TIGHT,
@@ -14,11 +15,13 @@ import {
   SIDE_GUTTER,
   STRADDLE_MAX,
   STRADDLE_PAD,
+  STRIP_HEIGHT_ESTIMATE,
   centredRoom,
   encloseStraddlers,
   featherFor,
   focusRect,
   haloFor,
+  intersectionArea,
   placeCaption,
   safeInset,
   sideIdealTop,
@@ -378,14 +381,15 @@ describe('placeCaption', () => {
 describe('placeCaption: centred card over chrome', () => {
   // Landscape phone, scoring-intro step 0: the Order / Player toggle in
   // the discards header and the hand row at the bottom both fall under
-  // a dead-centre 300 px card.
+  // a dead-centre 300 px card. (Short viewports widen the centred card
+  // to CENTRE_MAX_WIDTH_SHORT — see the width tests below.)
   const toggle = { left: 602, top: 51, width: 94, height: 17 };
   const hand = { left: 210, top: 350, width: 560, height: 62 };
 
   test('dead centre with nothing underneath', () => {
     const p = placeCaption({ viewport: landscape, halo: null, cardHeight: 300 });
     expect(p.kind).toBe('center');
-    expect(p.left).toBe(Math.round((915 - 440) / 2));
+    expect(p.left).toBe(Math.round((915 - CENTRE_MAX_WIDTH_SHORT) / 2));
     expect(p.overlapsChrome).toBe(false);
   });
 
@@ -429,7 +433,7 @@ describe('placeCaption: centred card over chrome', () => {
       cardHeight: 300,
       avoid: [tallToggle, hand],
     });
-    const idealLeft = Math.round((915 - 440) / 2);
+    const idealLeft = Math.round((915 - CENTRE_MAX_WIDTH_SHORT) / 2);
     expect(Math.abs(p.left - idealLeft)).toBeLessThanOrEqual(CENTRE_DRIFT_MAX);
     expect(p.overlapsChrome).toBe(true);
     // Fully covered, never bisected.
@@ -452,13 +456,15 @@ describe('placeCaption: centred card over chrome', () => {
       avoid: [toggle45, hand352],
     });
     expect(p.top + 305 + CENTRE_CHROME_GAP).toBeLessThanOrEqual(hand352.top);
-    expect(Math.abs(p.left - Math.round((915 - 440) / 2))).toBeLessThanOrEqual(CENTRE_DRIFT_MAX);
+    expect(Math.abs(p.left - Math.round((915 - CENTRE_MAX_WIDTH_SHORT) / 2))).toBeLessThanOrEqual(
+      CENTRE_DRIFT_MAX,
+    );
   });
 
   test('prefers a vertical shift over a sideways one when both clear the chrome', () => {
     const chip = { left: 430, top: 60, width: 60, height: 20 };
     const p = placeCaption({ viewport: landscape, halo: null, cardHeight: 200, avoid: [chip] });
-    expect(p.left).toBe(Math.round((915 - 440) / 2));
+    expect(p.left).toBe(Math.round((915 - CENTRE_MAX_WIDTH_SHORT) / 2));
     expect(p.overlapsChrome).toBe(false);
     expect(p.top).toBeGreaterThanOrEqual(60 + 20 + CENTRE_CHROME_GAP);
   });
@@ -712,5 +718,106 @@ describe('placeCaption: keepClear (partly spotlit target)', () => {
     expect(p.notch).not.toBeNull();
     expect(p.overlapsChrome).toBe(true);
     expect(inside(p, 330, phone)).toBe(true);
+  });
+});
+
+describe('placeCaption: landscape bottom strip', () => {
+  // The 3D dice panel on a landscape phone: 620 px wide (12 px strips on
+  // either side are far below SIDE_CARD_MIN_WIDTH), trimmed above the
+  // hand row at y ≈ 298, so neither vertical slot fits a card either.
+  const modal = { left: 139, top: 87, width: 637, height: 211 };
+
+  test('a wide modal with no slot and no side strip gets the bottom strip, not the overlap dock', () => {
+    const p = placeCaption({ viewport: landscape, halo: modal, cardHeight: 235 });
+    expect(p.kind).toBe('strip');
+    expect(p.left).toBe(12);
+    expect(p.width).toBe(915 - 24);
+    // Unmeasured: the estimate keeps the strip inside the safe area…
+    expect(p.top).toBe(412 - 12 - STRIP_HEIGHT_ESTIMATE);
+    expect(p.notch).toBeNull();
+    // …and it never climbs onto the lit modal.
+    expect(p.top).toBeGreaterThanOrEqual(modal.top + modal.height);
+  });
+
+  test('the measured strip height positions it, the card height never does', () => {
+    const p = placeCaption({ viewport: landscape, halo: modal, cardHeight: null, stripHeight: 89 });
+    expect(p.kind).toBe('strip');
+    expect(p.top).toBe(412 - 12 - 89);
+    // A strip-sized *card* height would make the vertical slot look like
+    // it fits; the overlay keeps the two measurements apart for exactly
+    // this reason, so a card of 89 px here is a caller bug — but the
+    // strip height alone must not flip the dock.
+    const again = placeCaption({
+      viewport: landscape,
+      halo: modal,
+      cardHeight: 235,
+      stripHeight: 89,
+    });
+    expect(again.kind).toBe('strip');
+  });
+
+  test('covers the dimmed hand row and reports it so the strip paints solid', () => {
+    const hand = { left: 110, top: 302, width: 700, height: 70 };
+    const p = placeCaption({ viewport: landscape, halo: modal, cardHeight: 235, avoid: [hand] });
+    expect(p.kind).toBe('strip');
+    expect(p.overlapsChrome).toBe(true);
+  });
+
+  test('portrait keeps the overlap-bottom fallback', () => {
+    const tall = { left: 20, top: 40, width: 372, height: 800 };
+    const p = placeCaption({ viewport: phone, halo: tall, cardHeight: 240 });
+    expect(p.kind).toBe('below');
+  });
+});
+
+describe('placeCaption: side dock beside a modal is deterministic', () => {
+  // Desktop 3D dice panel taller than either vertical slot allows, with
+  // the right seat badge sitting in the right strip at mid-height.
+  const modal = { left: 400, top: 200, width: 640, height: 500 };
+  const badge = { left: 1140, top: 420, width: 150, height: 60 };
+
+  test('a badge within the halo span is covered whole at the ideal top, found or not', () => {
+    const without = placeCaption({ viewport: desktop, halo: modal, cardHeight: 248 });
+    const withBadge = placeCaption({
+      viewport: desktop,
+      halo: modal,
+      cardHeight: 248,
+      avoid: [badge],
+    });
+    expect(without.kind).toBe('right');
+    expect(withBadge.kind).toBe('right');
+    expect(withBadge.top).toBe(without.top);
+    expect(withBadge.left).toBe(without.left);
+    // The card paints solid over the badge it swallowed.
+    expect(withBadge.overlapsChrome).toBe(true);
+  });
+
+  test('a badge the card would bisect still moves it', () => {
+    const without = placeCaption({ viewport: desktop, halo: modal, cardHeight: 248 });
+    const straddling = { left: 1140, top: without.top + 248 - 20, width: 150, height: 60 };
+    const p = placeCaption({
+      viewport: desktop,
+      halo: modal,
+      cardHeight: 248,
+      avoid: [straddling],
+    });
+    expect(p.kind).toBe('right');
+    const card = { left: p.left, top: p.top, width: p.width, height: 248 };
+    const a = intersectionArea(card, straddling);
+    expect(a === 0 || a === straddling.width * straddling.height).toBe(true);
+  });
+});
+
+describe('placeCaption: centred card width on a short viewport', () => {
+  test('landscape phone widens the centred card to CENTRE_MAX_WIDTH_SHORT', () => {
+    const p = placeCaption({ viewport: landscape, halo: null, cardHeight: 200 });
+    expect(p.kind).toBe('center');
+    expect(p.width).toBe(CENTRE_MAX_WIDTH_SHORT);
+    expect(p.left).toBe(Math.round((915 - CENTRE_MAX_WIDTH_SHORT) / 2));
+  });
+
+  test('portrait and desktop keep CARD_MAX_WIDTH', () => {
+    expect(placeCaption({ viewport: desktop, halo: null, cardHeight: 200 }).width).toBe(440);
+    expect(placeCaption({ viewport: phone, halo: null, cardHeight: 200 }).width).toBe(412 - 24);
   });
 });

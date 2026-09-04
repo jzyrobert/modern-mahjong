@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   Animated,
   Easing,
@@ -52,6 +52,7 @@ import {
 import type { Lesson, LessonStep } from './types';
 import { useChromeRects } from './useChromeRects';
 import { useReducedMotion } from './useReducedMotion';
+import { useSceneClippedRect } from './useSceneClip';
 import { useFocusedRect, useFollowedRect, useSettledRect } from './useTargetTracking';
 import { useTutorialController } from './useTutorialController';
 
@@ -59,27 +60,30 @@ import { useTutorialController } from './useTutorialController';
 const CARD_EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
 
 /**
- * Web card entrance: fade + 8 px slide as a compiled CSS keyframe class
+ * Web card entrance: a short fade as a compiled CSS keyframe class
  * (`animationKeyframes` is a react-native-web extension that only works
  * through StyleSheet.create). Compositor-driven, starts on the element's
  * first frame, and needs no painted "from" state or JS ticks — a
  * JS-driven `Animated.timing` depends on requestAnimationFrame, which a
  * software-rendered or CPU-starved page can stall for hundreds of ms
  * (the verifier caught the card frozen at opacity 0).
+ *
+ * Opacity only, from `ENTRANCE_FROM` rather than 0: the card's box never
+ * moves, so the CTA is clickable the moment the step changes (a
+ * translate would keep Playwright — and a user's first tap — waiting for
+ * the box to settle across two frames, which a starved renderer can
+ * stretch to seconds), and a frame caught at the start of the fade still
+ * shows a readable card instead of a blank spot on the scrim.
  */
+const ENTRANCE_FROM = 0.55;
 const webEntrance =
   Platform.OS === 'web'
     ? (() => {
-        const frames = [
-          {
-            from: { opacity: 0, transform: 'translateY(8px)' },
-            to: { opacity: 1, transform: 'translateY(0px)' },
-          },
-        ];
+        const frames = [{ from: { opacity: ENTRANCE_FROM }, to: { opacity: 1 } }];
         return StyleSheet.create({
           normal: {
             animationKeyframes: frames,
-            animationDuration: '220ms',
+            animationDuration: '200ms',
             animationTimingFunction: CARD_EASE,
             animationFillMode: 'both',
           },
@@ -178,7 +182,10 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
   const rootRef = useRef<View | null>(null);
   const originNode = () =>
     rootRef.current as unknown as { getBoundingClientRect(): DOMRect } | null;
-  const registeredRect = useTutorialTargetRect(targetId);
+  // The 3D table clips the discard pool to the river interior it
+  // publishes, so the ring stays off the walls; other targets and the
+  // classic renderer pass straight through.
+  const registeredRect = useSceneClippedRect(useTutorialTargetRect(targetId), targetId, originNode);
   // Optional focus band (the result panel's score header + hand): the
   // ring, the card and the tap panels all work from the clipped rect.
   const liveRect = useFocusedRect(
@@ -215,13 +222,25 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
   const [overlaySize, setOverlaySize] = useState({ w: window.width, h: window.height });
 
   // Card height, measured per step. Keyed so a stale height from the
-  // previous step (or a previous viewport) is never used for this one —
-  // the card stays invisible until its own measurement lands, then
-  // fades in at the right spot. No effect-based reset needed.
+  // previous step (or a previous viewport) is never used for this one.
+  // On web the measurement lands synchronously before the first paint
+  // (layout effect below); native shows the card once it has landed.
+  // `mode` records which layout was measured — the regular card or the
+  // landscape bottom strip — so a strip's ~90 px never stands in for the
+  // card height in the fits checks (and flips the dock back and forth).
   const measureKey = `${stepKey}|${window.width}x${window.height}`;
-  const [measured, setMeasured] = useState<{ key: string; height: number } | null>(null);
-  const cardHeight = measured?.key === measureKey ? measured.height : null;
+  const [measured, setMeasured] = useState<{
+    key: string;
+    height: number;
+    mode: 'card' | 'strip';
+  } | null>(null);
+  const cardHeight =
+    measured?.key === measureKey && measured.mode === 'card' ? measured.height : null;
+  const stripHeight =
+    measured?.key === measureKey && measured.mode === 'strip' ? measured.height : null;
   const cardRef = useRef<View | null>(null);
+  /** Layout the card is currently rendered in (read by the measurers). */
+  const modeRef = useRef<'card' | 'strip'>('card');
   // Body (ScrollView) height, same keying — `cardHeight - bodyHeight` is
   // the card's real chrome, which sizes the body cap below.
   const [bodyMeasured, setBodyMeasured] = useState<{ key: string; height: number } | null>(null);
@@ -242,13 +261,14 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
   // the rect here positions the card correctly on its very first paint;
   // `onLayout` stays attached for later size changes (font load).
   useLayoutEffect(() => {
-    if (Platform.OS !== 'web' || cardHeight !== null) return;
+    if (Platform.OS !== 'web') return;
+    if ((modeRef.current === 'strip' ? stripHeight : cardHeight) !== null) return;
     const node = cardRef.current as unknown as {
       getBoundingClientRect?: () => { height: number };
     } | null;
     const h = node?.getBoundingClientRect?.().height ?? 0;
-    if (h > 0) setMeasured({ key: measureKey, height: h });
-  }, [cardHeight, measureKey]);
+    if (h > 0) setMeasured({ key: measureKey, height: h, mode: modeRef.current });
+  }, [cardHeight, stripHeight, measureKey]);
 
   // The ring grows to enclose any small control it would otherwise
   // bisect (the wall counter under the dice modal) and is cut back from
@@ -267,9 +287,12 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
     viewport: { width: window.width, height: window.height },
     halo: cardHalo,
     cardHeight,
+    stripHeight,
     avoid: avoidForCard,
     keepClear,
   });
+  const strip = placement.kind === 'strip';
+  modeRef.current = strip ? 'strip' : 'card';
   const solid = placement.overlapsChrome;
   const glassBg = solid ? GLASS_BG_SOLID : GLASS_BG;
   publishLayout({
@@ -294,7 +317,10 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
   // path below.
   const opacity = useRef(new Animated.Value(0)).current;
   const slide = useRef(new Animated.Value(8)).current;
-  const ready = cardHeight !== null;
+  // Web paints the card at once (its measurement lands before the first
+  // paint, and the estimate-placed card is already in the right spot);
+  // native waits for the async measurement so the card never jumps.
+  const ready = Platform.OS === 'web' || (strip ? stripHeight : cardHeight) !== null;
   useEffect(() => {
     if (!ready || Platform.OS === 'web') return;
     opacity.setValue(0);
@@ -329,32 +355,34 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
   // fits between the safe insets even for a narrow side dock (landscape
   // phone beside the result panel). `CHROME` approximates everything in
   // the card that is not body text; overflow scrolls inside the card.
-  const chrome = compact ? 220 : 236;
-  let bodyMaxHeight = Math.max(64, window.height - safeInset(window.width) * 2 - chrome);
-  if (cardHeight !== null && bodyHeight !== null) {
-    // Real chrome (everything but the body), taken once per step from the
-    // first pair of measurements — before any cap has moved the body, so
-    // the two agree. Later pairs can be a render apart (the body reports
-    // its new height before the card does) and would inflate the chrome
-    // by exactly the amount the body just shrank.
-    if (chromeRef.current.key !== measureKey)
-      chromeRef.current = { key: measureKey, chrome: cardHeight - bodyHeight };
-    const chromeReal = chromeRef.current.chrome;
-    // Centred card: room between the chrome above it and the hand row.
-    // The cap depends only on those rects — never on the card's own
-    // height or dock — so it follows the 3D camera easing in without
-    // ping-ponging.
-    // (Docked cards are deliberately not capped this way: their dock
-    // kind depends on the card height, and a cap keyed to the dock
-    // oscillated between an above dock and a side dock every frame.)
-    if (keepOut) {
-      const room = centredRoom(keepOut, avoidForCard, window, placement.width);
-      bodyMaxHeight = Math.min(bodyMaxHeight, room - chromeReal);
-    }
+  const chromeEstimate = compact ? 220 : 236;
+  let bodyMaxHeight = Math.max(64, window.height - safeInset(window.width) * 2 - chromeEstimate);
+  // Real chrome (everything but the body), taken once per step from the
+  // first pair of measurements — before any cap has moved the body, so
+  // the two agree. Later pairs can be a render apart (the body reports
+  // its new height before the card does) and would inflate the chrome
+  // by exactly the amount the body just shrank.
+  if (cardHeight !== null && bodyHeight !== null && chromeRef.current.key !== measureKey)
+    chromeRef.current = { key: measureKey, chrome: cardHeight - bodyHeight };
+  // Centred card: room between the chrome above it and the hand row.
+  // The cap depends only on those rects — never on the card's own
+  // height or dock — so it follows the 3D camera easing in without
+  // ping-ponging. It applies from the very first render (with the
+  // chrome estimate until the real chrome is known) so the line count
+  // the user sees does not depend on when the measurements landed.
+  // (Docked cards are deliberately not capped this way: their dock
+  // kind depends on the card height, and a cap keyed to the dock
+  // oscillated between an above dock and a side dock every frame.)
+  if (keepOut) {
+    const chromeNow =
+      chromeRef.current.key === measureKey ? chromeRef.current.chrome : chromeEstimate;
+    const room = centredRoom(keepOut, avoidForCard, window, placement.width);
+    bodyMaxHeight = Math.min(bodyMaxHeight, room - chromeNow);
   }
   // Snap a capped body to whole lines so the scroll edge falls between
   // lines instead of slicing one in half; never below three lines.
-  const lineHeight = compact ? 17 : 21;
+  const lineHeight = strip ? STRIP_LINE_HEIGHT : compact ? 17 : 21;
+  if (strip) bodyMaxHeight = STRIP_LINE_HEIGHT * STRIP_BODY_LINES;
   bodyMaxHeight = Math.max(lineHeight * 3, Math.floor(bodyMaxHeight / lineHeight) * lineHeight);
   const ctaLabel = step.ctaLabel ?? 'Got it';
   const canRestart = stepIndex > 0 && lesson.id !== '_stub';
@@ -461,10 +489,11 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
           pointerEvents="auto"
           onLayout={(e) => {
             const { height } = e.nativeEvent.layout;
+            const mode = modeRef.current;
             setMeasured((prev) =>
-              prev?.key === measureKey && prev.height === height
+              prev?.key === measureKey && prev.height === height && prev.mode === mode
                 ? prev
-                : { key: measureKey, height },
+                : { key: measureKey, height, mode },
             );
           }}
           style={[
@@ -474,94 +503,122 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
               borderRadius: 16,
               borderWidth: 1,
               borderColor: GLASS_BORDER,
-              padding: compact ? 12 : 18,
-              gap: compact ? 6 : 10,
+              padding: strip ? 10 : compact ? 12 : 18,
+              paddingHorizontal: strip ? 14 : undefined,
+              gap: strip ? 6 : compact ? 6 : 10,
               boxShadow: '0 12px 40px rgba(0,0,0,0.35)',
             },
             solid ? null : webOnly({ backdropFilter: 'blur(16px) saturate(140%)' }),
           ]}
         >
-          <CardHeader
-            lessonLabel={lessonLabel}
-            ids={lesson.steps.map((st) => st.id)}
-            index={stepIndex}
-            compact={compact}
-            stacked={stackedHeader}
-          />
-          <Text
-            accessibilityRole="header"
-            accessibilityLabel={`Tutorial step: ${step.caption.title}`}
-            style={{
-              fontSize: compact ? 15 : 20,
-              lineHeight: compact ? 19 : 26,
-              fontWeight: '800',
-              letterSpacing: -0.3,
-              color: TEXT_PRIMARY,
-              fontFamily: TITLE_FONT,
-            }}
-          >
-            {step.caption.title}
-          </Text>
-          <ScrollView
-            style={{ maxHeight: bodyMaxHeight, flexGrow: 0 }}
-            showsVerticalScrollIndicator
-            nestedScrollEnabled
-            onLayout={(e) => {
-              const { height } = e.nativeEvent.layout;
-              setBodyMeasured((prev) =>
-                prev?.key === measureKey && prev.height === height
-                  ? prev
-                  : { key: measureKey, height },
-              );
-            }}
-          >
-            <Text
-              style={{
-                fontSize: compact ? 12.5 : 14,
-                lineHeight: compact ? 17 : 21,
-                color: 'rgba(255,255,255,0.78)',
-                fontFamily: BODY_FONT,
-              }}
-            >
-              {step.caption.body}
-            </Text>
-          </ScrollView>
-          <View
-            style={{
-              flexDirection: compact ? 'column-reverse' : 'row',
-              justifyContent: 'space-between',
-              alignItems: compact ? 'stretch' : 'center',
-              gap: compact ? 0 : 10,
-              marginTop: compact ? 0 : 2,
-            }}
-          >
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: compact ? 'center' : 'flex-start',
-                gap: 4,
-                flexShrink: 1,
-              }}
-            >
-              <QuietButton label="Skip lesson" onPress={dismiss} compact={compact} />
-              {canRestart ? (
-                <QuietButton
-                  label="Restart"
-                  accessibilityLabel="Restart lesson"
-                  onPress={() => transport.joinSoloTutorial(lesson.id)}
-                />
-              ) : null}
-            </View>
-            {step.completedWhen ? null : (
-              <PrimaryButton
-                label={ctaLabel}
-                onPress={advance}
-                testID="tutorial-next"
-                stretch={compact}
+          {strip ? (
+            <StripBody
+              lessonLabel={lessonLabel}
+              ids={lesson.steps.map((st) => st.id)}
+              index={stepIndex}
+              title={step.caption.title}
+              body={step.caption.body}
+              bodyMaxHeight={bodyMaxHeight}
+              fill={glassBg}
+              onBodyLayout={(height) =>
+                setBodyMeasured((prev) =>
+                  prev?.key === measureKey && prev.height === height
+                    ? prev
+                    : { key: measureKey, height },
+                )
+              }
+              cta={
+                step.completedWhen ? null : (
+                  <PrimaryButton label={ctaLabel} onPress={advance} testID="tutorial-next" />
+                )
+              }
+              skip={<QuietButton label="Skip lesson" onPress={dismiss} compact />}
+              restart={
+                canRestart ? (
+                  <QuietButton
+                    label="Restart"
+                    accessibilityLabel="Restart lesson"
+                    onPress={() => transport.joinSoloTutorial(lesson.id)}
+                    compact
+                  />
+                ) : null
+              }
+            />
+          ) : (
+            <>
+              <CardHeader
+                lessonLabel={lessonLabel}
+                ids={lesson.steps.map((st) => st.id)}
+                index={stepIndex}
+                compact={compact}
+                stacked={stackedHeader}
               />
-            )}
-          </View>
+              <Text
+                accessibilityRole="header"
+                accessibilityLabel={`Tutorial step: ${step.caption.title}`}
+                style={{
+                  fontSize: compact ? 15 : 20,
+                  lineHeight: compact ? 19 : 26,
+                  fontWeight: '800',
+                  letterSpacing: -0.3,
+                  color: TEXT_PRIMARY,
+                  fontFamily: TITLE_FONT,
+                }}
+              >
+                {step.caption.title}
+              </Text>
+              <ScrollBody
+                text={step.caption.body}
+                maxHeight={bodyMaxHeight}
+                fontSize={compact ? 12.5 : 14}
+                lineHeight={compact ? 17 : 21}
+                fill={glassBg}
+                onLayout={(height) =>
+                  setBodyMeasured((prev) =>
+                    prev?.key === measureKey && prev.height === height
+                      ? prev
+                      : { key: measureKey, height },
+                  )
+                }
+              />
+              <View
+                style={{
+                  flexDirection: compact ? 'column-reverse' : 'row',
+                  justifyContent: 'space-between',
+                  alignItems: compact ? 'stretch' : 'center',
+                  gap: compact ? 0 : 10,
+                  marginTop: compact ? 0 : 2,
+                }}
+              >
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: compact ? 'center' : 'flex-start',
+                    gap: 4,
+                    flexShrink: 1,
+                  }}
+                >
+                  <QuietButton label="Skip lesson" onPress={dismiss} compact={compact} />
+                  {canRestart ? (
+                    <QuietButton
+                      label="Restart"
+                      accessibilityLabel="Restart lesson"
+                      onPress={() => transport.joinSoloTutorial(lesson.id)}
+                    />
+                  ) : null}
+                </View>
+                {step.completedWhen ? null : (
+                  <PrimaryButton
+                    label={ctaLabel}
+                    onPress={advance}
+                    testID="tutorial-next"
+                    stretch={compact}
+                  />
+                )}
+              </View>
+            </>
+          )}
         </View>
         {placement.notch !== null ? <Notch placement={placement} fill={glassBg} /> : null}
       </Animated.View>
@@ -621,6 +678,196 @@ function otherTargetRects(
     if (isChromeCandidate({ rect, control: true, text: null }, viewport)) out.push(rect);
   }
   return out;
+}
+
+/** Body copy in the landscape bottom strip: one size, up to three lines. */
+const STRIP_LINE_HEIGHT = 18;
+const STRIP_BODY_LINES = 3;
+/** Height of the bottom fade that marks a capped, scrollable body. */
+const BODY_FADE_H = 24;
+
+/**
+ * Scrolling body copy with an overflow cue. When the text is taller than
+ * the cap, a bottom gradient in the card colour plus a small chevron say
+ * "more below" — web shows no scrollbar for an overlay ScrollView, so a
+ * capped paragraph otherwise reads as truncated mid-sentence. The cue
+ * hides once the user has scrolled to the end.
+ */
+function ScrollBody({
+  text,
+  maxHeight,
+  fontSize,
+  lineHeight,
+  fill,
+  onLayout,
+}: {
+  text: string;
+  maxHeight: number;
+  fontSize: number;
+  lineHeight: number;
+  fill: string;
+  onLayout?: (height: number) => void;
+}) {
+  const [contentH, setContentH] = useState(0);
+  const [atEnd, setAtEnd] = useState(false);
+  const overflow = contentH > maxHeight + 1;
+  return (
+    <View style={{ flexGrow: 0, flexShrink: 1, minHeight: 0 }}>
+      <ScrollView
+        style={{ maxHeight, flexGrow: 0 }}
+        showsVerticalScrollIndicator
+        nestedScrollEnabled
+        scrollEventThrottle={32}
+        onContentSizeChange={(_w, h) => setContentH(h)}
+        onScroll={(e) => {
+          const { contentOffset, layoutMeasurement, contentSize } = e.nativeEvent;
+          setAtEnd(contentOffset.y + layoutMeasurement.height >= contentSize.height - 2);
+        }}
+        onLayout={(e) => onLayout?.(e.nativeEvent.layout.height)}
+      >
+        <Text
+          style={{
+            fontSize,
+            lineHeight,
+            color: 'rgba(255,255,255,0.78)',
+            fontFamily: BODY_FONT,
+          }}
+        >
+          {text}
+        </Text>
+      </ScrollView>
+      {overflow && !atEnd ? (
+        <View
+          testID="tutorial-body-more"
+          pointerEvents="none"
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          style={[
+            {
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: BODY_FADE_H,
+              alignItems: 'center',
+              justifyContent: 'flex-end',
+            },
+            webOnly({
+              backgroundImage: `linear-gradient(to bottom, rgba(14,20,17,0) 0%, ${fill} 100%)`,
+            }),
+          ]}
+        >
+          <Svg width={14} height={8} viewBox="0 0 14 8">
+            <Path
+              d="M1 1 L7 7 L13 1"
+              fill="none"
+              stroke={TEXT_SECONDARY}
+              strokeWidth={1.6}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </Svg>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * Landscape bottom-strip layout (`placement.kind === 'strip'`): one row
+ * of title + lesson / step labels, then the body beside the buttons —
+ * ~90 px tall, so it sits over the dimmed hand row under a wide modal
+ * target instead of covering the modal.
+ */
+function StripBody({
+  lessonLabel,
+  ids,
+  index,
+  title,
+  body,
+  bodyMaxHeight,
+  fill,
+  onBodyLayout,
+  cta,
+  skip,
+  restart,
+}: {
+  lessonLabel: string;
+  ids: string[];
+  index: number;
+  title: string;
+  body: string;
+  bodyMaxHeight: number;
+  fill: string;
+  onBodyLayout: (height: number) => void;
+  cta: ReactNode;
+  skip: ReactNode;
+  restart: ReactNode;
+}) {
+  return (
+    <>
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 12,
+        }}
+      >
+        <Text
+          accessibilityRole="header"
+          accessibilityLabel={`Tutorial step: ${title}`}
+          numberOfLines={1}
+          style={{
+            fontSize: 15,
+            lineHeight: 19,
+            fontWeight: '800',
+            letterSpacing: -0.2,
+            color: TEXT_PRIMARY,
+            fontFamily: TITLE_FONT,
+            flexShrink: 1,
+          }}
+        >
+          {title}
+        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+          <Text numberOfLines={1} style={[MICRO_LABEL, { color: COLORS.gold }]}>
+            {lessonLabel}
+          </Text>
+          {ids.length > 1 ? (
+            <>
+              <StepDots ids={ids} index={index} />
+              <Text
+                testID="tutorial-step-label"
+                numberOfLines={1}
+                accessibilityLabel={`Step ${index + 1} of ${ids.length}`}
+                style={[MICRO_LABEL, { color: TEXT_SECONDARY }]}
+              >
+                {`Step ${index + 1} of ${ids.length}`}
+              </Text>
+            </>
+          ) : null}
+        </View>
+      </View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <ScrollBody
+            text={body}
+            maxHeight={bodyMaxHeight}
+            fontSize={13}
+            lineHeight={STRIP_LINE_HEIGHT}
+            fill={fill}
+            onLayout={onBodyLayout}
+          />
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+          {skip}
+          {restart}
+          {cta}
+        </View>
+      </View>
+    </>
+  );
 }
 
 const MICRO_LABEL: TextStyle = {

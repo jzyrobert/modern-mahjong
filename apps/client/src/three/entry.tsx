@@ -1,4 +1,5 @@
 import type { ComponentType } from 'react';
+import type { ScreenBounds } from './core/sceneRects';
 import type { ReplayShelf3DProps } from './menu/ReplayShelf3D';
 import type { SettingsPreview3DProps } from './settings/SettingsPreview3D';
 import type { Table3DShellProps } from './table/Table3DShell';
@@ -18,3 +19,15 @@ export const SettingsPreview3D: ComponentType<SettingsPreview3DProps> | null = n
 export const Tutorial3D: ComponentType<Record<string, never>> | null = null;
 export const Lobby3DView: ComponentType<Lobby3DViewProps> | null = null;
 export const ReplayShelf3D: ComponentType<ReplayShelf3DProps> | null = null;
+
+/**
+ * Read-only handle on the scene-derived bounds the table publishes
+ * (`core/sceneRects`): the tutorial overlay clips the discard-pool
+ * coach-mark to the river interior so its ring never crosses the walls.
+ * Null on native (no scene).
+ */
+export interface TutorialSceneRects {
+  subscribe(cb: () => void): () => void;
+  getRiverInterior(): ScreenBounds | null;
+}
+export const tutorialSceneRects: TutorialSceneRects | null = null;

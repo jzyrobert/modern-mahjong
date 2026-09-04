@@ -24,10 +24,12 @@ import type { SortMode } from '../../ui/match/SortPicker';
 import type { SceneContext } from '../core/SceneHost';
 import { type LightRig, buildLights } from '../core/lights';
 import type { QualityProfile } from '../core/quality';
+import { publishRiverInterior } from '../core/sceneRects';
 import { getSpotlightTiles, spotlightPulse, spotlightVersion } from '../core/spotlight';
 import { TilePool } from '../tiles/TilePool';
+import { TILE_D, TILE_H } from '../tiles/geometry';
 import { feltColors, setTileBackFinish } from '../tiles/materials';
-import { Choreographer } from './choreography';
+import { Choreographer, slotPose } from './choreography';
 import {
   CENTRE_PLATE_RADIUS,
   FELT_HALF,
@@ -36,6 +38,7 @@ import {
   RAIL_H,
   RAIL_WIDTH,
   type Rel,
+  WALL_D,
   computeLayout,
   relOf,
   tileSheetLayout,
@@ -157,6 +160,7 @@ const _m = new Matrix4();
 const _obj = new Object3D();
 const _q = new Quaternion();
 const _lift = new Vector3();
+const _settleScale = new Vector3(1, 1, 1);
 const Y_AXIS = new Vector3(0, 1, 0);
 const X_AXIS = new Vector3(1, 0, 0);
 const Z_AXIS = new Vector3(0, 0, 1);
@@ -202,6 +206,11 @@ export class TableScene {
    *  mask rebuilt when the published set's version changes. */
   private readonly spotMask = new Uint8Array(136);
   private spotSeq = -1;
+  /** Tutorial river clip (additive publish to `core/sceneRects`): the
+   *  camera matrix at the last publish, so the eight projections run
+   *  only while the camera moves. */
+  private readonly interiorCam = new Matrix4();
+  private interiorPublished = false;
   private lift = new Float32Array(136);
   private pulseT = 0;
   /** Pulses run for a few seconds after each cue, then hold steady so a still table idles. */
@@ -588,7 +597,44 @@ export class TableScene {
       live = true;
     this.writePoses(now);
     if (live) this.ctx.renderer.shadowMap.needsUpdate = true;
+    this.publishInterior();
     return live;
+  }
+
+  /**
+   * Additive (tutorial): publish the river interior — the felt square
+   * inside the four walls' visible edges — in client px through
+   * `core/sceneRects`, so the discard-pool coach-mark ring is clipped
+   * to it instead of the projected square's bounding box, which widens
+   * with perspective onto the near wall row and the side wall columns.
+   * Bounds: the side and far walls' felt contact lines (their inner
+   * faces at y 0) and the near wall's inner top edge (its top face is
+   * what the camera sees), sampled along each wall.
+   */
+  private publishInterior(): void {
+    const cam = this.ctx.rig.camera;
+    if (this.interiorPublished && cam.matrixWorld.equals(this.interiorCam)) return;
+    this.interiorCam.copy(cam.matrixWorld);
+    this.interiorPublished = true;
+    const face = WALL_D - TILE_H / 2;
+    const stackTop = TILE_D * 2;
+    let left = Number.NEGATIVE_INFINITY;
+    let right = Number.POSITIVE_INFINITY;
+    let top = Number.NEGATIVE_INFINITY;
+    let bottom = Number.POSITIVE_INFINITY;
+    for (const t of [-9.5, 0, 9.5]) {
+      left = Math.max(left, this.projectPoint(-face, 0, t).x);
+      right = Math.min(right, this.projectPoint(face, 0, t).x);
+      top = Math.max(top, this.projectPoint(t, 0, -face).y);
+      bottom = Math.min(bottom, this.projectPoint(t, stackTop, face).y);
+    }
+    const r = this.ctx.renderer.domElement.getBoundingClientRect();
+    publishRiverInterior({
+      left: r.left + left,
+      top: r.top + top,
+      right: r.left + right,
+      bottom: r.top + bottom,
+    });
   }
 
   private writePoses(now: number): void {
@@ -656,6 +702,28 @@ export class TableScene {
     return projectTileRect(m, this.ctx.rig.camera, this.ctx.size.width, this.ctx.size.height, out);
   }
 
+  /**
+   * Screen rect (CSS px) of a tile at its *settled* pose — the flight
+   * destination while it is in the air (or has not started), the current
+   * pose once it has landed — projected through the camera's goal
+   * preset; null when the tile has no slot. Additive
+   * (tutorial): the coach-mark overlay keys the hand-row keep-out off
+   * this so the dice card docks the same way before, during and after
+   * the deal instead of re-docking when the tiles land.
+   */
+  settledTileRect(id: number, out?: ScreenRect): ScreenRect | null {
+    const t = this.choreo.tiles[id];
+    if (!t?.slot) return null;
+    const pose = t.target ?? (t.flight ? t.flight.to : t.visible ? t : slotPose(t.slot));
+    _settleScale.setScalar(t.slot.scale ?? 1);
+    _m.compose(pose.pos, pose.quat, _settleScale);
+    // …seen from where the camera is *going*, not where its ease-in has
+    // reached: on match start the intro move keeps the hand off-screen
+    // for a second or more.
+    const cam = this.ctx.rig.goalCamera();
+    return projectTileRect(_m, cam, this.ctx.size.width, this.ctx.size.height, out);
+  }
+
   /** Project an arbitrary world point to CSS px. */
   projectPoint(x: number, y: number, z: number): { x: number; y: number } {
     const v = new Vector3(x, y, z).project(this.ctx.rig.camera);
@@ -698,6 +766,7 @@ export class TableScene {
   }
 
   dispose(): void {
+    publishRiverInterior(null);
     if (this.disposed) return;
     this.disposed = true;
     const { scene } = this.ctx;

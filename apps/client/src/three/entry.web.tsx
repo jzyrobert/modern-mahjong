@@ -1,4 +1,6 @@
 import type { ComponentType } from 'react';
+import { getRiverInterior, subscribeRiverInterior } from './core/sceneRects';
+import type { TutorialSceneRects } from './entry';
 import { Menu3DBackdrop as MenuBackdrop } from './menu/Menu3DBackdrop';
 import { type ReplayShelf3DProps, ReplayShelf3D as Shelf } from './menu/ReplayShelf3D';
 import {
@@ -20,3 +22,8 @@ export const SettingsPreview3D: ComponentType<SettingsPreview3DProps> | null = S
 export const Tutorial3D: ComponentType<Record<string, never>> | null = Tutorial;
 export const Lobby3DView: ComponentType<Lobby3DViewProps> | null = LobbyGlass;
 export const ReplayShelf3D: ComponentType<ReplayShelf3DProps> | null = Shelf;
+/** Scene bounds the tutorial overlay clips its targets to (`core/sceneRects`). */
+export const tutorialSceneRects: TutorialSceneRects | null = {
+  subscribe: subscribeRiverInterior,
+  getRiverInterior,
+};

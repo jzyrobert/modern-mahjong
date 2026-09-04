@@ -31,7 +31,11 @@ export interface HaloRect {
   height: number;
 }
 
-export type DockKind = 'above' | 'below' | 'left' | 'right' | 'center';
+/** `strip`: a slim full-width band along the bottom of a landscape
+ *  phone, over the dimmed hand row — the fallback for a wide modal
+ *  target (the 3D dice panel) that leaves no vertical slot and no side
+ *  strip; it never covers the target the way the overlap dock would. */
+export type DockKind = 'above' | 'below' | 'left' | 'right' | 'center' | 'strip';
 
 export interface CaptionPlacement {
   kind: DockKind;
@@ -61,6 +65,11 @@ export interface PlacementInput {
   halo: HaloRect | null;
   /** Live measured card height; `null` before first layout. */
   cardHeight: number | null;
+  /** Measured height of the *strip* layout (see `DockKind`), when that
+   *  is what the overlay last rendered; `null` otherwise. Kept apart
+   *  from `cardHeight` so the strip's ~90 px never feeds the fits
+   *  checks and flips the dock back to a card that would not fit. */
+  stripHeight?: number | null;
   /** Chrome rects (overlay coordinates) the card should stay clear of. */
   avoid?: readonly HaloRect[];
   /** The whole target when only part of it is spotlit (the result
@@ -79,6 +88,14 @@ export const CHROME_GAP = 8;
 /** How far a dock may move off its ideal spot to clear chrome. */
 export const MAX_CHROME_SHIFT = 140;
 export const CARD_MAX_WIDTH = 440;
+/** A centred (no-target) card on a short, wide viewport (landscape
+ *  phone) may use this much width: three lines of body instead of four
+ *  with the fourth capped mid-sentence by the room above the hand row. */
+export const CENTRE_MAX_WIDTH_SHORT = 560;
+/** Viewports shorter than this are "short" (landscape phones). */
+export const SHORT_VIEWPORT_MAX_HEIGHT = 600;
+/** Height assumed for the bottom strip before it has been measured. */
+export const STRIP_HEIGHT_ESTIMATE = 96;
 /** Height assumed before the card has been measured. Deliberately on
  *  the tall side so the first-frame clamp never pushes the CTA off. */
 export const CARD_HEIGHT_ESTIMATE = 240;
@@ -179,10 +196,13 @@ function outsideHalo(avoid: readonly HaloRect[], halo: HaloRect): HaloRect[] {
   });
 }
 
+const never = (): boolean => false;
+
 export function placeCaption({
   viewport,
   halo,
   cardHeight,
+  stripHeight = null,
   avoid,
   keepClear = null,
 }: PlacementInput): CaptionPlacement {
@@ -193,7 +213,13 @@ export function placeCaption({
   const fullWidth = Math.max(120, Math.min(CARD_MAX_WIDTH, W - safe * 2));
   const maxTop = Math.max(safe, H - h - safe);
 
-  if (!halo) return placeCentred(viewport, fullWidth, h, avoid ?? []);
+  if (!halo) {
+    const centreWidth =
+      H < W && H <= SHORT_VIEWPORT_MAX_HEIGHT
+        ? Math.max(120, Math.min(CENTRE_MAX_WIDTH_SHORT, W - safe * 2))
+        : fullWidth;
+    return placeCentred(viewport, centreWidth, h, avoid ?? []);
+  }
 
   const chrome = avoid && avoid.length > 0 ? outsideHalo(avoid, halo) : [];
   // Chrome that lies inside `keepClear` is the spotlit target's own
@@ -299,19 +325,22 @@ export function placeCaption({
   const score = (
     card: HaloRect,
     list: readonly HaloRect[] = chrome,
+    coverable: (r: HaloRect) => boolean = never,
   ): { partial: number; total: number } => {
     let partial = 0;
     let total = 0;
     for (const r of list) {
       const a = intersectionArea(card, r);
       if (a <= 0) continue;
-      total += a;
       const contained =
         r.left >= card.left - 1 &&
         r.top >= card.top - 1 &&
         r.left + r.width <= card.left + card.width + 1 &&
         r.top + r.height <= card.top + card.height + 1;
       if (!contained) partial += a;
+      // A control the card may swallow whole (solid card) costs nothing
+      // once it is covered whole — only bisecting it counts.
+      if (!(contained && coverable(r))) total += a;
     }
     return { partial, total };
   };
@@ -322,7 +351,16 @@ export function placeCaption({
     top: number,
     width: number,
     list: readonly HaloRect[] = chrome,
-  ) => score(footprint(kind, { left, top, width, height: h }), list);
+    coverable: (r: HaloRect) => boolean = never,
+  ) => score(footprint(kind, { left, top, width, height: h }), list, coverable);
+
+  /** Chrome lying within the halo's vertical span — a seat badge beside
+   *  the dice modal, the round panel's labels beside the result panel.
+   *  A side dock covers it whole rather than sliding off it: the slide
+   *  depended on whether the chrome scan had seen the badge yet, so the
+   *  same lesson landed in two compositions run to run. */
+  const besideHalo = (r: HaloRect): boolean =>
+    r.top >= halo.top - 1 && r.top + r.height <= haloBottom + 1;
 
   /** Best `top` for a card of `width` at `left`: the ideal dock, or a
    *  spot aligned just past a chrome edge (within the safe area and
@@ -335,6 +373,7 @@ export function placeCaption({
     ideal: number,
     direction: 'up' | 'down' | 'both',
     chrome: readonly HaloRect[] = shiftChrome,
+    coverable: (r: HaloRect) => boolean = never,
   ): number => {
     if (chrome.length === 0) return ideal;
     // Notch band above / below the card, per dock kind.
@@ -354,7 +393,7 @@ export function placeCaption({
       if (direction === 'down' && t < ideal) continue;
       const dist = Math.abs(t - ideal);
       if (dist > MAX_CHROME_SHIFT) continue;
-      const { partial, total } = scoreAt(kind, left, t, width, chrome);
+      const { partial, total } = scoreAt(kind, left, t, width, chrome, coverable);
       const key: [number, number, number] = [partial, total, dist];
       if (
         bestKey === null ||
@@ -437,7 +476,7 @@ export function placeCaption({
     // Slide along the strip away from whichever chrome the card cuts
     // (the top status row, the ☰ pill), bounded like the vertical docks.
     const idealTop = clamp(sideIdealTop(halo, h, H), safe, maxTop);
-    let top = bestTop(kind, left, width, idealTop, 'both', chrome);
+    let top = bestTop(kind, left, width, idealTop, 'both', chrome, besideHalo);
     // A control straddling the card's inner edge (a chip at the end of
     // the row the halo sits in, even one the target itself half covers)
     // cannot be dodged vertically: pull the edge past it while the card
@@ -463,7 +502,7 @@ export function placeCaption({
         }
       }
     }
-    if (nudged) top = bestTop(kind, left, width, idealTop, 'both', chrome);
+    if (nudged) top = bestTop(kind, left, width, idealTop, 'both', chrome, besideHalo);
     return finish(
       kind,
       left,
@@ -531,6 +570,31 @@ export function placeCaption({
   // Neither vertical slot fits: try a side strip.
   const strip = side(SIDE_CARD_MIN_WIDTH);
   if (strip) return strip;
+
+  // Landscape phone with a wide modal target (the 3D dice panel): no
+  // slot fits and the side strips are too narrow to read. A slim
+  // full-width band along the bottom, over the dimmed hand row the ring
+  // was trimmed above, keeps the whole modal visible — the overlap dock
+  // below would sit on three of its four dice pairs.
+  if (H < W && H <= SHORT_VIEWPORT_MAX_HEIGHT) {
+    const hs = stripHeight ?? STRIP_HEIGHT_ESTIMATE;
+    const top = Math.max(safe, H - safe - hs);
+    const width = Math.max(120, W - safe * 2);
+    const card = { left: safe, top, width, height: hs };
+    const covers =
+      intersectionArea(card, halo) > 0 ||
+      (keepClear !== null && intersectionArea(card, keepClear) > 0) ||
+      (avoid ?? []).some((r) => intersectionArea(card, r) > 0);
+    return {
+      kind: 'strip',
+      left: safe,
+      top,
+      width,
+      notch: null,
+      gap: Math.max(0, top - haloBottom),
+      overlapsChrome: covers,
+    };
+  }
 
   // Tall centred halo on a phone: overlap the bottom of the halo. The
   // pedagogically load-bearing content (winning hand, faan summary)

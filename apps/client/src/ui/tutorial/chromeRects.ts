@@ -14,10 +14,12 @@ import type { TargetFocus } from './types';
  * is the DOM walk. Both return rects in overlay coordinates.
  */
 /** Tallest element that still counts as a control. The 3D table's
- *  projected hand tiles run to ~80 CSS px on a landscape phone and must
- *  count (the ring is trimmed to them, the centred card keeps clear);
- *  regions (discard pool, result panel) are hundreds of px. */
-export const CHROME_MAX_HEIGHT = 88;
+ *  projected hand tiles run to ~80 CSS px on a landscape phone and the
+ *  registered own-hand row (tiles + 6 px pad) to ~90 on desktop; both
+ *  must count (the ring is trimmed to them, cards keep clear of them —
+ *  the dice card docks beside the modal instead of over the hand).
+ *  Regions (discard pool, result panel) are hundreds of px. */
+export const CHROME_MAX_HEIGHT = 100;
 export const CHROME_MAX_WIDTH_RATIO = 0.95;
 export const CHROME_MIN_SIZE = 8;
 
@@ -66,6 +68,12 @@ function intersects(a: HaloRect, b: HaloRect): boolean {
 
 export const OVERLAY_ATTR = 'data-tutorial-overlay';
 export const TARGET_ATTR = 'data-tutorial-target';
+/** Subtrees the scan skips: a modal fading *out* (the opening-rolls
+ *  panel after its step advances) is still opaque enough to pass
+ *  `checkVisibility`, yet its labels are not chrome the next card
+ *  should dodge — counting them tinted the own-hand card solid for the
+ *  ~300 ms of the fade. */
+export const IGNORE_ATTR = 'data-tutorial-ignore';
 
 const SELECTOR = '[role="button"], [data-testid], [aria-label], div[dir="auto"]';
 
@@ -95,7 +103,7 @@ export function collectChromeRects({
   const targetSel = activeTargetId ? `[${TARGET_ATTR}="${activeTargetId}"]` : null;
   const nodes = Array.from(doc.querySelectorAll<HTMLElement>(SELECTOR));
   for (const el of nodes) {
-    if (el.closest(`[${OVERLAY_ATTR}]`)) continue;
+    if (el.closest(`[${OVERLAY_ATTR}], [${IGNORE_ATTR}]`)) continue;
     const inTarget = targetSel !== null && el.closest(targetSel) !== null;
     if (inTarget && !focusBand) continue;
     const control =
