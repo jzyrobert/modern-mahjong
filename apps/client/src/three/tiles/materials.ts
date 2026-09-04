@@ -20,7 +20,21 @@ export interface TileMaterialUniforms {
   uBackColor: { value: Color };
   uBackColor2: { value: Color };
   uHighlightColor: { value: Color };
+  /**
+   * Back-face finish. The printed back of a real tile is a matte inlay,
+   * not lacquered ivory, and under a bright key + env the glossy default
+   * washes the skin colour toward white. `uBackClearcoat` scales the
+   * material's clearcoat *and* sheen on the −Z face (1 = same as the body);
+   * `uBackRoughness` is the absolute roughness there (defaults to the
+   * body roughness, so stock behaviour is unchanged until a caller
+   * opts in — see `setTileBackFinish`).
+   */
+  uBackClearcoat: { value: number };
+  uBackRoughness: { value: number };
 }
+
+/** Body roughness shared by the tile faces and, by default, the back. */
+export const TILE_BODY_ROUGHNESS = 0.32;
 
 export function tileBackColors(skin: TileBackSkin): { top: Color; bottom: Color } {
   const s = TILE_BACK_SKINS[skin];
@@ -43,11 +57,13 @@ export function createTileMaterial(
     uBodyColor: { value: new Color('#efe6d2') },
     uBackColor: { value: back.top },
     uBackColor2: { value: back.bottom },
-    uHighlightColor: { value: new Color('#f2b240') },
+    uHighlightColor: { value: new Color('#ffcf6b') },
+    uBackClearcoat: { value: 1 },
+    uBackRoughness: { value: TILE_BODY_ROUGHNESS },
   };
   const mat = new MeshPhysicalMaterial({
     color: 0xffffff,
-    roughness: 0.32,
+    roughness: TILE_BODY_ROUGHNESS,
     metalness: 0.0,
     clearcoat: 0.55,
     clearcoatRoughness: 0.22,
@@ -97,6 +113,8 @@ export function createTileMaterial(
         uniform vec3 uBackColor;
         uniform vec3 uBackColor2;
         uniform vec3 uHighlightColor;
+        uniform float uBackClearcoat;
+        uniform float uBackRoughness;
         varying vec2 vAtlasUv;
         varying vec3 vTint;
         varying float vHighlight;
@@ -124,6 +142,19 @@ export function createTileMaterial(
         diffuseColor.rgb = mix(diffuseColor.rgb, uHighlightColor, vHighlight * 0.7);`,
       )
       .replace(
+        '#include <roughnessmap_fragment>',
+        `#include <roughnessmap_fragment>
+        roughnessFactor = mix(roughnessFactor, uBackRoughness, vBack);`,
+      )
+      .replace(
+        'material.clearcoat = clearcoat;',
+        'material.clearcoat = clearcoat * mix(1.0, uBackClearcoat, vBack);',
+      )
+      .replace(
+        'material.sheenColor = sheenColor;',
+        'material.sheenColor = sheenColor * mix(1.0, uBackClearcoat, vBack);',
+      )
+      .replace(
         '#include <emissivemap_fragment>',
         `#include <emissivemap_fragment>
         totalEmissiveRadiance += uHighlightColor * vHighlight * 0.55;`,
@@ -131,7 +162,7 @@ export function createTileMaterial(
   };
   // Distinct cache key so three doesn't share the program with a stock
   // MeshPhysicalMaterial.
-  mat.customProgramCacheKey = () => 'mahjong-tile-v3';
+  mat.customProgramCacheKey = () => 'mahjong-tile-v4';
   return mat;
 }
 
@@ -142,4 +173,17 @@ export function setTileBackSkin(
   const back = tileBackColors(skin);
   mat.tileUniforms.uBackColor.value.copy(back.top);
   mat.tileUniforms.uBackColor2.value.copy(back.bottom);
+}
+
+/**
+ * Matte finish for the tile back (−Z face). `clearcoat` scales the
+ * body clearcoat (0 = none), `roughness` is absolute. Uniform writes —
+ * no recompile.
+ */
+export function setTileBackFinish(
+  mat: MeshPhysicalMaterial & { tileUniforms: TileMaterialUniforms },
+  finish: { clearcoat: number; roughness: number },
+): void {
+  mat.tileUniforms.uBackClearcoat.value = finish.clearcoat;
+  mat.tileUniforms.uBackRoughness.value = finish.roughness;
 }

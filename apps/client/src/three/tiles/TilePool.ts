@@ -62,7 +62,10 @@ export class TilePool {
   constructor(backSkin: TileBackSkin, opts: TilePoolOptions = {}) {
     const atlas = buildFaceAtlas({ scale: opts.atlasScale, anisotropy: opts.anisotropy });
     this.material = createTileMaterial(atlas.texture, backSkin);
-    const geo = tileGeometry();
+    // Per-pool clone of the shared rounded-box: the instanced
+    // attributes below are attached to the geometry, so two live
+    // pools (table + settings preview) must not share one instance.
+    const geo = tileGeometry().clone();
     this.mesh = new InstancedMesh(geo, this.material, TOTAL_TILES);
     this.mesh.instanceMatrix.setUsage(DynamicDrawUsage);
     this.mesh.castShadow = true;
@@ -170,6 +173,7 @@ export class TilePool {
 
   dispose(): void {
     this.mesh.dispose();
+    this.mesh.geometry.dispose();
     this.material.dispose();
   }
 }

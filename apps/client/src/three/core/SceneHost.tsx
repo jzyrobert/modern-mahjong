@@ -60,6 +60,21 @@ export interface SceneHostProps {
   /** Stable key — bumping it rebuilds the scene (e.g. skin change). */
   rebuildKey?: string;
   testID?: string;
+  /**
+   * Explicitly lose the WebGL context on unmount (after `dispose()`).
+   * Browsers cap live contexts at ~16 and only reclaim them on GC, so
+   * a canvas that mounts/unmounts often (the settings preview inside
+   * a modal) should release eagerly. Off by default — a full-screen
+   * scene that remounts rarely doesn't need it.
+   */
+  releaseContextOnUnmount?: boolean;
+  /**
+   * Override the quality tier's device-pixel-ratio clamp. The tier cap
+   * protects a full-screen table; a small canvas (the settings preview
+   * is ~400 CSS px wide and a few thousand triangles) can afford full
+   * sharpness on every tier so face glyphs stay crisp.
+   */
+  maxDpr?: number;
 }
 
 const MAX_CONTEXT_LOSSES = 2;
@@ -74,6 +89,8 @@ export function SceneHost({
   onFatal,
   rebuildKey,
   testID,
+  releaseContextOnUnmount = false,
+  maxDpr,
 }: SceneHostProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const buildRef = useRef(build);
@@ -134,10 +151,21 @@ export function SceneHost({
     const perf = new PerfMonitor(renderer);
     perf.quality = quality.tier;
 
+    let sizedOnce = false;
     const applySize = () => {
-      size.width = host.clientWidth || 1;
-      size.height = host.clientHeight || 1;
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, quality.maxDpr));
+      const w = host.clientWidth || 1;
+      const h = host.clientHeight || 1;
+      const dpr = Math.min(window.devicePixelRatio || 1, maxDpr ?? quality.maxDpr);
+      // The ResizeObserver's initial callback and a `resize` event that
+      // didn't touch this host would otherwise re-render an identical
+      // frame — skip them (the quality downgrade changes `dpr`, so it
+      // still gets through).
+      if (sizedOnce && w === size.width && h === size.height && dpr === renderer.getPixelRatio())
+        return;
+      sizedOnce = true;
+      size.width = w;
+      size.height = h;
+      renderer.setPixelRatio(dpr);
       renderer.setSize(size.width, size.height, false);
       rig.setAspect(size.width / size.height);
       handle?.resize?.(size.width, size.height);
@@ -153,6 +181,12 @@ export function SceneHost({
         renderer.render(scene, rig.camera);
         if (firstFrame) {
           firstFrame = false;
+          // Drivers compile pipelines asynchronously on the first draw;
+          // without this the stall lands on the *next* frame's first GL
+          // call and shows up in the perf ring as a multi-second frame.
+          // Block here instead, inside the veiled warm-up frame that the
+          // perf monitor already keeps out of p50 / p95.
+          renderer.getContext().finish();
           setVeil(null);
           onReadyRef.current?.();
           perf.maybePublish(performance.now(), true);
@@ -230,8 +264,17 @@ export function SceneHost({
       unmount();
       perf.dispose();
       renderer.dispose();
+      if (releaseContextOnUnmount) renderer.forceContextLoss();
     };
-  }, [rebuildKey, qualitySetting, animations, transparent, clearColor]);
+  }, [
+    rebuildKey,
+    qualitySetting,
+    animations,
+    transparent,
+    clearColor,
+    releaseContextOnUnmount,
+    maxDpr,
+  ]);
 
   return (
     <div
