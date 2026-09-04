@@ -1,6 +1,14 @@
 import { defineConfig, devices } from '@playwright/test';
 
 /**
+ * Static-server port. Override with `PW_PORT=<n>` when several checkouts
+ * (worktrees) run the suite at once — `reuseExistingServer` would
+ * otherwise attach to whichever checkout's `serve` already holds 4173
+ * and silently test a stale bundle.
+ */
+const PW_PORT = process.env.PW_PORT ?? '4173';
+
+/**
  * Per-shard spec assignments. Playwright's default `--shard=N/M`
  * splits by file in alphabetical order — that put all 5 screenshot
  * specs (replay-library-screenshots × 2 ≈ 42 s, replay-screenshots ×
@@ -90,7 +98,7 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? [['github'], ['list']] : 'list',
   use: {
-    baseURL: 'http://127.0.0.1:4173',
+    baseURL: `http://127.0.0.1:${PW_PORT}`,
     trace: 'retain-on-failure',
     // Sandboxed dev containers ship a pre-installed Chromium whose
     // build number may not match the one this @playwright/test
@@ -109,8 +117,8 @@ export default defineConfig({
   // same minute. CI runs `pnpm --filter @mahjong/client export-web`
   // before Playwright, so `dist/` already exists when this fires.
   webServer: {
-    command: 'npx serve dist -l 4173 -s',
-    url: 'http://127.0.0.1:4173',
+    command: `npx serve dist -l ${PW_PORT} -s`,
+    url: `http://127.0.0.1:${PW_PORT}`,
     timeout: 60_000,
     reuseExistingServer: !process.env.CI,
     stdout: 'ignore',
