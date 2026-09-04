@@ -2,6 +2,8 @@ import { type GameState, type Seat, emptyState, startHand, tileId } from '@mahjo
 import { describe, expect, test } from 'vitest';
 import { TILE_D, TILE_H, TILE_W } from '../tiles/geometry';
 import {
+  CHIP_POCKET_NUDGE,
+  CHIP_POCKET_REACH,
   DEAD_WALL_OFFSET,
   FELT_HALF,
   HAND_PITCH,
@@ -16,11 +18,13 @@ import {
   RIVER_NEAR_EDGE,
   RIVER_ROWS,
   SIDE_MELD_SCALE_PORTRAIT,
+  SIDE_SEAT_OUT_DESKTOP,
   SIDE_SEAT_OUT_LOW,
   STACKS_PER_WALL,
   STAND_Y,
   WALL_D,
   computeLayout,
+  dealerChipBlocked,
   dealerChipLocal,
   fullWallLayout,
   heldHandSlots,
@@ -31,6 +35,7 @@ import {
   relOf,
   riverMetrics,
   tileSheetLayout,
+  toLocal,
   toWorld,
   wallSlotPosition,
   wallSlotRefs,
@@ -816,5 +821,107 @@ describe('tile sheet', () => {
     const honours = layout.filter((sl) => sl && sl.zone === 'sheet' && sl.id >= 27 * 4);
     const xs = honours.map((sl) => sl!.x);
     expect(Math.min(...xs) + Math.max(...xs)).toBeCloseTo(0, 5);
+  });
+});
+
+describe('toLocal', () => {
+  test('inverts toWorld for every seat rotation', () => {
+    for (const rel of [0, 1, 2, 3] as const) {
+      for (const [x, z] of [
+        [3.2, -7.5],
+        [-1, 4],
+        [0, 0],
+        [8.8, 8.8],
+      ] as const) {
+        const [wx, wz] = toWorld(rel, x, z);
+        const [lx, lz] = toLocal(rel, wx, wz);
+        expect(lx).toBeCloseTo(x, 9);
+        expect(lz).toBeCloseTo(z, 9);
+      }
+    }
+  });
+});
+
+describe('landscape zoom: hideSideSeats', () => {
+  test('drops the side seats’ racks and melds, keeps their rivers, the far row and the own hand', () => {
+    const st = {
+      ...withMeldFor(1),
+      discards: {
+        ...withMeldFor(1).discards,
+        1: dealt().wall.slice(0, 4),
+        3: dealt().wall.slice(4, 6),
+      },
+    } as GameState;
+    const full = computeLayout(st, 0, { ...OPTS, sideMeldsNear: true });
+    const zoom = computeLayout(st, 0, { ...OPTS, sideMeldsNear: true, hideSideSeats: true });
+    const zones = (layout: ReturnType<typeof computeLayout>, rel: number, zone: string) =>
+      layout.filter((sl) => sl && sl.rel === rel && sl.zone === zone).length;
+    expect(zones(full, 1, 'oppHand')).toBe(10);
+    expect(zones(full, 1, 'meld')).toBe(3);
+    expect(zones(zoom, 1, 'oppHand')).toBe(0);
+    expect(zones(zoom, 1, 'meld')).toBe(0);
+    expect(zones(zoom, 3, 'oppHand')).toBe(0);
+    expect(zones(zoom, 1, 'discard')).toBe(4);
+    expect(zones(zoom, 3, 'discard')).toBe(2);
+    expect(zones(zoom, 2, 'oppHand')).toBe(13);
+    expect(zones(zoom, 0, 'hand')).toBe(14);
+    // Every slot the zoom keeps is where the full layout had it.
+    for (const sl of zoom) if (sl) expect(full[sl.id]).toMatchObject({ x: sl.x, z: sl.z });
+  });
+});
+
+describe('desktop side-seat offset', () => {
+  test('SIDE_SEAT_OUT_DESKTOP clears the wall’s top-face overhang and keeps the rack inside the rail', () => {
+    const st = withMeldFor(1);
+    const out = computeLayout(st, 0, {
+      ...OPTS,
+      sideMeldsNear: true,
+      sideSeatOut: SIDE_SEAT_OUT_DESKTOP,
+    });
+    const melds = out.filter((sl) => sl && sl.rel === 1 && sl.zone === 'meld');
+    const racks = out.filter((sl) => sl && sl.rel === 1 && sl.zone === 'oppHand');
+    expect(melds.length).toBe(3);
+    // Flat meld's inner edge (x − TILE_H/2 in world, rel 1) ≥ 0.4 past the wall's outer edge + a 0.27 overhang.
+    for (const sl of melds)
+      expect(sl!.x - TILE_H / 2).toBeGreaterThanOrEqual(WALL_D + TILE_H / 2 + 0.27 + 0.4);
+    for (const sl of racks) expect(sl!.x).toBeCloseTo(HAND_Z + SIDE_SEAT_OUT_DESKTOP, 6);
+    for (const sl of racks) expect(sl!.x + 0.35).toBeLessThan(FELT_HALF);
+  });
+});
+
+describe('dealer chip pocket', () => {
+  const chipR = 0.56;
+  test('the wide presets’ chip never counts a full wall as blocking', () => {
+    for (const dealer of [0, 1, 2, 3] as const) {
+      const st = dealt(5, dealer);
+      const full = fullWallLayout(st, 0);
+      const rel = relOf(dealer, 0);
+      expect(dealerChipBlocked(full, rel, dealerChipLocal(1, chipR), chipR)).toBe(false);
+    }
+  });
+  test('the portrait-scale chip is blocked by a full wall and free once the pocket’s stacks are gone', () => {
+    const st = dealt(5, 0);
+    const full = fullWallLayout(st, 0);
+    const local = dealerChipLocal(1.36, chipR);
+    // Near edge within reach of the near wall's inner edge (8.12).
+    expect(WALL_D - TILE_H / 2 - (local[1] + chipR)).toBeLessThan(CHIP_POCKET_REACH);
+    expect(dealerChipBlocked(full, 0, local, chipR)).toBe(true);
+    // Strip the near wall's stacks along the pocket: no longer blocked.
+    const open = full.map((sl) =>
+      sl &&
+      sl.rel === 0 &&
+      (sl.zone === 'wall' || sl.zone === 'deadWall') &&
+      Math.abs(sl.x - local[0]) < 2.5
+        ? null
+        : sl,
+    );
+    expect(dealerChipBlocked(open, 0, local, chipR)).toBe(false);
+    // A stack on another wall at the same along-coordinate does not count.
+    const other = full.map((sl) => (sl && sl.rel === 0 ? null : sl));
+    expect(dealerChipBlocked(other, 0, local, chipR)).toBe(false);
+    // Stepping in by the nudge leaves ≥ 0.45 of felt to the wall's overhang.
+    expect(WALL_D - TILE_H / 2 - 0.22 - (local[1] - CHIP_POCKET_NUDGE + chipR)).toBeGreaterThan(
+      0.45,
+    );
   });
 });

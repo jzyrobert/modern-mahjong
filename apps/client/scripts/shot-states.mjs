@@ -482,26 +482,22 @@ export const STATES = {
   'match-river-zoom-landscape': {
     owner: 'table',
     // Phone landscape: the same tap lifts the camera to 50° over the
-    // river block, framed between the chrome row and the footer (~28 px
-    // tiles, ~21 px tall vs ~8 from the resting 31° camera); the hand
-    // leaves the frame and the ✕ in the chrome brings it back. The recipe
-    // runs from a bot's turn (the shell exits the zoom by itself when the
-    // user's turn comes round), so it plays six turns and zooms while the
-    // bots are paced out of the frame.
+    // river block, framed between the zoom header (glass across the
+    // chrome row, the far wall behind it) and the footer (~28 px tiles,
+    // ~21 px tall vs ~8 from the resting 31° camera). The zoom stays
+    // through the player's own turn: the footer's hand rail shows the
+    // hand as face thumbnails (tap → the table returns) and carries the
+    // gold Draw pill while the player has to draw; the side seats' rows
+    // leave the frame's edges. Shot at the user's draw cue, six turns in.
     viewport: 'phone-landscape',
     steps: [
       ...START_SOLO,
       { waitForOwnHand: true },
-      { playTurns: 5 },
+      { playTurns: 6 },
       { waitForDrawCue: true },
-      // Park the bots before the sixth discard so the claim window / their
-      // turns hold and the zoom is not auto-exited by the user's next turn.
-      { evaluate: 'globalThis.__MAHJONG_TEST_BOT_PACE_MS__ = 60000;' },
-      { clickTestId: 'wall-draw-next' },
       { waitMs: 400 },
-      { clickTestId: 'own-hand-tile', nth: 0 },
-      { waitMs: 500 },
       { evaluate: `document.querySelector('[data-testid="shared-discards-region"]')?.click()` },
+      { waitFor: '[data-testid="hand-rail"]', timeout: 10000 },
       { waitMs: 1400 },
     ],
   },

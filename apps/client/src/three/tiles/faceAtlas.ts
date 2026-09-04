@@ -207,10 +207,28 @@ function text(
  * px after minification. Dots, bamboo and the honours already read at
  * that size and keep the 700 cut.
  */
-export const MAN_NUMERAL_STROKE = 0.8;
+export const MAN_NUMERAL_STROKE = 1.0;
 export const MAN_SUIT_STROKE = 0.55;
+/**
+ * Numeral size in the 36-unit reference space. 21 (round-4 #6: up from
+ * 18) spends the numeral box's spare height on the glyph — 七 / 八 / 九
+ * upside down in the portrait far river are ~10 CSS px tall, where a
+ * sixth more stem length and the 1.0 stroke are the difference between
+ * guessed and read; the glyph's box (≈ 4 … 25) still clears the 萬 below
+ * (top ≈ 30) at its 12.5.
+ */
+export const MAN_NUMERAL_SIZE = 21;
 function drawMan(ctx: CanvasRenderingContext2D, rank: number): void {
-  text(ctx, CHINESE_NUM[rank] ?? '', CX, 14.4, 18, INK_BLACK, 700, MAN_NUMERAL_STROKE);
+  text(
+    ctx,
+    CHINESE_NUM[rank] ?? '',
+    CX,
+    14.8,
+    MAN_NUMERAL_SIZE,
+    INK_BLACK,
+    700,
+    MAN_NUMERAL_STROKE,
+  );
   text(ctx, '萬', CX, 36.6, 12.5, INK_RED, 700, MAN_SUIT_STROKE);
 }
 

@@ -33,7 +33,10 @@ export interface Lobby3DViewProps {
   onUnseatBot: (seat: Seat) => void;
 }
 
+/** Same lamp-lit void as the match shell (`Table3DShell.VOID_BG`). */
 const VOID_BG =
+  'radial-gradient(ellipse 70% 45% at 50% 0%, rgba(216,168,90,0.15) 0%, rgba(216,168,90,0.06) 55%, rgba(216,168,90,0) 100%), ' +
+  'radial-gradient(ellipse 95% 70% at 50% 45%, rgba(216,168,90,0.1) 0%, rgba(216,168,90,0.065) 50%, rgba(216,168,90,0) 90%), ' +
   'radial-gradient(ellipse 70% 40% at 50% 28%, rgba(58,74,58,0.3), rgba(58,74,58,0) 70%), linear-gradient(180deg, #0b120f 0%, #16241d 100%)';
 
 const BOT_KIND_OPTIONS: ReadonlyArray<{ kind: BotKind; label: string; hint: string }> = [
@@ -206,9 +209,9 @@ export function LobbyGlass(props: Lobby3DViewProps) {
     </GlassPanel>
   );
 
-  const botsCard =
+  const botsBody =
     isHost && seat !== null && editable.length > 0 ? (
-      <GlassPanel style={{ padding: compact ? 14 : 18, display: 'grid', gap: 12 }}>
+      <>
         <div>
           <div style={labelStyle}>Bot skill</div>
           <div style={{ fontSize: 12, color: GLASS.text2, marginTop: 4 }}>
@@ -298,8 +301,13 @@ export function LobbyGlass(props: Lobby3DViewProps) {
             </div>
           );
         })}
-      </GlassPanel>
+      </>
     ) : null;
+  const botsCard = botsBody ? (
+    <GlassPanel style={{ padding: compact ? 14 : 18, display: 'grid', gap: 12 }}>
+      {botsBody}
+    </GlassPanel>
+  ) : null;
 
   const inviteCard = isLanHost ? (
     <GlassPanel style={{ padding: compact ? 14 : 18, display: 'grid', gap: 10 }}>
@@ -367,9 +375,10 @@ export function LobbyGlass(props: Lobby3DViewProps) {
   // (`LobbyTableBackdrop`, `lobbyCameraFor`).
   const sideScene = !compact && width >= 1100;
   // Two-column viewports without a side scene (phone landscape, small
-  // desktops): Seats and Rules share one glass panel split by a hairline
-  // instead of two panels with a gutter — round-4 #4 found the 12 px
-  // slot between them showing a slice of plate and wall.
+  // desktops): Seats, Rules and the Bot skill rows share one glass panel
+  // split by hairlines instead of three panels with gutters — round-4 #4
+  // found the 12 px slot between Seats and Rules showing a slice of plate
+  // and wall, and round-4 #7 the one above Bot skill showing the rail.
   const merged = twoCol && !sideScene;
 
   return (
@@ -500,8 +509,21 @@ export function LobbyGlass(props: Lobby3DViewProps) {
                   {rulesBody}
                   {actions}
                 </div>
+                {botsBody ? (
+                  <div
+                    data-testid="lobby-merged-bots"
+                    style={{
+                      ...column,
+                      gridColumn: '1 / -1',
+                      marginTop: compact ? 14 : 18,
+                      paddingTop: compact ? 14 : 18,
+                      borderTop: '1px solid rgba(255,255,255,0.1)',
+                    }}
+                  >
+                    {botsBody}
+                  </div>
+                ) : null}
               </GlassPanel>
-              {botsCard}
             </div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12 }}>

@@ -45,6 +45,8 @@ export function waitingTableState(): GameState {
 export const LOBBY_PORTRAIT_ELEV_DEG = 58;
 /** Portrait lobby: margin the near rail's corners keep from the viewport sides, CSS px. */
 const LOBBY_PORTRAIT_SIDE_PX = 8;
+/** Wide lobby with a side column: the rail's outermost corner stays this far inside the right edge (the 24 px desktop safe area + a rounding margin). */
+export const LOBBY_SIDE_SAFE_PX = 28;
 
 /**
  * Portrait lobby camera: the whole table, rails included, fitted to the
@@ -106,8 +108,12 @@ export function lobbyCameraFor(width: number, height: number, side: boolean): Ca
     target: [-shift, 0, 1.5],
     fov,
   });
-  const corner: [number, number, number] = [FELT_HALF + RAIL_WIDTH, RAIL_H, FELT_HALF + RAIL_WIDTH];
-  const limit = width - 24;
+  // The rail's near-right corner, bottom edge included: the 30° camera
+  // looks down on it, so its base (y ≈ 0) projects a few px further out
+  // than its top, and a top-only limit left the base ~15 px from the
+  // edge against the 24 px desktop safe area (round-4 #7).
+  const corner: [number, number, number] = [FELT_HALF + RAIL_WIDTH, 0, FELT_HALF + RAIL_WIDTH];
+  const limit = width - LOBBY_SIDE_SAFE_PX;
   // Larger shift → table further right on screen (monotonic): bisect
   // for the largest shift that keeps the near-right corner inside.
   let lo = 0;

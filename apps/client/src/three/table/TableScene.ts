@@ -33,6 +33,7 @@ import { feltColors, setTileBackFinish, setTileBackGradient } from '../tiles/mat
 import { Choreographer, slotPose } from './choreography';
 import {
   CENTRE_PLATE_RADIUS,
+  CHIP_POCKET_NUDGE,
   FELT_HALF,
   type HeldHandFrame,
   type Layout,
@@ -42,9 +43,11 @@ import {
   type Rel,
   WALL_D,
   computeLayout,
+  dealerChipBlocked,
   dealerChipLocal,
   relOf,
   tileSheetLayout,
+  toLocal,
   toWorld,
 } from './layout';
 import { type ScreenRect, projectTileRect } from './picking';
@@ -111,6 +114,8 @@ export interface SyncInput {
   sideMeldScale?: number | undefined;
   /** Far seat's melds stood on the rail — see `LayoutOptions.farMeldsOnRail`. */
   farMeldsOnRail?: boolean | undefined;
+  /** Landscape river zoom: drop the side seats' rows — see `LayoutOptions.hideSideSeats`. */
+  hideSideSeats?: boolean | undefined;
 }
 
 export interface TableDebugTile {
@@ -184,6 +189,11 @@ const DICE_WORLD: [number, number][] = [
 const DICE_SCALE = 0.8;
 /** How long the gold cue pulses before settling to a steady glow. */
 const PULSE_MS = 3200;
+/**
+ * Candidate offsets (world units) of the dead-wall hairline from the
+ * stacks' outer edge, tried nearest first — see `syncDeadMarker`.
+ */
+const DEAD_HAIRLINE_OFFSETS = [0.14, 0.26, 0.38, 0.5, 0.62, 0.74] as const;
 const _m = new Matrix4();
 const _obj = new Object3D();
 const _q = new Quaternion();
@@ -218,6 +228,9 @@ export class TableScene {
   private marker: Mesh;
   private markerRel: Rel | null = null;
   private markerScale = 1;
+  /** Hand the chip's pocket decision was made for + whether it stepped in (see `dealerChipBlocked`). */
+  private markerHandKey = '';
+  private markerNudged = false;
   private dice: InstancedMesh;
   private diceValues: [number, number] | null = null;
   /** Gold hairline on the felt along the dead-wall stacks (`syncDeadMarker`). */
@@ -488,6 +501,8 @@ export class TableScene {
     this.marker.visible = false;
     this.markerRel = null;
     this.markerScale = 1;
+    this.markerHandKey = '';
+    this.markerNudged = false;
     this.deadMarker.visible = false;
     this.deadMarkerKey = '';
     this.deadMarkerCamKey = '';
@@ -560,6 +575,7 @@ export class TableScene {
       sideMeldsNear: input.sideMeldsNear,
       sideMeldScale: input.sideMeldScale,
       farMeldsOnRail: input.farMeldsOnRail,
+      hideSideSeats: input.hideSideSeats,
       waitingWalls: input.waiting,
     });
     const prevLayout = this.lastLayout;
@@ -612,16 +628,34 @@ export class TableScene {
     this.updatePlate(state.prevailingWind, waiting ? null : state.wall.length);
     const rel = relOf(state.dealer, me);
     const riverScale = input.riverScale ?? 1;
+    // The pocket decision holds for the hand (stacks only ever leave the
+    // wall, so a chip that parked in the pocket never needs to step in
+    // later, and one that stepped in never slides back out mid-hand).
+    const handKey = `${state.dealer}:${state.openingRolls?.breakPosition ?? '-'}:${state.prevailingWind}`;
+    if (handKey !== this.markerHandKey) {
+      this.markerHandKey = handKey;
+      this.markerNudged = false;
+      this.markerRel = null;
+    }
+    const chipLocal = dealerChipLocal(riverScale, CHIP_RADIUS);
+    const nudged =
+      this.markerNudged || (!waiting && dealerChipBlocked(layout, rel, chipLocal, CHIP_RADIUS));
     if (waiting) {
       this.marker.visible = false;
       this.markerRel = null;
-    } else if (rel !== this.markerRel || riverScale !== this.markerScale) {
+    } else if (
+      rel !== this.markerRel ||
+      riverScale !== this.markerScale ||
+      nudged !== this.markerNudged
+    ) {
       this.markerRel = rel;
       this.markerScale = riverScale;
+      this.markerNudged = nudged;
       // Parked in the dealer's near-left corner pocket, glyph facing
-      // the dealer.
-      const [lx, lz] = dealerChipLocal(riverScale, CHIP_RADIUS);
-      const [mx, mz] = toWorld(rel, lx, lz);
+      // the dealer — a step toward the centre when wall stacks still
+      // stand in that pocket (`dealerChipBlocked`).
+      const [lx, lz] = chipLocal;
+      const [mx, mz] = toWorld(rel, lx, lz - (nudged ? CHIP_POCKET_NUDGE : 0));
       this.marker.position.set(mx, CHIP_H / 2, mz);
       this.marker.quaternion.setFromAxisAngle(Y_AXIS, (rel * Math.PI) / 2);
       this.marker.visible = true;
@@ -650,23 +684,46 @@ export class TableScene {
    * once), laid on the felt just outside the stacks' *outer* (rail-side)
    * edge — the same rule on every preset. A side is drawn only when the
    * camera can see that strip of felt: the ray from the goal camera to
-   * the hairline's midpoint must clear the wall's own stacks and, for the
-   * near wall, the user's hand row standing in front of it. From the low
-   * wide presets that leaves nothing for the far and side walls and, on
-   * landscape, the near wall (the hand covers the seam), so the darker
-   * back shade alone marks those segments; portrait and the desktop near
-   * wall get the line (round-4 #5: an inner-edge variant left a stray
-   * gold fragment at the landscape corner and vanished on desktop).
-   * Hidden on the waiting table (no break yet).
+   * the hairline's probe points must clear the wall's own stacks and,
+   * for the near wall, the user's hand row standing in front of it. The
+   * strip's offset from the stacks is searched outward from
+   * `DEAD_HAIRLINE_OFFSETS[0]`: seen from the table's centre line a side
+   * wall's two-high top face overhangs the felt beyond its outer edge by
+   * ~0.22 units at 70° (portrait) and ~0.27 at 44° (desktop), so the
+   * fixed 0.14 strip was hidden on every side segment even where the
+   * felt beside the stacks was plainly visible (round-4 #4: the near half
+   * of one dead wall had the line, the left half did not). A candidate
+   * offset is also rejected when the strip would run under a rack or a
+   * meld of that side (the side seats' melds start 0.24 off the wall on
+   * portrait). From the low wide presets nothing clears the far wall's
+   * overhang and, on landscape, the hand covers the near seam, so the
+   * darker back shade alone marks those segments. Hidden on the waiting
+   * table (no break yet).
    */
   private syncDeadMarker(layout: Layout, waiting: boolean): void {
     const byRel = new Map<Rel, { min: number; max: number }>();
     const wallExtent = new Map<Rel, { min: number; max: number }>();
+    /** Footprints (along a0..a1 × across d0..d1, seat frame) of racks + melds per side. */
+    const rowFootprints = new Map<Rel, { a0: number; a1: number; d0: number; d1: number }[]>();
     const alongOf = (slot: { rel: Rel; x: number; z: number }) =>
       slot.rel === 0 ? slot.x : slot.rel === 1 ? -slot.z : slot.rel === 2 ? -slot.x : slot.z;
     if (!waiting) {
       for (const slot of layout) {
-        if (!slot || (slot.zone !== 'deadWall' && slot.zone !== 'wall')) continue;
+        if (!slot) continue;
+        if (slot.zone === 'meld' || slot.zone === 'oppHand' || slot.zone === 'hand') {
+          if (slot.quat !== undefined) continue; // held hand: off the table
+          const [a, d] = toLocal(slot.rel, slot.x, slot.z);
+          const half = (TILE_H / 2) * (slot.scale ?? 1);
+          // A standing rack tile's footprint is its thickness (plus lean),
+          // not its height: the side racks stand 0.41 either side of
+          // `HAND_Z`, which leaves the felt out to 10.14 for the strip.
+          const depth = slot.base === 'standing' ? TILE_D / 2 + 0.1 : half;
+          const list = rowFootprints.get(slot.rel) ?? [];
+          list.push({ a0: a - half, a1: a + half, d0: d - depth, d1: d + depth });
+          rowFootprints.set(slot.rel, list);
+          continue;
+        }
+        if (slot.zone !== 'deadWall' && slot.zone !== 'wall') continue;
         // Along-the-wall coordinate in the wall seat's frame.
         const along = alongOf(slot);
         const ext = wallExtent.get(slot.rel);
@@ -690,7 +747,10 @@ export class TableScene {
     const key = `${camKey}|${[...byRel.entries()]
       .map(([rel, e]) => `${rel}:${e.min.toFixed(2)}:${e.max.toFixed(2)}`)
       .sort()
-      .join('|')}`;
+      .join('|')}|${[...rowFootprints.entries()]
+      .map(([rel, f]) => `${rel}:${f.length}`)
+      .sort()
+      .join(',')}`;
     if (key === this.deadMarkerKey) return;
     this.deadMarkerKey = key;
     this.deadMarkerCamKey = camKey;
@@ -698,10 +758,13 @@ export class TableScene {
     const idx: number[] = [];
     const half = TILE_W / 2 + 0.02;
     const w = 0.09;
-    // 0.14 off the stacks' outer edge, running toward the rail.
-    const zOut = WALL_D + TILE_H / 2 + 0.14;
     const y = 0.012;
     const ownHandVisible = layout.some((sl) => sl?.zone === 'hand' && sl.quat === undefined);
+    // One dead wall, one treatment: the line is drawn along every segment
+    // the dead wall wraps onto or along none of them (round-4 #4 docked a
+    // dead wall marked on its near half only), so the search below must
+    // find a visible strip for each side before anything is emitted.
+    let complete = true;
     for (const [rel, e] of byRel) {
       // Occluders: this wall's stacks (the whole row, live stacks too) and,
       // in front of the near wall, the user's standing hand row.
@@ -719,26 +782,43 @@ export class TableScene {
       ];
       if (rel === 0 && ownHandVisible)
         boxes.push(seatBox(0, -9, 9, OWN_HAND_Z - 0.75, OWN_HAND_Z + 0.75, 0, TILE_H * 1.05));
-      const [mx, mz] = toWorld(rel, (e.min + e.max) / 2, zOut + w / 2);
-      const [ax, az] = toWorld(rel, e.min - half + 0.2, zOut + w / 2);
-      const [bx, bz] = toWorld(rel, e.max + half - 0.2, zOut + w / 2);
-      const seen = [
-        [mx, y, mz],
-        [ax, y, az],
-        [bx, y, bz],
-      ].every((pt) => !boxes.some((b) => segmentHitsBox(eye, pt as V3, b)));
-      if (!seen) continue;
+      const a0 = e.min - half;
+      const a1 = e.max + half;
+      const rows = rowFootprints.get(rel) ?? [];
+      let zOut: number | null = null;
+      for (const off of DEAD_HAIRLINE_OFFSETS) {
+        const z0 = WALL_D + TILE_H / 2 + off;
+        // Never under a rack or a meld standing along this segment.
+        if (rows.some((f) => f.a1 > a0 && f.a0 < a1 && f.d1 > z0 - 0.03 && f.d0 < z0 + w + 0.03))
+          break;
+        const [mx, mz] = toWorld(rel, (e.min + e.max) / 2, z0 + w / 2);
+        const [ax, az] = toWorld(rel, a0 + 0.2, z0 + w / 2);
+        const [bx, bz] = toWorld(rel, a1 - 0.2, z0 + w / 2);
+        const seen = [
+          [mx, y, mz],
+          [ax, y, az],
+          [bx, y, bz],
+        ].every((pt) => !boxes.some((b) => segmentHitsBox(eye, pt as V3, b)));
+        if (seen) {
+          zOut = z0;
+          break;
+        }
+      }
+      if (zOut === null) {
+        complete = false;
+        break;
+      }
       const corners: [number, number][] = [
-        toWorld(rel, e.min - half, zOut),
-        toWorld(rel, e.max + half, zOut),
-        toWorld(rel, e.max + half, zOut + w),
-        toWorld(rel, e.min - half, zOut + w),
+        toWorld(rel, a0, zOut),
+        toWorld(rel, a1, zOut),
+        toWorld(rel, a1, zOut + w),
+        toWorld(rel, a0, zOut + w),
       ];
       const base = pos.length / 3;
       for (const [cx, cz] of corners) pos.push(cx, y, cz);
       idx.push(base, base + 2, base + 1, base, base + 3, base + 2);
     }
-    if (pos.length === 0) {
+    if (pos.length === 0 || !complete) {
       this.deadMarker.visible = false;
       return;
     }

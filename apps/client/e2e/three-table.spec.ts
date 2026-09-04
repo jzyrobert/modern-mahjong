@@ -399,47 +399,130 @@ test('phone landscape keeps ≥ 44 px hand tiles above the footer with glass chr
   expect(errors, 'console / page errors').toEqual([]);
 });
 
-test('landscape river zoom lifts the camera over the discards while the bots hold', async ({
+test('landscape river zoom stays through the own turn with the hand rail and draw pill', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 915, height: 412 });
-  // Park the bots: the zoom is offered only while the player waits on
-  // others, and the shell ends it when the turn comes round.
-  await page.addInitScript(() => {
-    (globalThis as { __MAHJONG_TEST_BOT_PACE_MS__?: number }).__MAHJONG_TEST_BOT_PACE_MS__ = 60_000;
-  });
   const errors: string[] = [];
   await startSolo(page, errors);
   await page.waitForTimeout(1500);
   const table = page.getByTestId('table-3d');
-  const region = page.getByTestId('shared-discards-region');
-  // The user is dealer (seed 5): their turn to discard, so the region is
-  // inert (no button) and the table is not zoomed.
-  await expect(region).toBeAttached();
-  await expect(page.getByRole('button', { name: 'Zoom into the discards' })).toHaveCount(0);
+  const zoomBtn = page.getByRole('button', { name: 'Zoom into the discards' });
+  // The user is dealer (seed 5): their turn to discard — the zoom is
+  // offered all the same (the hatch matters most when picking a discard).
+  await expect(zoomBtn).toBeVisible();
   await expect(table).toHaveAttribute('data-river-zoom', 'false');
   const tiles = page.getByTestId('own-hand-tile');
   const restingTops = await tiles.evaluateAll((els) =>
     els.map((el) => el.getBoundingClientRect().top),
   );
-  await tiles.first().click();
-  // Bots hold → the claim window / their turn is open → the zoom is offered.
-  const zoomBtn = page.getByRole('button', { name: 'Zoom into the discards' });
-  await expect(zoomBtn).toBeVisible({ timeout: 10_000 });
   await zoomBtn.click();
   await expect(table).toHaveAttribute('data-river-zoom', 'true');
-  // The ✕ lives in the chrome row; the hand row has left the frame below
-  // the footer (its hit-targets follow it off-screen).
+  // The ✕ lives in the chrome row over the full-bleed zoom header; the
+  // 3D hand row has left the frame below the footer (its hit-targets
+  // follow it off-screen) and the footer's rail shows the 14 tiles as
+  // thumbnails instead — no draw pill, the tile is already drawn.
   const exit = page.getByTestId('river-zoom-exit');
   await expect(exit).toBeVisible();
   const exitBox = (await exit.boundingBox())!;
   expect(exitBox.y + exitBox.height).toBeLessThanOrEqual(52);
+  const header = page.getByTestId('zoom-header');
+  await expect(header).toBeAttached();
+  const headerBox = (await header.boundingBox())!;
+  expect(headerBox.x).toBeLessThanOrEqual(1);
+  expect(headerBox.width).toBeGreaterThanOrEqual(913);
+  expect(headerBox.y + headerBox.height).toBeGreaterThanOrEqual(exitBox.y + exitBox.height);
+  const rail = page.getByTestId('hand-rail');
+  await expect(rail).toBeVisible();
+  await expect(page.getByTestId('hand-rail-tile')).toHaveCount(14);
+  await expect(page.getByTestId('wall-draw-next')).toHaveCount(0);
+  const railBox = (await rail.boundingBox())!;
+  expect(railBox.y).toBeGreaterThan(360);
+  expect(railBox.height).toBeLessThanOrEqual(42);
+  await expect(page.getByRole('button', { name: 'Sort by Suit' })).toHaveCount(0);
   await page.waitForTimeout(1500);
   const zoomedTops = await tiles.evaluateAll((els) =>
     els.map((el) => el.getBoundingClientRect().top),
   );
   expect(Math.min(...zoomedTops)).toBeGreaterThan(412 - 1);
   expect(Math.max(...restingTops)).toBeLessThan(412);
+  // The side seats' rows leave the layout while zoomed; the rivers stay.
+  const zones = await page.evaluate(() => {
+    const dbg = (
+      globalThis as {
+        __MAHJONG_TABLE_3D_DEBUG__?: () => {
+          tiles: { zone: string | null; x: number; z: number }[];
+        } | null;
+      }
+    ).__MAHJONG_TABLE_3D_DEBUG__?.();
+    const racks = dbg?.tiles.filter((t) => t.zone === 'oppHand') ?? [];
+    return {
+      side: racks.filter((t) => Math.abs(t.x) > Math.abs(t.z)).length,
+      far: racks.filter((t) => Math.abs(t.z) > Math.abs(t.x)).length,
+    };
+  });
+  expect(zones.side).toBe(0);
+  expect(zones.far).toBe(13);
+  // Tapping the rail brings the table back (it never discards).
+  await page.getByRole('button', { name: 'Show the hand' }).click();
+  await expect(table).toHaveAttribute('data-river-zoom', 'false');
+  await expect(tiles).toHaveCount(14);
+
+  // Discard; the bots play out (zero pacing) and the user's draw cue
+  // comes round. Zooming now keeps the zoom (no auto-exit on the own
+  // turn) and the rail carries the draw control under the classic id.
+  await tiles.first().click();
+  const start = Date.now();
+  while (Date.now() - start < 30_000) {
+    if (
+      await page
+        .getByTestId('wall-draw-next')
+        .isVisible()
+        .catch(() => false)
+    )
+      break;
+    if (
+      await page
+        .getByText('CLAIM?', { exact: true })
+        .isVisible()
+        .catch(() => false)
+    ) {
+      await page
+        .getByText('Pass', { exact: true })
+        .first()
+        .click({ timeout: 2000 })
+        .catch(() => {});
+    }
+    await page.waitForTimeout(200);
+  }
+  await expect(page.getByTestId('wall-draw-next')).toBeVisible();
+  await zoomBtn.click();
+  await expect(table).toHaveAttribute('data-river-zoom', 'true');
+  await expect(page.getByTestId('hand-rail-tile')).toHaveCount(13);
+  const pill = page.getByTestId('wall-draw-next');
+  await expect(pill).toBeVisible();
+  await expect(pill).toHaveAccessibleName('Draw next tile');
+  await expect(page.locator('[data-testid="wall-draw-next"]')).toHaveCount(1);
+  const pillBox = (await pill.boundingBox())!;
+  expect(pillBox.y).toBeGreaterThan(360);
+  await pill.click();
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const s = (
+            globalThis as {
+              __MAHJONG_TEST_GET_STATE__?: () => { state: { hasDrawn: boolean; turn: number } };
+            }
+          ).__MAHJONG_TEST_GET_STATE__?.();
+          return s ? `${s.state.turn}:${s.state.hasDrawn}` : '';
+        }),
+      { timeout: 10_000 },
+    )
+    .toBe('0:true');
+  await expect(table).toHaveAttribute('data-river-zoom', 'true');
+  await expect(page.getByTestId('hand-rail-tile')).toHaveCount(14);
+  await expect(page.getByTestId('wall-draw-next')).toHaveCount(0);
   await exit.click();
   await expect(table).toHaveAttribute('data-river-zoom', 'false');
   const perf = await readPerf(page);

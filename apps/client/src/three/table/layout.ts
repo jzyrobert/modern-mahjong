@@ -186,6 +186,20 @@ export function toWorld(rel: Rel, x: number, z: number): [number, number] {
   }
 }
 
+/** Inverse of `toWorld`: world (x, z) into the seat-local frame of `rel`. */
+export function toLocal(rel: Rel, x: number, z: number): [number, number] {
+  switch (rel) {
+    case 0:
+      return [x, z];
+    case 1:
+      return [-z, x];
+    case 2:
+      return [-x, -z];
+    default:
+      return [z, -x];
+  }
+}
+
 // ─── Walls ─────────────────────────────────────────────────────────
 export interface WallRef {
   /** Seat whose side of the table the stack sits on. */
@@ -436,6 +450,15 @@ export interface LayoutOptions extends HandOrderOptions {
    */
   farMeldsOnRail?: boolean | undefined;
   /**
+   * Phone-landscape river zoom: drop the *side* seats' rows (rel 1 / 3 —
+   * racks and melds) altogether. The 50° zoom frames the river block
+   * between the chrome row and the footer; the side seats' melds fall on
+   * the frame's left / right edges where perspective crops them to
+   * ~60 % slivers (round-4 #5). The walls' near halves stay (they frame
+   * the block); the far seat's row sits behind the header glass.
+   */
+  hideSideSeats?: boolean | undefined;
+  /**
    * Waiting table (pre-game lobby): lay the wall tiles out as four
    * even, centred runs of whole stacks instead of the engine's break-
    * relative ring. The lobby state deals a rack per filled seat, so the
@@ -456,6 +479,18 @@ export interface LayoutOptions extends HandOrderOptions {
  * follows so rack and melds remain one row.
  */
 export const SIDE_SEAT_OUT_LOW = 0.65;
+
+/**
+ * Side-seat outward shift for the desktop preset (44°, camera on the
+ * table's centre line). Seen from the inside, a side wall's two-high top
+ * face overhangs the felt beyond its outer edge by ≈ 0.62 · 9.5 / 22 ≈
+ * 0.27 units, so a flat meld whose inner edge sits at 9.82 (`MELD_Z`)
+ * shows no felt between itself and the wall's ivory side and reads as
+ * tucked under it (round-4 #2). 0.45 puts the meld's inner edge at 10.27
+ * — a fifth of a tile of visible felt past the overhang — while the rack
+ * (10.55 → 11.0, base to ≈ 11.3) stays inside the rail (11.9).
+ */
+export const SIDE_SEAT_OUT_DESKTOP = 0.45;
 
 /**
  * Side-seat meld scale on the width-bound portrait table (see
@@ -611,7 +646,13 @@ export function computeLayout(state: GameState, me: Seat, opts: LayoutOptions): 
     const rel = relOf(seat, me);
     const yaw = yawOf(rel);
     const isMe = seat === me;
-    const sideOut = !isMe && (rel === 1 || rel === 3) ? (opts.sideSeatOut ?? 0) : 0;
+    const isSide = !isMe && (rel === 1 || rel === 3);
+    if (isSide && opts.hideSideSeats === true) {
+      // Zoomed landscape: the side seats' rivers still show; their rows do not.
+      placeRiver(layout, state, seat, rel, yaw, opts.riverScale ?? 1);
+      continue;
+    }
+    const sideOut = isSide ? (opts.sideSeatOut ?? 0) : 0;
     const handZ = (isMe ? OWN_HAND_Z : HAND_Z) + sideOut;
     const meldZ = MELD_Z + sideOut;
 
@@ -962,6 +1003,47 @@ export function riverMetrics(scale: number): {
 export function dealerChipLocal(riverScale: number, chipRadius: number): [number, number] {
   const m = riverMetrics(riverScale);
   return [-5.2, m.rightEdge + chipRadius + 0.2];
+}
+
+/**
+ * How far the dealer chip steps toward the table centre when wall stacks
+ * still stand in its pocket (`dealerChipBlocked`). At the portrait river
+ * scale the chip's near edge (7.94) sits 0.18 off the wall's inner edge
+ * (8.12) and the two-high stacks' top face, seen from 70°, overhangs the
+ * felt by ≈ 0.22 — the chip's lower fifth hid behind the stacks and read
+ * as wedged into the wall (round-4 #3). 0.7 leaves ≈ 0.5 units of felt
+ * between the chip and the overhang; the pinwheel arm it sits beyond is
+ * unaffected (the step is along z, away from the wall).
+ */
+export const CHIP_POCKET_NUDGE = 0.7;
+/** Reach (world units) within which a wall stack counts as occupying the chip's pocket. */
+export const CHIP_POCKET_REACH = 1.2;
+
+/**
+ * Is a wall / dead-wall stack standing in the dealer chip's corner
+ * pocket? `[lx, lz]` is the chip centre in the dealer's frame
+ * (`dealerChipLocal`); a stack on the dealer's own wall whose centre is
+ * within `CHIP_POCKET_REACH` of the chip's near edge along the wall and
+ * whose inner edge is within reach across it blocks the pocket. The deal
+ * empties the pocket on some break positions and not others, so the
+ * chip either parks in the pocket or steps `CHIP_POCKET_NUDGE` in; the
+ * caller keeps the decision for the hand (stacks only ever leave).
+ */
+export function dealerChipBlocked(
+  layout: Layout,
+  dealerRel: Rel,
+  [lx, lz]: readonly [number, number],
+  chipRadius: number,
+): boolean {
+  for (const slot of layout) {
+    if (!slot || (slot.zone !== 'wall' && slot.zone !== 'deadWall') || slot.rel !== dealerRel)
+      continue;
+    const [sx, sz] = toLocal(dealerRel, slot.x, slot.z);
+    if (Math.abs(sx - lx) > TILE_W / 2 + chipRadius + CHIP_POCKET_REACH * 0.5) continue;
+    // Stack inner edge (toward the centre) vs the chip's near edge.
+    if (sz - TILE_H / 2 - (lz + chipRadius) < CHIP_POCKET_REACH) return true;
+  }
+  return false;
 }
 
 /**
