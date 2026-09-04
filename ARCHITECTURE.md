@@ -144,7 +144,13 @@ Rules:
 - `Match.tsx` mounts `Table3DShell` instead of `DesktopShell` /
   `MobileShell` when the renderer resolves to `'3d'`; the shared derived
   props (`sharedProps`) are unchanged. `Lobby.tsx` mounts `Menu3D` the
-  same way. `SettingsPanel` gains the live preview and renderer control.
+  same way, but through the stricter `resolveMenuBackdrop()`: under
+  `auto` the `low` quality tier (software GL, ≤ 4 cores / ≤ 3 GB) keeps
+  the DOM-only menu, while an explicit `'3d'` (setting, query or the
+  test global — the verifier's SwiftShader path) always mounts. The
+  backdrop chunk is imported after first paint + `requestIdleCallback`
+  so LCP / TBT are measured on the DOM menu.
+  `SettingsPanel` gains the live preview and renderer control.
   The tutorial overlay is untouched; `tutorial/targets.ts` feeds it
   projected rects through the existing `TargetRegistry`.
 - Native builds resolve to `'classic'` always (the three tree is
@@ -185,7 +191,9 @@ frame time there is **not** the phone number. The verifier therefore
 reports and gates on the CPU-side metrics (JS frame time, draw calls,
 triangles, texture bytes, program count), which are device-independent,
 and records the SwiftShader fps for trend only. A red draw-call or
-triangle budget is a real failure; a low SwiftShader fps is not.
+triangle budget is a real failure; a low SwiftShader fps is not. Lighthouse
+runs the same software GL without pinning `'3d'`, so it exercises the
+`auto` → `low` → DOM-only menu path (§3) and never pays for the backdrop.
 
 ## 5. Asset policy — CC0 only
 

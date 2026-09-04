@@ -9,8 +9,9 @@ import {
   useRef,
 } from 'react';
 import { useSyncExternalStore } from 'react';
-import { type StyleProp, View, type ViewStyle } from 'react-native';
+import { Platform, type StyleProp, View, type ViewStyle } from 'react-native';
 import { LESSONS, useTutorial } from '../../state/tutorial';
+import { TARGET_ATTR } from './chromeRects';
 import type { TutorialTargetId } from './types';
 
 export interface TargetRect {
@@ -29,6 +30,20 @@ interface TargetRegistryApi {
   read(id: TutorialTargetId): TargetRect | null;
   /** Subscribe to changes; called whenever any rect is written. */
   subscribe(cb: () => void): () => void;
+  /** Subscribe to writes for ONE id (additive, PR 3D-tutorial). The
+   *  3D table re-registers its projected hit-target rects on every
+   *  frame while the camera eases; per-id listeners let the overlay
+   *  follow just its active target without waking on every other
+   *  write. */
+  subscribeTo(id: TutorialTargetId, cb: (rect: TargetRect | null) => void): () => void;
+  /** Monotonic counter bumped on every accepted write — lets a
+   *  `requestAnimationFrame` poller detect "something moved" with
+   *  one integer compare instead of diffing rects. */
+  version(): number;
+  /** Every live rect, keyed by id (additive). `<TutorialOverlay>` uses
+   *  the *other* targets as chrome the caption card should not bisect
+   *  and as opaque neighbours that tighten the spotlight feather. */
+  readAll(): ReadonlyMap<TutorialTargetId, TargetRect>;
   /** Sentinel root the registry uses as the origin for all rects.
    *  Targets store `(target.window.x - root.window.x, target.window.y
    *  - root.window.y)` in the registry; `<TutorialOverlay>` is mounted
@@ -43,6 +58,9 @@ const noopApi: TargetRegistryApi = {
   set: () => {},
   read: () => null,
   subscribe: () => () => {},
+  subscribeTo: () => () => {},
+  version: () => 0,
+  readAll: () => new Map(),
   rootRef: { current: null },
 };
 
@@ -72,6 +90,10 @@ export function TargetRegistryProvider({ children }: TargetRegistryProviderProps
   // us that without the zustand selector machinery.
   const map = useRef(new Map<TutorialTargetId, TargetRect>()).current;
   const listeners = useRef(new Set<() => void>()).current;
+  const idListeners = useRef(
+    new Map<TutorialTargetId, Set<(rect: TargetRect | null) => void>>(),
+  ).current;
+  const versionRef = useRef(0);
   const rootRef = useRef<View | null>(null);
 
   const api = useMemo<TargetRegistryApi>(
@@ -96,7 +118,13 @@ export function TargetRegistryProvider({ children }: TargetRegistryProviderProps
           }
           map.set(id, rect);
         }
+        versionRef.current++;
         for (const l of listeners) l();
+        const perId = idListeners.get(id);
+        if (perId) {
+          const value = map.get(id) ?? null;
+          for (const l of perId) l(value);
+        }
       },
       read(id) {
         return map.get(id) ?? null;
@@ -107,9 +135,26 @@ export function TargetRegistryProvider({ children }: TargetRegistryProviderProps
           listeners.delete(cb);
         };
       },
+      subscribeTo(id, cb) {
+        let set = idListeners.get(id);
+        if (!set) {
+          set = new Set();
+          idListeners.set(id, set);
+        }
+        set.add(cb);
+        return () => {
+          set?.delete(cb);
+        };
+      },
+      version() {
+        return versionRef.current;
+      },
+      readAll() {
+        return map;
+      },
       rootRef,
     }),
-    [listeners, map],
+    [listeners, idListeners, map],
   );
 
   return (
@@ -120,6 +165,8 @@ export function TargetRegistryProvider({ children }: TargetRegistryProviderProps
     </TargetRegistryContext.Provider>
   );
 }
+
+export type { TargetRegistryApi };
 
 export function useTargetRegistry(): TargetRegistryApi {
   return useContext(TargetRegistryContext);
@@ -161,6 +208,14 @@ interface TutorialTargetProps {
    *  silently overflows instead. Defaults to undefined so existing
    *  content-fit usages keep their previous layout. */
   style?: StyleProp<ViewStyle>;
+}
+
+/** On web the View ref is the DOM element itself; tag it so the
+ *  overlay's chrome scan can skip the spotlit target's own subtree. */
+function markTarget(node: unknown, id: TutorialTargetId): void {
+  if (Platform.OS !== 'web') return;
+  const el = node as { setAttribute?: (name: string, value: string) => void } | null;
+  el?.setAttribute?.(TARGET_ATTR, id);
 }
 
 interface MeasurableNode {
@@ -266,11 +321,18 @@ export function TutorialTarget({ id, children, enabled = true, style }: Tutorial
   // target becomes the active step's target catches the full window
   // of post-activation animation. The registry dedupes identical
   // rects so frames where nothing actually moved are a no-op.
+  //
+  // On web the poll runs for as long as the target stays active:
+  // `measureInWindow` is a synchronous `getBoundingClientRect` there
+  // (two calls per frame — negligible), and the 3D table's projected
+  // hit targets move on every frame while the camera eases, so a
+  // fixed settling window would leave the halo behind. Native keeps
+  // the 1500 ms cap because its measure crosses the bridge.
   useEffect(() => {
     if (!isActiveTarget) return;
     let rafId: number | null = null;
     const startedAt = Date.now();
-    const DURATION_MS = 1500;
+    const DURATION_MS = Platform.OS === 'web' ? Number.POSITIVE_INFINITY : 1500;
     const tick = () => {
       if (cancelledRef.current) return;
       measureAndRegister();
@@ -303,6 +365,7 @@ export function TutorialTarget({ id, children, enabled = true, style }: Tutorial
     <View
       ref={(node) => {
         ref.current = node as unknown as MeasurableNode | null;
+        markTarget(node, id);
       }}
       onLayout={measureAndRegister}
       collapsable={false}

@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import type { RendererChoice } from '../state/game';
+import { glRendererString, pickTier, readDeviceHints } from './core/quality';
 
 /**
  * Which render layer to mount — the Three.js scene (`src/three/`) or the
@@ -15,6 +16,9 @@ import type { RendererChoice } from '../state/game';
  *   4. `auto` → `'3d'` on web with a working WebGL2 context, else
  *      `'classic'`. Native is always `'classic'` (three needs a DOM
  *      canvas; `expo-gl` is out of scope for this pass).
+ *
+ * `core/quality` is a pure module (no `three` import), so pulling
+ * `pickTier` in here keeps this file safe for universal code.
  */
 export type ResolvedRenderer = '3d' | 'classic';
 
@@ -23,30 +27,46 @@ declare global {
   var __MAHJONG_TEST_RENDERER__: ResolvedRenderer | undefined;
 }
 
-let webgl2Probe: boolean | null = null;
+interface GLProbe {
+  webgl2: boolean;
+  /** Lower-cased unmasked renderer string; `undefined` without WebGL2. */
+  renderer: string | undefined;
+}
 
-/** Cached WebGL2 availability probe. Creates one throw-away context. */
-export function hasWebGL2(): boolean {
-  if (webgl2Probe !== null) return webgl2Probe;
+let glProbe: GLProbe | null = null;
+
+/**
+ * Cached WebGL2 probe. Creates one throw-away context, reads the
+ * renderer string off it (so `resolveMenuBackdrop` can tell a software
+ * rasteriser from a GPU without opening a second context) and loses it.
+ */
+function probeGL(): GLProbe {
+  if (glProbe) return glProbe;
   if (Platform.OS !== 'web' || typeof document === 'undefined') {
-    webgl2Probe = false;
-    return false;
+    glProbe = { webgl2: false, renderer: undefined };
+    return glProbe;
   }
   try {
     const canvas = document.createElement('canvas');
     const gl = canvas.getContext('webgl2', { failIfMajorPerformanceCaveat: false });
-    webgl2Probe = gl !== null;
+    const renderer = gl ? glRendererString(gl) : undefined;
     // Free the context eagerly — browsers cap live contexts at ~16.
     gl?.getExtension('WEBGL_lose_context')?.loseContext();
+    glProbe = { webgl2: gl !== null, renderer };
   } catch {
-    webgl2Probe = false;
+    glProbe = { webgl2: false, renderer: undefined };
   }
-  return webgl2Probe;
+  return glProbe;
+}
+
+/** Cached WebGL2 availability. */
+export function hasWebGL2(): boolean {
+  return probeGL().webgl2;
 }
 
 /** Test seam — lets unit tests pin the probe without a DOM. */
-export function __setWebGL2ProbeForTests(value: boolean | null): void {
-  webgl2Probe = value;
+export function __setGLProbeForTests(value: GLProbe | null): void {
+  glProbe = value;
 }
 
 function queryOverride(): ResolvedRenderer | null {
@@ -83,4 +103,23 @@ export function resolveRenderer(setting: RendererChoice): ResolvedRenderer {
   if (setting === 'classic') return 'classic';
   if (setting === '3d') return '3d';
   return hasWebGL2() ? '3d' : 'classic';
+}
+
+/**
+ * Whether the lobby should mount the Three.js menu backdrop
+ * (`Menu3DBackdrop`). Tighter than `resolveRenderer`: the backdrop is
+ * decoration, so under `auto` the `low` quality tier — software
+ * rasterisers (headless CI, Lighthouse's Chrome) and weak devices —
+ * keeps the DOM-only menu while the table itself still renders in 3D.
+ * On software GL every frame is a ~0.5 s main-thread task, which is
+ * what sank the Lighthouse performance score to 0.66.
+ *
+ * An explicit `'3d'` — the test global, the `?renderer=3d` query or the
+ * persisted setting — means the user (or the verifier, which runs on
+ * SwiftShader) insisted, so it mounts regardless of tier.
+ */
+export function resolveMenuBackdrop(setting: RendererChoice): boolean {
+  if (resolveRenderer(setting) !== '3d') return false;
+  if (setting === '3d' || rendererOverride() !== null) return true;
+  return pickTier(readDeviceHints(probeGL().renderer)) !== 'low';
 }

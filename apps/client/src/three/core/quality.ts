@@ -82,19 +82,32 @@ export function pickTier(hints: DeviceHints): QualityTier {
   return 'high';
 }
 
-export function readDeviceHints(gl?: WebGL2RenderingContext | WebGLRenderingContext): DeviceHints {
+/** Lower-cased unmasked renderer string (`WEBGL_debug_renderer_info`),
+ *  falling back to `gl.RENDERER`; `undefined` when the context refuses. */
+export function glRendererString(
+  gl: WebGL2RenderingContext | WebGLRenderingContext,
+): string | undefined {
+  try {
+    const ext = gl.getExtension('WEBGL_debug_renderer_info');
+    const raw = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
+    return String(raw).toLowerCase();
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Device hints for `pickTier`. Pass a live context to read its renderer
+ * string, or the already-lower-cased string itself when the caller only
+ * has a cached probe (`renderer.ts` keeps one so universal code can ask
+ * about the tier without opening a second context).
+ */
+export function readDeviceHints(
+  gl?: WebGL2RenderingContext | WebGLRenderingContext | string,
+): DeviceHints {
   if (typeof window === 'undefined' || typeof navigator === 'undefined') return {};
   const nav = navigator as Navigator & { deviceMemory?: number };
-  let glRenderer: string | undefined;
-  if (gl) {
-    try {
-      const ext = gl.getExtension('WEBGL_debug_renderer_info');
-      const raw = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
-      glRenderer = String(raw).toLowerCase();
-    } catch {
-      /* ignore */
-    }
-  }
+  const glRenderer = typeof gl === 'string' ? gl : gl ? glRendererString(gl) : undefined;
   return {
     hardwareConcurrency: nav.hardwareConcurrency,
     deviceMemoryGb: nav.deviceMemory,

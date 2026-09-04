@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Platform, Pressable, Text, View, useWindowDimensions } from 'react-native';
+import { useTutorial } from '../state/tutorial';
 import { COLORS } from './colors';
 import { useIsLandscape } from './useOrientation';
 
@@ -17,7 +18,10 @@ import { useIsLandscape } from './useOrientation';
  *   - the height is small enough to be a phone (`< 600 px`), so iPad
  *     landscape and laptops don't trigger the prompt,
  *   - we're not already in fullscreen,
- *   - the user hasn't dismissed this session.
+ *   - the user hasn't dismissed this session,
+ *   - no tutorial lesson (or its completion prompt) is showing — the
+ *     prompt mounts above the coach-mark overlay and would sit on the
+ *     caption card's corner in the landscape side dock.
  *
  * Tapping the button is a user gesture, so `requestFullscreen()` from
  * the press handler succeeds. Rotating back to portrait resets the
@@ -39,6 +43,7 @@ export function FullscreenPrompt() {
   const isLandscape = useIsLandscape();
   const [inFullscreen, setInFullscreen] = useState(false);
   const [dismissed, setDismissed] = useState(false);
+  const tutorialShowing = useTutorial((s) => s.active !== null || s.justCompleted !== null);
 
   // Subscribe to the browser's fullscreen-change event so the prompt
   // re-mounts when the user exits fullscreen via Esc / system chrome.
@@ -67,6 +72,7 @@ export function FullscreenPrompt() {
   if (height >= 600) return null;
   if (inFullscreen) return null;
   if (dismissed) return null;
+  if (tutorialShowing) return null;
 
   return (
     // Top-right corner. The post-V2_3 landscape layout puts the ☰

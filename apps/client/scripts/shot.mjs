@@ -340,25 +340,15 @@ async function runStep(page, step, ctx) {
     }, step.startTutorial);
   }
   if (step.clickTutorialNext) {
-    // Playwright can't mix CSS and `role=` engines in one selector
-    // string; try each candidate in turn.
-    const candidates = [
-      page.getByTestId('tutorial-next'),
-      page.getByRole('button', { name: 'Got it' }),
-      page.getByRole('button', { name: 'Next' }),
-      page.getByRole('button', { name: 'Done' }),
-    ];
-    for (const loc of candidates) {
-      if (
-        await loc
-          .first()
-          .isVisible()
-          .catch(() => false)
-      ) {
-        return loc.first().click({ timeout: step.timeout ?? 8000 });
-      }
-    }
-    throw new Error('no tutorial CTA visible');
+    // The coach-mark CTA carries `tutorial-next`; fall back to the
+    // accessible names for an overlay that predates the testID.
+    const byId = page.getByTestId('tutorial-next').first();
+    if (await byId.isVisible({ timeout: 4000 }).catch(() => false))
+      return byId.click({ timeout: 8000 });
+    return page
+      .getByRole('button', { name: /^(Got it|Next|Done)$/ })
+      .first()
+      .click({ timeout: 8000 });
   }
   if (step.waitForPerf) {
     // Resolves to 'stale' (recorded as `perfStale` in the log) instead

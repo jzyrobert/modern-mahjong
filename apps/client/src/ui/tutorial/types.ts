@@ -70,6 +70,12 @@ export interface LessonStep {
   id: string;
   caption: { title: string; body: string };
   targetId?: TutorialTargetId;
+  /** Spotlight only part of the target: the band from the target's
+   *  top edge through the first matching descendant (see
+   *  `TargetFocus`). Defaults per target id (`TARGET_FOCUS` in
+   *  `focus.ts`); pass `null` to spotlight the whole target. Web only —
+   *  native shells always ring the whole target. */
+  targetFocus?: TargetFocus | null;
   completedWhen?: (state: GameState) => boolean;
   /** Override for the caption card's CTA button label. Defaults to
    *  `"Got it"` for steps without `completedWhen`, hidden otherwise. */
@@ -89,6 +95,18 @@ export interface LessonStep {
    *  reverting the staged state. Implementations must not mutate the
    *  input; return a new state object. */
   setupBeforeStep?: (state: GameState) => GameState;
+}
+
+/**
+ * Sub-region of a `<TutorialTarget>` to spotlight. `through` lists
+ * descendants to look for in order — by `testId` or by exact visible
+ * `text` (a button label) — and the first one found ends the band:
+ * target top → descendant bottom + `HALO_PAD`. The result panel uses
+ * this to ring the score header + winning hand (what the scoring
+ * lessons talk about) without its rules block and action row.
+ */
+export interface TargetFocus {
+  through: ReadonlyArray<{ testId: string } | { text: string }>;
 }
 
 export interface Lesson {

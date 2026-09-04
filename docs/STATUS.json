@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "updatedAt": "2026-09-04T01:28:00Z",
-  "round": 3,
+  "updatedAt": "2026-09-04T01:40:00Z",
+  "round": 4,
   "passThreshold": 8.5,
   "subsystems": {
     "core": {
@@ -157,11 +157,66 @@
       ]
     },
     "tutorial": {
-      "score": null,
+      "score": 8.3,
       "errors": 0,
       "pass": false,
-      "issues": [],
-      "history": []
+      "issues": [
+        {
+          "rank": 1,
+          "severity": "medium",
+          "title": "Landscape basics-0: spotlight ring bisects the hand row",
+          "state": "tutorial-basics-0 @ phone-landscape (classic)",
+          "detail": "The dice modal overlaps the own-hand row in landscape (table-owned), but the ring drawn around it is tutorial-owned and its bottom stroke at y≈375 CSS cuts straight through every hand tile: pixel sample of tile 東 body is 251,248,240 (lit) at y≈356 and 41,42,37 (dimmed) at y≈385. Tiles 六..發 read as half-lit / half-dark with a gold line across them — this is the very first coach-mark a landscape user sees. encloseStraddlers does not help because the hand rect straddles by far more than STRADDLE_MAX (24 px). Fix: when the target rect intersects a large avoid rect (hand row) by more than STRADDLE_MAX, trim the focus/ring to the modal's portion above that rect and treat the bottom side as 'tight' (drop the stroke + feather it the way the screen-edge open side is handled), or move the landscape dice modal above the hand in the table shell. Either way the ring must not cross tiles."
+        },
+        {
+          "rank": 2,
+          "severity": "medium",
+          "title": "Phone scoring-1: card floats 90 px below the ring, notch points at dimmed Rules chips",
+          "state": "tutorial-scoring-1 @ phone (classic)",
+          "detail": "The focus band ring ends at y≈440 CSS and the card starts at y≈530; the intervening 90 px is the dimmed 'Rules / Minimum faan 0 1 3 5' remainder of the result panel (column sample at x=206: gold at 440, scrim-grey 77,78,74 from 450–520, card at 530). The notch tip lands between the faan pills and visually points at 'Rules', not at the spotlit score header. The keepNotch-over-keepClear rule keeps the arrow but the composition still reads as 'look at the rules chips'. Fix: when the gap is entirely the target's own dimmed remainder, dock snug — top = haloBottom + CARD_GAP — and let the (already solid) card cover the remainder; the buttons below are hidden by the scrim anyway. Alternatively drop the notch when gap > NOTCH_MAX_GAP regardless of keepClear."
+        },
+        {
+          "rank": 3,
+          "severity": "low",
+          "title": "Landscape scoring-1: ring lights the opponent seat strip and desktop seat badges",
+          "state": "tutorial-scoring-1 @ phone-landscape and desktop (classic)",
+          "detail": "Landscape: the ring top sits at y≈13 CSS while the result panel top is at ≈33, so '西 Niko  Bot (Easy)' and '北 Tao' from the seat strip sit inside the lit hole (sample 51,60,52 vs 39,49,41 dimmed) and read as part of the lesson target. Desktop: the tops of the Kai 北 / Tao 南 seat badges peek lit above the panel edge inside the ring. Looks like the straddler enclosure pulling unrelated chrome in. Fix: only enclose straddlers whose centre lies inside the ring, or exclude seat-strip / seat-badge rects from candidates so the ring hugs the focus band (HALO_PAD 8) on the top side."
+        },
+        {
+          "rank": 4,
+          "severity": "low",
+          "title": "Landscape scoring-intro step 0: centred card reads off-centre and kisses the hand row",
+          "state": "match-result (scoring-intro step 0) @ phone-landscape (classic)",
+          "detail": "placeCentred slides the 'Scoring 101' card left/up to clear the Order/Player toggle: it now spans x 163–601 CSS in a 915 px viewport (centre 382 vs 457) and its bottom edge at ≈345 sits 5 px above the hand tiles at ≈350. The intent is clear from the code but the result looks accidentally misaligned next to the perfectly centred basics-1 / claims-0 cards. Fix: prefer a purely vertical shift or a slightly narrower card when the only conflict is a small toggle, or treat the toggle as coverable (card already paints solid when overlapsChrome) and keep the card horizontally centred; keep ≥ 12 px to the hand row."
+        },
+        {
+          "rank": 5,
+          "severity": "low",
+          "title": "Progress dots and 'LESSON N/14' label count different things",
+          "state": "all tutorial states, all viewports",
+          "detail": "Header reads 'LESSON 1/14' while the dot row shows 6 dots (steps within the lesson); on basics-1 the label still says 1/14 but the 2nd dot is active. First-time users will read the dots as lesson progress. Fix: add a tiny 'Step 2 of 6' caption beside the dots or move the lesson counter to the lesson-picker and keep the card header about steps only."
+        },
+        {
+          "rank": 6,
+          "severity": "low",
+          "title": "3D renderer: targeted steps still fall back to the centred card (known gap)",
+          "state": "tutorial-basics-0 @ phone / desktop (3d)",
+          "detail": "Zero errors and budget passes (3 draw calls, 159,938 tris, programs 3, idle on desktop) and the dice-modal step rings correctly because the modal is DOM. But per the engineer's own gap list the 3D table registers no <TutorialTarget> rects, so own-hand / wall / discard steps will show a targetless card once the 3D table lands. Not scored heavily this pre-integration round, but it is the next blocker for the tutorial on the real renderer: mount Tutorial3D / setSpotlightTiles and register projected tile rects."
+        }
+      ],
+      "history": [
+        {
+          "round": 4,
+          "score": 8.3,
+          "errors": 0,
+          "perfPass": true,
+          "pass": false,
+          "critic": "art-director",
+          "openIssues": 6,
+          "notes": "4 rounds: 8.4 → 8.4 → 8.3 → 8.3. Zero errors, perf ok, all tutorial specs green; merged into integration so the next loop resumes from these issues. 3D targeted steps depend on the table registering TutorialTarget rects.",
+          "at": "2026-09-04T01:40:00Z"
+        }
+      ]
     }
   },
   "wholeGame": {

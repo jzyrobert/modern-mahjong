@@ -242,6 +242,35 @@ export const STATES = {
       { waitMs: 800 },
     ],
   },
+  'tutorial-basics-2': {
+    // `own-hand` step — the marquee coach-mark: halo on the hand row,
+    // card docked above it with the pointer notch.
+    owner: 'tutorial',
+    steps: [
+      { goto: '/' },
+      { waitForText: 'Modern Mahjong' },
+      { startTutorial: 'basics' },
+      { waitMs: 800 },
+      { clickTutorialNext: true },
+      { waitMs: 500 },
+      { clickTutorialNext: true },
+      { waitMs: 900 },
+    ],
+  },
+  'tutorial-scoring-1': {
+    // First staged example of `scoring-intro`: the result panel is the
+    // target, so the card side-docks (desktop / landscape) or overlaps
+    // the panel's bottom edge (portrait phone).
+    owner: 'tutorial',
+    steps: [
+      { goto: '/' },
+      { waitForText: 'Modern Mahjong' },
+      { startTutorial: 'scoring-intro' },
+      { waitMs: 800 },
+      { clickTutorialNext: true },
+      { waitMs: 1200 },
+    ],
+  },
   'tutorial-claims-0': {
     owner: 'tutorial',
     steps: [
