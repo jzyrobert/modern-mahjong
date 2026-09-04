@@ -14,6 +14,12 @@ export interface TurnChipProps {
   /** A claim window is open (the table waits on calls, not a turn). */
   claimsOpen: boolean;
   style?: CSSProperties | undefined;
+  /**
+   * `default` — the portrait tray pill (40 px). `large` — the desktop
+   * footer cue (48 px, 13 px label). `dense` — the phone-landscape
+   * footer (34 px) beside the 30 px sort segments.
+   */
+  size?: 'default' | 'large' | 'dense' | undefined;
 }
 
 /**
@@ -34,7 +40,10 @@ export function TurnChip({
   activeColour,
   claimsOpen,
   style,
+  size = 'default',
 }: TurnChipProps) {
+  const minHeight = size === 'large' ? 48 : size === 'dense' ? 34 : 40;
+  const fontSize = size === 'large' ? 13 : size === 'dense' ? 10 : 11;
   const label = isMyTurn
     ? `Your turn · ${needsDraw ? 'draw' : 'discard'}${turnCountdown !== null ? ` · ${turnCountdown}s` : ''}`
     : claimsOpen
@@ -56,12 +65,16 @@ export function TurnChip({
       style={glassStyle({
         display: 'inline-flex',
         alignItems: 'center',
-        gap: 9,
-        padding: '0 16px 0 12px',
-        minHeight: 40,
+        gap: size === 'dense' ? 7 : 9,
+        padding:
+          size === 'large' ? '0 22px 0 16px' : size === 'dense' ? '0 12px 0 10px' : '0 16px 0 12px',
+        minHeight,
         borderRadius: 999,
-        border: isMyTurn ? '1px solid rgba(216,168,90,0.6)' : GLASS.border,
-        background: isMyTurn ? 'rgba(216,168,90,0.14)' : GLASS.bg,
+        border: isMyTurn ? '1px solid rgba(216,168,90,0.7)' : GLASS.border,
+        background: isMyTurn ? 'rgba(216,168,90,0.16)' : GLASS.bg,
+        boxShadow: isMyTurn
+          ? '0 0 0 1px rgba(216,168,90,0.18), 0 0 22px rgba(216,168,90,0.35), 0 12px 40px rgba(0,0,0,0.35)'
+          : GLASS.shadow,
         pointerEvents: 'none',
         whiteSpace: 'nowrap',
         ...style,
@@ -70,9 +83,9 @@ export function TurnChip({
       <span
         className={isMyTurn ? 'mj-pulse' : undefined}
         style={{
-          width: 8,
-          height: 8,
-          borderRadius: 4,
+          width: size === 'large' ? 10 : 8,
+          height: size === 'large' ? 10 : 8,
+          borderRadius: 5,
           background: dot,
           boxShadow: isMyTurn ? '0 0 10px rgba(216,168,90,0.9)' : 'none',
           flexShrink: 0,
@@ -81,7 +94,8 @@ export function TurnChip({
       <span
         style={{
           ...labelStyle,
-          letterSpacing: 1.4,
+          fontSize,
+          letterSpacing: size === 'large' ? 1.8 : 1.4,
           color: isMyTurn ? GLASS.gold : GLASS.text,
         }}
       >

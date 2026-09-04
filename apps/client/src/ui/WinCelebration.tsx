@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Animated, Pressable, Text, View } from 'react-native';
 import { nameForSeat, useGame } from '../state/game';
 import { LESSONS, useTutorial } from '../state/tutorial';
+import { resolveRenderer } from '../three/renderer';
 import { PULSE_TEMPO, useFadeInOut, usePulse } from './animations';
 import { COLORS } from './colors';
 import { DISMISS_MS } from './timing';
@@ -13,8 +14,19 @@ import { DISMISS_MS } from './timing';
  * pulses + rocks subtly via the shared `usePulse` hook; the fade-in
  * / fade-out lifecycle goes through `useFadeInOut` which honours
  * `useGame.settings.animations` (snap when reduced-motion is on).
+ *
+ * Classic renderer only: under the Three.js renderer the celebration
+ * is the gold 和 stamp that lands on the glass result card
+ * (`three/table/hud/ResultVeil`), so this cream card would be a
+ * second, older-looking popup over it.
  */
 export function WinCelebration() {
+  const rendererSetting = useGame((s) => s.settings.renderer);
+  if (resolveRenderer(rendererSetting) === '3d') return null;
+  return <ClassicWinCelebration />;
+}
+
+function ClassicWinCelebration() {
   const result = useGame((s) => s.state?.lastResult);
   const lobby = useGame((s) => s.lobby);
   const [dismissed, setDismissed] = useState(false);

@@ -7,9 +7,11 @@ import {
   DEAD_WALL_OFFSET,
   FELT_HALF,
   HAND_PITCH,
+  HAND_TILT,
   HAND_Z,
   MELD_Z,
   OWN_HAND_Z,
+  OWN_MELD_CLAIM_STEP,
   OWN_MELD_RIGHT,
   RAIL_MELD_Z,
   RAIL_TOP,
@@ -30,6 +32,7 @@ import {
   heldHandSlots,
   heldRowSplit,
   layoutMeld,
+  layoutMeldStanding,
   orderOwnHand,
   quatFromBasis,
   relOf,
@@ -46,6 +49,16 @@ function dealt(seed = 5, dealer: Seat = 0): GameState {
 }
 
 const OPTS = { sortMode: 'suit' as const, manualOrder: [], drawnTileId: null, reveal: false };
+/** Held-hand frame (phone portrait) shared by the tests below. */
+const FRAME = {
+  origin: [0, 40, 25] as [number, number, number],
+  right: [1, 0, 0] as [number, number, number],
+  up: [0, 0.3, -0.954] as [number, number, number],
+  forward: [0, 0.954, 0.3] as [number, number, number],
+  lean: 0.2,
+  pxPerUnit: 48,
+  rowPitch: TILE_H + 0.34,
+};
 
 describe('toWorld / relOf', () => {
   test('rotates seat-local coordinates counter-clockwise per seat', () => {
@@ -259,6 +272,120 @@ describe('computeLayout', () => {
     layout.forEach((s, i) => {
       if (s) expect(s.id).toBe(i);
     });
+  });
+  test('mid-game: every tile placed once; visible wall stacks = live + dead wall', () => {
+    // Hands, melds, rivers, a drawn-down live wall and a gang-shortened
+    // dead wall — the shape the "tile count" complaint was about: what
+    // stands in the walls must be exactly `wall.length + deadWall.length`,
+    // no tile placed twice, none dropped.
+    const s = dealt();
+    const wall = s.wall.slice(0, -30);
+    const drawn = s.wall.slice(-30);
+    const deadTaken = s.deadWall[0]!;
+    const st: GameState = {
+      ...s,
+      wall,
+      deadWall: s.deadWall.slice(1),
+      hands: {
+        0: [...s.hands[0].slice(4), deadTaken],
+        1: s.hands[1].slice(3),
+        2: s.hands[2].slice(0, 11),
+        3: s.hands[3],
+      },
+      melds: {
+        0: [{ kind: 'gang-promoted', tiles: s.hands[0].slice(0, 4), from: 1 }],
+        1: [{ kind: 'chi', tiles: s.hands[1].slice(0, 3), from: 0 }],
+        2: [],
+        3: [],
+      },
+      discards: {
+        0: drawn.slice(0, 8),
+        1: drawn.slice(8, 16),
+        2: [...drawn.slice(16, 23), ...s.hands[2].slice(11)],
+        3: drawn.slice(23, 30),
+      },
+    } as GameState;
+    for (const opts of [OPTS, { ...OPTS, ownMeldsStanding: true }]) {
+      const layout = computeLayout(st, 0, opts);
+      const placed = layout.filter((sl) => sl !== null);
+      expect(placed).toHaveLength(136);
+      expect(new Set(placed.map((sl) => sl!.id)).size).toBe(136);
+      const walls = placed.filter((sl) => sl!.zone === 'wall' || sl!.zone === 'deadWall');
+      expect(walls).toHaveLength(st.wall.length + st.deadWall.length);
+      expect(placed.filter((sl) => sl!.zone === 'deadWall')).toHaveLength(st.deadWall.length);
+      expect(placed.filter((sl) => sl!.zone === 'wall')).toHaveLength(st.wall.length);
+      expect(placed.filter((sl) => sl!.zone === 'meld')).toHaveLength(7);
+      expect(placed.filter((sl) => sl!.zone === 'discard')).toHaveLength(32);
+    }
+  });
+  test("ownMeldsStanding stands the user's melds in the hand row, claimed tile stepped forward", () => {
+    const s = dealt();
+    const st: GameState = {
+      ...s,
+      hands: { ...s.hands, 0: s.hands[0].slice(7) },
+      melds: {
+        ...s.melds,
+        // Peng from the seat across (claimed tile in the middle) and a
+        // concealed gang (backs, no claimed tile). The layout keys on
+        // tile ids, so any four distinct tiles stand in for the gang.
+        0: [
+          { kind: 'peng', tiles: s.hands[0].slice(0, 3), from: 2 },
+          { kind: 'gang-concealed', tiles: s.hands[0].slice(3, 7) },
+        ],
+      },
+    } as GameState;
+    const flat = computeLayout(st, 0, OPTS).filter((sl) => sl?.zone === 'meld' && sl.seat === 0);
+    const up = computeLayout(st, 0, { ...OPTS, ownMeldsStanding: true }).filter(
+      (sl) => sl?.zone === 'meld' && sl.seat === 0,
+    );
+    expect(flat.some((sl) => sl!.base === 'flatUp')).toBe(true);
+    expect(up.length).toBeGreaterThan(0);
+    const hand = computeLayout(st, 0, { ...OPTS, ownMeldsStanding: true }).filter(
+      (sl) => sl?.zone === 'hand',
+    );
+    const handRight = Math.max(...hand.map((sl) => sl!.x));
+    for (const sl of up) {
+      expect(sl!.base).toBe('standing');
+      expect(sl!.y).toBeCloseTo(STAND_Y, 6);
+      expect(sl!.tilt).toBeCloseTo(HAND_TILT, 6);
+      // Same yaw as the hand: no tile turned sideways.
+      expect(sl!.yaw).toBeCloseTo(0, 6);
+      // To the right of the hand, in its row (or one step toward the camera).
+      expect(sl!.x).toBeGreaterThan(handRight + TILE_W / 2);
+      expect(
+        sl!.z === OWN_HAND_Z || Math.abs(sl!.z - (OWN_HAND_Z + OWN_MELD_CLAIM_STEP)) < 1e-6,
+      ).toBe(true);
+    }
+    // Exactly the peng's middle tile (from the seat across) steps forward.
+    const stepped = up.filter((sl) => sl!.z > OWN_HAND_Z + 1e-6);
+    expect(stepped).toHaveLength(1);
+    expect(stepped[0]!.id).toBe(tileId(s.hands[0][1]!));
+    // The concealed gang shows its backs.
+    const gang = up.filter((sl) => sl!.index >= 4);
+    expect(gang).toHaveLength(4);
+    expect(gang.every((sl) => sl!.back)).toBe(true);
+    // Row stays inside the felt.
+    for (const sl of [...hand, ...up]) expect(Math.abs(sl!.x) + TILE_W / 2).toBeLessThan(FELT_HALF);
+    // The flat layout is what the held (portrait) hand still gets.
+    const held = computeLayout(st, 0, {
+      ...OPTS,
+      ownMeldsStanding: true,
+      heldHand: FRAME,
+    }).filter((sl) => sl?.zone === 'meld' && sl.seat === 0);
+    expect(held.every((sl) => sl!.base === 'flatUp' || sl!.base === 'flatDown')).toBe(true);
+  });
+  test('layoutMeldStanding: one tile per pitch, claimed flag follows the seat rule', () => {
+    const s = dealt();
+    const tiles = s.hands[0].slice(0, 4);
+    const fromPrev = layoutMeldStanding({ kind: 'gang-exposed', tiles, from: 3 }, 0);
+    expect(fromPrev.tiles.map((t) => t.claimed)).toEqual([true, false, false, false]);
+    expect(fromPrev.width).toBeCloseTo(4 * HAND_PITCH - (HAND_PITCH - TILE_W), 6);
+    for (let i = 1; i < 4; i++)
+      expect(fromPrev.tiles[i]!.dx - fromPrev.tiles[i - 1]!.dx).toBeCloseTo(HAND_PITCH, 6);
+    const fromNext = layoutMeldStanding({ kind: 'peng', tiles: tiles.slice(0, 3), from: 1 }, 0);
+    expect(fromNext.tiles.map((t) => t.claimed)).toEqual([false, false, true]);
+    const own = layoutMeldStanding({ kind: 'gang-concealed', tiles }, 0);
+    expect(own.tiles.every((t) => !t.claimed && t.faceDown)).toBe(true);
   });
   test("the user's hand stands in a centred row at the near edge", () => {
     const st = dealt();
@@ -510,15 +637,6 @@ describe('fullWallLayout / tileSheetLayout', () => {
 });
 
 describe('held hand (phone portrait)', () => {
-  const FRAME = {
-    origin: [0, 40, 25] as [number, number, number],
-    right: [1, 0, 0] as [number, number, number],
-    up: [0, 0.3, -0.954] as [number, number, number],
-    forward: [0, 0.954, 0.3] as [number, number, number],
-    lean: 0.2,
-    pxPerUnit: 48,
-    rowPitch: TILE_H + 0.34,
-  };
   test('heldRowSplit keeps ≤ 8 tiles on one row and halves larger hands', () => {
     expect(heldRowSplit(0)).toEqual([]);
     expect(heldRowSplit(8)).toEqual([8]);

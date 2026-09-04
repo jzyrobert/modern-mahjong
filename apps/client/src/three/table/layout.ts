@@ -350,6 +350,48 @@ export function layoutMeld(meld: Meld, owner: Seat): { tiles: MeldSlotInfo[]; wi
   return { tiles: out, width };
 }
 
+/**
+ * Standing own meld (`LayoutOptions.ownMeldsStanding`): how far the
+ * claimed tile steps toward the camera out of the row.
+ */
+export const OWN_MELD_CLAIM_STEP = 0.24;
+
+export interface StandingMeldSlotInfo {
+  tile: Tile;
+  /** Local x offset from the group's left edge to this tile's centre. */
+  dx: number;
+  /** The tile taken from another seat's discard (stepped forward). */
+  claimed: boolean;
+  faceDown: boolean;
+}
+
+/**
+ * Lays one meld out as a row of standing tiles at `HAND_PITCH` (the
+ * user's own melds — see `LayoutOptions.ownMeldsStanding`). The claimed
+ * tile keeps the flat layout's position rule (left = previous seat,
+ * middle = across, right = next seat) but is flagged instead of turned;
+ * a gang's fourth tile stands at the end. Concealed gangs show backs.
+ */
+export function layoutMeldStanding(
+  meld: Meld,
+  owner: Seat,
+): { tiles: StandingMeldSlotInfo[]; width: number } {
+  const faceDown = meld.kind === 'gang-concealed';
+  let claimedIdx = -1;
+  if (meld.from !== undefined && meld.from !== owner && !faceDown) {
+    if (meld.from === prevSeat(owner)) claimedIdx = 0;
+    else if (meld.from === acrossSeat(owner)) claimedIdx = 1;
+    else if (meld.from === nextSeat(owner)) claimedIdx = 2;
+  }
+  const tiles = meld.tiles.map((tile, i) => ({
+    tile,
+    dx: i * HAND_PITCH + TILE_W / 2,
+    claimed: i === claimedIdx,
+    faceDown,
+  }));
+  return { tiles, width: meld.tiles.length * HAND_PITCH - (HAND_PITCH - TILE_W) };
+}
+
 export interface HandOrderOptions {
   sortMode: SortMode;
   manualOrder: readonly number[];
@@ -458,6 +500,16 @@ export interface LayoutOptions extends HandOrderOptions {
    * the block); the far seat's row sits behind the header glass.
    */
   hideSideSeats?: boolean | undefined;
+  /**
+   * Stand the *user's* exposed melds upright in the hand row, faces to
+   * the camera like the concealed tiles, instead of laying them flat in
+   * the rack line with the claimed tile turned sideways (the user could
+   * not read their own melds once a chi / peng landed — round-FB1). The
+   * claimed tile is marked by a step toward the camera
+   * (`OWN_MELD_CLAIM_STEP`); a gang's fourth tile stands beside the
+   * third. Ignored while the hand is held off the table (`heldHand`).
+   */
+  ownMeldsStanding?: boolean | undefined;
   /**
    * Waiting table (pre-game lobby): lay the wall tiles out as four
    * even, centred runs of whole stacks instead of the engine's break-
@@ -658,7 +710,11 @@ export function computeLayout(state: GameState, me: Seat, opts: LayoutOptions): 
 
     // Hand + melds share one row centred on the seat.
     const hand = isMe ? orderOwnHand(state.hands[seat], opts) : state.hands[seat];
-    const melds = state.melds[seat].map((m) => layoutMeld(m, seat));
+    const standingOwn = isMe && opts.ownMeldsStanding === true && !opts.heldHand;
+    const standingMelds = standingOwn
+      ? state.melds[seat].map((m) => layoutMeldStanding(m, seat))
+      : [];
+    const melds = standingOwn ? [] : state.melds[seat].map((m) => layoutMeld(m, seat));
     const drawnIdx =
       isMe && opts.drawnTileId !== null
         ? hand.findIndex((t) => tileId(t) === opts.drawnTileId)
@@ -701,13 +757,14 @@ export function computeLayout(state: GameState, me: Seat, opts: LayoutOptions): 
         : 0;
     const meldScale = !isMe && (rel === 1 || rel === 3) ? (opts.sideMeldScale ?? 1) : 1;
     const railMelds = !isMe && rel === 2 && opts.farMeldsOnRail === true && melds.length > 0;
+    const groups = standingOwn ? standingMelds : melds;
     const meldsWidth = railMelds
       ? 0
-      : (melds.reduce((acc, m) => acc + m.width, 0) +
-          Math.max(0, melds.length - 1) * MELD_GROUP_GAP) *
+      : (groups.reduce((acc, m) => acc + m.width, 0) +
+          Math.max(0, groups.length - 1) * MELD_GROUP_GAP) *
         meldScale;
     const total =
-      handWidth + (melds.length > 0 && hand.length > 0 && !railMelds ? MELD_GAP : 0) + meldsWidth;
+      handWidth + (groups.length > 0 && hand.length > 0 && !railMelds ? MELD_GAP : 0) + meldsWidth;
     // Right seat: melds first (the near end), then the rack.
     const meldsFirst = opts.sideMeldsNear === true && rel === 1 && melds.length > 0 && !railMelds;
     let cursor = -total / 2;
@@ -739,6 +796,9 @@ export function computeLayout(state: GameState, me: Seat, opts: LayoutOptions): 
     });
     if (railMelds) {
       placeRailMelds(layout, melds, seat, rel, yaw, handWidth / 2 + MELD_GAP);
+    } else if (standingOwn) {
+      if (hand.length > 0 && standingMelds.length > 0) cursor += MELD_GAP - (HAND_PITCH - TILE_W);
+      placeStandingMelds(layout, standingMelds, seat, rel, yaw, handZ, cursor);
     } else if (!meldsFirst) {
       if (hand.length > 0 && melds.length > 0) cursor += MELD_GAP - (HAND_PITCH - TILE_W);
       placeMelds(layout, melds, seat, rel, yaw, meldZ, cursor, meldScale);
@@ -790,6 +850,45 @@ function placeMelds(
     cursor += (m.width + MELD_GROUP_GAP) * scale;
   });
   return melds.length > 0 ? cursor - MELD_GROUP_GAP * scale : cursor;
+}
+
+/**
+ * The user's melds stood upright in the hand row (`LayoutOptions.
+ * ownMeldsStanding`), running right from `left` at `HAND_PITCH` with the
+ * hand's lean; the claimed tile steps `OWN_MELD_CLAIM_STEP` toward the
+ * camera.
+ */
+function placeStandingMelds(
+  layout: Layout,
+  melds: readonly { tiles: StandingMeldSlotInfo[]; width: number }[],
+  seat: Seat,
+  rel: Rel,
+  yaw: number,
+  handZ: number,
+  left: number,
+): void {
+  let cursor = left;
+  melds.forEach((m, mi) => {
+    let idx = 0;
+    for (const ms of m.tiles) {
+      const [x, z] = toWorld(rel, cursor + ms.dx, handZ + (ms.claimed ? OWN_MELD_CLAIM_STEP : 0));
+      put(layout, {
+        id: tileId(ms.tile),
+        zone: 'meld',
+        seat,
+        rel,
+        x,
+        y: STAND_Y,
+        z,
+        base: 'standing',
+        yaw,
+        tilt: HAND_TILT,
+        back: ms.faceDown,
+        index: mi * 4 + idx++,
+      });
+    }
+    cursor += m.width + MELD_GROUP_GAP;
+  });
 }
 
 /** Top of the wood rail (its box is centred `RAIL_H / 2 − 0.02` up). */

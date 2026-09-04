@@ -113,7 +113,11 @@ export function ActionCtas(p: ActionCtasProps) {
       {readyWaits.length > 0 ? (
         <TutorialTarget id="ready-hand-badge">
           <div style={{ pointerEvents: 'auto' }}>
-            <ReadyHandBadge waits={readyWaits} />
+            <ReadyHandBadge
+              waits={readyWaits}
+              theme="glass"
+              {...(compact ? {} : { tileWidth: 28, tileHeight: 38 })}
+            />
           </div>
         </TutorialTarget>
       ) : null}

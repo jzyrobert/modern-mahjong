@@ -158,5 +158,7 @@ export const HUD_CSS = `
 @keyframes mjFade{from{transform:translateY(8px)}to{transform:none}}
 .mj-pulse{animation:mjPulse 1.6s ease-in-out infinite}
 @keyframes mjPulse{0%,100%{opacity:.55}50%{opacity:1}}
-@media (prefers-reduced-motion: reduce){.mj-hud-fade,.mj-pulse{animation:none}}
+.mj-win-stamp{animation:mjStamp 520ms cubic-bezier(.2,.8,.2,1) both}
+@keyframes mjStamp{0%{transform:rotate(-8deg) scale(1.7)}60%{transform:rotate(-8deg) scale(.94)}100%{transform:rotate(-8deg) scale(1)}}
+@media (prefers-reduced-motion: reduce){.mj-hud-fade,.mj-pulse,.mj-win-stamp{animation:none}}
 `;

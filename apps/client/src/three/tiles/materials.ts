@@ -51,6 +51,8 @@ export interface TileMaterialUniforms {
    * neighbours (round-4 #5).
    */
   uBackGradAmount: { value: number };
+  /** Gold of the dead-wall inlay band (`aBackVariant` 1). */
+  uDeadInlay: { value: Color };
 }
 
 /** Body roughness shared by the tile faces and, by default, the back. */
@@ -101,6 +103,7 @@ export function createTileMaterial(
     uDeadBack: { value: dead.top },
     uDeadBack2: { value: dead.bottom },
     uBackGradAmount: { value: 1 },
+    uDeadInlay: { value: new Color('#d8a85a') },
   };
   const mat = new MeshPhysicalMaterial({
     color: 0xffffff,
@@ -131,7 +134,9 @@ export function createTileMaterial(
         varying float vBack;
         varying float vBackGrad;
         varying float vBackCell;
-        varying float vBackVariant;`,
+        varying float vBackVariant;
+        varying float vInnerSide;
+        varying vec2 vLocalYZ;`,
       )
       .replace(
         '#include <beginnormal_vertex>',
@@ -146,7 +151,12 @@ export function createTileMaterial(
         vAtlasUv = uv * uCellScale + max(aFaceCell, vec2(0.0));
         vTint = aTint;
         vHighlight = aHighlight;
-        vBackVariant = aBackVariant;`,
+        vBackVariant = aBackVariant;
+        // Dead-wall inlay (fragment): the −Y side is the wall stack's
+        // inner long side (face-down tiles keep local −Y toward the
+        // table centre on every wall), local y / z locate the band.
+        vInnerSide = step(0.92, -objectNormal.y);
+        vLocalYZ = vec2(position.y / 1.36, position.z / 0.62);`,
       );
     shader.fragmentShader = shader.fragmentShader
       .replace(
@@ -169,7 +179,10 @@ export function createTileMaterial(
         varying float vBack;
         varying float vBackGrad;
         varying float vBackCell;
-        varying float vBackVariant;`,
+        varying float vBackVariant;
+        varying float vInnerSide;
+        varying vec2 vLocalYZ;
+        uniform vec3 uDeadInlay;`,
       )
       .replace(
         '#include <color_fragment>',
@@ -193,8 +206,20 @@ export function createTileMaterial(
         // back finish below, so a blue rack never wears the ivory gloss.
         float showBack = max(vBack, vFace * vBackCell);
         vec3 body = mix(uBodyColor, backCol, showBack);
+        // Dead-wall inlay: a gold band along the inner edge of the back
+        // (the up-facing side of a face-down stack) and the upper part of
+        // the inner side face, so the segment reads as marked from every
+        // camera — the far wall shows the side band face-on, the near
+        // wall its top edge, the side walls both. Replaces a felt hairline
+        // beside the stacks that read as a stray line on the cloth.
+        float inlayTop = vBack * step(vLocalYZ.x, -0.5 + 0.17);
+        float inlaySide = vInnerSide * step(vLocalYZ.y, -0.5 + 0.55);
+        float inlay = vBackVariant * clamp(inlayTop + inlaySide, 0.0, 1.0);
+        body = mix(body, uDeadInlay, inlay);
         float showFace = vFace * (1.0 - vBackCell);
         diffuseColor.rgb = mix(body, faceTexel.rgb, showFace) * vTint;
+        // The inlay is lacquer, not the matte back: keep it glossy.
+        showBack *= 1.0 - inlay;
         // Cue glow: warm the albedo toward gold as well as adding
         // emissive so blue / plum backs read gold, not washed-out white.
         // On a face the warming is masked by the texel's luminance so
@@ -232,12 +257,15 @@ export function createTileMaterial(
         // Backs / sides: flat gold emissive. Faces: a rim glow plus a
         // gentle lift on the ivory body only (masked off the ink).
         float glowAmt = mix(0.55, 0.2 * inkMask + 0.5 * glowRim, showFace);
-        totalEmissiveRadiance += uHighlightColor * vHighlight * glowAmt;`,
+        totalEmissiveRadiance += uHighlightColor * vHighlight * glowAmt;
+        // The dead-wall inlay keeps a faint self-glow so it stays gold in
+        // the stacks' shadow instead of dropping to brown.
+        totalEmissiveRadiance += uDeadInlay * inlay * 0.18;`,
       );
   };
   // Distinct cache key so three doesn't share the program with a stock
   // MeshPhysicalMaterial.
-  mat.customProgramCacheKey = () => 'mahjong-tile-v7';
+  mat.customProgramCacheKey = () => 'mahjong-tile-v8';
   return mat;
 }
 

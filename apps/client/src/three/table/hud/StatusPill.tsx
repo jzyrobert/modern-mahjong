@@ -7,6 +7,14 @@ interface StatusPillProps {
   windGlyph: string;
   name: string;
   wallCount: number;
+  /**
+   * Tiles left in the dead wall (gang replacements), so the stacks still
+   * standing when the live wall runs dry are accounted for — "0 left ·
+   * 14 dead". Desktop shows it throughout; the compact pill (phone
+   * landscape) only once the live count is low, where it matters and
+   * where the row has the room (portrait leaves it to the plate).
+   */
+  deadCount?: number | undefined;
   isMyTurn: boolean;
   needsDraw: boolean;
   turnCountdown: number | null;
@@ -31,6 +39,7 @@ export function StatusPill({
   windGlyph,
   name,
   wallCount,
+  deadCount,
   isMyTurn,
   needsDraw,
   turnCountdown,
@@ -112,6 +121,21 @@ export function StatusPill({
       >
         {wallCount} left
       </span>
+      {deadCount !== undefined && deadCount > 0 && (!compact || low) ? (
+        <span
+          aria-label={`${deadCount} tiles in the dead wall`}
+          style={{
+            ...labelStyle,
+            letterSpacing: 1,
+            color: GLASS.gold,
+            opacity: 0.85,
+            whiteSpace: 'nowrap',
+            flexShrink: 0,
+          }}
+        >
+          · {deadCount} dead
+        </span>
+      ) : null}
       {isMyTurn && showTurn ? (
         <TutorialTarget id="turn-countdown">
           <span

@@ -34,6 +34,14 @@ interface ResultPanelProps {
 
 export type ResultPanelTheme = 'paper' | 'glass';
 
+/**
+ * The glass panel asks the breakdown modal for its glass theme. Spread
+ * (rather than written as a literal attribute) so the panel compiles
+ * against a modal that has not grown the `theme` prop yet — the modal
+ * restyle lands separately; until then the prop is simply ignored.
+ */
+const GLASS_BREAKDOWN_THEME: Record<string, unknown> = { theme: 'glass' };
+
 const GLASS = {
   text: 'rgba(255,255,255,0.92)',
   text2: 'rgba(255,255,255,0.62)',
@@ -171,6 +179,7 @@ export function ResultPanel({
             onClose={() => setBreakdownOpen(false)}
             result={r}
             faanMin={state.rules.faanMin}
+            {...GLASS_BREAKDOWN_THEME}
           />
         ) : null}
       </View>

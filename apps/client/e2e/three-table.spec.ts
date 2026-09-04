@@ -129,12 +129,23 @@ test('3D table mounts within budget with the classic hit-targets', async ({ page
   await expect(page.getByRole('button', { name: 'Open menu' })).toBeVisible();
   await expect(page.getByText(/\d+ left/i)).toBeVisible();
   // Desktop footer: the sort control is pinned to the right so the
-  // claim strip can take the centre slot under the hand.
+  // claim strip can take the centre slot under the hand; while it is
+  // the user's move that slot carries the turn chip ("your turn ·
+  // discard" — seed 5 deals the user as dealer), centred under the
+  // hand, and the status pill accounts for the dead wall beside the
+  // live count.
   const vp = page.viewportSize()!;
   if (vp.width >= 768 && vp.height >= 600) {
     const sort = (await page.getByRole('button', { name: 'Sort by Suit' }).boundingBox())!;
     expect(sort.x).toBeGreaterThan(vp.width * 0.6);
     expect(sort.y + sort.height).toBeGreaterThan(box!.y + box!.height);
+    const chip = page.getByTestId('turn-chip');
+    await expect(chip).toBeVisible();
+    await expect(chip).toContainText(/discard/i);
+    const cb = (await chip.boundingBox())!;
+    expect(Math.abs(cb.x + cb.width / 2 - vp.width / 2)).toBeLessThan(40);
+    expect(cb.y).toBeGreaterThan(box!.y + box!.height);
+    await expect(page.getByText(/14 dead/i)).toBeVisible();
   }
 
   const perf = await readPerf(page);
@@ -709,6 +720,85 @@ test('the discard flight stretches under the slow-motion seam and carries the go
       { timeout: 5_000 },
     )
     .toBe('discard:discard:4160');
+  expect(errors, 'console / page errors').toEqual([]);
+});
+
+test('a win stamps the glass result card and the next hand shuffles without the classic overlays', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('console', (m) => {
+    // Headless Chromium has no audio sink: the shuffle sound's play()
+    // promise is rejected when the ceremony's stop fades it out. That is
+    // the media element, not the table.
+    if (m.type() === 'error' && !/play\(\) request was interrupted/.test(m.text()))
+      errors.push(m.text());
+  });
+  page.on('pageerror', (e) => {
+    if (!/play\(\) request was interrupted/.test(String(e))) errors.push(String(e));
+  });
+  // Hold the shuffle ceremony for 6 s (the app runs 1.7 s) so the flag
+  // and the pill can be read on a SwiftShader shard that paints a frame
+  // or two per second.
+  await page.addInitScript(() => {
+    (globalThis as { __MAHJONG_TEST_SHUFFLE_MS__?: number }).__MAHJONG_TEST_SHUFFLE_MS__ = 6000;
+  });
+  await page.goto('/');
+  // The `win` lesson deals a complete hand: declaring tsumo resolves it.
+  // The launcher hook is installed by the transport provider after
+  // hydration, so wait for it rather than firing on `load`.
+  await page.waitForFunction(
+    () =>
+      typeof (globalThis as { __MAHJONG_TEST_START_TUTORIAL__?: unknown })
+        .__MAHJONG_TEST_START_TUTORIAL__ === 'function',
+    null,
+    { timeout: 20_000 },
+  );
+  await page.evaluate(() => {
+    (
+      globalThis as { __MAHJONG_TEST_START_TUTORIAL__?: (id: string) => void }
+    ).__MAHJONG_TEST_START_TUTORIAL__?.('win');
+  });
+  await expect(page.getByTestId('own-hand-tile').first()).toBeVisible({ timeout: 20_000 });
+  // Dispatched clicks: the coach-mark CTA and the declare button sit over
+  // a canvas that paints at a frame or two per second on a loaded
+  // SwiftShader shard, so Playwright's stability wait can outlast the test.
+  const next = page.getByTestId('tutorial-next').first();
+  await next.waitFor({ timeout: 15_000 });
+  await next.dispatchEvent('click');
+  const declare = page.getByRole('button', { name: /Declare win/ });
+  await declare.waitFor({ timeout: 20_000 });
+  await declare.dispatchEvent('click');
+  // 3D renderer: the gold 和 seal on the glass card is the celebration;
+  // the classic cream "WINNER" card stays gated off.
+  await expect(page.getByTestId('win-stamp')).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId('result-veil-card')).toBeVisible();
+  await expect(page.getByText('WINNER', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Tap anywhere to dismiss', { exact: true })).toHaveCount(0);
+  // Finish the lesson and start the next hand: the between-hand shuffle
+  // is the glass 洗牌 pill over the table, never the cream token ring.
+  const done = page.getByRole('button', { name: 'Done' });
+  await done.waitFor({ timeout: 15_000 });
+  await done.dispatchEvent('click');
+  await page.evaluate(() => {
+    (globalThis as { __MAHJONG_TEST_GET_TUTORIAL__?: () => { dismissCompletion: () => void } })
+      .__MAHJONG_TEST_GET_TUTORIAL__?.()
+      .dismissCompletion();
+  });
+  const startNext = page.getByRole('button', { name: 'Start next hand' });
+  await startNext.waitFor({ timeout: 15_000 });
+  await startNext.dispatchEvent('click');
+  await expect(page.getByTestId('shuffle-pill')).toBeVisible({ timeout: 10_000 });
+  // The store flag drives the table's slow dispense while the pill is up.
+  const shuffling = await page.evaluate(
+    () =>
+      (
+        globalThis as { __MAHJONG_TEST_GET_STATE__?: () => { shuffling?: boolean } }
+      ).__MAHJONG_TEST_GET_STATE__?.().shuffling,
+  );
+  expect(shuffling).toBe(true);
+  await expect(page.getByText('Shuffling…')).toHaveCount(0);
+  await expect(page.getByTestId('shuffle-pill')).toBeHidden({ timeout: 15_000 });
   expect(errors, 'console / page errors').toEqual([]);
 });
 

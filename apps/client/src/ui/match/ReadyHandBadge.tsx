@@ -12,10 +12,19 @@ interface ReadyHandBadgeProps {
    *  either action zone. */
   tileWidth?: number;
   tileHeight?: number;
+  /**
+   * `paper` (default) is the cream pill of the classic shells; `glass`
+   * is the Three.js HUD's dark gold-glass card: bigger 聽 glyph, gold
+   * ring and 24 × 33 wait tiles so the tenpai state reads from across
+   * the table, not as a footnote.
+   */
+  theme?: 'paper' | 'glass';
 }
 
 const DEFAULT_TILE_W = 16;
 const DEFAULT_TILE_H = 22;
+const GLASS_TILE_W = 24;
+const GLASS_TILE_H = 33;
 
 /**
  * Compact pill rendered above the user's hand when their concealed hand
@@ -30,55 +39,63 @@ const DEFAULT_TILE_H = 22;
  */
 export function ReadyHandBadge({
   waits,
-  tileWidth = DEFAULT_TILE_W,
-  tileHeight = DEFAULT_TILE_H,
+  tileWidth,
+  tileHeight,
+  theme = 'paper',
 }: ReadyHandBadgeProps) {
   if (waits.length === 0) return null;
+  const glass = theme === 'glass';
+  const tw = tileWidth ?? (glass ? GLASS_TILE_W : DEFAULT_TILE_W);
+  const th = tileHeight ?? (glass ? GLASS_TILE_H : DEFAULT_TILE_H);
   return (
     <View
+      testID="ready-hand-badge"
       accessibilityLabel={`Ready hand — waiting on ${waits.length} tile${waits.length === 1 ? '' : 's'}`}
       style={{
         flexDirection: 'row',
         alignItems: 'center',
         alignSelf: 'flex-start',
-        gap: 8,
-        paddingVertical: 4,
-        paddingHorizontal: 10,
-        borderRadius: 14,
-        backgroundColor: 'rgba(255, 250, 234, 0.95)',
-        borderColor: '#dca84a',
+        gap: glass ? 12 : 8,
+        paddingVertical: glass ? 7 : 4,
+        paddingHorizontal: glass ? 14 : 10,
+        borderRadius: glass ? 999 : 14,
+        backgroundColor: glass ? 'rgba(14, 20, 17, 0.88)' : 'rgba(255, 250, 234, 0.95)',
+        borderColor: glass ? 'rgba(216, 168, 90, 0.75)' : '#dca84a',
         borderWidth: 1,
-        boxShadow: '0px 0px 6px rgba(220, 168, 74, 0.45)',
+        boxShadow: glass
+          ? '0px 0px 0px 3px rgba(216,168,90,0.14), 0px 0px 24px rgba(216,168,90,0.3), 0px 12px 40px rgba(0,0,0,0.35)'
+          : '0px 0px 6px rgba(220, 168, 74, 0.45)',
         flexShrink: 1,
         flexWrap: 'wrap',
         rowGap: 4,
       }}
     >
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: glass ? 7 : 4 }}>
         <Text
           style={{
             fontFamily: 'Noto Serif TC',
-            fontSize: 14,
+            fontSize: glass ? 22 : 14,
+            lineHeight: glass ? 26 : undefined,
             fontWeight: '900',
-            color: '#a16b1c',
+            color: glass ? '#d8a85a' : '#a16b1c',
           }}
         >
           聽
         </Text>
         <Text
           style={{
-            fontSize: 10,
+            fontSize: glass ? 11 : 10,
             fontWeight: '900',
-            color: COLORS.ink,
-            letterSpacing: 1,
+            color: glass ? 'rgba(255,255,255,0.92)' : COLORS.ink,
+            letterSpacing: glass ? 2 : 1,
           }}
         >
           READY
         </Text>
       </View>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 3 }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: glass ? 4 : 3 }}>
         {waits.map((tile) => (
-          <Tile key={tileId(tile)} tile={tile} width={tileWidth} height={tileHeight} />
+          <Tile key={tileId(tile)} tile={tile} width={tw} height={th} />
         ))}
       </View>
     </View>

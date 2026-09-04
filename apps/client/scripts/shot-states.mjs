@@ -24,6 +24,7 @@
    { startTutorial: 'basics' }            launches a lesson from the lobby
    { clickTutorialNext: true }            presses the caption card's CTA
    { initScript: 'js source' }            addInitScript — globals the app reads at boot
+   { clickLastOwnTile: true }             taps the rightmost own-hand tile (the honour singleton the lessons ask for)
  *
  * A recipe may also carry `viewport: 'phone-landscape' | { width, height, dpr }`
  * to pin its own viewport regardless of the CLI `--viewport`.
@@ -68,6 +69,73 @@ const CLAIM_SETUP = `
   btn.click();
 })();
 `;
+
+const CLAIM_TOAST_INIT = `
+globalThis.__MAHJONG_TEST_SEED__ = 9;
+globalThis.__MAHJONG_TEST_BOT_SCRIPTS__ = { 1: {}, 2: {}, 3: {} };
+globalThis.__MAHJONG_TEST_BOT_CLAIM_DELAY_MS__ = 300;
+`;
+
+/**
+ * Bot-claim setup (`match-claim-toast`): find a face the user holds one
+ * of and seat 1 holds two of, script seat 1 to peng it (the scripted
+ * bots accept a `claims` list to issue when legal) and discard
+ * it from the user's hand.
+ */
+const BOT_PENG_SETUP = `
+(() => {
+  const s = globalThis.__MAHJONG_TEST_GET_STATE__();
+  if (!s.state || s.you === null) throw new Error('no state');
+  const key = (t) => (t.kind === 'suit' ? 's:' + t.suit + ':' + t.rank : 'h:' + t.honor);
+  const mine = s.state.hands[s.you];
+  const botCounts = new Map();
+  for (const t of s.state.hands[1]) botCounts.set(key(t), (botCounts.get(key(t)) ?? 0) + 1);
+  const target = mine.find((t) => (botCounts.get(key(t)) ?? 0) >= 2);
+  if (!target) throw new Error('no bot-peng-able face in the dealt hand');
+  globalThis.__MAHJONG_TEST_BOT_SCRIPTS__[1] = { claims: [{ kind: 'peng' }] };
+  const name = (t) => (t.kind === 'suit' ? t.rank + ' ' + t.suit : ({ E: 'East wind', S: 'South wind', W: 'West wind', N: 'North wind', Z: 'Red dragon', F: 'Green dragon', B: 'White dragon' })[t.honor]);
+  const want = name(target);
+  const btn = [...document.querySelectorAll('[data-testid="own-hand-tile"]')].find((b) => (b.getAttribute('aria-label') || '').startsWith(want));
+  if (!btn) throw new Error('no hit-target for ' + want);
+  btn.click();
+})();
+`;
+
+/** Dismiss the tutorial completion prompt through the store hook. */
+const DISMISS_TUTORIAL_PROMPT = `
+(() => {
+  const t = globalThis.__MAHJONG_TEST_GET_TUTORIAL__?.();
+  if (t && typeof t.dismissCompletion === 'function') t.dismissCompletion();
+})();
+`;
+
+/**
+ * Drive the promoted-gang lesson (seed 6755) to the "Promote gang" CTA:
+ * intro → discard the last tile (F) → seat 1 throws the third 7p →
+ * Peng → discard the last tile (N) → bots play → draw (the fourth 7p).
+ * Bots are paced fast; the lesson's own force-pass keeps them quiet.
+ */
+const PROMOTED_GANG_TO_CTA = [
+  { initScript: 'globalThis.__MAHJONG_TEST_BOT_PACE_MS__ = 400;' },
+  { goto: '/' },
+  { waitForText: 'Modern Mahjong' },
+  { startTutorial: 'promoted-gang' },
+  { waitForOwnHand: true },
+  { waitMs: 900 },
+  { clickTutorialNext: true },
+  { waitMs: 500 },
+  { clickLastOwnTile: true },
+  { waitFor: '[data-testid="claim-bar"]', timeout: 30000 },
+  { waitMs: 400 },
+  { click: 'role=button[name="Peng"]', timeout: 10000 },
+  { waitFor: '[data-testid="claim-bar"]', state: 'hidden', timeout: 10000 },
+  { waitMs: 900 },
+  { clickLastOwnTile: true },
+  { waitForDrawCue: true },
+  { waitMs: 300 },
+  { clickTestId: 'wall-draw-next', nth: 0 },
+  { waitFor: 'role=button[name="Promote gang"]', timeout: 15000 },
+];
 
 const START_SOLO = [
   { goto: '/' },
@@ -443,6 +511,137 @@ export const STATES = {
       { clickTutorialNext: true },
       { waitFor: '[data-testid="winning-hand"]', timeout: 15000 },
       { waitMs: 1400 },
+    ],
+  },
+  'match-dealt-dead-left': {
+    owner: 'table',
+    // Seed 33 rolls dealer 0 with an 8 break, so the whole dead wall
+    // (7 stacks) stands on the *left* wall (seat 3) from the user's
+    // seat: the gold inlay on the dead stacks must read as a marked
+    // segment beside the left rack — not as a stray line on the felt.
+    steps: [
+      { initScript: 'globalThis.__MAHJONG_TEST_SEED__ = 33;' },
+      ...START_SOLO,
+      { waitForOwnHand: true },
+      { waitMs: 1500 },
+    ],
+  },
+  'match-own-meld': {
+    owner: 'table',
+    // The user's peng landed (CLAIM_SETUP + a tap on the gold Peng
+    // button): their meld stands upright in the hand row, faces to the
+    // camera, the claimed tile a step toward the camera; the turn chip
+    // under the hand reads DISCARD.
+    steps: [
+      { initScript: CLAIM_INIT },
+      ...START_SOLO,
+      { waitForOwnHand: true },
+      { waitMs: 1600 },
+      { evaluate: CLAIM_SETUP },
+      { waitFor: '[data-testid="claim-bar"]', timeout: 20000 },
+      { click: 'role=button[name="Peng"]', timeout: 10000 },
+      { waitFor: '[data-testid="claim-bar"]', state: 'hidden', timeout: 10000 },
+      { waitMs: 1400 },
+    ],
+  },
+  'match-claim-toast': {
+    owner: 'table',
+    // A bot's peng: seed 9 deals the user (dealer) a 2-man that seat 1
+    // holds two of; seat 1 is scripted to peng the user's first discard
+    // (the setup below picks that face), so the glass claim toast — 碰
+    // PENG, "<name> called" — is up when the shot lands.
+    steps: [
+      { initScript: CLAIM_TOAST_INIT },
+      ...START_SOLO,
+      { waitForOwnHand: true },
+      { waitMs: 1600 },
+      { evaluate: BOT_PENG_SETUP },
+      { waitFor: '[data-testid="claim-toast-glyph"]', timeout: 20000 },
+      { waitMs: 500 },
+    ],
+  },
+  'match-win-celebration': {
+    owner: 'table',
+    // The `win` lesson deals a complete hand; declaring tsumo resolves
+    // the hand and the glass result card lands with the gold 和 stamp
+    // (the 3D renderer's celebration — the classic cream card is gated
+    // off under it). The stamp animates in; `mj-hud-fade` runs 200 ms.
+    steps: [
+      { goto: '/' },
+      { waitForText: 'Modern Mahjong' },
+      { startTutorial: 'win' },
+      { waitForOwnHand: true },
+      { waitMs: 900 },
+      { clickTutorialNext: true },
+      { click: 'role=button[name=/Declare win/]', timeout: 15000 },
+      { waitFor: '[data-testid="win-stamp"]', timeout: 15000 },
+      // Finish the lesson (Done → completion prompt, dismissed through
+      // the tutorial store hook) so the card is not under the caption.
+      { waitMs: 400 },
+      { clickTutorialNext: true },
+      { waitMs: 400 },
+      { evaluate: DISMISS_TUTORIAL_PROMPT },
+      { waitMs: 900 },
+    ],
+  },
+  'match-shuffle': {
+    owner: 'table',
+    // Mid-shuffle frame between hands: the `win` lesson's hand resolves
+    // (tsumo), then "Start next hand" starts a fresh seed. Under the 3D
+    // renderer the between-hand ceremony is the table's own slow
+    // dispense plus the glass 洗牌 pill — no cream scrim, no token ring.
+    // The lesson card is dismissed first (Done → completion prompt →
+    // dismissed through the tutorial store hook) so the frame shows the
+    // table, not the tutorial.
+    steps: [
+      // The ceremony is stretched to 12 s so the frame lands inside it
+      // (the verifier's perf wait alone can outlast the app's 1.7 s).
+      { initScript: 'globalThis.__MAHJONG_TEST_SHUFFLE_MS__ = 12000;' },
+      { goto: '/' },
+      { waitForText: 'Modern Mahjong' },
+      { startTutorial: 'win' },
+      { waitForOwnHand: true },
+      { waitMs: 900 },
+      { clickTutorialNext: true },
+      { click: 'role=button[name=/Declare win/]', timeout: 15000 },
+      { waitFor: '[data-testid="win-stamp"]', timeout: 15000 },
+      { waitMs: 600 },
+      { clickTutorialNext: true },
+      { waitMs: 500 },
+      { evaluate: DISMISS_TUTORIAL_PROMPT },
+      { waitMs: 300 },
+      { click: 'role=button[name="Start next hand"]', timeout: 10000 },
+      { waitFor: '[data-testid="shuffle-pill"]', timeout: 10000 },
+      { waitMs: 1200 },
+    ],
+  },
+  'tutorial-promoted-gang-before': {
+    owner: 'table',
+    // The promoted-gang lesson at the moment before the promotion: the
+    // user has peng'd 7p, drawn the fourth 7p and the "Promote gang" CTA
+    // is up. Paired with `-after` to check the replacement draw leaves
+    // the dead wall's far end and lands in the hand.
+    steps: [...PROMOTED_GANG_TO_CTA, { waitMs: 800 }],
+  },
+  'tutorial-promoted-gang-after': {
+    owner: 'table',
+    steps: [
+      ...PROMOTED_GANG_TO_CTA,
+      { waitMs: 400 },
+      { click: 'role=button[name="Promote gang"]', timeout: 10000 },
+      { waitMs: 1600 },
+    ],
+  },
+  'tutorial-promoted-gang-flight': {
+    owner: 'table',
+    // Same, caught mid-flight (draw flights stretched 8×): the tile in
+    // the air is the one leaving the dead wall's far end.
+    steps: [
+      { initScript: 'globalThis.__MAHJONG_TEST_MOTION_SLOWMO__ = 8;' },
+      ...PROMOTED_GANG_TO_CTA,
+      { waitMs: 400 },
+      { click: 'role=button[name="Promote gang"]', timeout: 10000 },
+      { waitMs: 1500 },
     ],
   },
   'match-lobby': {

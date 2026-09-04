@@ -267,8 +267,11 @@ function heldFrameFor(
     ? heldHandFrameFor(presetFor(width, height, topInset, zoom), width, height)
     : null;
 }
-/** Approximate height of a glass toast, CSS px (anchor maths only). */
-const TOAST_H = 52;
+/**
+ * Approximate height of a glass toast, CSS px (anchor maths only): the
+ * claim toast's 32 px glyph line + 7 px pads + border.
+ */
+const TOAST_H = 50;
 /** Width the root `FullscreenPrompt` reserves at the landscape top-right. */
 const FULLSCREEN_PROMPT_W = 124;
 
@@ -325,9 +328,25 @@ export function Table3DShell(props: Table3DShellProps) {
     };
   }, []);
 
+  // The tile to mark as "just drawn". A gang replacement comes out of
+  // the dead wall without a `drew` event, so the store's `drawnTileId`
+  // keeps pointing at the tile that has just gone *into* the meld — the
+  // meld tile wore the drawn glow and the real replacement sorted into
+  // the hand unmarked (round-FB1: "the wrong tile" on a promoted gang).
+  // Diff the hand across a replacement to find the tile that arrived.
+  const drawnTileId = useEffectiveDrawnTile(props.state, props.seat, props.drawnTileId);
+  const shellProps = drawnTileId === props.drawnTileId ? props : { ...props, drawnTileId };
+
   // Latest inputs for the imperative side (built once, read live).
-  const inputRef = useRef({ props, manualOrder, shuffling, sortMode, landscape, compact });
-  inputRef.current = { props, manualOrder, shuffling, sortMode, landscape, compact };
+  const inputRef = useRef({
+    props: shellProps,
+    manualOrder,
+    shuffling,
+    sortMode,
+    landscape,
+    compact,
+  });
+  inputRef.current = { props: shellProps, manualOrder, shuffling, sortMode, landscape, compact };
 
   const syncScene = useCallback(() => {
     const scene = sceneRef.current;
@@ -350,6 +369,7 @@ export function Table3DShell(props: Table3DShellProps) {
         latestDiscardId: p.latestDiscardId,
         hintTileId: p.hintTileId,
         needsDraw: p.needsDraw,
+        canDiscard: p.myTurn && p.state.hasDrawn && p.state.phase === 'turn',
         shuffling: sh,
         heldHand: heldRef.current,
         riverScale: heldRef.current ? PORTRAIT_RIVER_SCALE : 1,
@@ -374,6 +394,9 @@ export function Table3DShell(props: Table3DShellProps) {
         // on the width-bound portrait table.
         sideMeldsNear: true,
         sideMeldScale: heldRef.current ? SIDE_MELD_SCALE_PORTRAIT : 1,
+        // Wide presets: the user's melds stand in the hand row, faces to
+        // the camera (the held portrait hand keeps its flat felt melds).
+        ownMeldsStanding: true,
       },
       performance.now(),
     );
@@ -591,6 +614,8 @@ export function Table3DShell(props: Table3DShellProps) {
     props.latestDiscardId,
     props.hintTileId,
     props.needsDraw,
+    props.myTurn,
+    drawnTileId,
     sortMode,
     manualOrder,
     shuffling,
@@ -690,7 +715,7 @@ export function Table3DShell(props: Table3DShellProps) {
     // Any tile the layout didn't list yet (first render) still needs a button.
     for (const t of state.hands[seat]) if (!ids.includes(tileId(t))) ordered.push(t);
     return ordered;
-  }, [state, seat, sortMode, manualOrder, props.drawnTileId]);
+  }, [state, seat, sortMode, manualOrder, drawnTileId]);
   const nextDrawTile = state.wall.length > 0 ? state.wall[state.wall.length - 1]! : null;
   // Newest discard of the hand (the engine's `lastDiscard` only lives
   // through the claim window; `discardOrder` is the hand's full log).
@@ -733,6 +758,12 @@ export function Table3DShell(props: Table3DShellProps) {
   // sort control is moot while the hand is out of frame).
   const landscapeRail = landscape && zoomed && !landscapeFooterClaim;
   const desktopStrip = !compact && props.hasClaimOption;
+  // Wide presets: the footer's centre slot — directly under the hand —
+  // carries the turn chip while it is the user's move (draw → discard),
+  // so the cue sits where the eye already is instead of only in the
+  // chrome pill. The claim strip / hand rail take the slot when they
+  // need it.
+  const footerTurnChip = !portrait && props.myTurn && !resolved;
   // Landscape zoom header: a full-bleed glass band the far wall's row
   // (and the far seat's rack) park behind, so the chrome pills, the far
   // badge and the toast slot never sit on tile tops (round-4 #5).
@@ -899,7 +930,7 @@ export function Table3DShell(props: Table3DShellProps) {
             ref={hitRef}
             hand={ownHand}
             hintTileId={props.hintTileId}
-            drawnTileId={props.drawnTileId}
+            drawnTileId={drawnTileId}
             canDiscard={canDiscard}
             onTileTap={props.onTileTap}
             onHover={(id) => sceneRef.current?.setHover(id)}
@@ -933,6 +964,7 @@ export function Table3DShell(props: Table3DShellProps) {
               windGlyph={props.userWindGlyph}
               name={props.userName}
               wallCount={state.wall.length}
+              deadCount={portrait ? undefined : state.deadWall.length}
               isMyTurn={props.myTurn}
               needsDraw={props.needsDraw}
               turnCountdown={props.turnCountdown}
@@ -1146,7 +1178,15 @@ export function Table3DShell(props: Table3DShellProps) {
               ctasExternal={compact}
               dense={landscape}
               sortAlign={
-                landscapeFooterClaim || landscapeRail ? 'replace' : compact ? 'auto' : 'end'
+                landscapeFooterClaim || landscapeRail
+                  ? 'replace'
+                  : // Landscape turn chip: the three-column footer so the chip
+                    // takes the centre slot between the badge and the sort control.
+                    footerTurnChip && landscape
+                    ? 'end'
+                    : compact
+                      ? 'auto'
+                      : 'end'
               }
               leading={
                 compact && youBadge ? (
@@ -1171,11 +1211,26 @@ export function Table3DShell(props: Table3DShellProps) {
                 landscapeRail ? (
                   <HandRail
                     hand={ownHand}
-                    drawnTileId={props.drawnTileId}
+                    drawnTileId={drawnTileId}
                     needsDraw={props.needsDraw && nextDrawTile !== null}
                     onShowHand={exitRiverZoom}
                     onDraw={() => props.onAction({ t: 'draw', seat })}
                   />
+                ) : footerTurnChip && !desktopStrip && !landscapeFooterClaim ? (
+                  <div
+                    className="mj-hud-fade"
+                    style={{ display: 'flex', justifyContent: 'center' }}
+                  >
+                    <TurnChip
+                      isMyTurn
+                      needsDraw={props.needsDraw}
+                      turnCountdown={props.turnCountdown}
+                      activeName={null}
+                      activeColour={null}
+                      claimsOpen={false}
+                      size={landscape ? 'dense' : 'large'}
+                    />
+                  </div>
                 ) : desktopStrip || landscapeFooterClaim ? (
                   <div
                     data-testid="claim-float"
@@ -1270,4 +1325,45 @@ export function Table3DShell(props: Table3DShellProps) {
       )}
     </div>
   );
+}
+
+/**
+ * The user's freshly drawn tile, gang replacements included. The store
+ * tracks `drawnTileId` from `drew` / `discarded` events; a gang's
+ * replacement draw (`gangReplacementCount` steps up, `hasDrawn` stays
+ * true) emits neither, so across that step the tile now in the hand
+ * that was not there before is the drawn one. The stored id wins while
+ * it is still a hand tile (a normal draw); the replacement is forgotten
+ * once it leaves the hand or a new hand starts.
+ */
+function useEffectiveDrawnTile(
+  state: GameState,
+  seat: Seat,
+  storeDrawnTileId: number | null,
+): number | null {
+  const handIds = useMemo(() => new Set(state.hands[seat].map(tileId)), [state, seat]);
+  const track = useRef<{
+    seed: number;
+    gangs: number;
+    hand: Set<number>;
+    replacement: number | null;
+  } | null>(null);
+  const prev = track.current;
+  let replacement = prev && prev.seed === state.seed ? prev.replacement : null;
+  if (prev && prev.seed === state.seed && state.gangReplacementCount > prev.gangs) {
+    if (state.turn === seat && state.hasDrawn) {
+      for (const id of handIds) if (!prev.hand.has(id)) replacement = id;
+    }
+  }
+  if (replacement !== null && !handIds.has(replacement)) replacement = null;
+  if (!prev || prev.hand !== handIds || prev.replacement !== replacement) {
+    track.current = {
+      seed: state.seed,
+      gangs: state.gangReplacementCount,
+      hand: handIds,
+      replacement,
+    };
+  }
+  if (storeDrawnTileId !== null && handIds.has(storeDrawnTileId)) return storeDrawnTileId;
+  return replacement;
 }
