@@ -24,6 +24,7 @@ export class CameraRig {
   parallaxEnabled = true;
   parallaxStrength = 0.35;
   halfLife = 0.22;
+  private lastNow = 0;
 
   constructor(initial: CameraPreset, aspect: number) {
     this.camera = new PerspectiveCamera(initial.fov, aspect, 0.1, 100);
@@ -57,8 +58,19 @@ export class CameraRig {
     this.camera.updateProjectionMatrix();
   }
 
-  /** Returns true while still moving. */
-  update(dt: number): boolean {
+  /**
+   * Returns true while still moving. When `now` (ms) is given the
+   * springs step by wall-clock time (capped at 0.5 s) instead of the
+   * loop's clamped `dt`: on a software rasteriser running at 2–3 fps
+   * the 0.1 s clamp would otherwise ease the camera at a third of real
+   * speed and leave a preset change visibly mid-flight for seconds.
+   */
+  update(loopDt: number, now?: number): boolean {
+    let dt = loopDt;
+    if (now !== undefined) {
+      if (this.lastNow !== 0) dt = Math.min(0.5, Math.max(0, (now - this.lastNow) / 1000));
+      this.lastNow = now;
+    }
     const g = this.goal;
     let live = false;
     live = springStep(this.pos.x, g.position[0], dt, this.halfLife) || live;

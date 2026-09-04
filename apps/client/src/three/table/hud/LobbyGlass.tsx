@@ -10,6 +10,7 @@ import type { LobbyState } from '../../../state/game';
 import { RulePanel } from '../../../ui/RulePanel';
 import { SEAT_WIND_GLYPH } from '../../../ui/winds';
 import { randomSeed } from '../../../util';
+import { LobbyTableBackdrop } from './LobbyTableBackdrop';
 import { GLASS, GlassButton, GlassPanel, HUD_CSS, glassStyle, labelStyle } from './glass';
 
 /**
@@ -359,6 +360,9 @@ export function LobbyGlass(props: Lobby3DViewProps) {
   );
 
   const column: CSSProperties = { display: 'grid', gap: 12, alignContent: 'start', minWidth: 0 };
+  // Wide viewports: one 560 px content column on the left, the waiting
+  // table panned into the right half behind it (`LobbyTableBackdrop`).
+  const sideScene = !compact && width >= 1100;
 
   return (
     <div
@@ -366,99 +370,125 @@ export function LobbyGlass(props: Lobby3DViewProps) {
       style={{
         position: 'absolute',
         inset: 0,
-        overflowY: 'auto',
+        overflow: 'hidden',
         background: VOID_BG,
         fontFamily: GLASS.font,
         color: GLASS.text,
         boxSizing: 'border-box',
-        padding: `${pad + insets.top}px ${pad + insets.right}px ${pad + insets.bottom}px ${pad + insets.left}px`,
       }}
     >
       <style>{HUD_CSS}</style>
       <div
+        data-testid="lobby-3d-backdrop"
+        aria-hidden="true"
+        style={{ position: 'absolute', inset: 0, pointerEvents: 'none', opacity: 0.85 }}
+      >
+        <LobbyTableBackdrop side={sideScene} />
+      </div>
+      <div
         style={{
-          maxWidth: twoCol ? 1040 : 720,
-          margin: '0 auto',
-          minHeight: compact ? undefined : '100%',
-          display: 'grid',
-          alignContent: compact ? 'start' : 'center',
-          gap: 14,
+          position: 'absolute',
+          inset: 0,
+          overflowY: 'auto',
+          boxSizing: 'border-box',
+          padding: `${pad + insets.top}px ${pad + insets.right}px ${pad + insets.bottom}px ${pad + insets.left}px`,
         }}
       >
-        <header
+        <div
           style={{
-            display: 'flex',
-            alignItems: 'flex-end',
-            justifyContent: 'space-between',
-            gap: 12,
-            flexWrap: 'wrap',
+            maxWidth: sideScene ? 560 : twoCol ? 1040 : 720,
+            margin: sideScene ? `0 0 0 ${Math.max(0, width * 0.06)}px` : '0 auto',
+            minHeight: compact ? undefined : '100%',
+            display: 'grid',
+            alignContent: compact ? 'start' : 'center',
+            gap: 14,
           }}
         >
-          <div style={{ display: 'grid', gap: 4 }}>
-            <span style={labelStyle}>{isSolo ? 'Solo · vs bots' : 'Online match'}</span>
-            <h1
-              style={{
-                margin: 0,
-                fontSize: compact ? 28 : 34,
-                fontWeight: 800,
-                letterSpacing: -0.5,
-                lineHeight: 1.05,
-                color: GLASS.text,
-              }}
-            >
-              Lobby
-            </h1>
-            <span style={{ fontSize: 13, color: GLASS.text2 }}>
-              {isLanHost
-                ? 'Share the join URL with friends on the same Wi-Fi. Start when everyone is ready.'
-                : isHost
-                  ? isSolo
-                    ? 'Pick your opponents and rules, then start.'
-                    : 'Share the match code with friends. Start when everyone is ready.'
-                  : 'Waiting for the host to start the match.'}
-            </span>
-          </div>
-          {matchCode && !isSolo ? (
-            <button
-              type="button"
-              aria-label={codeCopied ? 'Match code copied' : `Copy match code ${matchCode}`}
-              onClick={() => copyCode(matchCode)}
-              className="mj-glass-btn"
-              style={glassStyle({
-                borderRadius: 999,
-                padding: '0 14px 0 8px',
-                height: 44,
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 10,
-                cursor: 'pointer',
-                border: codeCopied ? '1px solid rgba(58,160,102,0.7)' : GLASS.borderGold,
-              })}
-            >
-              <span style={{ ...labelStyle, letterSpacing: 1.2 }}>Code</span>
-              <span
+          <header
+            style={{
+              display: 'flex',
+              alignItems: 'flex-end',
+              justifyContent: 'space-between',
+              gap: 12,
+              flexWrap: 'wrap',
+            }}
+          >
+            <div style={{ display: 'grid', gap: 4 }}>
+              <span style={labelStyle}>{isSolo ? 'Solo · vs bots' : 'Online match'}</span>
+              <h1
                 style={{
-                  fontFamily: "'JetBrains Mono', ui-monospace, monospace",
-                  fontSize: 15,
+                  margin: 0,
+                  fontSize: compact ? 28 : 34,
                   fontWeight: 800,
-                  letterSpacing: 3,
-                  color: codeCopied ? GLASS.success : GLASS.gold,
+                  letterSpacing: -0.5,
+                  lineHeight: 1.05,
+                  color: GLASS.text,
                 }}
               >
-                {codeCopied ? 'COPIED' : matchCode}
+                Lobby
+              </h1>
+              <span style={{ fontSize: 13, color: GLASS.text2 }}>
+                {isLanHost
+                  ? 'Share the join URL with friends on the same Wi-Fi. Start when everyone is ready.'
+                  : isHost
+                    ? isSolo
+                      ? 'Pick your opponents and rules, then start.'
+                      : 'Share the match code with friends. Start when everyone is ready.'
+                    : 'Waiting for the host to start the match.'}
               </span>
-            </button>
-          ) : null}
-        </header>
-        <div style={{ display: 'grid', gridTemplateColumns: twoCol ? '1fr 1fr' : '1fr', gap: 12 }}>
-          <div style={column}>
-            {inviteCard}
-            {seatsCard}
-            {botsCard}
-          </div>
-          <div style={column}>
-            {rulesCard}
-            {actions}
+            </div>
+            {matchCode && !isSolo ? (
+              <button
+                type="button"
+                aria-label={codeCopied ? 'Match code copied' : `Copy match code ${matchCode}`}
+                onClick={() => copyCode(matchCode)}
+                className="mj-glass-btn"
+                style={glassStyle({
+                  borderRadius: 999,
+                  padding: '0 14px 0 8px',
+                  height: 44,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  cursor: 'pointer',
+                  border: codeCopied ? '1px solid rgba(58,160,102,0.7)' : GLASS.borderGold,
+                })}
+              >
+                <span style={{ ...labelStyle, letterSpacing: 1.2 }}>Code</span>
+                <span
+                  style={{
+                    fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+                    fontSize: 15,
+                    fontWeight: 800,
+                    letterSpacing: 3,
+                    color: codeCopied ? GLASS.success : GLASS.gold,
+                  }}
+                >
+                  {codeCopied ? 'COPIED' : matchCode}
+                </span>
+              </button>
+            ) : null}
+          </header>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: twoCol && !sideScene ? '1fr 1fr' : '1fr',
+              gap: 12,
+            }}
+          >
+            <div style={column}>
+              {inviteCard}
+              {seatsCard}
+              {botsCard}
+              {sideScene ? rulesCard : null}
+              {sideScene ? actions : null}
+            </div>
+            {sideScene ? null : (
+              <div style={column}>
+                {rulesCard}
+                {actions}
+              </div>
+            )}
           </div>
         </div>
       </div>

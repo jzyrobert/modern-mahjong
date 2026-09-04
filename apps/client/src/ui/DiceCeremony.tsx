@@ -1,13 +1,16 @@
 import type { OpeningRolls, Seat } from '@mahjong/game-logic';
 import { SEATS } from '@mahjong/game-logic';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Pressable, Text, View } from 'react-native';
+import { Animated, Easing, Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { nameForSeat, useGame } from '../state/game';
 import { LESSONS, useActiveTutorialStep, useTutorial } from '../state/tutorial';
+import { resolveRenderer } from '../three/renderer';
 import { useFadeInOut } from './animations';
 import { COLORS } from './colors';
+import { webStyle } from './menu/theme';
 import { DISMISS_MS } from './timing';
 import { useTargetRegistry } from './tutorial/TargetRegistry';
+import { SEAT_WIND_GLYPH } from './winds';
 
 const PIPS: Record<number, [number, number][]> = {
   1: [[2, 2]],
@@ -43,6 +46,28 @@ const PIPS: Record<number, [number, number][]> = {
   ],
 };
 
+/**
+ * Over the Three.js table the ceremony wears the HUD's glass language
+ * (dark glass + gold hairline, uppercase micro-label, ivory chunky dice
+ * with the traditional red 1 / 4 pips, gold totals). The classic shells
+ * keep the cream paper card. Picked per render from `resolveRenderer`,
+ * the same switch `Match.tsx` uses to mount the shell.
+ */
+const GLASS_DICE = {
+  scrim: 'rgba(6,10,8,0.5)',
+  bg: 'rgba(14,20,17,0.84)',
+  border: 'rgba(216,168,90,0.45)',
+  text: 'rgba(255,255,255,0.92)',
+  text2: 'rgba(255,255,255,0.62)',
+  gold: '#d8a85a',
+  ivory: '#f4ecd8',
+  ivorySide: '#c8b78f',
+  pipInk: '#2a2418',
+  pipRed: '#b14d3a',
+  shadow: '0px 12px 40px rgba(0,0,0,0.35)',
+  font: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+} as const;
+
 // Persist the most recently dismissed `state.seed` so a page reload
 // (in solo, online, or LAN) honours the user's dismissal instead of
 // re-popping the overlay. New hands generate fresh seeds via
@@ -50,6 +75,11 @@ const PIPS: Record<number, [number, number][]> = {
 // triggers the ceremony — only the exact seed the user dismissed is
 // suppressed.
 const DISMISSED_STORAGE_KEY = 'mj.dismissedDiceSeed.v1';
+
+declare global {
+  // eslint-disable-next-line no-var
+  var __MAHJONG_TEST_HOLD_DICE__: boolean | undefined;
+}
 
 function readDismissedSeed(): number | null {
   if (typeof localStorage === 'undefined') return null;
@@ -84,6 +114,15 @@ export function DiceCeremony() {
   const rolls = useGame((s) => s.state?.openingRolls);
   const dealer = useGame((s) => s.state?.dealer);
   const lobby = useGame((s) => s.lobby);
+  const rendererSetting = useGame((s) => s.settings.renderer);
+  const glass = resolveRenderer(rendererSetting) === '3d';
+  // Glass layout variants. Wide (landscape phone, desktop): the four
+  // seats sit in one row so the panel never wraps into a 2×2 block that
+  // would cover the chrome; short (landscape phone): tighter dice and
+  // gaps so the panel clears the 46 px chrome row with room to spare.
+  const { width: vw, height: vh } = useWindowDimensions();
+  const wide = glass && vw >= 700;
+  const short = glass && vh < 600;
   // Key dismissal by `state.seed` rather than a boolean — JSON.parse
   // on every server delta produces a fresh `openingRolls` reference,
   // so a bare `dismissed` boolean reset by `useEffect([rolls])` would
@@ -160,6 +199,9 @@ export function DiceCeremony() {
   const tutorialTargetsDice = activeStep?.step.targetId === 'dice-ceremony';
   useEffect(() => {
     if (!open || seed === undefined || tutorialTargetsDice) return;
+    // Test seam: the screenshot verifier pins the modal open so the
+    // opening-rolls state can be captured after the scene has settled.
+    if (globalThis.__MAHJONG_TEST_HOLD_DICE__ === true) return;
     const timer = setTimeout(() => dismiss(seed), DISMISS_MS);
     return () => clearTimeout(timer);
   }, [open, seed, dismiss, tutorialTargetsDice]);
@@ -192,6 +234,8 @@ export function DiceCeremony() {
   const visible = open && dealer !== undefined;
   if (!visible) return null;
   const rolling = SEATS.filter((s) => rolls.dice[s]);
+  const title = rolls.fullRoll ? 'Opening rolls' : 'Dealer rolls';
+  const dealerName = nameForSeat(lobby, dealer as Seat);
 
   return (
     <Pressable
@@ -205,6 +249,7 @@ export function DiceCeremony() {
         if (tutorialTargetsDice) return;
         dismiss(seed);
       }}
+      testID="dice-ceremony"
       style={{
         position: 'absolute',
         left: 0,
@@ -213,7 +258,7 @@ export function DiceCeremony() {
         bottom: 0,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: 'rgba(40, 30, 20, 0.5)',
+        backgroundColor: glass ? GLASS_DICE.scrim : 'rgba(40, 30, 20, 0.5)',
         // Matches the `Modal` primitive's gutter so the dialog never
         // sits edge-to-edge on a portrait phone (a 320px iPhone SE
         // would otherwise clip the rounded corners).
@@ -247,57 +292,192 @@ export function DiceCeremony() {
             });
           });
         }}
-        style={{
-          opacity: fade,
-          backgroundColor: COLORS.paperHi,
-          borderColor: COLORS.hairline,
-          borderWidth: 1,
-          padding: 24,
-          borderRadius: 16,
-          alignItems: 'center',
-          // Width cap so the dialog stays compact on tablets / desktop
-          // without growing absurd.
-          width: '100%',
-          maxWidth: 420,
-          boxShadow: '0px 24px 60px rgba(0,0,0,0.2)',
-        }}
+        testID={glass ? 'dice-ceremony-glass' : 'dice-ceremony-paper'}
+        style={
+          glass
+            ? {
+                opacity: fade,
+                backgroundColor: GLASS_DICE.bg,
+                borderColor: GLASS_DICE.border,
+                borderWidth: 1,
+                padding: short ? 16 : 22,
+                paddingTop: short ? 14 : 18,
+                borderRadius: 20,
+                alignItems: 'center',
+                width: '100%',
+                // Four 126 px columns + gaps + padding on wide viewports;
+                // 2×2 on portrait phones.
+                maxWidth: wide ? 620 : 400,
+                boxShadow: GLASS_DICE.shadow,
+                ...webStyle({
+                  backdropFilter: 'blur(16px) saturate(140%)',
+                  WebkitBackdropFilter: 'blur(16px) saturate(140%)',
+                }),
+              }
+            : {
+                opacity: fade,
+                backgroundColor: COLORS.paperHi,
+                borderColor: COLORS.hairline,
+                borderWidth: 1,
+                padding: 24,
+                borderRadius: 16,
+                alignItems: 'center',
+                // Width cap so the dialog stays compact on tablets / desktop
+                // without growing absurd.
+                width: '100%',
+                maxWidth: 420,
+                boxShadow: '0px 24px 60px rgba(0,0,0,0.2)',
+              }
+        }
       >
-        <Text style={{ fontSize: 18, fontWeight: '900', color: COLORS.ink, marginBottom: 16 }}>
-          {rolls.fullRoll ? 'Opening rolls' : 'Dealer rolls'}
-        </Text>
-        <View style={{ flexDirection: 'row', gap: 24, justifyContent: 'center', flexWrap: 'wrap' }}>
+        {glass ? (
+          <Text
+            style={{
+              fontSize: 11,
+              fontWeight: '700',
+              letterSpacing: 2,
+              textTransform: 'uppercase',
+              color: GLASS_DICE.text2,
+              fontFamily: GLASS_DICE.font,
+              marginBottom: short ? 10 : 16,
+            }}
+          >
+            {title}
+          </Text>
+        ) : (
+          <Text style={{ fontSize: 18, fontWeight: '900', color: COLORS.ink, marginBottom: 16 }}>
+            {title}
+          </Text>
+        )}
+        <View
+          style={{
+            flexDirection: 'row',
+            gap: glass ? (short ? 16 : 22) : 24,
+            justifyContent: 'center',
+            flexWrap: wide ? 'nowrap' : 'wrap',
+          }}
+        >
           {rolling.map((seat) => {
             const pair = rolls.dice[seat];
             if (!pair) return null;
+            const isDealer = seat === dealer;
             return (
-              <View key={seat} style={{ alignItems: 'center', gap: 6 }}>
-                <Text style={{ fontSize: 11, fontWeight: '700', color: COLORS.ink3 }}>
-                  {nameForSeat(lobby, seat as Seat)}
-                </Text>
-                <View style={{ flexDirection: 'row', gap: 6 }}>
-                  <Die value={pair[0]} delay={0} />
-                  <Die value={pair[1]} delay={120} />
+              <View
+                key={seat}
+                testID={glass ? 'dice-seat' : undefined}
+                style={{
+                  alignItems: 'center',
+                  gap: glass ? (short ? 6 : 8) : 6,
+                  // Fixed columns keep the dice rows aligned when one
+                  // name wraps to two lines.
+                  width: glass ? (wide ? 126 : 118) : undefined,
+                }}
+              >
+                {glass ? (
+                  <View
+                    style={{
+                      minHeight: 28,
+                      justifyContent: 'flex-end',
+                      alignItems: 'center',
+                      alignSelf: 'stretch',
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 11,
+                        fontWeight: '700',
+                        letterSpacing: 0.4,
+                        lineHeight: 14,
+                        textAlign: 'center',
+                        color: isDealer ? GLASS_DICE.gold : GLASS_DICE.text2,
+                        fontFamily: GLASS_DICE.font,
+                      }}
+                      numberOfLines={2}
+                    >
+                      {`${SEAT_WIND_GLYPH[seat]} ${nameForSeat(lobby, seat as Seat)}`}
+                    </Text>
+                  </View>
+                ) : (
+                  <Text
+                    style={{ fontSize: 11, fontWeight: '700', color: COLORS.ink3 }}
+                    numberOfLines={1}
+                  >
+                    {nameForSeat(lobby, seat as Seat)}
+                  </Text>
+                )}
+                <View style={{ flexDirection: 'row', gap: glass ? 8 : 6 }}>
+                  <Die value={pair[0]} delay={0} glass={glass} size={short ? 44 : undefined} />
+                  <Die value={pair[1]} delay={120} glass={glass} size={short ? 44 : undefined} />
                 </View>
-                <Text style={{ fontSize: 12, fontWeight: '800', color: COLORS.ink }}>
+                <Text
+                  style={
+                    glass
+                      ? {
+                          fontSize: 18,
+                          fontWeight: '800',
+                          color: GLASS_DICE.gold,
+                          fontFamily: GLASS_DICE.font,
+                          letterSpacing: 0.5,
+                        }
+                      : { fontSize: 12, fontWeight: '800', color: COLORS.ink }
+                  }
+                >
                   {pair[0] + pair[1]}
                 </Text>
               </View>
             );
           })}
         </View>
-        <Text style={{ marginTop: 18, fontSize: 13, color: COLORS.ink }}>
-          Dealer: seat <Text style={{ color: COLORS.red, fontWeight: '700' }}>{dealer}</Text> (
-          {nameForSeat(lobby, dealer as Seat)})
-        </Text>
-        <Text style={{ marginTop: 6, fontSize: 11, color: COLORS.ink3 }}>
-          Tap anywhere to dismiss
-        </Text>
+        {glass ? (
+          <View
+            style={{
+              marginTop: short ? 12 : 18,
+              paddingTop: short ? 8 : 12,
+              borderTopWidth: 1,
+              borderTopColor: 'rgba(255,255,255,0.12)',
+              alignSelf: 'stretch',
+              alignItems: 'center',
+              gap: short ? 4 : 6,
+            }}
+          >
+            <Text style={{ fontSize: 13, color: GLASS_DICE.text, fontFamily: GLASS_DICE.font }}>
+              Dealer{' '}
+              <Text style={{ color: GLASS_DICE.gold, fontWeight: '800' }}>
+                {SEAT_WIND_GLYPH[dealer as Seat]} {dealerName}
+              </Text>
+            </Text>
+            <Text style={{ fontSize: 11, color: GLASS_DICE.text2, fontFamily: GLASS_DICE.font }}>
+              Tap anywhere to dismiss
+            </Text>
+          </View>
+        ) : (
+          <>
+            <Text style={{ marginTop: 18, fontSize: 13, color: COLORS.ink }}>
+              Dealer: seat <Text style={{ color: COLORS.red, fontWeight: '700' }}>{dealer}</Text> (
+              {dealerName})
+            </Text>
+            <Text style={{ marginTop: 6, fontSize: 11, color: COLORS.ink3 }}>
+              Tap anywhere to dismiss
+            </Text>
+          </>
+        )}
       </Animated.View>
     </Pressable>
   );
 }
 
-function Die({ value, delay }: { value: number; delay: number }) {
+function Die({
+  value,
+  delay,
+  glass = false,
+  size: sizeOverride,
+}: {
+  value: number;
+  delay: number;
+  glass?: boolean;
+  /** Glass only: die edge in px (48 default; short viewports pass 44). */
+  size?: number | undefined;
+}) {
   const animsEnabled = useGame((s) => s.settings.animations);
   const t = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -312,51 +492,107 @@ function Die({ value, delay }: { value: number; delay: number }) {
   }, [delay, t, animsEnabled]);
   const scale = t.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] });
   const rotate = t.interpolate({ inputRange: [0, 1], outputRange: ['-90deg', '0deg'] });
+  // Traditional mahjong dice: the 1 and the 4 are red, the rest ink.
+  const pipColor = glass
+    ? value === 1 || value === 4
+      ? GLASS_DICE.pipRed
+      : GLASS_DICE.pipInk
+    : COLORS.red;
+  const size = glass ? (sizeOverride ?? 48) : 44;
+  const pips = Array.from({ length: 9 }, (_, i) => {
+    const row = Math.floor(i / 3) + 1;
+    const col = (i % 3) + 1;
+    const filled = (PIPS[value] ?? []).some(([r, c]) => r === row && c === col);
+    const big = glass && value === 1;
+    return (
+      <View
+        // biome-ignore lint/suspicious/noArrayIndexKey: 3x3 grid is fixed
+        key={i}
+        style={{
+          width: '33.33%',
+          height: '33.33%',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        {filled ? (
+          <View
+            style={{
+              width: big ? 11 : glass ? 8 : 7,
+              height: big ? 11 : glass ? 8 : 7,
+              borderRadius: 6,
+              backgroundColor: pipColor,
+              ...(glass ? { boxShadow: 'inset 0px 1px 1px rgba(0,0,0,0.35)' } : {}),
+            }}
+          />
+        ) : null}
+      </View>
+    );
+  });
+  if (!glass) {
+    return (
+      <Animated.View
+        style={{
+          width: size,
+          height: size,
+          backgroundColor: '#fdfaf2',
+          borderColor: COLORS.hairline,
+          borderWidth: 1,
+          borderRadius: 8,
+          padding: 6,
+          boxShadow: '0px 2px 6px rgba(0,0,0,0.18)',
+          flexDirection: 'row',
+          flexWrap: 'wrap',
+          opacity: t,
+          transform: [{ scale }, { rotate }],
+        }}
+      >
+        {pips}
+      </Animated.View>
+    );
+  }
+  // Glass: a chunky ivory die — a darker side slab peeks out under the
+  // lit top face (inset highlight along the top edge, shade along the
+  // bottom) so it reads as a shaded block, not a flat card.
   return (
     <Animated.View
       style={{
-        width: 44,
-        height: 44,
-        backgroundColor: '#fdfaf2',
-        borderColor: COLORS.hairline,
-        borderWidth: 1,
-        borderRadius: 8,
-        padding: 6,
-        boxShadow: '0px 2px 6px rgba(0,0,0,0.18)',
-        flexDirection: 'row',
-        flexWrap: 'wrap',
+        width: size,
+        height: size + 5,
         opacity: t,
         transform: [{ scale }, { rotate }],
       }}
     >
-      {Array.from({ length: 9 }, (_, i) => {
-        const row = Math.floor(i / 3) + 1;
-        const col = (i % 3) + 1;
-        const filled = (PIPS[value] ?? []).some(([r, c]) => r === row && c === col);
-        return (
-          <View
-            // biome-ignore lint/suspicious/noArrayIndexKey: 3x3 grid is fixed
-            key={i}
-            style={{
-              width: '33.33%',
-              height: '33.33%',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            {filled ? (
-              <View
-                style={{
-                  width: 7,
-                  height: 7,
-                  borderRadius: 4,
-                  backgroundColor: COLORS.red,
-                }}
-              />
-            ) : null}
-          </View>
-        );
-      })}
+      <View
+        style={{
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          top: 5,
+          bottom: 0,
+          borderRadius: 10,
+          backgroundColor: GLASS_DICE.ivorySide,
+          boxShadow: '0px 8px 18px rgba(0,0,0,0.5)',
+        }}
+      />
+      <View
+        style={{
+          width: size,
+          height: size,
+          borderRadius: 10,
+          backgroundColor: GLASS_DICE.ivory,
+          padding: 6,
+          flexDirection: 'row',
+          flexWrap: 'wrap',
+          boxShadow:
+            'inset 0px 2px 0px rgba(255,255,255,0.75), inset 0px -3px 0px rgba(120,100,60,0.22), 0px 1px 0px rgba(0,0,0,0.25)',
+          ...webStyle({
+            backgroundImage: 'linear-gradient(160deg, #fbf5e7 0%, #efe4c9 100%)',
+          }),
+        }}
+      >
+        {pips}
+      </View>
     </Animated.View>
   );
 }

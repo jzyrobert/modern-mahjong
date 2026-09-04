@@ -25,6 +25,10 @@ export interface HudRects {
   discards: ScreenRect | null;
   /** Screen y of the centre plate's near edge (band floor while rivers are empty). */
   plateBottom: number | null;
+  /** Screen y of the far rail's top edge (portrait toasts overlap it). */
+  farRailTop: number | null;
+  /** Screen y of the near rail's bottom edge (portrait floor shadow). */
+  nearRailBottom: number | null;
 }
 
 export interface HitTargetsHandle {

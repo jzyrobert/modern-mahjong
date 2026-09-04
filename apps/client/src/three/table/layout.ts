@@ -53,6 +53,8 @@ export interface TileSlot {
    * rather than a table edge.
    */
   quat?: [number, number, number, number];
+  /** Uniform size multiplier (portrait rivers render 1.1×). Default 1. */
+  scale?: number;
 }
 
 /**
@@ -103,7 +105,7 @@ export const MELD_Z = 10.3;
  * Dead-wall stacks step this far toward the rail so the block reads as
  * distinct from the live wall at every viewport (with the darker tint).
  */
-export const DEAD_WALL_OFFSET = 0.18;
+export const DEAD_WALL_OFFSET = 0;
 /** Own hand leans back ~29° — matches the ~70° camera elevation. */
 export const HAND_TILT = 0.5;
 /** Opponents' concealed rows stand nearly upright. */
@@ -129,6 +131,8 @@ export const RIVER_Z0 = 2.6;
 /** Felt half-size and rail dimensions, shared with `TableScene`. */
 export const FELT_HALF = 11.9;
 export const RAIL_WIDTH = 1.1;
+/** Height of the wood rail above the felt. */
+export const RAIL_H = 0.55;
 export const CENTRE_PLATE_RADIUS = 1.9;
 
 export const FLAT_Y = TILE_D / 2;
@@ -237,10 +241,10 @@ export function wallSlotRefs(
  * natural slots along the row — the 68 stacks form a closed ring with
  * no slack, so any gap shift would push a dead stack into the live tail
  * that wraps onto the same wall from the other side (two coplanar top
- * faces z-fighting read as a ghost tile). Instead the dead stacks step
- * `DEAD_WALL_OFFSET` toward the rail (an L-shaped kink, never an
- * overlap) and `TableScene` tints them darker; the break gap grows
- * naturally as tiles leave.
+ * faces z-fighting read as a ghost tile). The dead stacks are marked by
+ * `TableScene`'s warm 0.5 tint alone (`DEAD_WALL_OFFSET` is 0: the
+ * earlier fifth-of-a-tile step read as misaligned stacks rather than a
+ * marker); the break gap grows naturally as tiles leave.
  */
 export function wallSlotPosition(
   ref: WallRef,
@@ -328,6 +332,11 @@ export function orderOwnHand(hand: readonly Tile[], opts: HandOrderOptions): Til
 }
 
 // ─── Full layout ───────────────────────────────────────────────────
+/** See `LayoutOptions.hideSideWallsBeyondZ`. */
+function hideSideWall(p: { rel: Rel; z: number }, beyondZ: number | undefined): boolean {
+  return beyondZ !== undefined && (p.rel === 1 || p.rel === 3) && p.z < beyondZ;
+}
+
 export interface LayoutOptions extends HandOrderOptions {
   /** Hand end: opponents' concealed tiles lie face up in their row. */
   reveal: boolean;
@@ -337,6 +346,20 @@ export interface LayoutOptions extends HandOrderOptions {
    * exposed melds flat on the felt in front of them.
    */
   heldHand?: HeldHandFrame | null | undefined;
+  /**
+   * Uniform scale for river tiles (pitch + size) — phone portrait draws
+   * discards 1.1× so their glyphs read at the width-bound table scale.
+   */
+  riverScale?: number | undefined;
+  /**
+   * Portrait river zoom: drop the side walls' stacks (rel 1 / 3) whose
+   * world z is beyond this (toward the far side). The zoom frames the
+   * river block and crops the walls off-screen, but perspective folds
+   * the side walls' far ends back in under the header bar, where their
+   * top faces peek out as a sliver; hiding that far third keeps the
+   * header's bottom edge clean. `undefined` keeps every stack.
+   */
+  hideSideWallsBeyondZ?: number | undefined;
 }
 
 /**
@@ -497,6 +520,7 @@ export function computeLayout(state: GameState, me: Seat, opts: LayoutOptions): 
     const tile = state.wall[state.wall.length - 1 - i];
     if (!tile) return;
     const p = wallSlotPosition(ref, me);
+    if (hideSideWall(p, opts.hideSideWallsBeyondZ)) return;
     put(layout, {
       id: tileId(tile),
       zone: 'wall',
@@ -519,6 +543,7 @@ export function computeLayout(state: GameState, me: Seat, opts: LayoutOptions): 
     const tile = state.deadWall[i];
     if (!tile) return;
     const p = wallSlotPosition(ref, me);
+    if (hideSideWall(p, opts.hideSideWallsBeyondZ)) return;
     put(layout, {
       id: tileId(tile),
       zone: 'deadWall',
@@ -576,7 +601,7 @@ export function computeLayout(state: GameState, me: Seat, opts: LayoutOptions): 
         cursor += m.width + MELD_GROUP_GAP;
       });
       // River below still applies.
-      placeRiver(layout, state, seat, rel, yaw);
+      placeRiver(layout, state, seat, rel, yaw, opts.riverScale ?? 1);
       continue;
     }
     const handWidth =
@@ -634,18 +659,25 @@ export function computeLayout(state: GameState, me: Seat, opts: LayoutOptions): 
       cursor += m.width + MELD_GROUP_GAP;
     });
 
-    placeRiver(layout, state, seat, rel, yaw);
+    placeRiver(layout, state, seat, rel, yaw, opts.riverScale ?? 1);
   }
   return layout;
 }
 
 /** River: 6 per row, rows marching toward the owner. */
-function placeRiver(layout: Layout, state: GameState, seat: Seat, rel: Rel, yaw: number): void {
+function placeRiver(
+  layout: Layout,
+  state: GameState,
+  seat: Seat,
+  rel: Rel,
+  yaw: number,
+  scale: number,
+): void {
   state.discards[seat].forEach((t, i) => {
     const col = i % RIVER_COLS;
     const row = Math.floor(i / RIVER_COLS);
-    const lx = (col - (RIVER_COLS - 1) / 2) * RIVER_PITCH_X;
-    const lz = RIVER_Z0 + row * RIVER_PITCH_Z;
+    const lx = (col - (RIVER_COLS - 1) / 2) * RIVER_PITCH_X * scale;
+    const lz = RIVER_Z0 + (row * RIVER_PITCH_Z + (scale - 1) * (TILE_H / 2)) * scale;
     const [x, z] = toWorld(rel, lx, lz);
     put(layout, {
       id: tileId(t),
@@ -653,13 +685,14 @@ function placeRiver(layout: Layout, state: GameState, seat: Seat, rel: Rel, yaw:
       seat,
       rel,
       x,
-      y: FLAT_Y,
+      y: FLAT_Y * scale,
       z,
       base: 'flatUp',
       yaw,
       tilt: 0,
       back: false,
       index: i,
+      ...(scale !== 1 ? { scale } : {}),
     });
   });
 }

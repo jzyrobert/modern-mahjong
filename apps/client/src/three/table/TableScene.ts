@@ -13,6 +13,7 @@ import {
   Object3D,
   PlaneGeometry,
   Quaternion,
+  type Scene,
   type Texture,
   Vector3,
 } from 'three';
@@ -24,13 +25,14 @@ import type { SceneContext } from '../core/SceneHost';
 import { type LightRig, buildLights } from '../core/lights';
 import type { QualityProfile } from '../core/quality';
 import { TilePool } from '../tiles/TilePool';
-import { feltColors } from '../tiles/materials';
+import { feltColors, setTileBackFinish } from '../tiles/materials';
 import { Choreographer } from './choreography';
 import {
   CENTRE_PLATE_RADIUS,
   FELT_HALF,
   type HeldHandFrame,
   type Layout,
+  RAIL_H,
   RAIL_WIDTH,
   type Rel,
   computeLayout,
@@ -71,6 +73,22 @@ export interface SyncInput {
   shuffling: boolean;
   /** Phone portrait: the near-camera frame the user's hand is held in. */
   heldHand?: HeldHandFrame | null | undefined;
+  /** River tile scale (portrait draws discards 1.1×). */
+  riverScale?: number | undefined;
+  /**
+   * The table between hands (pre-game lobby): walls built, no dealer
+   * yet — the plate shows the wind only, the dealer chip and dice stay
+   * hidden, and the layout is applied without a dispense.
+   */
+  waiting?: boolean | undefined;
+  /** Portrait river zoom — see `LayoutOptions.hideSideWallsBeyondZ`. */
+  hideSideWallsBeyondZ?: number | undefined;
+  /**
+   * Albedo multiplier for the near wall's stacks (rel 0). Phone
+   * landscape sets 0.85: the hand stands directly in front of the wall
+   * there, so the wall steps back a shade and the hand reads in front.
+   */
+  nearWallDim?: number | undefined;
 }
 
 export interface TableDebugTile {
@@ -101,7 +119,15 @@ export interface TableSceneOptions {
   tileSheet?: boolean | undefined;
 }
 
-const RAIL_H = 0.55;
+/** `SceneHost` pool shared by the waiting table and the match table. */
+export const TABLE_POOL_KEY = 'table';
+/**
+ * Tile-back finish: a matte inlay (clearcoat almost off, rough) so the
+ * blue / plum skin reads as its swatch colour under the bright key and
+ * env instead of washing to near-white at the gradient's light end
+ * (round-2: opponents' racks looked like white sticks).
+ */
+export const TABLE_BACK_FINISH = { clearcoat: 0.12, roughness: 0.72 } as const;
 /**
  * Dealer chip centre in the dealer's seat frame (x right, z toward
  * them): the near-right corner pocket inside the walls. Every river
@@ -155,7 +181,7 @@ export class TableScene {
   private plate: Mesh;
   private plateTopMesh: Mesh;
   private plateTex: { texture: Texture; ctx: CanvasRenderingContext2D; size: number };
-  private plateInfo: { wind: Wind | null; count: number } = { wind: null, count: -1 };
+  private plateInfo: { wind: Wind | null; count: number | null } = { wind: null, count: -1 };
   private marker: Mesh;
   private markerRel: Rel | null = null;
   private dice: InstancedMesh;
@@ -177,7 +203,10 @@ export class TableScene {
   private pulseUntil = 0;
   /** Last `update()` timestamp — springs use wall-clock time, not the loop's clamped dt. */
   private lastNow = 0;
+  private nearWallDim = 1;
   private lastLayout: Layout | null = null;
+  /** Stable disposer for `SceneContext.onDestroy` while parked. */
+  readonly destroyHook = (): void => this.dispose();
 
   constructor(ctx: SceneContext, opts: TableSceneOptions) {
     this.ctx = ctx;
@@ -343,6 +372,7 @@ export class TableScene {
       anisotropy: Math.max(1, Math.min(maxAniso, quality.tier === 'low' ? quality.anisotropy : 16)),
       atlasScale: quality.tier === 'high' ? 1.25 : 1,
     });
+    setTileBackFinish(this.pool.material, TABLE_BACK_FINISH);
     scene.add(this.pool.mesh);
 
     if (this.tileSheet) {
@@ -354,6 +384,47 @@ export class TableScene {
       this.choreo.setLayout(layout, null, 0, 0, { snap: true });
       this.writePoses();
     }
+  }
+
+  /**
+   * Return a parked scene to its just-built state for a new host: no
+   * layout, no cues, chip / dice hidden, plate blank, skins current.
+   * Meshes, materials (compiled programs) and textures are untouched —
+   * that is the point of parking (see `acquireTableScene`).
+   */
+  reset(opts: TableSceneOptions): void {
+    this.choreo.reset();
+    this.choreo.reducedMotion = opts.reducedMotion;
+    this.lastLayout = null;
+    this.latestDiscardId = null;
+    this.drawnTileId = null;
+    this.hintTileId = null;
+    this.nextDrawId = null;
+    this.needsDraw = false;
+    this.hoverId = null;
+    this.lift.fill(0);
+    this.pulseT = 0;
+    this.pulseUntil = 0;
+    this.lastNow = 0;
+    this.nearWallDim = 1;
+    this.plateInfo = { wind: null, count: -1 };
+    this.marker.visible = false;
+    this.markerRel = null;
+    this.dice.visible = false;
+    this.diceValues = null;
+    this.pool.hideAll();
+    this.pool.commit();
+    this.setSkins(opts.felt, opts.tileBack);
+    this.ctx.renderer.shadowMap.autoUpdate = false;
+    this.ctx.renderer.shadowMap.needsUpdate = true;
+  }
+
+  get isDisposed(): boolean {
+    return this.disposed;
+  }
+
+  get isTileSheet(): boolean {
+    return this.tileSheet;
   }
 
   setQuality(q: QualityProfile): void {
@@ -386,9 +457,12 @@ export class TableScene {
       drawnTileId: input.drawnTileId,
       reveal: state.phase === 'resolved',
       heldHand: input.heldHand ?? null,
+      riverScale: input.riverScale ?? 1,
+      hideSideWallsBeyondZ: input.hideSideWallsBeyondZ,
     });
     this.lastLayout = layout;
-    this.choreo.setLayout(layout, state, me, now, { shuffling: input.shuffling });
+    const waiting = input.waiting === true;
+    this.choreo.setLayout(layout, state, me, now, { shuffling: input.shuffling, snap: waiting });
     if (input.latestDiscardId !== this.latestDiscardId || input.needsDraw !== this.needsDraw) {
       this.pulseUntil = now + PULSE_MS;
     }
@@ -396,6 +470,7 @@ export class TableScene {
     this.drawnTileId = input.drawnTileId;
     this.hintTileId = input.hintTileId;
     this.needsDraw = input.needsDraw;
+    this.nearWallDim = input.nearWallDim ?? 1;
     const next = state.wall[state.wall.length - 1];
     this.nextDrawId = next
       ? (layout.findIndex((s) => s?.zone === 'wall' && s.index === 0) ?? null)
@@ -410,10 +485,14 @@ export class TableScene {
       else this.pool.showFace(id);
     }
 
-    // Centre plate + marker + dice.
-    this.updatePlate(state.prevailingWind, state.wall.length);
+    // Centre plate + marker + dice. No dealer exists before the opening
+    // roll, so the waiting table shows neither chip nor dice.
+    this.updatePlate(state.prevailingWind, waiting ? null : state.wall.length);
     const rel = relOf(state.dealer, me);
-    if (rel !== this.markerRel) {
+    if (waiting) {
+      this.marker.visible = false;
+      this.markerRel = null;
+    } else if (rel !== this.markerRel) {
       this.markerRel = rel;
       // Parked in the dealer's near-right corner pocket, glyph facing
       // the dealer.
@@ -422,7 +501,7 @@ export class TableScene {
       this.marker.quaternion.setFromAxisAngle(Y_AXIS, (rel * Math.PI) / 2);
       this.marker.visible = true;
     }
-    const rolls = state.openingRolls;
+    const rolls = waiting ? undefined : state.openingRolls;
     const pair = rolls
       ? (rolls.dice[state.dealer] ?? Object.values(rolls.dice).find((d) => d !== undefined))
       : undefined;
@@ -440,7 +519,7 @@ export class TableScene {
     this.ctx.loop.requestRender();
   }
 
-  private updatePlate(wind: Wind, count: number): void {
+  private updatePlate(wind: Wind, count: number | null): void {
     if (this.plateInfo.wind === wind && this.plateInfo.count === count) return;
     this.plateInfo = { wind, count };
     drawPlate(this.plateTex.ctx, this.plateTex.size, { prevailingWind: wind, wallCount: count });
@@ -522,7 +601,7 @@ export class TableScene {
         p.position.add(_lift);
       }
       p.quaternion.copy(t.quat);
-      p.scale = t.scale;
+      p.scale = t.scale * (t.slot?.scale ?? 1);
       let hl = 0;
       if (this.needsDraw && id === this.nextDrawId) {
         // Primary cue: strong gold pulse plus a small lift off the stack.
@@ -533,9 +612,15 @@ export class TableScene {
       else if (id === this.hintTileId) hl = 0.12;
       p.highlight = hl;
       p.tint.setScalar(1);
-      // Dead wall reads as a separate, shaded block (plus the layout's
-      // step toward the rail).
-      if (t.slot?.zone === 'deadWall') p.tint.setScalar(0.62);
+      const zone = t.slot?.zone;
+      // Dead wall reads as a separate block: its backs take the warm
+      // ivory-tan variant (`uDeadBack*` in the tile material) instead of
+      // the skin gradient — a real second back colour rather than a
+      // multiply on blue, which only ever reached khaki-grey. No
+      // positional step (see `wallSlotPosition`).
+      p.backVariant = zone === 'deadWall' ? 1 : 0;
+      if ((zone === 'wall' || zone === 'deadWall') && t.slot?.rel === 0 && this.nearWallDim !== 1)
+        p.tint.setScalar(this.nearWallDim);
     }
     this.pool.markDirty();
     this.pool.commit();
@@ -617,6 +702,41 @@ export class TableScene {
     this.dice.dispose();
     this.ctx.renderer.shadowMap.autoUpdate = true;
   }
+}
+
+/** Scenes parked in a pooled runtime, keyed by the runtime's three `Scene`. */
+const PARKED = new WeakMap<Scene, TableScene>();
+
+/**
+ * The table scene for a `SceneContext`: the one parked in it by the
+ * previous host (pre-game lobby → match, or back) reset for `opts`, or
+ * a fresh build. Pair with `releaseTableScene` in the handle's
+ * `dispose()`. Parking keeps the compiled tile / felt / rail programs
+ * and the uploaded face atlas alive across the hand-off, so the match
+ * table's first frame costs a layout, not a shader compile.
+ */
+export function acquireTableScene(ctx: SceneContext, opts: TableSceneOptions): TableScene {
+  const parked = PARKED.get(ctx.scene);
+  if (parked) {
+    PARKED.delete(ctx.scene);
+    ctx.onDestroy.delete(parked.destroyHook);
+    if (!parked.isDisposed && parked.isTileSheet === (opts.tileSheet ?? false)) {
+      parked.reset(opts);
+      return parked;
+    }
+    parked.dispose();
+  }
+  return new TableScene(ctx, opts);
+}
+
+/** Park the scene in a pooled runtime, or dispose it in an unpooled one. */
+export function releaseTableScene(ctx: SceneContext, scene: TableScene): void {
+  if (!ctx.pooled || scene.isDisposed) {
+    scene.dispose();
+    return;
+  }
+  PARKED.set(ctx.scene, scene);
+  ctx.onDestroy.add(scene.destroyHook);
 }
 
 /**

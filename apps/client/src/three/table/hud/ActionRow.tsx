@@ -15,10 +15,12 @@ interface SortSegmentProps {
   mode: SortMode;
   onChange: (m: SortMode) => void;
   compact: boolean;
+  /** Landscape footer: 30 px segments so the control stays ≤ 38 px tall. */
+  dense?: boolean | undefined;
 }
 
 /** Glass segmented sort picker — same labels + a11y as `SortPicker`. */
-export function SortSegment({ mode, onChange, compact }: SortSegmentProps) {
+export function SortSegment({ mode, onChange, compact, dense = false }: SortSegmentProps) {
   return (
     <fieldset
       aria-label="Hand sort mode"
@@ -47,7 +49,7 @@ export function SortSegment({ mode, onChange, compact }: SortSegmentProps) {
               cursor: 'pointer',
               borderRadius: 9,
               padding: compact ? '0 8px' : '0 12px',
-              minHeight: compact ? 32 : 38,
+              minHeight: dense ? 30 : compact ? 32 : 38,
               fontFamily: GLASS.font,
               fontSize: compact ? 10 : 11,
               fontWeight: 800,
@@ -168,7 +170,25 @@ interface ActionRowProps extends ActionCtasProps {
   /** Phones render the CTAs above the hand instead — skip them here. */
   ctasExternal?: boolean;
   style?: CSSProperties | undefined;
+  /** Landscape: 30 px sort segments (footer ≤ 40 px). */
+  dense?: boolean | undefined;
+  /**
+   * `'end'` pins the sort control to the row's right edge and reserves
+   * a centred slot for `centre` (desktop's claim strip); `'auto'` keeps
+   * the phone layout (badge left, sort right, or sort centred alone).
+   */
+  sortAlign?: 'auto' | 'end' | 'replace' | undefined;
+  /** Centred footer content (desktop / landscape claim strip). */
+  centre?: ReactNode;
 }
+
+/**
+ * Landscape claim footer: the user's badge is capped at this width so
+ * the centred strip (`calc(100% − 2·(cap + gap))`) can never run under
+ * it, and a three-option chi row still fits in the ~590 px that leaves
+ * on a 915 px phone (≈ 540 px).
+ */
+export const FOOTER_LEADING_MAX = 176;
 
 /**
  * Bottom action row over the hand: sort picker and (on desktop) the
@@ -176,7 +196,20 @@ interface ActionRowProps extends ActionCtasProps {
  * the status pill.
  */
 export function ActionRow(props: ActionRowProps) {
-  const { sortMode, onSortModeChange, compact, leading, ctasExternal, style } = props;
+  const {
+    sortMode,
+    onSortModeChange,
+    compact,
+    leading,
+    ctasExternal,
+    style,
+    dense = false,
+    sortAlign = 'auto',
+    centre,
+  } = props;
+  const sort = (
+    <SortSegment mode={sortMode} onChange={onSortModeChange} compact={compact} dense={dense} />
+  );
   return (
     <div
       style={{
@@ -190,23 +223,77 @@ export function ActionRow(props: ActionRowProps) {
       }}
     >
       {ctasExternal ? null : <ActionCtas {...props} />}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: leading ? 'space-between' : 'center',
-          gap: 8,
-        }}
-      >
-        {leading ? (
-          <div style={{ flex: '1 1 auto', minWidth: 0, display: 'flex', alignItems: 'center' }}>
+      {sortAlign === 'replace' ? (
+        // Landscape claim window: the claim strip *replaces* the sort
+        // control (irrelevant while a claim is pending) and sits centred
+        // on the viewport in the footer row, so it never lies on the near
+        // wall's tile backs; the badge keeps its corner.
+        <div
+          style={{
+            position: 'relative',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'flex-end',
+            minHeight: dense ? 40 : 44,
+          }}
+        >
+          <div
+            style={{
+              position: 'absolute',
+              left: 0,
+              bottom: 0,
+              maxWidth: FOOTER_LEADING_MAX,
+              display: 'flex',
+              alignItems: 'center',
+            }}
+          >
             {leading}
           </div>
-        ) : null}
-        <div style={{ flex: 'none' }}>
-          <SortSegment mode={sortMode} onChange={onSortModeChange} compact={compact} />
+          <div
+            style={{
+              maxWidth: `calc(100% - ${2 * (FOOTER_LEADING_MAX + 12)}px)`,
+              minWidth: 0,
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'flex-end',
+              gap: 8,
+            }}
+          >
+            {centre}
+          </div>
         </div>
-      </div>
+      ) : sortAlign === 'end' ? (
+        // Three columns: [leading] [centre] [sort], bottom-aligned so a
+        // taller centre strip grows upward from the row's baseline.
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr auto 1fr',
+            alignItems: 'end',
+            gap: 12,
+          }}
+        >
+          <div style={{ minWidth: 0, display: 'flex', alignItems: 'center' }}>{leading}</div>
+          <div style={{ minWidth: 0, display: 'flex', justifyContent: 'center' }}>{centre}</div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>{sort}</div>
+        </div>
+      ) : (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: leading ? 'space-between' : 'center',
+            gap: 8,
+          }}
+        >
+          {leading ? (
+            <div style={{ flex: '1 1 auto', minWidth: 0, display: 'flex', alignItems: 'center' }}>
+              {leading}
+            </div>
+          ) : null}
+          <div style={{ flex: 'none' }}>{sort}</div>
+        </div>
+      )}
     </div>
   );
 }

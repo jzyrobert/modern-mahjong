@@ -12,6 +12,8 @@ interface MenuButtonsProps {
   style?: CSSProperties | undefined;
   /** Extra control rendered before the gear (e.g. the river-zoom exit). */
   leading?: ReactNode;
+  /** Button diameter, CSS px (44 default; landscape runs 40). */
+  size?: number | undefined;
 }
 
 const GEAR =
@@ -31,11 +33,12 @@ export function MenuButtons({
   compact,
   style,
   leading,
+  size = 44,
 }: MenuButtonsProps) {
   const btn: CSSProperties = {
     appearance: 'none',
-    width: 44,
-    height: 44,
+    width: size,
+    height: size,
     borderRadius: 999,
     display: 'inline-flex',
     alignItems: 'center',
@@ -55,7 +58,7 @@ export function MenuButtons({
           style={glassStyle({
             borderRadius: 999,
             padding: '0 12px',
-            height: 44,
+            height: size,
             display: 'inline-flex',
             alignItems: 'center',
             gap: 8,

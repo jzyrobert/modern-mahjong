@@ -2,10 +2,13 @@ import type { CameraPreset } from '../core/camera';
 import { TILE_D, TILE_H } from '../tiles/geometry';
 import {
   DRAWN_GAP,
+  FELT_HALF,
   HAND_PITCH,
   HELD_ROW_GAP,
   HELD_ROW_MAX,
   type HeldHandFrame,
+  RAIL_H,
+  RAIL_WIDTH,
   WALL_D,
 } from './layout';
 
@@ -56,7 +59,7 @@ export const TABLE_CAMERA: Record<Exclude<ViewportClass, 'phone-portrait'>, Came
  * the viewport (11.2 clipped the left seat's meld by half a tile —
  * round-3 critique) while the wood rails still crop off-screen.
  */
-export const PORTRAIT_X_HALF = 11.65;
+export const PORTRAIT_X_HALF = 11.9;
 /**
  * Half-width framed by the portrait *river zoom* (tap the discards):
  * the four rivers' furthest rows (RIVER_Z0 + 3 rows ≈ 7.6) plus a
@@ -66,15 +69,33 @@ export const PORTRAIT_X_HALF = 11.65;
  */
 export const PORTRAIT_ZOOM_X_HALF = 7.9;
 /**
- * Camera elevation, degrees — steep enough that the square table reads
- * with little keystone (the near/far scale ratio is ~1.04, so the side
- * rows stay inside the frame at both ends) and river glyphs are seen
- * nearly face-on.
+ * Camera elevation, degrees. 70° (round-2: down from 76°) shows the
+ * walls' front faces, the rail bevels and the side rows' tops-vs-sides
+ * so the table reads as an object rather than a flat plan, while the
+ * keystone stays mild (near/far scale ratio ≈ 1.06) so the side rows
+ * fit at both ends and river glyphs stay near face-on. The frame is
+ * width-bound: the side seats' rows (|x| ≈ 11.6 at their near end) must
+ * fit, which fixes the scale at ≈ 17 CSS px per unit on a 412 px phone
+ * regardless of elevation — so the band above and below the table is
+ * structural (toast slot above, claim slot below), not slack.
  */
-export const PORTRAIT_ELEV_DEG = 76;
-export const PORTRAIT_FOV = 40;
-/** Where the table centre sits in the band (0 top … 1 bottom). */
-export const PORTRAIT_BAND_BIAS = 0.5;
+export const PORTRAIT_ELEV_DEG = 70;
+export const PORTRAIT_FOV = 44;
+/**
+ * Portrait discards render 10 % larger than the other table tiles: the
+ * full-table view is width-bound at ~17 CSS px per tile, and the river
+ * is the one zone the player reads at a glance. Six columns × 1.1 still
+ * fit inside the walls (7.9 < 8.1 units) and three rows stay clear of
+ * the near wall.
+ */
+export const PORTRAIT_RIVER_SCALE = 1.1;
+/**
+ * Where the table centre sits in the band (0 top … 1 bottom). A touch
+ * above centre: the far half of the table foreshortens, so 0.485 leaves
+ * the visible rail-to-HUD gaps equal above (toast slot) and below
+ * (claim slot) instead of ~100 / ~80 px.
+ */
+export const PORTRAIT_BAND_BIAS = 0.485;
 /**
  * Top of the table band on portrait: safe pad + chrome row + gap +
  * dense seat strip + gap (mirrors `Table3DShell`'s layout constants).
@@ -87,12 +108,29 @@ export const PORTRAIT_STRIP_H = 34;
 /** Gap kept between the table band and the held hand's top edge. */
 export const PORTRAIT_BAND_GAP = 8;
 /**
- * River zoom: the far wall's near-top edge is pinned this far below the
- * strip's top, i.e. at the strip's bottom edge — the whole far wall row
- * (~25 px tall on screen) then sits behind the zoom header bar the
- * shell draws across the strip, so no tile is half-visible under HUD.
+ * Portrait full table: the width-bound table is shorter than the band
+ * between the seat strip and the held hand, so instead of centring it
+ * (≈ 90 px of void above *and* below — round-2 #3) the far rail's top
+ * edge is pinned this far under the seat strip; toasts overlap the far
+ * rail and the slack collects under the near rail, where the shell
+ * paints the table's floor shadow. Falls back to the centred fit when
+ * the table fills the band (short phones).
  */
-export const ZOOM_WALL_ANCHOR_Y = PORTRAIT_STRIP_TOP + PORTRAIT_STRIP_H;
+export const PORTRAIT_FAR_RAIL_GAP = 55;
+/** The far rail's top-back edge (world). */
+export const PORTRAIT_FAR_RAIL_POINT: [number, number, number] = [
+  0,
+  RAIL_H,
+  -(FELT_HALF + RAIL_WIDTH),
+];
+/**
+ * River zoom: the far wall's near-top edge is pinned this far below the
+ * strip's top — 12 px *above* the zoom header's bottom edge (strip +
+ * 6 px pad), so the whole far wall row (~25 px tall on screen) and the
+ * dead-wall stacks that wrap onto it sit behind the header bar the shell
+ * draws across the strip; no tile is half-visible under HUD.
+ */
+export const ZOOM_WALL_ANCHOR_Y = PORTRAIT_STRIP_TOP + PORTRAIT_STRIP_H - 6;
 /** World point pinned by the river zoom: the far wall's near-top edge. */
 export const ZOOM_WALL_ANCHOR: [number, number, number] = [0, 2 * TILE_D, -(WALL_D - TILE_H / 2)];
 
@@ -236,12 +274,20 @@ export function sheetCameraFor(width: number, height: number): CameraPreset {
 export function cameraFor(width: number, height: number, topInset = 0): CameraPreset {
   const cls = classifyViewport(width, height);
   if (cls === 'phone-portrait') {
-    return portraitCameraFor(
+    const fit = portraitCameraFor(
       width,
       height,
       PORTRAIT_BAND_TOP + topInset,
       heldHandTopPx(width, height) - PORTRAIT_BAND_GAP,
     );
+    // Slack in the band: lift the table until the far rail sits
+    // `PORTRAIT_FAR_RAIL_GAP` under the seat strip (never lower it —
+    // a short phone keeps the centred fit).
+    const railY = PORTRAIT_STRIP_TOP + PORTRAIT_STRIP_H + topInset + PORTRAIT_FAR_RAIL_GAP;
+    if (projectPreset(fit, width, height, PORTRAIT_FAR_RAIL_POINT).y > railY + 0.5) {
+      return portraitCameraAnchored(width, height, PORTRAIT_X_HALF, PORTRAIT_FAR_RAIL_POINT, railY);
+    }
+    return fit;
   }
   return TABLE_CAMERA[cls];
 }

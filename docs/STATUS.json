@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "updatedAt": "2026-09-04T06:33:00Z",
+  "updatedAt": "2026-09-04T07:22:00Z",
   "round": 2,
   "passThreshold": 8.5,
   "subsystems": {
@@ -23,72 +23,65 @@
       ]
     },
     "table": {
-      "score": 8.3,
+      "score": 8.6,
       "errors": 0,
-      "pass": false,
+      "pass": true,
       "issues": [
         {
           "rank": 1,
-          "severity": "high",
-          "title": "Desktop claim: toast stacks ON the ClaimBar, covering the PENG button",
-          "state": "match-claim @ desktop 1440x900 (3d)",
-          "detail": "The 'CHI · Sora called' toast (approx x 652-788, y 500-550 CSS) sits with its bottom ~20 px inside the claim strip (y 530-585): it covers the top border of the strip, the upper third of the gold 碰 PENG button and the tops of the three preview tiles (zoom crop /tmp/claude-0/-home-user-modern-mahjong/cdc52f96-171c-520e-b412-7b47ea831ea7/scratchpad/c1-desktop-claim-toast.png). This is HUD-over-HUD on the primary CTA during a claim window. The report says the toast is 'stacked above' the strip, but the stack has no gap — the toast is anchored to the band centre, not to the strip's measured top. Fix: anchor the toast bottom = ClaimBar top − 8 px using the strip's measured layout height (or the same HudRects band top), and clamp so the toast never intersects the strip rect; alternatively reuse the landscape solution and put the desktop toast in the chrome row next to the far seat badge (there is ample room at 1440 px)."
+          "severity": "medium",
+          "title": "Portrait: ~140 CSS px near-black band between the near rail and the hand; the 'floor-shadow ellipse' is imperceptible",
+          "state": "match-dealt, match-my-turn, match-mid-hand, match-dealt-jade-plum @ phone 412x915 (3d)",
+          "detail": "Round-2 issue #5 was moved, not solved. The far rail is now pinned 55 px under the seat strip (good, toasts sit on the rail), but the near rail's bottom edge lands at y~550 CSS and the hand's top row starts at y~690, so the slack became a 140 px dead band. Pixel samples across it are rgb(14,21,17) centre vs rgb(15-16,22-24,17-20) at the edges — the ellipse is below perceptual threshold, so it reads as void, not shadow (crop p-dealt-band.png). The engineer calls it structural, but it is the default phone view of the whole product. Fix options: (a) treat the band as a persistent action tray rather than void — move the hand block up to rail-bottom + 28 px, and park the turn-status pill, the ClaimBar slot and the footer (badge + sort) in the recovered ~110 px at the bottom so the space is always occupied by HUD; or (b) scale the portrait fit from x ±11.65 to ~±10.6 (the racks sit at ~±10.2 so they stay in frame) which grows the table ~10% and halves the band, and make the shadow real: warm-black ellipse, peak alpha >= 0.35, ~60% viewport width, centred 20 px under the rail."
         },
         {
           "rank": 2,
           "severity": "medium",
-          "title": "Landscape ClaimBar lies on the near wall's tile backs",
-          "state": "match-claim, match-mid-hand @ phone-landscape 915x412 (3d)",
-          "detail": "The 56 px ClaimBar (x ~325-590, y ~195-250 CSS) overlaps the near wall's blue tops by ~12 CSS px along its entire bottom edge in match-claim (full 17-stack near wall) and the first three stacks in match-mid-hand (crop c8-landscape-claim-strip.png). It reads as a panel dropped onto the wall rather than floating in a felt band; the engineer disclosed it as a known gap but it is exactly the 'HUD never overlaps tiles' rule. Fix options: (a) when band < strip height + 8, switch to a 44 px single-row variant (drop the preview-tile row and fold the preview into the button label 碰 PENG ▸ 3×) so it fits the 41 px band; (b) own the overlap: centre the strip on the wall row itself with a stronger 0.78-alpha glass + shadow so the wall is clearly beneath it, never half-covered; (c) put the strip in the chrome row alongside the toast."
+          "title": "Landscape opening-rolls modal overlaps the hand row; scene veil is desktop-only",
+          "state": "match-dice @ phone-landscape 915x412 (3d); compare match-dice @ desktop and phone",
+          "detail": "The glass 'OPENING ROLLS' panel spans y~97-318 CSS while the hand tiles' tops are at y~300, so the modal's bottom edge and gold border cut across the top ~17 px of every hand tile (六..發). Every landscape match opens with this, and it is the same overlap that made the tutorial's landscape ring bisect the hand (tutorial issue #1, table-owned half). Also inconsistent: on desktop the whole scene is dimmed behind the modal (tiles go grey), on phone and landscape there is no veil at all. Fix: a landscape size variant — 56 px dice, 8 px paddings, 11 px name labels, single row — capped at ~180 px tall and anchored so bottom <= hand top - 12 px; apply the same 0.45 veil on every viewport (or none)."
         },
         {
           "rank": 3,
           "severity": "medium",
-          "title": "River-zoom header: chrome row is not glass — rail and far-wall tops show between the pills",
-          "state": "match-river-zoom @ phone 412x915 (3d)",
-          "detail": "The seat-strip glass starts at y≈52 CSS; the chrome row above it (y 0-52) is painted directly over the wood rail and the far wall's near-top edge, so blue tile tops peek out between the DRAW pill and the ✕ (x≈208-252, y≈44-52) and behind the ✕/gear/☰ buttons (crop c4-zoom-header.png). The report claims the wall's top edge is pinned behind the strip, but it is pinned to the strip's top, not below the chrome row. Fix: make the header glass full-bleed from y=0 (chrome row + seat strip as one panel with the blur) or bisect the anchored camera so the wall's projected top edge lands ≥ 6 px below the seat strip's *bottom* edge."
+          "title": "Desktop lobby: the waiting table is cropped by the right viewport edge while the glass column has a 110 px empty left margin",
+          "state": "match-lobby @ desktop 1440x900 (3d)",
+          "detail": "The backdrop finally exists (good), but the composition is unbalanced: the far wall runs from behind the Seats panel to a corner at x~1230, the right wall exits the frame at x=1440/y~450 and the near wall (blue tops, y 570-660) runs straight off the right edge with no rail — the table looks like it is sliding out of the screen. Meanwhile x 0-110 is void beside the glass column. Fix: recentre the desktop lobby camera so the right rail is >= 24 px inside the viewport (plate at ~x 1050, the centre of the free column), and pull the glass column to a 48 px inset or centre the two as a pair; landscape phone already frames it acceptably."
         },
         {
           "rank": 4,
-          "severity": "medium",
-          "title": "Landscape footer pills cover the bottom of the outer hand tiles",
-          "state": "match-dealt, match-my-turn, match-mid-hand, match-claim @ phone-landscape 915x412 (3d)",
-          "detail": "The user badge (bottom-left) hides the bottom ~7 CSS px of 六萬/七萬 and the sort picker hides the bottom of 西/發 (crops c6/c7-landscape-footer-*.png). Glyphs are clear but the hand looks like it is sinking behind the footer at both corners, and the tiles' rounded bottom edge/contact shadow is lost. Fix: in the landscape camera solve, add the footer pill height to the hand's bottom constraint (hand bottom ≥ footer top − 0 px, currently it is −7), or narrow the landscape footer pills (36 px tall, badge max-width 220 px) so they sit inside the rail gap under the hand instead of over its ends."
+          "severity": "low",
+          "title": "Side-seat melds are wedged between the side wall and the rack; glyphs sideways at ~18 CSS px",
+          "state": "match-mid-hand, match-claim @ phone (南 meld, x~362-385 CSS); match-claim @ desktop (Jin's meld, x 1045-1090); match-claim @ phone-landscape (x~1320-1380)",
+          "detail": "With a full 18-stack side wall, the meld tiles laid in the rack line have their inner edge within ~2 CSS px of the wall's projected top edge, so they read as jammed against (or tucked under) the wall (crops p-midhand-rightmeld.png, d-claim-rightmeld.png). The far/near seats have room; only the side seats suffer. Fix: when the wall on that side is >= 12 stacks, offset side-seat melds 0.6 world units outward (behind the rack line toward the rail) or scale side-seat melds 1.1x; alternatively place melds at the near end of the rack (toward the camera) where the wall has usually been drawn down."
         },
         {
           "rank": 5,
-          "severity": "medium",
-          "title": "Portrait composition: ~155 px of dead void above and below the table",
-          "state": "match-dealt, match-my-turn, match-dealt-jade-plum @ phone 412x915 (3d)",
-          "detail": "The far rail top sits at y≈185 CSS while the seat badges end at y≈97 — an 88 px empty band that is only used when a toast fires (mid-hand/claim). Below, the near rail ends at y≈620 and the hand starts at y≈688 — another 68 px. The table occupies 435 of 915 px and the left/right rails are cropped off, so the table reads as a horizontal felt band floating in a large dark field rather than a framed table. Fix: let toasts overlap the far rail (glass on wood reads fine) and raise the camera band so the far rail meets the badge row at ~20 px; spend the recovered height on scale (x ±12.4 would also bring a 6 px sliver of the side rails back into frame so the table is framed on all four sides and the opponents' racks are not touching the viewport edge at x≈10 px)."
+          "severity": "low",
+          "title": "River zoom: a ~5 px sliver of far-wall tile tops still peeks under the seat strip",
+          "state": "match-river-zoom @ phone 412x915 (3d)",
+          "detail": "Round-2 #3 is mostly fixed — the chrome row + seat strip now read as one dark panel from y=0 — but at x~272-390 CSS a row of five ivory tile edges shows for ~5 px directly under the strip (crop p-zoom-topright.png). Push the zoom anchor a further 8 px or extend the header glass 8 px below the seat strip so the wall's projected top is fully covered."
         },
         {
           "rank": 6,
           "severity": "low",
-          "title": "Dead-wall 0.18 step reads as misaligned stacks, not a marker",
-          "state": "match-dealt @ desktop (near wall right end), match-dealt @ phone (far wall right end)",
-          "detail": "The last two stacks step toward the rail by less than a fifth of a tile and the 0.62 tint is barely distinguishable, so the kink looks like a placement bug (crop c3-desktop-nearwall-kink.png; portrait far wall at x≈295-320, y≈238-262 CSS). Either make the separation unambiguous (a half-tile gap between live and dead stacks, as on a real table) or drop the offset and rely on a stronger tint (≈0.5) plus a slightly warmer back colour."
+          "title": "Landscape footer ClaimBar touches the hand's bottom edge (0-2 px)",
+          "state": "match-claim, match-mid-hand @ phone-landscape 915x412 (3d)",
+          "detail": "The new 41 px footer strip is the right solution and no longer sits on the wall, but its top border coincides with the hand tiles' bottom edge (crop l-claim-footer.png), so the tiles look like they stand on the panel. Reserve a 6 px gap in the landscape camera solve during a claim window (hand bottom >= strip top - 6) or trim the strip to 38 px. The engineer's disclosed two-row wrap case (three-option chi + PASS + long name) would grow into the hand — cap the strip to one row by hiding preview tiles when width > 480."
         },
         {
           "rank": 7,
           "severity": "low",
-          "title": "Portrait full-table river glyphs are soft at ~17.7 px",
+          "title": "Portrait full-table river glyphs are ~20 CSS px — crisper at dpr 2 but 索 still guess-level",
           "state": "match-mid-hand @ phone 412x915 (3d)",
-          "detail": "Discards render at roughly 17-18 CSS px with dpr 1.5 (perf JSON shows dpr 1.5, not the viewport's 2), so 索/萬 glyphs and the upside-down far river are guessable rather than readable (crop c9-portrait-river.png). The zoom tap remains the path, but consider letting the 'low' tier use dpr 2 on ≤ 420 px viewports (11 draw calls leave headroom), or scale river tiles 1.1× in portrait only."
+          "detail": "The renderer now runs dpr 2 on phone (perf JSON), which sharpened the atlas; 六七八萬 and 中/東 are readable, but bamboo/dots faces at ~20 px, and the upside-down far river, are still identified by colour pattern rather than read (crop p-midhand-river.png). Zoom remains the path; a 1.1x river tile scale in portrait only would tip these to readable without touching the budget."
         },
         {
           "rank": 8,
           "severity": "low",
-          "title": "Landscape chrome ☰ button crowds the far wall's top-left corner",
-          "state": "match-dealt @ phone-landscape 915x412 (3d)",
-          "detail": "The ☰ button's bottom-right corner is ~4 CSS px from the far wall's top-left end (crop c10-landscape-chrome-wall.png). Not overlapping, but the chrome row and the wall visually touch. Nudge the far wall's projected top ≥ 8 px below the chrome row in the landscape solve or shrink the chrome buttons to 40 px in landscape."
-        },
-        {
-          "rank": 9,
-          "severity": "low",
-          "title": "DISMISS pill text contrast looks under 4.5:1",
-          "state": "all landscape states with the FullscreenPrompt",
-          "detail": "The DISMISS secondary pill uses a mid-grey label on dark glass that reads well below the 0.62-alpha secondary text spec. Use rgba(255,255,255,0.62) minimum."
+          "title": "Dead-wall marker: the ivory-tan back variant is unambiguous but reads as a different tile set",
+          "state": "match-dealt @ all viewports (3d)",
+          "detail": "Round-2 #6 is closed — no kink, no misaligned stacks, the dead wall is instantly identifiable. Design note only: seven strongly tan stacks against sky-blue live stacks look like mixed tile sets rather than a marked segment. Consider a subtler blend (mix 0.6 toward the tan) plus a 2 px gold hairline on the felt under the dead segment, or keep it as-is if the clarity is preferred."
         }
       ],
       "history": [
@@ -102,6 +95,17 @@
           "openIssues": 9,
           "notes": "4 rounds: 7.9 → 8.2 → 8.2 → 8.3. Zero errors; 11 draw calls / 83k triangles / 9 programs on every state. Merged into integration; open issues carried forward.",
           "at": "2026-09-04T03:10:00Z"
+        },
+        {
+          "round": 2,
+          "score": 8.6,
+          "errors": 0,
+          "perfPass": true,
+          "pass": true,
+          "critic": "art-director",
+          "openIssues": 8,
+          "notes": "Round-2 gauntlet passed at iteration 3 (8.4 → 8.3 → 8.6): glass opening-rolls modal, footer-anchored claim strip, pooled renderer, portrait reframing, waiting-table lobby. Merged into integration.",
+          "at": "2026-09-04T07:22:00Z"
         }
       ]
     },

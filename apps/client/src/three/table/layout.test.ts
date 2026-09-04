@@ -108,6 +108,7 @@ describe('wallSlotPosition', () => {
     const dead = wallSlotPosition({ wallSeat: 0, stack: 8, level: 0, dead: true }, 0);
     expect(dead.x - live.x).toBeCloseTo(0);
     expect(dead.z - live.z).toBeCloseTo(DEAD_WALL_OFFSET);
+    expect(DEAD_WALL_OFFSET).toBe(0);
     // The step is along the owner's outward axis on every wall.
     const right = wallSlotPosition({ wallSeat: 1, stack: 3, level: 0, dead: true }, 0);
     const rightLive = wallSlotPosition({ wallSeat: 1, stack: 3, level: 0, dead: false }, 0);

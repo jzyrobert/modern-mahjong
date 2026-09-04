@@ -80,6 +80,34 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
+test('the opening rolls wear the glass language and the lobby keeps a scene', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(m.text());
+  });
+  page.on('pageerror', (e) => errors.push(String(e)));
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Play vs bots' }).click({ timeout: 20_000 });
+  // Pre-game lobby: glass waiting room over the waiting table (walls
+  // built, same TableScene the match mounts).
+  await expect(page.getByTestId('lobby-3d')).toBeVisible();
+  await expect(page.getByTestId('lobby-3d-backdrop')).toBeAttached();
+  // Generous: the lobby scene builds the face atlas on the CPU and a
+  // loaded CI shard renders it at a frame or two per second.
+  await expect(page.getByTestId('lobby-table-3d')).toBeVisible({ timeout: 30_000 });
+  await page.getByRole('button', { name: 'Start match' }).click({ timeout: 30_000 });
+  // Every match opens with the dice modal; under the 3D renderer it is
+  // the dark-glass panel (micro-label, ivory dice), never the paper card.
+  const glass = page.getByTestId('dice-ceremony-glass');
+  await expect(glass).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId('dice-ceremony-paper')).toHaveCount(0);
+  await expect(glass.getByText('Opening rolls')).toBeVisible();
+  await expect(glass.getByText('Tap anywhere to dismiss', { exact: true })).toBeVisible();
+  await dismissDice(page);
+  await expect(page.getByTestId('own-hand-tile').first()).toBeVisible({ timeout: 20_000 });
+  expect(errors, 'console / page errors').toEqual([]);
+});
+
 test('3D table mounts within budget with the classic hit-targets', async ({ page }) => {
   const errors: string[] = [];
   await startSolo(page, errors);
@@ -98,6 +126,14 @@ test('3D table mounts within budget with the classic hit-targets', async ({ page
   await expect(page.getByTestId('open-settings')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Open menu' })).toBeVisible();
   await expect(page.getByText(/\d+ left/i)).toBeVisible();
+  // Desktop footer: the sort control is pinned to the right so the
+  // claim strip can take the centre slot under the hand.
+  const vp = page.viewportSize()!;
+  if (vp.width >= 768 && vp.height >= 600) {
+    const sort = (await page.getByRole('button', { name: 'Sort by Suit' }).boundingBox())!;
+    expect(sort.x).toBeGreaterThan(vp.width * 0.6);
+    expect(sort.y + sort.height).toBeGreaterThan(box!.y + box!.height);
+  }
 
   const perf = await readPerf(page);
   expect(perf.drawCalls).toBeLessThanOrEqual(BUDGET.drawCalls);
@@ -290,6 +326,22 @@ test('phone landscape keeps ≥ 44 px hand tiles above the footer with glass chr
     expect(b.top + b.height).toBeGreaterThan(300);
   }
   expect(new Set(boxes.map((b) => Math.round(b.top / 20))).size).toBe(1);
+  // The dense footer pills sit in the rail gap *below* the hand, never
+  // over the end tiles, and the 40 px chrome row clears the far wall.
+  const sortBox = (await page.getByRole('button', { name: 'Sort by Suit' }).boundingBox())!;
+  // The user's badge is the lowest seat badge on screen.
+  const badgeTop = await page.evaluate(() =>
+    Math.max(
+      ...Array.from(document.querySelectorAll('[aria-label*=" seat, "]')).map(
+        (el) => el.getBoundingClientRect().top,
+      ),
+    ),
+  );
+  const footerTop = Math.min(sortBox.y, badgeTop);
+  for (const b of boxes) expect(b.top + b.height).toBeLessThanOrEqual(footerTop + 0.5);
+  const menuBox = (await page.getByRole('button', { name: 'Open menu' }).boundingBox())!;
+  expect(menuBox.height).toBeLessThanOrEqual(40);
+  expect(menuBox.y + menuBox.height).toBeLessThanOrEqual(52);
   // The root fullscreen offer is present (landscape phone) and the
   // chrome row keeps the direct Settings control.
   await expect(page.getByRole('button', { name: 'Enter fullscreen' })).toBeVisible();
@@ -297,6 +349,129 @@ test('phone landscape keeps ≥ 44 px hand tiles above the footer with glass chr
   const perf = await readPerf(page);
   expect(perf.drawCalls).toBeLessThanOrEqual(BUDGET.drawCalls);
   expect(perf.triangles).toBeLessThanOrEqual(BUDGET.triangles);
+  expect(errors, 'console / page errors').toEqual([]);
+});
+
+test('landscape opening rolls sit in one row clear of the chrome', async ({ page }) => {
+  await page.setViewportSize({ width: 915, height: 412 });
+  await page.addInitScript(() => {
+    (globalThis as { __MAHJONG_TEST_HOLD_DICE__?: boolean }).__MAHJONG_TEST_HOLD_DICE__ = true;
+  });
+  const errors: string[] = [];
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(m.text());
+  });
+  page.on('pageerror', (e) => errors.push(String(e)));
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Play vs bots' }).click({ timeout: 20_000 });
+  await page.getByRole('button', { name: 'Start match' }).click({ timeout: 30_000 });
+  const glass = page.getByTestId('dice-ceremony-glass');
+  await expect(glass).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId('table-3d')).toBeVisible({ timeout: 20_000 });
+  // The four seats' dice share one row (no 2×2 wrap) …
+  const seats = page.getByTestId('dice-seat');
+  await expect(seats).toHaveCount(4);
+  const tops = await seats.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().top));
+  for (const t of tops) expect(Math.abs(t - tops[0]!)).toBeLessThan(1.5);
+  // … so the panel clears the 46 px chrome row (☰ / status pill / far
+  // badge) instead of covering it, and stays inside the viewport.
+  const box = (await glass.boundingBox())!;
+  expect(box.y).toBeGreaterThanOrEqual(52);
+  expect(box.y + box.height).toBeLessThanOrEqual(412 - 40);
+  expect(box.width).toBeGreaterThan(480);
+  // Dense landscape badges mark the dealer with the 莊 chip, not a dot.
+  const chips = page.locator('[aria-label="Dealer"]');
+  await expect(chips.first()).toBeVisible();
+  await expect(chips.first()).toHaveText('莊');
+  expect(errors, 'console / page errors').toEqual([]);
+});
+
+test('the match re-attaches the lobby table renderer instead of compiling a new one', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(m.text());
+  });
+  page.on('pageerror', (e) => errors.push(String(e)));
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Play vs bots' }).click({ timeout: 20_000 });
+  const lobbyCanvas = page.getByTestId('lobby-table-3d').locator('canvas');
+  await expect(lobbyCanvas).toBeAttached({ timeout: 30_000 });
+  // Mark the lobby's canvas; the match must inherit the very same
+  // element (pooled WebGL context + compiled programs), so the opening
+  // rolls never wait on a fresh scene build.
+  await lobbyCanvas.evaluate((c) => c.setAttribute('data-probe', 'pooled'));
+  await page.getByRole('button', { name: 'Start match' }).click({ timeout: 30_000 });
+  const tableCanvas = page.getByTestId('table-3d-scene').locator('canvas');
+  await expect(tableCanvas).toBeAttached({ timeout: 20_000 });
+  await expect(tableCanvas).toHaveAttribute('data-probe', 'pooled');
+  await expect(page.locator('canvas')).toHaveCount(1);
+  await dismissDice(page);
+  await expect(page.getByTestId('own-hand-tile').first()).toBeVisible({ timeout: 20_000 });
+  expect(errors, 'console / page errors').toEqual([]);
+});
+
+test('landscape claim window moves the strip into the footer, off the near wall', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 915, height: 412 });
+  await page.addInitScript(() => {
+    const g = globalThis as {
+      __MAHJONG_TEST_SEED__?: number;
+      __MAHJONG_TEST_BOT_SCRIPTS__?: Record<number, { discards?: unknown[] }>;
+    };
+    g.__MAHJONG_TEST_SEED__ = 30;
+    g.__MAHJONG_TEST_BOT_SCRIPTS__ = { 1: {}, 2: {}, 3: {} };
+  });
+  const errors: string[] = [];
+  await startSolo(page, errors);
+  await page.waitForTimeout(1600);
+  // Seed 30: the user (dealer) holds a pair bot 1 also holds one of.
+  // Script bot 1 to discard it and discard something else ourselves.
+  await page.evaluate(() => {
+    type T = { kind: string; suit?: string; rank?: number; honor?: string };
+    const g = globalThis as {
+      __MAHJONG_TEST_GET_STATE__?: () => { state: { hands: Record<number, T[]> }; you: number };
+      __MAHJONG_TEST_BOT_SCRIPTS__?: Record<number, { discards?: T[] }>;
+    };
+    const s = g.__MAHJONG_TEST_GET_STATE__!();
+    const key = (t: T) => (t.kind === 'suit' ? `s:${t.suit}:${t.rank}` : `h:${t.honor}`);
+    const mine = s.state.hands[s.you]!;
+    const counts = new Map<string, number>();
+    for (const t of mine) counts.set(key(t), (counts.get(key(t)) ?? 0) + 1);
+    const botFaces = new Set(s.state.hands[1]!.map(key));
+    const target = mine.find((t) => (counts.get(key(t)) ?? 0) >= 2 && botFaces.has(key(t)))!;
+    g.__MAHJONG_TEST_BOT_SCRIPTS__![1] = { discards: [target] };
+    const names: Record<string, string> = {
+      E: 'East wind',
+      S: 'South wind',
+      W: 'West wind',
+      N: 'North wind',
+      Z: 'Red dragon',
+      F: 'Green dragon',
+      B: 'White dragon',
+    };
+    const name = (t: T) => (t.kind === 'suit' ? `${t.rank} ${t.suit}` : names[t.honor!]!);
+    const avoid = name(target);
+    const btn = Array.from(
+      document.querySelectorAll<HTMLElement>('[data-testid="own-hand-tile"]'),
+    ).find((b) => !(b.getAttribute('aria-label') || '').startsWith(avoid))!;
+    btn.click();
+  });
+  const bar = page.getByTestId('claim-bar');
+  await expect(bar).toBeVisible({ timeout: 20_000 });
+  const barBox = (await bar.boundingBox())!;
+  const handBottom = await page
+    .getByTestId('own-hand-tile')
+    .evaluateAll((els) => Math.max(...els.map((el) => el.getBoundingClientRect().bottom)));
+  // The strip sits in the 41 px footer row under the hand — never on the
+  // near wall's backs above it — and replaces the sort control there.
+  expect(barBox.y).toBeGreaterThanOrEqual(handBottom - 3);
+  expect(barBox.y + barBox.height).toBeLessThanOrEqual(412 - 4);
+  expect(barBox.height).toBeLessThanOrEqual(46);
+  await expect(page.getByRole('button', { name: 'Sort by Suit' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Peng' })).toBeVisible();
   expect(errors, 'console / page errors').toEqual([]);
 });
 

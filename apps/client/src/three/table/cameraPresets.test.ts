@@ -6,6 +6,9 @@ import {
   PORTRAIT_BAND_BIAS,
   PORTRAIT_BAND_GAP,
   PORTRAIT_BAND_TOP,
+  PORTRAIT_FAR_RAIL_GAP,
+  PORTRAIT_FAR_RAIL_POINT,
+  PORTRAIT_RIVER_SCALE,
   PORTRAIT_STRIP_H,
   PORTRAIT_STRIP_TOP,
   PORTRAIT_X_HALF,
@@ -45,9 +48,19 @@ describe('classifyViewport', () => {
     expect(classifyViewport(834, 1194)).toBe('desktop');
     expect(cameraFor(1440, 900)).toBe(TABLE_CAMERA.desktop);
     expect(cameraFor(915, 412)).toBe(TABLE_CAMERA['phone-landscape']);
-    expect(cameraFor(360, 800)).toEqual(
-      portraitCameraFor(360, 800, PORTRAIT_BAND_TOP, heldHandTopPx(360, 800) - PORTRAIT_BAND_GAP),
+    // Portrait keeps the centred fit's scale + elevation and only pans
+    // (toward +z: table up) to pin the far rail under the seat strip.
+    const fit = portraitCameraFor(
+      360,
+      800,
+      PORTRAIT_BAND_TOP,
+      heldHandTopPx(360, 800) - PORTRAIT_BAND_GAP,
     );
+    const got = cameraFor(360, 800);
+    expect(got.fov).toBe(fit.fov);
+    expect(got.position[1]).toBeCloseTo(fit.position[1], 6);
+    expect(got.position[2] - got.target[2]).toBeCloseTo(fit.position[2] - fit.target[2], 6);
+    expect(got.target[2]).toBeGreaterThanOrEqual(fit.target[2] - 1e-6);
   });
 });
 
@@ -149,16 +162,27 @@ describe('heldHandFrameFor', () => {
       expect(px(PORTRAIT_X_HALF, 0, 0).x).toBeLessThanOrEqual(w + 1);
       expect(px(-PORTRAIT_X_HALF, 0, 0).x).toBeGreaterThanOrEqual(-1);
       expect(px(13, 0, 0).x).toBeGreaterThan(w);
-      // Table centre sits at the band's bias point (±4 px).
+      // The far rail's top edge is pinned PORTRAIT_FAR_RAIL_GAP under the
+      // seat strip whenever the table leaves slack in the band (every
+      // phone here); the table never sits lower than the centred fit.
       const bandTop = PORTRAIT_BAND_TOP;
       const bandBottom = heldHandTopPx(w, h) - PORTRAIT_BAND_GAP;
       const centreY = bandTop + PORTRAIT_BAND_BIAS * (bandBottom - bandTop);
-      expect(Math.abs(px(0, 0, 0).y - centreY)).toBeLessThan(4);
+      const railY = PORTRAIT_STRIP_TOP + PORTRAIT_STRIP_H + PORTRAIT_FAR_RAIL_GAP;
+      const farRail = px(...PORTRAIT_FAR_RAIL_POINT).y;
+      expect(Math.abs(farRail - railY)).toBeLessThan(1);
+      expect(px(0, 0, 0).y).toBeLessThanOrEqual(centreY + 1);
+      // The near rail's bottom edge stays clear of the held hand.
+      expect(px(0, 0, FELT_HALF + RAIL_WIDTH).y).toBeLessThan(bandBottom);
       // Far row below the seat strip, near row above the held hand.
       expect(px(0, 0, -HAND_Z - 0.7).y).toBeGreaterThan(bandTop);
       expect(px(0, 0, HAND_Z + 0.7).y).toBeLessThan(bandBottom);
-      // A river tile is at least 17.5 CSS px wide on a 412 px phone.
-      if (w === 412) expect(px(1, 0.3, 0).x - px(0, 0.3, 0).x).toBeGreaterThanOrEqual(17.5);
+      // A river tile (drawn at PORTRAIT_RIVER_SCALE) is at least 18 CSS px
+      // wide on a 412 px phone.
+      if (w === 412)
+        expect((px(1, 0.3, 0).x - px(0, 0.3, 0).x) * PORTRAIT_RIVER_SCALE).toBeGreaterThanOrEqual(
+          18,
+        );
       // The side seats' flat melds (tucked to MELD_Z, reaching a flat
       // tile's half-height further out) stay ≥ 6 px inside the viewport
       // at their nearest corner, where perspective scale is largest
@@ -181,7 +205,7 @@ describe('heldHandFrameFor', () => {
       const p = new Vector3(x, y, z).project(cam);
       return { x: (p.x * 0.5 + 0.5) * w, y: (-p.y * 0.5 + 0.5) * h };
     };
-    expect(px(1, 0.3, 0).x - px(0, 0.3, 0).x).toBeGreaterThanOrEqual(25);
+    expect((px(1, 0.3, 0).x - px(0, 0.3, 0).x) * PORTRAIT_RIVER_SCALE).toBeGreaterThanOrEqual(26);
     // Every river's furthest row (z ≈ ±7.6 in its owner's frame) is inside.
     expect(px(7.9, 0, 0).x).toBeLessThanOrEqual(w + 1);
     expect(px(0, 0, 7.9).y).toBeLessThan(heldHandTopPx(w, h) - PORTRAIT_BAND_GAP);

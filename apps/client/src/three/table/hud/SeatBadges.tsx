@@ -25,9 +25,9 @@ interface SeatBadgeProps {
   lobby: LobbyState | null;
   compact: boolean;
   /**
-   * Portrait seat strip: three badges share a 388 px row, so the name
-   * clamps tighter and the dealer reads from the red wind glyph plus a
-   * dot on the disc instead of the 莊 chip.
+   * Portrait seat strip / landscape rows: three badges share a 388 px
+   * row, so the name clamps tighter and the dealer 莊 chip is one size
+   * down, inline after the wind glyph.
    */
   dense?: boolean | undefined;
   /**
@@ -76,7 +76,7 @@ export function SeatBadge({
         padding: dense ? '4px 9px 4px 4px' : compact ? '5px 10px 5px 5px' : '6px 12px 6px 6px',
         borderRadius: 999,
         minWidth: 0,
-        maxWidth: dense ? 132 : fluid ? '100%' : undefined,
+        maxWidth: fluid ? '100%' : dense ? (model.isDealer ? 150 : 132) : undefined,
         border: model.isActive
           ? '1px solid rgba(216,168,90,0.95)'
           : cue
@@ -120,21 +120,6 @@ export function SeatBadge({
         }}
       >
         {initials}
-        {dense && model.isDealer ? (
-          <span
-            aria-label="Dealer"
-            style={{
-              position: 'absolute',
-              right: -3,
-              bottom: -3,
-              width: 10,
-              height: 10,
-              borderRadius: 5,
-              background: GLASS.red,
-              border: '2px solid rgba(14,20,17,0.9)',
-            }}
-          />
-        ) : null}
       </span>
       <span
         style={{
@@ -172,6 +157,28 @@ export function SeatBadge({
           >
             {WIND_GLYPH[model.seatWind]}
           </span>
+          {dense && model.isDealer ? (
+            // Dense rows carry the same 莊 chip as the full badge, one
+            // size down, at the end of the name line — a dot on the
+            // avatar read as a rendering glitch at this size.
+            <span
+              aria-label="Dealer"
+              style={{
+                flexShrink: 0,
+                padding: '1px 4px',
+                borderRadius: 5,
+                lineHeight: 1.2,
+                background: GLASS.red,
+                color: 'white',
+                fontFamily: GLASS.serif,
+                fontSize: 9,
+                fontWeight: 700,
+                boxShadow: '0 1px 4px rgba(177,77,58,0.45)',
+              }}
+            >
+              莊
+            </span>
+          ) : null}
           {botLabel && !compact ? (
             <span style={{ fontSize: 9, fontWeight: 700, color: GLASS.text2, letterSpacing: 0.4 }}>
               {botLabel}
