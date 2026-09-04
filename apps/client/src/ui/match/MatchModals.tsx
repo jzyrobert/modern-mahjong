@@ -1,4 +1,6 @@
 import type { Seat } from '@mahjong/game-logic';
+import { useGame } from '../../state/game';
+import { resolveRenderer } from '../../three/renderer';
 import { GameLog } from './GameLog';
 import { MenuSheet } from './MenuSheet';
 import { MenuSidePanel } from './MenuSidePanel';
@@ -6,6 +8,7 @@ import { PlayersSheet } from './PlayersSheet';
 import { ScoringRulesSheet } from './ScoringRulesSheet';
 import { SettingsPanel } from './SettingsPanel';
 import { TileReferenceSheet } from './TileReferenceSheet';
+import type { SheetTheme } from './sheetTheme';
 
 interface MatchModalsProps {
   mySeat: Seat;
@@ -32,6 +35,9 @@ interface MatchModalsProps {
    *  Driven by `DesktopShell` — mobile shells leave it false / omit
    *  it and keep the bottom-sheet pattern. */
   menuVariant?: 'sheet' | 'sidePanel';
+  /** Sheet chrome. Omit to follow the resolved renderer: the 3D table
+   *  gets the dark glass language, the classic shells keep paper. */
+  theme?: SheetTheme;
 }
 
 /**
@@ -63,15 +69,37 @@ export function MatchModals({
   onLeave,
   onSendChat,
   menuVariant = 'sheet',
+  theme,
 }: MatchModalsProps) {
+  const rendererChoice = useGame((s) => s.settings.renderer);
+  const resolvedTheme: SheetTheme =
+    theme ?? (resolveRenderer(rendererChoice) === '3d' ? 'glass' : 'paper');
   const MenuComponent = menuVariant === 'sidePanel' ? MenuSidePanel : MenuSheet;
   return (
     <>
       <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
-      <GameLog open={logOpen} onClose={() => setLogOpen(false)} />
-      <TileReferenceSheet open={referenceOpen} onClose={() => setReferenceOpen(false)} />
-      <ScoringRulesSheet open={scoringOpen} onClose={() => setScoringOpen(false)} />
-      <PlayersSheet open={playersOpen} onClose={() => setPlayersOpen(false)} mySeat={mySeat} />
+      <GameLog
+        open={logOpen}
+        onClose={() => setLogOpen(false)}
+        mySeat={mySeat}
+        theme={resolvedTheme}
+      />
+      <TileReferenceSheet
+        open={referenceOpen}
+        onClose={() => setReferenceOpen(false)}
+        theme={resolvedTheme}
+      />
+      <ScoringRulesSheet
+        open={scoringOpen}
+        onClose={() => setScoringOpen(false)}
+        theme={resolvedTheme}
+      />
+      <PlayersSheet
+        open={playersOpen}
+        onClose={() => setPlayersOpen(false)}
+        mySeat={mySeat}
+        theme={resolvedTheme}
+      />
       <MenuComponent
         open={menuOpen}
         onClose={() => setMenuOpen(false)}
@@ -81,6 +109,7 @@ export function MatchModals({
         onOpenScoring={() => setScoringOpen(true)}
         onLeave={onLeave}
         onSendChat={onSendChat}
+        theme={resolvedTheme}
       />
     </>
   );

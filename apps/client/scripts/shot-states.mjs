@@ -125,6 +125,73 @@ const RETINT_ROUNDTRIP = (away, back) => [
   { waitMs: 250 },
 ];
 
+/**
+ * Open the ☰ menu (`aria-label="Open menu"` on every shell's chrome) and
+ * wait for its last row. `OPEN_MENU_ROW` then taps one row by its
+ * accessible name and waits for a string that only the opened sheet
+ * renders.
+ */
+const OPEN_MENU = [
+  { click: '[aria-label="Open menu"]', timeout: 20000 },
+  { waitForText: 'Leave match' },
+];
+const OPEN_MENU_ROW = (row, readyText) => [
+  ...OPEN_MENU,
+  { click: `role=button[name="${row}"]`, timeout: 10000 },
+  { waitForText: readyText },
+];
+
+/**
+ * Scroll the settings sheet so the felt row's label sits at the top and
+ * both skin rows are in frame, then let the scroll settle.
+ */
+const SCROLL_TO_SKINS = [
+  {
+    // Scroll the sheet's own ScrollView (nearest scrollable ancestor) —
+    // `scrollIntoView` may also shift an outer container.
+    evaluate: `(() => {
+      const chip = document.querySelector('[data-testid="felt-sage"]');
+      if (!chip) return;
+      let el = chip.parentElement;
+      while (el && !(el.scrollHeight > el.clientHeight + 4 && /auto|scroll/.test(getComputedStyle(el).overflowY))) el = el.parentElement;
+      if (!el) return;
+      const label = chip.parentElement?.previousElementSibling ?? chip.parentElement;
+      el.scrollTop = label.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop - 10;
+    })()`,
+  },
+  { waitMs: 450 },
+];
+
+/**
+ * A sheet / side panel has finished its entrance: no CSS animation is
+ * still running on the RN-web modal (bottom sheets slide in over ~300
+ * ms, which SwiftShader stretches), and the menu's first row — when
+ * present — sits inside the viewport (the desktop side panel slides on
+ * a JS-driven transform).
+ */
+const SHEET_SETTLED = `(() => {
+  const running = (el) => typeof el.getAnimations === 'function' && el.getAnimations().some((a) => a.playState === 'running' || a.playState === 'pending');
+  for (const d of document.querySelectorAll('[aria-modal="true"]')) {
+    let el = d;
+    for (let i = 0; i < 4 && el; i++, el = el.parentElement) if (running(el)) return false;
+  }
+  const row = document.querySelector('[data-testid="open-settings"]');
+  if (row) {
+    const r = row.getBoundingClientRect();
+    if (r.width === 0 || r.right > innerWidth + 0.5 || r.bottom > innerHeight + 0.5) return false;
+  }
+  return true;
+})()`;
+const SHEET_SETTLED_STEPS = [
+  { waitForFunction: SHEET_SETTLED, timeout: 15000 },
+  { waitMs: 300 },
+  // Two animation frames after the settle so the compositor has
+  // committed the sheet before the capture — under a starved
+  // SwiftShader main thread a screenshot can otherwise return the frame
+  // from before the DOM changed (menu still open, no sheet).
+  { evaluate: 'new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))' },
+];
+
 export const STATES = {
   // ── Menu ─────────────────────────────────────────────────────────────
   menu: {
@@ -223,6 +290,108 @@ export const STATES = {
       { openSettings: true },
       { waitForPerf: true },
       ...RETINT_ROUNDTRIP('felt-jade', 'felt-sage'),
+    ],
+  },
+
+  // Skin chips scrolled into view: every felt / tile-back label must sit
+  // inside its pill at the CLI viewport (round-1 feedback: "Cream" popped
+  // out of the pill on phones).
+  'settings-skins': {
+    owner: 'settings',
+    steps: [
+      ...START_SOLO,
+      { waitForOwnHand: true },
+      { openSettings: true },
+      { waitForPerf: true },
+      ...SCROLL_TO_SKINS,
+    ],
+  },
+  // Narrow phone (360 × 640, dpr 3): the same chips at the tightest
+  // width the app supports — the row re-grids instead of squeezing.
+  'settings-phone-small': {
+    owner: 'settings',
+    viewport: { width: 360, height: 640, dpr: 3, mobile: true },
+    steps: [
+      ...START_SOLO,
+      { waitForOwnHand: true },
+      { openSettings: true },
+      { waitForPerf: true },
+      ...SCROLL_TO_SKINS,
+    ],
+  },
+
+  // ── In-match sheets (glass under the 3D renderer) ────────────────────
+  'match-menu': {
+    owner: 'settings',
+    steps: [
+      ...START_SOLO,
+      { waitForOwnHand: true },
+      ...OPEN_MENU,
+      ...SHEET_SETTLED_STEPS,
+      { waitForPerf: true },
+    ],
+  },
+  'match-tile-reference': {
+    owner: 'settings',
+    steps: [
+      ...START_SOLO,
+      { waitForOwnHand: true },
+      ...OPEN_MENU_ROW('Tile reference', 'Characters'),
+      ...SHEET_SETTLED_STEPS,
+      { waitForPerf: true },
+    ],
+  },
+  'match-game-log': {
+    owner: 'settings',
+    // A few turns in so the log carries draws, discards and a claim
+    // window or two — an empty log is only the placeholder line.
+    steps: [
+      ...START_SOLO,
+      { waitForOwnHand: true },
+      { playTurns: 3 },
+      ...OPEN_MENU_ROW('Game log', 'Last actions'),
+      ...SHEET_SETTLED_STEPS,
+      { waitForPerf: true },
+    ],
+  },
+  'match-scoring-rules': {
+    owner: 'settings',
+    steps: [
+      ...START_SOLO,
+      { waitForOwnHand: true },
+      ...OPEN_MENU_ROW('Scoring rules', 'How you won'),
+      ...SHEET_SETTLED_STEPS,
+      { waitForPerf: true },
+    ],
+  },
+  'match-players': {
+    owner: 'settings',
+    // The status pill (top-left chrome) opens the roster.
+    steps: [
+      ...START_SOLO,
+      { waitForOwnHand: true },
+      { click: '[aria-label="Open players panel"]', timeout: 20000 },
+      { waitForText: 'FAAN' },
+      ...SHEET_SETTLED_STEPS,
+      { waitForPerf: true },
+    ],
+  },
+  'match-result-breakdown': {
+    owner: 'settings',
+    // `match-result` (scoring lesson, rigged win) → "View breakdown".
+    steps: [
+      { goto: '/' },
+      { waitForText: 'Modern Mahjong' },
+      { startTutorial: 'scoring-intro' },
+      { waitForOwnHand: true },
+      { waitMs: 900 },
+      { clickTutorialNext: true },
+      { waitFor: '[data-testid="winning-hand"]', timeout: 15000 },
+      { waitMs: 800 },
+      { click: 'role=button[name="View breakdown"]', timeout: 20000 },
+      { waitForText: 'Total' },
+      ...SHEET_SETTLED_STEPS,
+      { waitForPerf: true },
     ],
   },
 

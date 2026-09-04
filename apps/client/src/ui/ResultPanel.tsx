@@ -171,6 +171,7 @@ export function ResultPanel({
             onClose={() => setBreakdownOpen(false)}
             result={r}
             faanMin={state.rules.faanMin}
+            theme="glass"
           />
         ) : null}
       </View>

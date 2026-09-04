@@ -296,6 +296,46 @@ test.describe('3D settings panel', () => {
     expect(errors).toEqual([]);
   });
 
+  for (const width of [412, 360]) {
+    test(`phone ${width}: every skin label sits inside its pill`, async ({ page }) => {
+      // Round-1 feedback: "Cream" popped out of its pill on phones — the
+      // chips took a fixed share of the row regardless of their label.
+      const errors = collectErrors(page);
+      await page.setViewportSize({ width, height: width === 360 ? 640 : 915 });
+      await startSolo(page);
+      await openSettings(page);
+      const ids = [
+        ...Object.keys(TILE_BACK_SKINS).map((k) => `tileback-${k}`),
+        'felt-sage',
+        'felt-jade',
+        'felt-ocean',
+        'felt-rose',
+      ];
+      const widths = new Map<string, number[]>();
+      for (const id of ids) {
+        const chip = page.getByTestId(id);
+        await chip.scrollIntoViewIfNeeded();
+        const box = await chip.boundingBox();
+        const label = await chip.locator('div[dir="auto"]').last().boundingBox();
+        if (!box || !label) throw new Error(`${id} has no box`);
+        // Label fully inside the pill with its 14 px right padding intact
+        // (border + padding = 16; allow 2 px of sub-pixel slack).
+        expect(label.x, `${id} label left`).toBeGreaterThanOrEqual(box.x);
+        expect(label.x + label.width, `${id} label right`).toBeLessThanOrEqual(
+          box.x + box.width - 12,
+        );
+        expect(label.height, `${id} label wraps`).toBeLessThan(24);
+        const group = id.split('-')[0] ?? id;
+        widths.set(group, [...(widths.get(group) ?? []), Math.round(box.width)]);
+      }
+      // Every chip in a row is the same width (even grid, no ragged rows).
+      for (const [group, ws] of widths) {
+        expect(new Set(ws).size, `${group} chip widths ${ws.join(',')}`).toBe(1);
+      }
+      expect(errors).toEqual([]);
+    });
+  }
+
   test('desktop: right-hand sheet, open/close ×5 leaks nothing', async ({ page }) => {
     test.setTimeout(120_000);
     const errors = collectErrors(page);
@@ -404,6 +444,154 @@ test.describe('3D settings panel', () => {
     );
     const perf = await page.evaluate(() => globalThis.__MAHJONG_PERF__);
     expect(perf?.drawCalls ?? 99).toBeLessThanOrEqual(8);
+    expect(errors).toEqual([]);
+  });
+});
+
+/**
+ * In-match sheets under the 3D renderer: `MatchModals` resolves the
+ * glass theme from the renderer, so the ☰ menu, game log, tile
+ * reference, scoring rules, players roster and scoring breakdown must
+ * all render as dark glass (round-1 feedback: they were still paper).
+ * The classic pin from `_helpers` is re-pinned to `'3d'` here.
+ */
+test.describe('3D in-match sheets', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => {
+      (globalThis as { __MAHJONG_TEST_RENDERER__?: '3d' | 'classic' }).__MAHJONG_TEST_RENDERER__ =
+        '3d';
+    });
+  });
+
+  const GLASS_ROW = 'rgba(255, 255, 255, 0.06)';
+  const GLASS_TEXT = 'rgba(255, 255, 255, 0.92)';
+
+  async function openMenuRow(page: import('@playwright/test').Page, row: string) {
+    for (let attempt = 0; attempt < 6; attempt++) {
+      await dismissDice(page, 500);
+      const opened = await page
+        .getByLabel('Open menu')
+        .first()
+        .click({ timeout: 5_000 })
+        .then(() => true)
+        .catch(() => false);
+      if (!opened) continue;
+      const btn = page.getByRole('button', { name: row, exact: true });
+      if (await btn.isVisible({ timeout: 6_000 }).catch(() => false)) {
+        await btn.click();
+        return;
+      }
+    }
+    throw new Error(`menu row ${row} never appeared`);
+  }
+
+  async function closeSheet(page: import('@playwright/test').Page) {
+    // The newest dialog: the menu sheet's exit animation can still hold
+    // its own Close button while the sheet it opened fades in.
+    await page
+      .locator('[aria-modal="true"]')
+      .last()
+      .getByRole('button', { name: 'Close', exact: true })
+      .click();
+    await expect(page.locator('[aria-modal="true"]')).toHaveCount(0, { timeout: 5_000 });
+  }
+
+  test('phone: menu, tile reference, log, scoring rules and players are glass', async ({
+    page,
+  }) => {
+    test.setTimeout(150_000);
+    const errors = collectErrors(page);
+    await page.setViewportSize({ width: 412, height: 915 });
+    await startSolo(page);
+    await expect(page.getByTestId('table-3d-scene')).toBeVisible({ timeout: 20_000 });
+
+    // ☰ menu: glass rows with inline SVG glyphs (no emoji in the 3D flow).
+    await openMenuRow(page, 'Tile reference');
+    // (the menu closes as the row opens its sheet; check the row's
+    // chrome on the next open below)
+    await expect(page.getByText('Characters (Man)')).toBeVisible();
+    await expect(page.getByText('萬子', { exact: true })).toBeVisible();
+    expect(
+      await page
+        .getByText('Tile reference', { exact: true })
+        .evaluate((el) => getComputedStyle(el).color),
+    ).toBe(GLASS_TEXT);
+    await closeSheet(page);
+
+    await dismissDice(page, 300);
+    await page.getByLabel('Open menu').first().click();
+    // Scoped to the open sheet: the HUD gear carries the same testid.
+    const row = page.locator('[aria-modal="true"] [data-testid="open-settings"]');
+    await expect(row).toBeVisible();
+    expect(await row.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(GLASS_ROW);
+    expect(await row.locator('svg').count()).toBeGreaterThan(0);
+    await page.getByRole('button', { name: 'Game log', exact: true }).click();
+    await expect(page.getByText('Last actions', { exact: true })).toBeVisible();
+    expect(
+      await page
+        .getByText('Last actions', { exact: true })
+        .evaluate((el) => getComputedStyle(el).color),
+    ).toBe(GLASS_TEXT);
+    await closeSheet(page);
+
+    // Scoring rules: glass accordion — first category open, tapping
+    // another swaps the expanded section.
+    await openMenuRow(page, 'Scoring rules');
+    const first = page.getByTestId('scoring-cat-win-condition');
+    await expect(first).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.getByText('自摸', { exact: true })).toBeVisible();
+    await page.getByTestId('scoring-cat-composition').click();
+    await expect(first).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.getByTestId('scoring-cat-composition')).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+    await expect(page.getByText('自摸', { exact: true })).toBeHidden();
+    await closeSheet(page);
+
+    // Players roster from the status pill.
+    await dismissDice(page, 300);
+    await page.getByLabel('Open players panel').first().click();
+    await expect(page.getByText('Players', { exact: true })).toBeVisible();
+    await expect(page.getByText('East · seat 0')).toBeVisible();
+    expect(
+      await page.getByText('Players', { exact: true }).evaluate((el) => getComputedStyle(el).color),
+    ).toBe(GLASS_TEXT);
+    await closeSheet(page);
+
+    expect(errors).toEqual([]);
+  });
+
+  test('result veil opens the scoring breakdown in glass', async ({ page }) => {
+    test.setTimeout(120_000);
+    const errors = collectErrors(page);
+    await page.setViewportSize({ width: 412, height: 915 });
+    await page.goto('/');
+    await page.getByText('Modern Mahjong').first().waitFor();
+    // Same entry the verifier's `match-result` recipe uses: the scoring
+    // lesson's first "Got it" stages a rigged win.
+    await page.evaluate(() => {
+      const btn = document.querySelector('[data-testid="lesson-scoring-intro"]');
+      if (btn instanceof HTMLElement) {
+        btn.click();
+        return;
+      }
+      const g = globalThis as { __MAHJONG_TEST_START_TUTORIAL__?: (id: string) => void };
+      if (!g.__MAHJONG_TEST_START_TUTORIAL__) throw new Error('no tutorial entry');
+      g.__MAHJONG_TEST_START_TUTORIAL__('scoring-intro');
+    });
+    await page.getByTestId('own-hand-tile').first().waitFor({ timeout: 20_000 });
+    await page.getByTestId('tutorial-next').first().click({ timeout: 10_000 });
+    await page.getByTestId('winning-hand').waitFor({ timeout: 15_000 });
+    await page.getByRole('button', { name: 'View breakdown' }).click();
+    const title = page.getByText(/wins — \d+ faan/);
+    await expect(title).toBeVisible();
+    expect(await title.evaluate((el) => getComputedStyle(el).color)).toBe(GLASS_TEXT);
+    await expect(page.getByText('Total', { exact: true })).toBeVisible();
+    // Faan deltas read in gold on glass.
+    const total = page.getByText(/^\+\d+$/).last();
+    expect(await total.evaluate((el) => getComputedStyle(el).color)).toBe('rgb(216, 168, 90)');
+    await closeSheet(page);
     expect(errors).toEqual([]);
   });
 });
