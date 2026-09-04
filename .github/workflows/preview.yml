@@ -1,0 +1,85 @@
+name: preview
+
+# Manual Cloudflare Pages *preview* deploy of any branch. Never touches
+# production: `wrangler pages deploy --branch=<alias>` lands on
+# https://<alias>.modern-mahjong.pages.dev because the project's
+# production branch is `main`, and the job refuses an alias of `main`.
+# The preview client talks to the production Worker via
+# EXPO_PUBLIC_SERVER_URL, so only branches that leave apps/server and
+# packages/protocol untouched should be previewed this way.
+# See docs/DEPLOY.md → "Preview deploys".
+
+on:
+  workflow_dispatch:
+    inputs:
+      alias:
+        description: >-
+          Preview alias — becomes https://<alias>.modern-mahjong.pages.dev.
+          Lower-case letters, digits and hyphens, max 28 chars. Defaults to
+          the branch name, sanitised.
+        required: false
+        default: ''
+
+concurrency:
+  group: preview-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy-preview:
+    runs-on: ubuntu-latest
+    environment: cloudflare
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+
+      - name: Resolve preview alias
+        id: alias
+        env:
+          INPUT_ALIAS: ${{ inputs.alias }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          alias="${INPUT_ALIAS:-$REF_NAME}"
+          # Cloudflare Pages derives the preview subdomain by lower-casing,
+          # replacing every non-alphanumeric run with '-', and truncating
+          # to 28 characters. Mirror that so the printed URL is right.
+          alias=$(printf '%s' "$alias" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//' | cut -c1-28 | sed -E 's/-+$//')
+          if [ -z "$alias" ] || [ "$alias" = "main" ]; then
+            echo "::error::Refusing to deploy a preview with alias '$alias' — that is the production branch."
+            exit 1
+          fi
+          echo "alias=$alias" >> "$GITHUB_OUTPUT"
+          echo "Preview alias: $alias"
+
+      - name: Verify EXPO_PUBLIC_SERVER_URL is set
+        env:
+          EXPO_PUBLIC_SERVER_URL: ${{ secrets.EXPO_PUBLIC_SERVER_URL }}
+        run: |
+          if [ -z "$EXPO_PUBLIC_SERVER_URL" ]; then
+            echo "::error::EXPO_PUBLIC_SERVER_URL secret is not set; the preview would point at localhost. See docs/DEPLOY.md."
+            exit 1
+          fi
+
+      - name: Export Expo Web bundle
+        env:
+          EXPO_PUBLIC_SERVER_URL: ${{ secrets.EXPO_PUBLIC_SERVER_URL }}
+        run: pnpm --filter @mahjong/client export-web
+
+      # Same wrangler invocation shape as deploy.yml (run from apps/server so
+      # wrangler-action finds the workspace's wrangler), but --branch is the
+      # preview alias, never `main`.
+      - name: Deploy Pages preview
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: apps/server
+          packageManager: pnpm
+          command: pages deploy ../client/dist --project-name=modern-mahjong --branch=${{ steps.alias.outputs.alias }} --commit-dirty=true --commit-hash=${{ github.sha }} --commit-message=${{ github.sha }}
+
+      - name: Print preview URL
+        env:
+          ALIAS: ${{ steps.alias.outputs.alias }}
+        run: |
+          echo "::notice title=Preview URL::https://${ALIAS}.modern-mahjong.pages.dev"
+          echo "https://${ALIAS}.modern-mahjong.pages.dev — preview of ${GITHUB_REF_NAME} @ ${GITHUB_SHA}"
+          echo "Production (https://modern-mahjong.pages.dev) is unchanged."
