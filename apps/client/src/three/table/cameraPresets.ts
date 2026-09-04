@@ -17,18 +17,97 @@ export function classifyViewport(width: number, height: number): ViewportClass {
   return width > height ? 'phone-landscape' : 'phone-portrait';
 }
 
-export const TABLE_CAMERA: Record<ViewportClass, CameraPreset> = {
-  // Steep (72°) and far, so the square table reads with little
-  // perspective distortion and fits the 412 px width edge to edge
-  // (felt ±11.9 → ~16.9 CSS px per tile). The target sits near the
-  // user's wall so the table occupies the band under the seat strip
-  // and above the held hand.
-  'phone-portrait': { position: [0, 58.1, 26.5], target: [0, 0, 7.6], fov: 46 },
-  // Lower and wider — the near hand is large, the far side compresses.
-  'phone-landscape': { position: [0, 10.5, 20], target: [0, 0, 3.5], fov: 44 },
+/**
+ * Fixed presets for the wide viewport classes. Portrait is computed
+ * per viewport instead (`portraitCameraFor`) because it must fit the
+ * table into the band the HUD leaves between the seat strip and the
+ * held hand.
+ */
+export const TABLE_CAMERA: Record<Exclude<ViewportClass, 'phone-portrait'>, CameraPreset> = {
+  // Anchored on the hand row: 11.8 units from the user's tiles at a
+  // 40° elevation puts a hand tile at ~46 CSS px on a 915 px viewport
+  // (≥ the 44 px touch guideline) with its bottom edge just above the
+  // footer, the far row at y ≈ 87 under the far seat's badge, and a
+  // river tile at ~25 px.
+  'phone-landscape': { position: [0, 8.26, 19.59], target: [0, 0, 3.71], fov: 42 },
   // Cinematic 3/4 view with the full table in frame.
   desktop: { position: [0, 22, 25], target: [0, 0, 1.5], fov: 40 },
 };
+
+// ─── Portrait (computed) ───────────────────────────────────────────
+/**
+ * Half-width of the world the portrait camera frames edge to edge:
+ * the side seats' rows at |x| = HAND_Z plus a flat meld's half-depth,
+ * so every exposed meld stays in frame while the wood rails (out at
+ * 13) crop off-screen — the pixels go to the felt instead.
+ */
+export const PORTRAIT_X_HALF = 11.2;
+/**
+ * Half-width framed by the portrait *river zoom* (tap the discards):
+ * the four rivers' furthest rows (RIVER_Z0 + 3 rows ≈ 7.6) plus a
+ * flat tile's half-depth. At 412 px this puts a river tile at ~26 CSS
+ * px (vs ~18 in the full-table view); walls and hands crop off-screen
+ * until the user taps again.
+ */
+export const PORTRAIT_ZOOM_X_HALF = 7.9;
+/** Camera elevation, degrees — steep enough that the square table reads with little keystone. */
+export const PORTRAIT_ELEV_DEG = 72;
+export const PORTRAIT_FOV = 40;
+/** Where the table centre sits in the band (0 top … 1 bottom). */
+export const PORTRAIT_BAND_BIAS = 0.5;
+/**
+ * Top of the table band on portrait: safe pad + chrome row + gap +
+ * dense seat strip + gap (mirrors `Table3DShell`'s layout constants).
+ */
+export const PORTRAIT_BAND_TOP = 12 + 44 + 8 + 34 + 8;
+/** Gap kept between the table band and the held hand's top edge. */
+export const PORTRAIT_BAND_GAP = 8;
+
+/**
+ * Screen-space top of the held hand block (two rows), CSS px from the
+ * viewport top. Independent of the camera by construction (the held
+ * frame is built so one tile is `heldHandTilePx` wide and the block's
+ * baseline sits `HELD_BOTTOM_PX` above the bottom).
+ */
+export function heldHandTopPx(width: number, height: number): number {
+  const tilePx = heldHandTilePx(width);
+  const block = (2 * TILE_H + HELD_ROW_GAP) * tilePx;
+  return height - HELD_BOTTOM_PX - block;
+}
+
+/**
+ * Portrait camera fitted to the viewport: frames x ∈ ±PORTRAIT_X_HALF
+ * across the full width and centres the table (biased by
+ * `PORTRAIT_BAND_BIAS`) in the band between `bandTop` and
+ * `bandBottom`. Pure — a function of the viewport + band only.
+ *
+ * Derivation (near-top-down, so screen scale is ~uniform across the
+ * table): px per world unit `ppu = width / (2·X_HALF)`; the distance
+ * along the view axis where one unit is `ppu` px is
+ * `d = (height/2) / (tan(fov/2)·ppu)`; a world point Δz nearer the
+ * camera than the target appears `Δz·sin(elev)·ppu` px lower, so the
+ * target's z is chosen to put the table centre at the band centre.
+ */
+export function portraitCameraFor(
+  width: number,
+  height: number,
+  bandTop: number,
+  bandBottom: number,
+  xHalf: number = PORTRAIT_X_HALF,
+): CameraPreset {
+  const ppu = Math.max(1, width) / (2 * xHalf);
+  const tanV = Math.tan((PORTRAIT_FOV * Math.PI) / 360);
+  const dist = Math.max(1, height) / 2 / (tanV * ppu);
+  const elev = (PORTRAIT_ELEV_DEG * Math.PI) / 180;
+  const centreY = bandTop + PORTRAIT_BAND_BIAS * Math.max(0, bandBottom - bandTop);
+  const offsetPx = centreY - height / 2;
+  const tz = -offsetPx / (Math.sin(elev) * ppu);
+  return {
+    position: [0, dist * Math.sin(elev), tz + dist * Math.cos(elev)],
+    target: [0, 0, tz],
+    fov: PORTRAIT_FOV,
+  };
+}
 
 /** Straight-on view of the debug tile sheet. */
 export const SHEET_CAMERA: CameraPreset = {
@@ -57,8 +136,37 @@ export function sheetCameraFor(width: number, height: number): CameraPreset {
   };
 }
 
-export function cameraFor(width: number, height: number): CameraPreset {
-  return TABLE_CAMERA[classifyViewport(width, height)];
+/**
+ * Camera preset for a viewport. `topInset` is the device safe-area
+ * inset the HUD's chrome is pushed down by (portrait only).
+ */
+export function cameraFor(width: number, height: number, topInset = 0): CameraPreset {
+  const cls = classifyViewport(width, height);
+  if (cls === 'phone-portrait') {
+    return portraitCameraFor(
+      width,
+      height,
+      PORTRAIT_BAND_TOP + topInset,
+      heldHandTopPx(width, height) - PORTRAIT_BAND_GAP,
+    );
+  }
+  return TABLE_CAMERA[cls];
+}
+
+/**
+ * Portrait river-zoom preset: same elevation and band as `cameraFor`,
+ * framing only the river block. Because the held-hand frame is derived
+ * from whichever preset is active, the hand stays put on screen while
+ * the table eases in underneath it.
+ */
+export function riverZoomCameraFor(width: number, height: number, topInset = 0): CameraPreset {
+  return portraitCameraFor(
+    width,
+    height,
+    PORTRAIT_BAND_TOP + topInset,
+    heldHandTopPx(width, height) - PORTRAIT_BAND_GAP,
+    PORTRAIT_ZOOM_X_HALF,
+  );
 }
 
 // ─── Held hand (phone portrait) ────────────────────────────────────

@@ -85,8 +85,6 @@ export const DEAD_WALL_STACKS = 7;
 export const WALL_D = 8.8;
 /** Pinwheel shift of each wall toward its owner's right. */
 export const WALL_SHIFT = 0.75;
-/** Extra gap that separates the dead wall from the live wall. */
-export const DEAD_GAP = 0.32;
 /** Own / opponent hand rows sit just outside the wall. */
 export const HAND_Z = 10.55;
 /** Own hand leans back ~29° — matches the ~70° camera elevation. */
@@ -217,14 +215,20 @@ export function wallSlotRefs(
   return { live, dead };
 }
 
-/** World position + yaw of a wall stack slot. */
+/**
+ * World position + yaw of a wall stack slot. The dead wall sits in its
+ * natural slots — the 68 stacks form a closed ring with no slack, so
+ * any gap shift would push a dead stack into the live tail that wraps
+ * onto the same wall from the other side (two coplanar top faces
+ * z-fighting read as a ghost tile). `TableScene` tints dead tiles
+ * darker instead, and the break gap grows naturally as tiles leave.
+ */
 export function wallSlotPosition(
   ref: WallRef,
   me: Seat,
 ): { x: number; y: number; z: number; yaw: number; rel: Rel } {
   const rel = relOf(ref.wallSeat, me);
-  const lx =
-    (ref.stack - (STACKS_PER_WALL - 1) / 2) * WALL_PITCH + WALL_SHIFT + (ref.dead ? DEAD_GAP : 0);
+  const lx = (ref.stack - (STACKS_PER_WALL - 1) / 2) * WALL_PITCH + WALL_SHIFT;
   const [x, z] = toWorld(rel, lx, WALL_D);
   return { x, y: FLAT_Y + ref.level * TILE_D, z, yaw: yawOf(rel), rel };
 }

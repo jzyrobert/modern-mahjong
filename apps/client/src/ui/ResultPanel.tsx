@@ -248,8 +248,11 @@ function WinningHand({
   if (!state) return null;
   const concealed = sortHand(state.hands[winner]);
   const melds = state.melds[winner];
-  const tw = glass && compact ? 24 : 26;
-  const th = glass && compact ? 33 : 36;
+  // Compact glass (phone): 14 tiles + 13 gaps + the winning tile's
+  // frame must fit the 356 px card interior at 412 px, so 22 × 30.
+  const tw = glass && compact ? 22 : 26;
+  const th = glass && compact ? 30 : 36;
+  const gap = glass && compact ? 2 : 3;
   return (
     <View
       // `testID` so the scoring-intro / yaku-gallery regression
@@ -259,7 +262,7 @@ function WinningHand({
       style={{ gap: 6, marginTop: 4 }}
     >
       {melds.length > 0 ? <MeldStrip melds={melds} tileWidth={22} tileHeight={30} /> : null}
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 3, alignItems: 'center' }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap, alignItems: 'center' }}>
         {concealed.map((t) => {
           // `sameTile` matches by id (suit/rank + copy), so only the
           // exact physical winning tile gets the gold frame even when

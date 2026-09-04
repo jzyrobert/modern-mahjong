@@ -38,6 +38,12 @@ interface HitTargetsProps {
   needsDraw: boolean;
   onDraw: () => void;
   rects: HudRects;
+  /**
+   * Portrait: tapping the river region toggles the camera between the
+   * full table and a river-block zoom. Undefined = region is inert.
+   */
+  onRiverTap?: (() => void) | undefined;
+  riverZoomed?: boolean | undefined;
 }
 
 export function tileName(t: MTile): string {
@@ -65,17 +71,24 @@ export function tileName(t: MTile): string {
 
 const MIN_TOUCH = 44;
 
-function applyRect(el: HTMLElement | null, rect: ScreenRect | null, minH = MIN_TOUCH): void {
+function applyRect(
+  el: HTMLElement | null,
+  rect: ScreenRect | null,
+  minH = MIN_TOUCH,
+  minW = 0,
+): void {
   if (!el) return;
   if (!rect) {
     el.style.display = 'none';
     return;
   }
   const h = Math.max(minH, rect.height);
+  const w = Math.max(minW, rect.width);
   const top = rect.top + rect.height - h;
+  const left = rect.left - (w - rect.width) / 2;
   el.style.display = 'block';
-  el.style.transform = `translate(${rect.left.toFixed(1)}px, ${top.toFixed(1)}px)`;
-  el.style.width = `${rect.width.toFixed(1)}px`;
+  el.style.transform = `translate(${left.toFixed(1)}px, ${top.toFixed(1)}px)`;
+  el.style.width = `${w.toFixed(1)}px`;
   el.style.height = `${h.toFixed(1)}px`;
 }
 
@@ -97,6 +110,8 @@ export const HitTargets = forwardRef<HitTargetsHandle, HitTargetsProps>(function
     needsDraw,
     onDraw,
     rects,
+    onRiverTap,
+    riverZoomed = false,
   },
   ref,
 ) {
@@ -106,7 +121,10 @@ export const HitTargets = forwardRef<HitTargetsHandle, HitTargetsProps>(function
     ref,
     () => ({
       setTileRect(id, rect) {
-        applyRect(tileEls.current.get(id) ?? null, rect);
+        // Tiles project ≥ 44 px wide on every preset; the floor only
+        // kicks in on very narrow phones, where neighbours may overlap
+        // by a few px rather than leave a sub-44 px target.
+        applyRect(tileEls.current.get(id) ?? null, rect, MIN_TOUCH, MIN_TOUCH);
       },
       setWallRect(rect) {
         applyRect(wallEl.current, rect, 0);
@@ -122,7 +140,31 @@ export const HitTargets = forwardRef<HitTargetsHandle, HitTargetsProps>(function
       </TutorialTarget>
       {rects.river ? (
         <TutorialTarget id="shared-discards" style={rectStyle(rects.river)}>
-          <div data-testid="shared-discards-region" style={{ width: '100%', height: '100%' }} />
+          {onRiverTap ? (
+            <button
+              type="button"
+              data-testid="shared-discards-region"
+              aria-label={riverZoomed ? 'Show the full table' : 'Zoom into the discards'}
+              aria-pressed={riverZoomed}
+              onClick={onRiverTap}
+              className="mj-hit"
+              style={{
+                display: 'block',
+                width: '100%',
+                height: '100%',
+                padding: 0,
+                margin: 0,
+                border: 0,
+                background: 'transparent',
+                cursor: 'zoom-in',
+                pointerEvents: 'auto',
+                touchAction: 'manipulation',
+                WebkitTapHighlightColor: 'transparent',
+              }}
+            />
+          ) : (
+            <div data-testid="shared-discards-region" style={{ width: '100%', height: '100%' }} />
+          )}
         </TutorialTarget>
       ) : null}
       {needsDraw && nextDrawTile ? (

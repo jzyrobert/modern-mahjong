@@ -220,6 +220,31 @@ test('phone portrait holds the hand near the camera at ≥ 44 px per tile', asyn
   expect(stripBox.y).toBeLessThan(120);
   // The hand sits below the table band: the strip and the hand never overlap.
   expect(Math.min(...boxes.map((b) => b.top))).toBeGreaterThan(stripBox.y + stripBox.height);
+
+  // River zoom: tapping the discards region eases the camera into the
+  // river block; the hand stays put (same hit-target rects, within a
+  // few px) and the exit pill brings the full table back.
+  const table = page.getByTestId('table-3d');
+  await expect(table).toHaveAttribute('data-river-zoom', 'false');
+  const region = page.getByTestId('shared-discards-region');
+  await expect(region).toHaveAccessibleName('Zoom into the discards');
+  await region.click();
+  await expect(table).toHaveAttribute('data-river-zoom', 'true');
+  await expect(page.getByTestId('river-zoom-exit')).toBeVisible();
+  await page.waitForTimeout(1500);
+  const zoomedBoxes = await tiles.evaluateAll((els) =>
+    els.map((el) => {
+      const r = el.getBoundingClientRect();
+      return { left: r.left, top: r.top };
+    }),
+  );
+  for (let i = 0; i < boxes.length; i++) {
+    expect(Math.abs(zoomedBoxes[i]!.left - boxes[i]!.left)).toBeLessThan(6);
+    expect(Math.abs(zoomedBoxes[i]!.top - boxes[i]!.top)).toBeLessThan(6);
+  }
+  await page.getByTestId('river-zoom-exit').click();
+  await expect(table).toHaveAttribute('data-river-zoom', 'false');
+
   const perf = await readPerf(page);
   expect(perf.drawCalls).toBeLessThanOrEqual(BUDGET.drawCalls);
   expect(errors, 'console / page errors').toEqual([]);

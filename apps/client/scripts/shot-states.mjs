@@ -248,6 +248,23 @@ export const STATES = {
       { waitMs: 600 },
     ],
   },
+  'match-river-zoom': {
+    owner: 'table',
+    // Portrait only in practice: tapping the discards eases the camera
+    // into the river block (~26 px tiles); the exit pill brings the
+    // full table back. Other viewports ignore the tap (region inert).
+    steps: [
+      ...START_SOLO,
+      { waitForOwnHand: true },
+      { playTurns: 6 },
+      { waitMs: 400 },
+      // JS click so the step is a no-op where the region is inert.
+      {
+        evaluate: `document.querySelector('[data-testid="shared-discards-region"]')?.click()`,
+      },
+      { waitMs: 1400 },
+    ],
+  },
   'match-dealt-jade-plum': {
     owner: 'table',
     // Skin coverage: jade felt + plum tile backs (the scene re-tints the

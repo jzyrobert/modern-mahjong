@@ -123,7 +123,9 @@ export function LobbyGlass(props: Lobby3DViewProps) {
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: compact ? '1fr 1fr' : 'repeat(4, 1fr)',
+          // 2×2 everywhere: four cards in one row squeeze a 14-char name
+          // + 'Bot · Standard' into ~120 px on desktop's half-width column.
+          gridTemplateColumns: '1fr 1fr',
           gap: 8,
         }}
       >

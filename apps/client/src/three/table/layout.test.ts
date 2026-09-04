@@ -2,7 +2,6 @@ import { type GameState, type Seat, emptyState, startHand, tileId } from '@mahjo
 import { describe, expect, test } from 'vitest';
 import { TILE_D, TILE_H, TILE_W } from '../tiles/geometry';
 import {
-  DEAD_GAP,
   FELT_HALF,
   HAND_PITCH,
   HAND_Z,
@@ -101,10 +100,45 @@ describe('wallSlotPosition', () => {
     expect(top.y - bottom.y).toBeCloseTo(TILE_D);
     expect(bottom.rel).toBe(0);
   });
-  test('dead stacks carry the visual gap', () => {
+  test('dead stacks sit in their natural slots (no gap shift)', () => {
     const live = wallSlotPosition({ wallSeat: 0, stack: 8, level: 0, dead: false }, 0);
     const dead = wallSlotPosition({ wallSeat: 0, stack: 8, level: 0, dead: true }, 0);
-    expect(dead.x - live.x).toBeCloseTo(DEAD_GAP);
+    expect(dead.x - live.x).toBeCloseTo(0);
+    expect(dead.z).toBeCloseTo(live.z);
+  });
+  test('the dead wall wraps onto the next seat when the break is near the right end', () => {
+    // Dealer 0, roll 4: break wall 3, dead = left wall 13..16 + near wall 0..2.
+    const { dead } = wallSlotRefs(0, 4, 122, 14);
+    expect(dead.filter((d) => d.wallSeat === 3)).toHaveLength(8);
+    expect(dead.filter((d) => d.wallSeat === 0)).toHaveLength(6);
+  });
+  test('no two wall stacks intersect for any dealer + break position', () => {
+    // Flat tiles: half-extent TILE_W/2 along the wall, TILE_H/2 across.
+    const box = (p: { x: number; z: number; rel: number }) => {
+      const along = p.rel % 2 === 0 ? 'x' : 'z';
+      const hx = along === 'x' ? TILE_W / 2 : TILE_H / 2;
+      const hz = along === 'x' ? TILE_H / 2 : TILE_W / 2;
+      return { x0: p.x - hx, x1: p.x + hx, z0: p.z - hz, z1: p.z + hz };
+    };
+    for (const dealer of [0, 1, 2, 3] as const) {
+      for (let n = 2; n <= 12; n++) {
+        const { live, dead } = wallSlotRefs(dealer, n, 122, 14);
+        const boxes = [...live, ...dead]
+          .filter((r) => r.level === 0)
+          .map((r) => box(wallSlotPosition(r, 0)));
+        for (let i = 0; i < boxes.length; i++) {
+          for (let j = i + 1; j < boxes.length; j++) {
+            const a = boxes[i]!;
+            const b = boxes[j]!;
+            const overlap =
+              a.x0 < b.x1 - 1e-6 && b.x0 < a.x1 - 1e-6 && a.z0 < b.z1 - 1e-6 && b.z0 < a.z1 - 1e-6;
+            expect(overlap, `dealer ${dealer} roll ${n}: stacks ${i} and ${j} intersect`).toBe(
+              false,
+            );
+          }
+        }
+      }
+    }
   });
   test('the four walls form a pinwheel that never overlaps at the corners', () => {
     // Near wall's right end vs. right wall's near end.

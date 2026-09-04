@@ -211,17 +211,18 @@ export function drawPlate(ctx: CanvasRenderingContext2D, size: number, info: Pla
   ctx.beginPath();
   ctx.arc(r, r, r * 0.86, 0, Math.PI * 2);
   ctx.stroke();
-  // Prevailing wind, with the live wall count tucked beneath it.
+  // Prevailing wind at the centre with the live wall count toward the
+  // near rim; the dice rest on the far rim (canvas top), clear of both.
   ctx.fillStyle = '#efe6d2';
   ctx.font = `700 ${size * 0.34}px ${SERIF}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(WIND_GLYPH[info.prevailingWind], r, r * 0.84);
+  ctx.fillText(WIND_GLYPH[info.prevailingWind], r, r * 1.02);
   // Wall count only — a caption under it would render at ~3 CSS px
   // on a phone; the status pill carries the "N left" wording.
   ctx.fillStyle = 'rgba(216,168,90,0.95)';
-  ctx.font = `800 ${size * 0.12}px ${SANS}`;
-  ctx.fillText(`${info.wallCount}`, r, r * 1.3);
+  ctx.font = `800 ${size * 0.13}px ${SANS}`;
+  ctx.fillText(`${info.wallCount}`, r, r * 1.5);
 }
 
 export function buildPlateTexture(size = 512): {
@@ -236,19 +237,35 @@ export function buildPlateTexture(size = 512): {
   return { texture: tex, ctx, size };
 }
 
-/** Dealer marker face: ivory slab with a red 莊 and a thin red frame. */
+/**
+ * Dealer chip face: red lacquer disc with a thin gold ring and a white
+ * 莊. The corners outside the disc stay plain lacquer — the chip's
+ * side geometry samples the top-left corner.
+ */
 export function buildDealerMarkerTexture(): Texture {
-  const [c, ctx] = canvas2d(256, 128);
-  ctx.fillStyle = '#efe6d2';
-  ctx.fillRect(0, 0, 256, 128);
-  ctx.strokeStyle = '#b14d3a';
-  ctx.lineWidth = 5;
-  ctx.strokeRect(10, 10, 236, 108);
-  ctx.fillStyle = '#b14d3a';
-  ctx.font = `700 78px ${SERIF}`;
+  const size = 256;
+  const [c, ctx] = canvas2d(size, size);
+  const r = size / 2;
+  ctx.fillStyle = '#9c3f2f';
+  ctx.fillRect(0, 0, size, size);
+  const g = ctx.createRadialGradient(r, r * 0.8, r * 0.1, r, r, r);
+  g.addColorStop(0, '#c2604a');
+  g.addColorStop(0.7, '#b14d3a');
+  g.addColorStop(1, '#8e3a2c');
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(r, r, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(216,168,90,0.95)';
+  ctx.lineWidth = size * 0.022;
+  ctx.beginPath();
+  ctx.arc(r, r, r * 0.86, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = '#fbf3e4';
+  ctx.font = `700 ${size * 0.52}px ${SERIF}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('莊', 128, 68);
+  ctx.fillText('莊', r, r * 1.04);
   const tex = new CanvasTexture(c);
   tex.colorSpace = SRGBColorSpace;
   tex.minFilter = LinearMipmapLinearFilter;

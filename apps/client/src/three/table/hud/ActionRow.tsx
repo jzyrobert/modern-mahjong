@@ -46,12 +46,12 @@ export function SortSegment({ mode, onChange, compact }: SortSegmentProps) {
               border: 0,
               cursor: 'pointer',
               borderRadius: 9,
-              padding: compact ? '0 9px' : '0 12px',
+              padding: compact ? '0 8px' : '0 12px',
               minHeight: compact ? 32 : 38,
               fontFamily: GLASS.font,
               fontSize: compact ? 10 : 11,
               fontWeight: 800,
-              letterSpacing: 1.4,
+              letterSpacing: compact ? 1.1 : 1.4,
               textTransform: 'uppercase',
               color: active ? GLASS.goldInk : GLASS.text2,
               background: active ? GLASS.gold : 'transparent',
@@ -198,8 +198,14 @@ export function ActionRow(props: ActionRowProps) {
           gap: 8,
         }}
       >
-        {leading ? <div style={{ minWidth: 0, flexShrink: 1 }}>{leading}</div> : null}
-        <SortSegment mode={sortMode} onChange={onSortModeChange} compact={compact} />
+        {leading ? (
+          <div style={{ flex: '1 1 auto', minWidth: 0, display: 'flex', alignItems: 'center' }}>
+            {leading}
+          </div>
+        ) : null}
+        <div style={{ flex: 'none' }}>
+          <SortSegment mode={sortMode} onChange={onSortModeChange} compact={compact} />
+        </div>
       </div>
     </div>
   );

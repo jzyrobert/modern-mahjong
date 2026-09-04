@@ -22,6 +22,7 @@ import {
   cameraFor,
   classifyViewport,
   heldHandFrameFor,
+  riverZoomCameraFor,
   sheetCameraFor,
 } from './cameraPresets';
 import { ActionCtas, ActionRow, hasActionCtas } from './hud/ActionRow';
@@ -30,7 +31,7 @@ import { MenuButtons } from './hud/MenuButtons';
 import { ResultVeil } from './hud/ResultVeil';
 import { SeatBadge, type SeatBadgeModel } from './hud/SeatBadges';
 import { StatusPill } from './hud/StatusPill';
-import { HUD_CSS } from './hud/glass';
+import { GlassButton, HUD_CSS } from './hud/glass';
 import { HAND_Z, type HeldHandFrame, type Rel, toWorld } from './layout';
 import { type ScreenRect, padRect, rectsClose, unionRects } from './picking';
 
@@ -118,12 +119,25 @@ const REL_OF_POSITION: Record<Position, Rel> = { bottom: 0, right: 1, top: 2, le
 /** Height of the top chrome row (pill / menu buttons), CSS px. */
 const CHROME_H = 44;
 
+/** Table preset for a viewport — the river zoom applies on portrait only. */
+function presetFor(width: number, height: number, topInset: number, zoom: boolean) {
+  return zoom && classifyViewport(width, height) === 'phone-portrait'
+    ? riverZoomCameraFor(width, height, topInset)
+    : cameraFor(width, height, topInset);
+}
 /** Held-hand frame for a viewport, or null outside phone portrait. */
-function heldFrameFor(width: number, height: number): HeldHandFrame | null {
+function heldFrameFor(
+  width: number,
+  height: number,
+  topInset: number,
+  zoom: boolean,
+): HeldHandFrame | null {
   return classifyViewport(width, height) === 'phone-portrait'
-    ? heldHandFrameFor(cameraFor(width, height), width, height)
+    ? heldHandFrameFor(presetFor(width, height, topInset, zoom), width, height)
     : null;
 }
+/** Approximate height of a glass toast, CSS px (anchor maths only). */
+const TOAST_H = 56;
 
 export function Table3DShell(props: Table3DShellProps) {
   const felt = useGame((s) => s.settings.felt);
@@ -151,7 +165,14 @@ export function Table3DShell(props: Table3DShellProps) {
   const lastRectPush = useRef(0);
   const settleFrames = useRef(0);
   const heldRef = useRef<HeldHandFrame | null>(null);
+  const topInsetRef = useRef(insets.top);
+  topInsetRef.current = insets.top;
   const [hudRects, setHudRects] = useState<HudRects>(EMPTY_RECTS);
+  // Portrait river zoom (tap the discards). Camera-only: the engine
+  // state and the held hand are untouched, so it can flip at any time.
+  const [riverZoom, setRiverZoom] = useState(false);
+  const riverZoomRef = useRef(false);
+  riverZoomRef.current = riverZoom && portrait;
 
   // The 3D layer animates its own draw; drop the classic overlay's
   // pending draw-animation record so a later renderer switch doesn't
@@ -315,14 +336,18 @@ export function Table3DShell(props: Table3DShellProps) {
         tileSheet,
       });
       sceneRef.current = scene;
+      const inset = topInsetRef.current;
+      const zoom = riverZoomRef.current;
       ctx.rig.snap(
         tileSheet
           ? sheetCameraFor(ctx.size.width, ctx.size.height)
-          : cameraFor(ctx.size.width, ctx.size.height),
+          : presetFor(ctx.size.width, ctx.size.height, inset, zoom),
       );
       ctx.rig.halfLife = ctx.reducedMotion ? 0.04 : 0.24;
       ctx.rig.parallaxStrength = 0.45;
-      heldRef.current = tileSheet ? null : heldFrameFor(ctx.size.width, ctx.size.height);
+      heldRef.current = tileSheet
+        ? null
+        : heldFrameFor(ctx.size.width, ctx.size.height, inset, zoom);
       if (!tileSheet) syncScene();
       settleFrames.current = 0;
       return {
@@ -332,12 +357,14 @@ export function Table3DShell(props: Table3DShellProps) {
           return live;
         },
         resize: (w, h) => {
-          ctx.rig.setPreset(tileSheet ? sheetCameraFor(w, h) : cameraFor(w, h));
+          const ti = topInsetRef.current;
+          const zoom = riverZoomRef.current;
+          ctx.rig.setPreset(tileSheet ? sheetCameraFor(w, h) : presetFor(w, h, ti, zoom));
           if (!tileSheet) {
             // The held-hand frame is viewport-derived; re-lay the hand
             // out so it slides between the table edge and the held
             // position on rotation.
-            heldRef.current = heldFrameFor(w, h);
+            heldRef.current = heldFrameFor(w, h, ti, zoom);
             syncScene();
           }
           settleFrames.current = 0;
@@ -379,6 +406,22 @@ export function Table3DShell(props: Table3DShellProps) {
   useEffect(() => {
     sceneRef.current?.setSkins(felt, tileBack);
   }, [felt, tileBack]);
+
+  // River zoom: ease the camera and re-derive the held-hand frame from
+  // the new preset (the hand keeps its screen position; the table
+  // eases in underneath it).
+  useEffect(() => {
+    const ctx = ctxRef.current;
+    if (!ctx || tileSheet) return;
+    const zoom = riverZoom && portrait;
+    const { width: w, height: h } = ctx.size;
+    ctx.rig.setPreset(presetFor(w, h, topInsetRef.current, zoom));
+    heldRef.current = heldFrameFor(w, h, topInsetRef.current, zoom);
+    syncScene();
+    settleFrames.current = 0;
+    ctx.loop.requestRender();
+  }, [riverZoom, portrait, tileSheet, syncScene]);
+  const toggleRiverZoom = useCallback(() => setRiverZoom((v) => !v), []);
 
   // Pointer parallax.
   const onPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
@@ -452,14 +495,22 @@ export function Table3DShell(props: Table3DShellProps) {
 
   const chromeTop = pad + insets.top;
   const stripTop = chromeTop + CHROME_H + 8;
-  // Toasts: portrait puts them in the band between the near rail and
-  // the held hand (above the claim slot) so they never cover the far
-  // seat's melds; landscape/desktop use the top centre under the chrome.
+  // Toasts: portrait uses the void between the seat strip and the far
+  // rail (the camera leaves ~85 px there); landscape/desktop anchor
+  // just above the hand, over the near wall's backs, so the toast never
+  // covers the far wall or the rivers the claim is about.
+  // (Desktop has room to clear the near wall too: the toast lands on
+  // the felt between the rivers and the wall. Landscape shares that
+  // slot with the floating claim card, so while a card is up the toast
+  // falls back to the top centre under the far seat's badge.)
+  const claimFloating = compact && (props.hasClaimOption || showCtas);
   const toastTop = portrait
-    ? Math.max(stripTop + 48, height - aboveHandBottom - 150)
-    : landscape
-      ? chromeTop + 52
-      : 160;
+    ? stripTop + 40
+    : handTop !== null && !(landscape && claimFloating)
+      ? Math.max(chromeTop + 52, handTop - TOAST_H - (landscape ? 10 : 84))
+      : landscape
+        ? chromeTop + 52
+        : height - 320;
 
   const badgeFixedStyle = (pos: Position): React.CSSProperties => {
     if (!compact) return { position: 'absolute', left: 0, top: 0, willChange: 'transform' };
@@ -492,6 +543,7 @@ export function Table3DShell(props: Table3DShellProps) {
     <div
       data-testid="table-3d"
       data-viewport-class={vpClass}
+      data-river-zoom={portrait && riverZoom ? 'true' : 'false'}
       onPointerMove={onPointerMove}
       onPointerLeave={onPointerLeave}
       style={{
@@ -505,7 +557,9 @@ export function Table3DShell(props: Table3DShellProps) {
       <style>{HUD_CSS}</style>
       <SceneHost
         build={build}
-        initialCamera={tileSheet ? sheetCameraFor(width, height) : cameraFor(width, height)}
+        initialCamera={
+          tileSheet ? sheetCameraFor(width, height) : cameraFor(width, height, insets.top)
+        }
         transparent
         rebuildKey={tileSheet ? 'sheet' : 'table'}
         testID="table-3d-scene"
@@ -525,7 +579,34 @@ export function Table3DShell(props: Table3DShellProps) {
             needsDraw={props.needsDraw}
             onDraw={() => props.onAction({ t: 'draw', seat })}
             rects={hudRects}
+            onRiverTap={portrait && !resolved ? toggleRiverZoom : undefined}
+            riverZoomed={portrait && riverZoom}
           />
+
+          {/* Portrait river zoom: exit pill at the top-right of the band. */}
+          {portrait && riverZoom && !resolved ? (
+            <div
+              className="mj-hud-fade"
+              style={{
+                position: 'absolute',
+                right: pad + insets.right,
+                top: stripTop + 40,
+                pointerEvents: 'none',
+                zIndex: 4,
+              }}
+            >
+              <GlassButton
+                kind="secondary"
+                minHeight={36}
+                ariaLabel="Show the full table"
+                testID="river-zoom-exit"
+                onClick={toggleRiverZoom}
+                style={{ borderRadius: 999, padding: '0 14px', fontSize: 11, letterSpacing: 1.2 }}
+              >
+                ✕ FULL TABLE
+              </GlassButton>
+            </div>
+          ) : null}
 
           {/* Top chrome. Landscape keeps everything in the left cluster
               because the root FullscreenPrompt owns the top-right. */}
@@ -654,7 +735,7 @@ export function Table3DShell(props: Table3DShellProps) {
               ctasExternal={compact}
               leading={
                 compact && youBadge ? (
-                  <SeatBadge model={youBadge} lobby={lobby} compact={compact} />
+                  <SeatBadge model={youBadge} lobby={lobby} compact={compact} fluid />
                 ) : undefined
               }
             />

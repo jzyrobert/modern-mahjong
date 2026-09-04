@@ -30,6 +30,12 @@ interface SeatBadgeProps {
    * dot on the disc instead of the 莊 chip.
    */
   dense?: boolean | undefined;
+  /**
+   * Fills the width its flex parent grants (the portrait footer): the
+   * name ellipsises to whatever is left after the disc, wind glyph and
+   * dealer chip, so a long name never runs under the sort control.
+   */
+  fluid?: boolean | undefined;
   style?: CSSProperties | undefined;
 }
 
@@ -39,7 +45,14 @@ interface SeatBadgeProps {
  * gold ring. Content logic mirrors `PlayerBadge`; positions are set by
  * the shell (projected from each seat's world anchor).
  */
-export function SeatBadge({ model, lobby, compact, dense = false, style }: SeatBadgeProps) {
+export function SeatBadge({
+  model,
+  lobby,
+  compact,
+  dense = false,
+  fluid = false,
+  style,
+}: SeatBadgeProps) {
   const { name, botLabel } = oppIdentity(lobby, model.seat);
   const displayName = model.isYou ? nameForSeat(lobby, model.seat) : name;
   const initials = computeInitials(displayName);
@@ -63,7 +76,7 @@ export function SeatBadge({ model, lobby, compact, dense = false, style }: SeatB
         padding: dense ? '4px 9px 4px 4px' : compact ? '5px 10px 5px 5px' : '6px 12px 6px 6px',
         borderRadius: 999,
         minWidth: 0,
-        maxWidth: dense ? 132 : undefined,
+        maxWidth: dense ? 132 : fluid ? '100%' : undefined,
         border: model.isActive
           ? '1px solid rgba(216,168,90,0.95)'
           : cue
@@ -123,14 +136,24 @@ export function SeatBadge({ model, lobby, compact, dense = false, style }: SeatB
           />
         ) : null}
       </span>
-      <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.15, minWidth: 0 }}>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+      <span
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          lineHeight: 1.15,
+          minWidth: 0,
+          flex: fluid ? '1 1 auto' : undefined,
+        }}
+      >
+        <span style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
           <span
             style={{
               fontWeight: 800,
               fontSize: compact ? 11 : 12,
               color: GLASS.text,
-              maxWidth: dense ? 56 : compact ? 96 : 110,
+              maxWidth: fluid ? undefined : dense ? 56 : compact ? 96 : 110,
+              minWidth: 0,
+              flex: fluid ? '0 1 auto' : undefined,
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
@@ -144,6 +167,7 @@ export function SeatBadge({ model, lobby, compact, dense = false, style }: SeatB
               fontSize: compact ? 11 : 13,
               fontWeight: 700,
               color: model.isDealer ? '#f0a08e' : GLASS.gold,
+              flexShrink: 0,
             }}
           >
             {WIND_GLYPH[model.seatWind]}
@@ -172,6 +196,7 @@ export function SeatBadge({ model, lobby, compact, dense = false, style }: SeatB
           aria-label="Dealer"
           style={{
             marginLeft: 2,
+            flexShrink: 0,
             padding: '2px 6px',
             borderRadius: 6,
             background: GLASS.red,

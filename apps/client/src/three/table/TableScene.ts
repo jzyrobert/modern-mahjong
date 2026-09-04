@@ -102,8 +102,28 @@ export interface TableSceneOptions {
 }
 
 const RAIL_H = 0.55;
-/** Dealer marker centre in the dealer's seat frame (x right, z toward them). */
-export const MARKER_LOCAL: [number, number] = [4.25, 3.85];
+/**
+ * Dealer chip centre in the dealer's seat frame (x right, z toward
+ * them): the near-right corner pocket inside the walls. Every river
+ * grows within |x| ≤ 3.2 of its owner's axis and toward its owner, so
+ * the pocket x, z ∈ [3.2, 8.1] in the dealer's frame is the one patch
+ * no river ever reaches. 5.2 (not deeper into the corner) keeps the
+ * chip's near edge above the near wall's inner top edge from the low
+ * phone-landscape camera, so the glyph is never half-occluded.
+ */
+export const MARKER_LOCAL: [number, number] = [5.2, 5.2];
+export const CHIP_RADIUS = 0.62;
+export const CHIP_H = 0.22;
+/**
+ * Dice offsets in *world* space on the plate's far rim (the camera
+ * always looks from +z, so the far rim is behind the wind glyph from
+ * every preset) — clear of the glyph and the wall count.
+ */
+const DICE_WORLD: [number, number][] = [
+  [-0.55, -1.3],
+  [0.32, -1.36],
+];
+const DICE_SCALE = 0.8;
 /** How long the gold cue pulses before settling to a steady glow. */
 const PULSE_MS = 3200;
 const _m = new Matrix4();
@@ -274,18 +294,20 @@ export class TableScene {
     this.plateTopMesh.name = 'plate-top';
     scene.add(this.plateTopMesh);
 
-    // Dealer marker — ivory slab with 莊 on the +Y face.
+    // Dealer chip — a thick red-lacquer disc with a white 莊 on top.
+    // One merged geometry (open cylinder side + flat top disc) under a
+    // single textured material, so it stays one draw call; the side's
+    // UVs collapse onto the texture's plain lacquer corner.
     const markerTex = buildDealerMarkerTexture();
     this.textures.push(markerTex);
-    const markerGeo = new RoundedBoxGeometry(1.3, 0.16, 0.68, 1, 0.05);
+    const markerGeo = buildChipGeometry(CHIP_RADIUS, CHIP_H);
     this.geometries.push(markerGeo);
     const markerMat = new MeshPhysicalMaterial({
-      color: 0xefe6d2,
-      roughness: 0.4,
-      clearcoat: 0.4,
       map: markerTex,
+      roughness: 0.32,
+      clearcoat: 0.75,
+      clearcoatRoughness: 0.18,
     });
-    remapTopFaceUv(markerGeo);
     this.marker = new Mesh(markerGeo, markerMat);
     this.marker.castShadow = true;
     this.marker.receiveShadow = true;
@@ -389,11 +411,10 @@ export class TableScene {
     const rel = relOf(state.dealer, me);
     if (rel !== this.markerRel) {
       this.markerRel = rel;
-      // On the felt in the corner pocket at the dealer's front-right —
-      // the one patch the four rivers (x, z ∈ ±3.2 in their frames)
-      // never grow into — facing the dealer, clear of the plate rim.
+      // Parked in the dealer's near-right corner pocket, glyph facing
+      // the dealer.
       const [mx, mz] = toWorld(rel, MARKER_LOCAL[0], MARKER_LOCAL[1]);
-      this.marker.position.set(mx, 0.08, mz);
+      this.marker.position.set(mx, CHIP_H / 2, mz);
       this.marker.quaternion.setFromAxisAngle(Y_AXIS, (rel * Math.PI) / 2);
       this.marker.visible = true;
     }
@@ -406,7 +427,7 @@ export class TableScene {
       (this.diceValues === null || pair[0] !== this.diceValues[0] || pair[1] !== this.diceValues[1])
     ) {
       this.diceValues = [pair[0], pair[1]];
-      this.placeDice(pair[0], pair[1], rel);
+      this.placeDice(pair[0], pair[1]);
     } else if (!pair && this.dice.visible) {
       this.dice.visible = false;
       this.diceValues = null;
@@ -422,20 +443,15 @@ export class TableScene {
     this.plateTex.texture.needsUpdate = true;
   }
 
-  private placeDice(a: number, b: number, rel: Rel): void {
-    // Two dice on the dealer's left-hand side of the plate.
-    const offsets: [number, number][] = [
-      [-1.05, -0.35],
-      [-0.72, 0.42],
-    ];
+  private placeDice(a: number, b: number): void {
+    // Two small dice resting on the plate's far rim.
     [a, b].forEach((value, i) => {
-      const [lx, lz] = offsets[i]!;
-      const [x, z] = toWorld(rel, lx, lz);
-      _obj.position.set(x, 0.14 + 0.26, z);
+      const [x, z] = DICE_WORLD[i]!;
+      _obj.position.set(x, 0.14 + 0.26 * DICE_SCALE, z);
       const up = DIE_UP[value] ?? DIE_UP[2]!;
-      _q.setFromAxisAngle(Y_AXIS, (rel * Math.PI) / 2 + (i === 0 ? 0.35 : -0.6));
+      _q.setFromAxisAngle(Y_AXIS, i === 0 ? 0.35 : -0.6);
       _obj.quaternion.copy(_q).multiply(up);
-      _obj.scale.setScalar(1);
+      _obj.scale.setScalar(DICE_SCALE);
       _obj.updateMatrix();
       this.dice.setMatrixAt(i, _obj.matrix);
     });
@@ -599,33 +615,23 @@ export class TableScene {
 }
 
 /**
- * BoxGeometry face order is +x, −x, +y, −y, +z, −z with 4 vertices each
- * (segments = 1). Remap the +Y face to the full texture and collapse
- * every other face's UV onto a plain corner pixel so the slab's sides
- * pick up the ivory edge of the marker texture.
+ * Dealer chip: an open cylinder side plus a flat top disc, merged. The
+ * top disc lies in XZ (like the centre plate's top) so the canvas
+ * reads upright once the chip is yawed toward the dealer; the side's
+ * UVs collapse onto the texture's top-left corner, which the texture
+ * paints in plain lacquer.
  */
-function remapTopFaceUv(geo: BufferGeometry): void {
-  const uv = geo.getAttribute('uv');
-  const groups = geo.groups;
-  const idx = geo.getIndex();
-  if (!idx) return;
-  const arr = uv.array as Float32Array;
-  // Rounded boxes have many vertices per face; use the group ranges to
-  // find which vertices belong to +Y (group 2) via the index buffer.
-  const seen = new Set<number>();
-  for (let g = 0; g < groups.length; g++) {
-    const grp = groups[g]!;
-    for (let i = grp.start; i < grp.start + grp.count; i++) {
-      const v = idx.getX(i);
-      if (seen.has(v)) continue;
-      seen.add(v);
-      if (g !== 2) {
-        arr[v * 2] = 0.02;
-        arr[v * 2 + 1] = 0.02;
-      }
-    }
-  }
-  uv.needsUpdate = true;
+function buildChipGeometry(radius: number, height: number): BufferGeometry {
+  const side = new CylinderGeometry(radius, radius * 0.96, height, 40, 1, true);
+  const sideUv = side.getAttribute('uv');
+  for (let i = 0; i < sideUv.count; i++) sideUv.setXY(i, 0.03, 0.97);
+  const top = new CircleGeometry(radius, 40);
+  top.rotateX(-Math.PI / 2);
+  top.translate(0, height / 2, 0);
+  const merged = mergeGeometries([side, top], false) ?? side;
+  side.dispose();
+  top.dispose();
+  return merged;
 }
 
 /** Map each BoxGeometry face of a die onto its 1..6 cell in the strip. */
