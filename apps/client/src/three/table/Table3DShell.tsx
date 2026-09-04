@@ -37,6 +37,7 @@ import {
   classifyViewport,
   heldHandFrameFor,
   heldHandTopPx,
+  landscapeZoomCameraFor,
   riverZoomCameraFor,
   sheetCameraFor,
 } from './cameraPresets';
@@ -46,6 +47,7 @@ import { MenuButtons } from './hud/MenuButtons';
 import { ResultVeil } from './hud/ResultVeil';
 import { SeatBadge, type SeatBadgeModel } from './hud/SeatBadges';
 import { StatusPill } from './hud/StatusPill';
+import { TableChip } from './hud/TableChip';
 import { TurnChip } from './hud/TurnChip';
 import { GLASS, GlassButton, HUD_CSS } from './hud/glass';
 import {
@@ -56,6 +58,7 @@ import {
   OWN_HAND_Z,
   RAIL_WIDTH,
   type Rel,
+  SIDE_MELD_SCALE_PORTRAIT,
   SIDE_SEAT_OUT_LOW,
   toWorld,
 } from './layout';
@@ -217,11 +220,24 @@ const LANDSCAPE_FOOTER_PAD = 5;
  */
 const PORTRAIT_SHARP_MAX_WIDTH = 420;
 
-/** Table preset for a viewport — the river zoom applies on portrait only. */
+/**
+ * Table preset for a viewport. The river zoom (tap the discards) applies
+ * on both phone classes: portrait eases the table in under the held
+ * hand; landscape lifts the camera to 50° over the river block, framed
+ * between the chrome row and the footer (the hand leaves the frame —
+ * the ✕ in the chrome brings it back, and the shell exits the zoom by
+ * itself when the turn comes round). Desktop rivers read at 38–40 px
+ * and stay inert.
+ */
 function presetFor(width: number, height: number, topInset: number, zoom: boolean) {
-  return zoom && classifyViewport(width, height) === 'phone-portrait'
-    ? riverZoomCameraFor(width, height, topInset)
-    : cameraFor(width, height, topInset);
+  const cls = classifyViewport(width, height);
+  if (zoom && cls === 'phone-portrait') return riverZoomCameraFor(width, height, topInset);
+  if (zoom && cls === 'phone-landscape') {
+    const yTop = 8 + topInset + CHROME_H_LANDSCAPE + 6;
+    // The near wall's inner top edge lands just off the bottom edge.
+    return landscapeZoomCameraFor(width, height, yTop, height + 3);
+  }
+  return cameraFor(width, height, topInset);
 }
 /** Held-hand frame for a viewport, or null outside phone portrait. */
 function heldFrameFor(
@@ -269,11 +285,11 @@ export function Table3DShell(props: Table3DShellProps) {
   const topInsetRef = useRef(insets.top);
   topInsetRef.current = insets.top;
   const [hudRects, setHudRects] = useState<HudRects>(EMPTY_RECTS);
-  // Portrait river zoom (tap the discards). Camera-only: the engine
-  // state and the held hand are untouched, so it can flip at any time.
+  // Phone river zoom (tap the discards). Camera-only: the engine state
+  // and the held hand are untouched, so it can flip at any time.
   const [riverZoom, setRiverZoom] = useState(false);
   const riverZoomRef = useRef(false);
-  riverZoomRef.current = riverZoom && portrait;
+  riverZoomRef.current = riverZoom && compact;
 
   // The 3D layer animates its own draw; drop the classic overlay's
   // pending draw-animation record so a later renderer switch doesn't
@@ -326,11 +342,15 @@ export function Table3DShell(props: Table3DShellProps) {
         // the wall steps back a shade and the hand reads in front of it.
         nearWallDim: ls ? 0.85 : 1,
         // Landscape: side seats' racks + melds step out past the wall's
-        // occlusion line (see `SIDE_SEAT_OUT_LOW`).
+        // occlusion line (see `SIDE_SEAT_OUT_LOW`); the far seat's melds
+        // stand on the far rail, clear of the far wall's silhouette.
         sideSeatOut: ls ? SIDE_SEAT_OUT_LOW : 0,
-        sideMeldsNear: ls,
-        // Wide presets: the dead-wall hairline runs inside the walls.
-        deadMarkerInner: heldRef.current === null,
+        farMeldsOnRail: ls,
+        // Every preset: both side seats' melds at the corners nearest the
+        // camera (the largest projection on all three cameras), and 1.15×
+        // on the width-bound portrait table.
+        sideMeldsNear: true,
+        sideMeldScale: heldRef.current ? SIDE_MELD_SCALE_PORTRAIT : 1,
       },
       performance.now(),
     );
@@ -564,15 +584,23 @@ export function Table3DShell(props: Table3DShellProps) {
   useEffect(() => {
     const ctx = ctxRef.current;
     if (!ctx || tileSheet) return;
-    const zoom = riverZoom && portrait;
+    const zoom = riverZoom && compact;
     const { width: w, height: h } = ctx.size;
     ctx.rig.setPreset(presetFor(w, h, topInsetRef.current, zoom));
     heldRef.current = heldFrameFor(w, h, topInsetRef.current, zoom);
     syncScene();
     settleFrames.current = 0;
     ctx.loop.requestRender();
-  }, [riverZoom, portrait, tileSheet, syncScene]);
+  }, [riverZoom, compact, tileSheet, syncScene]);
   const toggleRiverZoom = useCallback(() => setRiverZoom((v) => !v), []);
+  // Landscape zoom frames the river block and leaves the hand below the
+  // footer, so it ends by itself when the player has to act: their turn
+  // comes round (draw or discard). Portrait keeps the zoom — the held
+  // hand is always in frame there. The user can re-enter at any time.
+  const landscapeActs = landscape && props.myTurn;
+  useEffect(() => {
+    if (landscapeActs) setRiverZoom(false);
+  }, [landscapeActs]);
 
   // Pointer parallax.
   const onPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
@@ -626,6 +654,10 @@ export function Table3DShell(props: Table3DShellProps) {
     return ordered;
   }, [state, seat, sortMode, manualOrder, props.drawnTileId]);
   const nextDrawTile = state.wall.length > 0 ? state.wall[state.wall.length - 1]! : null;
+  // Newest discard of the hand (the engine's `lastDiscard` only lives
+  // through the claim window; `discardOrder` is the hand's full log).
+  const lastDiscard =
+    state.discardOrder.length > 0 ? state.discardOrder[state.discardOrder.length - 1]! : null;
   const canDiscard = props.myTurn && state.hasDrawn;
 
   const ctaProps = {
@@ -645,7 +677,11 @@ export function Table3DShell(props: Table3DShellProps) {
   // clears the far wall's projected top by ≥ 8 px.
   const chromeTop = (landscape ? 8 : pad) + insets.top;
   const stripTop = chromeTop + chromeH + 8;
-  const zoomed = portrait && riverZoom && !resolved;
+  const zoomed = compact && riverZoom && !resolved;
+  // Landscape offers the zoom only while the player is waiting on others
+  // (it takes the hand out of frame); portrait offers it whenever the
+  // hand is not resolved (the held hand is always in frame).
+  const zoomAvailable = compact && !resolved && !landscapeActs;
   // Projected near-wall extent the zoomed portrait toast drops below.
   const nearWallBottom = hudRects.nearWall
     ? hudRects.nearWall.top + hudRects.nearWall.height
@@ -749,7 +785,7 @@ export function Table3DShell(props: Table3DShellProps) {
     <div
       data-testid="table-3d"
       data-viewport-class={vpClass}
-      data-river-zoom={portrait && riverZoom ? 'true' : 'false'}
+      data-river-zoom={compact && riverZoom ? 'true' : 'false'}
       onPointerMove={onPointerMove}
       onPointerLeave={onPointerLeave}
       style={{
@@ -818,8 +854,8 @@ export function Table3DShell(props: Table3DShellProps) {
             needsDraw={props.needsDraw}
             onDraw={() => props.onAction({ t: 'draw', seat })}
             rects={hudRects}
-            onRiverTap={portrait && !resolved ? toggleRiverZoom : undefined}
-            riverZoomed={portrait && riverZoom}
+            onRiverTap={zoomAvailable ? toggleRiverZoom : undefined}
+            riverZoomed={compact && riverZoom}
           />
 
           {/* Top chrome. Landscape keeps everything in the left cluster
@@ -986,7 +1022,14 @@ export function Table3DShell(props: Table3DShellProps) {
               ) : (
                 <div
                   className="mj-hud-fade"
-                  style={{ display: 'flex', alignItems: 'center', height: 44 }}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                    height: PORTRAIT_TRAY_H,
+                  }}
                 >
                   <TurnChip
                     isMyTurn={props.myTurn}
@@ -997,6 +1040,20 @@ export function Table3DShell(props: Table3DShellProps) {
                       activeSeat !== null ? SEAT_COLOR[seatToPosition[activeSeat]] : null
                     }
                     claimsOpen={state.pendingClaims !== undefined && state.pendingClaims !== null}
+                  />
+                  {/* The tray's resting readout: who pitched the newest
+                      discard and what it was, at a size the far river
+                      cannot offer; before the first discard, who opens. */}
+                  <TableChip
+                    lastDiscard={lastDiscard}
+                    lastDiscardName={lastDiscard ? nameForSeat(lobby, lastDiscard.from) : null}
+                    lastDiscardColour={
+                      lastDiscard ? SEAT_COLOR[seatToPosition[lastDiscard.from]] : null
+                    }
+                    lastDiscardIsYou={lastDiscard?.from === seat}
+                    dealerName={nameForSeat(lobby, state.dealer)}
+                    dealerIsYou={state.dealer === seat}
+                    prevailingWind={state.prevailingWind}
                   />
                 </div>
               )}

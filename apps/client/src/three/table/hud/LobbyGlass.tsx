@@ -101,8 +101,8 @@ export function LobbyGlass(props: Lobby3DViewProps) {
     (p) => p.seat !== null && p.seat !== seat && (p.isBot || !p.connected),
   );
 
-  const seatsCard = (
-    <GlassPanel style={{ padding: compact ? 14 : 18, display: 'grid', gap: 12 }}>
+  const seatsBody = (
+    <>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
           <span
@@ -198,6 +198,11 @@ export function LobbyGlass(props: Lobby3DViewProps) {
           );
         })}
       </div>
+    </>
+  );
+  const seatsCard = (
+    <GlassPanel style={{ padding: compact ? 14 : 18, display: 'grid', gap: 12 }}>
+      {seatsBody}
     </GlassPanel>
   );
 
@@ -330,11 +335,8 @@ export function LobbyGlass(props: Lobby3DViewProps) {
     </GlassPanel>
   ) : null;
 
-  const rulesCard = (
-    <div style={glassStyle({ padding: compact ? 6 : 8 })}>
-      <RulePanel rules={rules} isHost={isHost} onAction={onAction} theme="glass" />
-    </div>
-  );
+  const rulesBody = <RulePanel rules={rules} isHost={isHost} onAction={onAction} theme="glass" />;
+  const rulesCard = <div style={glassStyle({ padding: compact ? 6 : 8 })}>{rulesBody}</div>;
 
   const actions = (
     <div style={{ display: 'grid', gap: 8 }}>
@@ -364,6 +366,11 @@ export function LobbyGlass(props: Lobby3DViewProps) {
   // left, the whole waiting table framed in the free area right of it
   // (`LobbyTableBackdrop`, `lobbyCameraFor`).
   const sideScene = !compact && width >= 1100;
+  // Two-column viewports without a side scene (phone landscape, small
+  // desktops): Seats and Rules share one glass panel split by a hairline
+  // instead of two panels with a gutter — round-4 #4 found the 12 px
+  // slot between them showing a slice of plate and wall.
+  const merged = twoCol && !sideScene;
 
   return (
     <div
@@ -384,13 +391,7 @@ export function LobbyGlass(props: Lobby3DViewProps) {
         aria-hidden="true"
         style={{ position: 'absolute', inset: 0, pointerEvents: 'none', opacity: 0.85 }}
       >
-        <LobbyTableBackdrop
-          side={sideScene}
-          filled={SEATS.map((s) => {
-            const p = lobby?.players.find((x) => x.seat === s);
-            return !!p && (p.isBot || p.connected);
-          })}
-        />
+        <LobbyTableBackdrop side={sideScene} />
       </div>
       <div
         style={{
@@ -476,27 +477,43 @@ export function LobbyGlass(props: Lobby3DViewProps) {
               </button>
             ) : null}
           </header>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: twoCol && !sideScene ? '1fr 1fr' : '1fr',
-              gap: 12,
-            }}
-          >
+          {merged ? (
             <div style={column}>
               {inviteCard}
-              {seatsCard}
+              <GlassPanel
+                testID="lobby-merged-panel"
+                style={{
+                  padding: compact ? 14 : 18,
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: 0,
+                }}
+              >
+                <div style={{ ...column, paddingRight: compact ? 14 : 18 }}>{seatsBody}</div>
+                <div
+                  style={{
+                    ...column,
+                    paddingLeft: compact ? 14 : 18,
+                    borderLeft: '1px solid rgba(255,255,255,0.1)',
+                  }}
+                >
+                  {rulesBody}
+                  {actions}
+                </div>
+              </GlassPanel>
               {botsCard}
-              {sideScene ? rulesCard : null}
-              {sideScene ? actions : null}
             </div>
-            {sideScene ? null : (
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12 }}>
               <div style={column}>
+                {inviteCard}
+                {seatsCard}
+                {botsCard}
                 {rulesCard}
                 {actions}
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

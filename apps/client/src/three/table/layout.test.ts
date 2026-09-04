@@ -9,10 +9,16 @@ import {
   MELD_Z,
   OWN_HAND_Z,
   OWN_MELD_RIGHT,
+  RAIL_MELD_Z,
+  RAIL_TOP,
+  RAIL_WIDTH,
   RIVER_COLS,
+  RIVER_NEAR_EDGE,
   RIVER_ROWS,
+  SIDE_MELD_SCALE_PORTRAIT,
   SIDE_SEAT_OUT_LOW,
   STACKS_PER_WALL,
+  STAND_Y,
   WALL_D,
   computeLayout,
   dealerChipLocal,
@@ -323,7 +329,7 @@ describe('computeLayout', () => {
     return layout.filter((s) => s?.zone === 'discard').map((s) => s!);
   }
   test('the four rivers form a pinwheel that never collides at the corners', () => {
-    for (const scale of [1, 1.1, 1.28]) {
+    for (const scale of [1, 1.1, 1.28, 1.36]) {
       const river = fullRivers(scale);
       expect(river).toHaveLength(4 * RIVER_COLS * RIVER_ROWS);
       for (let i = 0; i < river.length; i++) {
@@ -337,10 +343,14 @@ describe('computeLayout', () => {
           );
         }
       }
-      // Every river stays inside the walls' inner faces and off the plate.
+      // Every river stays inside the walls' inner faces and off the plate
+      // (the first row's near edge is pinned a fifth of a tile off it).
       const m = riverMetrics(scale);
       expect(m.farEdge).toBeLessThan(WALL_D - TILE_H / 2);
       expect(m.nearEdge).toBeGreaterThan(1.9);
+      expect(m.nearEdge).toBeCloseTo(RIVER_NEAR_EDGE, 6);
+      // A 19th discard (col 6 of the last row) stays inside the wall too.
+      expect(m.shift + 3.5 * m.pitchX + (TILE_W / 2) * scale).toBeLessThan(WALL_D - TILE_H / 2);
       for (const s of river) {
         expect(Math.max(Math.abs(s.x), Math.abs(s.z))).toBeLessThan(WALL_D - TILE_H / 2);
       }
@@ -657,6 +667,91 @@ describe('low-camera side seats (phone landscape)', () => {
       (sl) => sl?.zone === 'meld',
     );
     expect(b.map((sl) => [sl!.x, sl!.z])).toEqual(a.map((sl) => [sl!.x, sl!.z]));
+  });
+});
+
+describe('side-seat meld scale + far melds on the rail', () => {
+  test('sideMeldScale grows the side seats’ melds about the rack line and keeps them off the wall', () => {
+    for (const seat of [1, 3] as Seat[]) {
+      const st = withMeldFor(seat);
+      const base = computeLayout(st, 0, OPTS).filter((sl) => sl?.zone === 'meld');
+      const big = computeLayout(st, 0, { ...OPTS, sideMeldScale: SIDE_MELD_SCALE_PORTRAIT }).filter(
+        (sl) => sl?.zone === 'meld',
+      );
+      expect(big).toHaveLength(base.length);
+      for (const sl of big) {
+        expect(sl!.scale).toBeCloseTo(SIDE_MELD_SCALE_PORTRAIT, 6);
+        // Still centred on the rack line; inner edge clear of the wall's
+        // outer edge, outer edge inside the portrait frame.
+        expect(Math.abs(sl!.x)).toBeCloseTo(MELD_Z, 6);
+        const halfAcross = (TILE_H / 2) * SIDE_MELD_SCALE_PORTRAIT;
+        expect(Math.abs(sl!.x) - halfAcross).toBeGreaterThan(WALL_D + TILE_H / 2 + 0.2);
+        expect(Math.abs(sl!.x) + halfAcross).toBeLessThan(11.6);
+      }
+      // The pitch along the row scales too (no overlap inside the group).
+      const zs = big.map((sl) => sl!.z).sort((a, b) => a - b);
+      for (let i = 1; i < zs.length; i++)
+        expect(zs[i]! - zs[i - 1]!).toBeGreaterThanOrEqual(
+          TILE_W * SIDE_MELD_SCALE_PORTRAIT - 1e-6,
+        );
+      // Far and own seats are untouched.
+      const other = computeLayout(st, 0, { ...OPTS, sideMeldScale: SIDE_MELD_SCALE_PORTRAIT })
+        .filter((sl) => sl && sl.seat !== seat && sl.zone !== 'wall')
+        .map((sl) => sl!.scale ?? 1);
+      expect(other.every((k) => k === 1)).toBe(true);
+    }
+  });
+  test('farMeldsOnRail stands the far seat’s melds on the rail facing the centre; rack stays centred', () => {
+    const st = withMeldFor(2);
+    const base = computeLayout(st, 0, OPTS);
+    const rail = computeLayout(st, 0, { ...OPTS, farMeldsOnRail: true });
+    const melds = rail.filter((sl) => sl?.zone === 'meld' && sl.seat === 2);
+    expect(melds.length).toBeGreaterThan(0);
+    for (const sl of melds) {
+      expect(sl!.base).toBe('standing');
+      expect(sl!.z).toBeCloseTo(-RAIL_MELD_Z, 6);
+      expect(sl!.y).toBeCloseTo(RAIL_TOP + STAND_Y, 6);
+      // On the rail's top, within its width.
+      expect(Math.abs(sl!.z) - TILE_D / 2).toBeGreaterThan(FELT_HALF);
+      expect(Math.abs(sl!.z) + TILE_D / 2).toBeLessThan(FELT_HALF + RAIL_WIDTH);
+      // Half a turn from the rack's yaw (π for the far seat): the face
+      // looks toward the centre.
+      expect(Math.cos(sl!.yaw - Math.PI - Math.PI)).toBeCloseTo(1, 6);
+      expect(sl!.tilt).toBeGreaterThan(0);
+    }
+    // The rack is centred on its own (melds no longer share the row) and
+    // the melds run from its right end (the owner's right = world −x).
+    const rack = rail.filter((sl) => sl?.zone === 'oppHand' && sl.seat === 2).map((sl) => sl!.x);
+    expect((Math.min(...rack) + Math.max(...rack)) / 2).toBeCloseTo(0, 6);
+    expect(Math.max(...melds.map((sl) => sl!.x))).toBeLessThan(Math.min(...rack) - TILE_W / 2);
+    // Other seats' melds keep their flat pose.
+    for (const seat of [1, 3] as Seat[]) {
+      const a = computeLayout(withMeldFor(seat), 0, OPTS).filter((sl) => sl?.zone === 'meld');
+      const b = computeLayout(withMeldFor(seat), 0, { ...OPTS, farMeldsOnRail: true }).filter(
+        (sl) => sl?.zone === 'meld',
+      );
+      expect(b.map((sl) => [sl!.x, sl!.y, sl!.z, sl!.base])).toEqual(
+        a.map((sl) => [sl!.x, sl!.y, sl!.z, sl!.base]),
+      );
+    }
+    // Without the option the far melds lie flat in the rack line.
+    for (const sl of base.filter((x) => x?.zone === 'meld' && x.seat === 2)) {
+      expect(sl!.base).toBe('flatUp');
+      expect(sl!.z).toBeCloseTo(-MELD_Z, 6);
+    }
+  });
+  test('sideMeldsNear also applies with the portrait meld scale', () => {
+    const st = withMeldFor(1);
+    const near = computeLayout(st, 0, {
+      ...OPTS,
+      sideMeldsNear: true,
+      sideMeldScale: SIDE_MELD_SCALE_PORTRAIT,
+    });
+    const meldZ = near.filter((sl) => sl?.zone === 'meld' && sl.seat === 1).map((sl) => sl!.z);
+    const rackZ = near.filter((sl) => sl?.zone === 'oppHand' && sl.seat === 1).map((sl) => sl!.z);
+    expect(Math.min(...meldZ)).toBeGreaterThan(Math.max(...rackZ));
+    // Inside the felt at the near end.
+    expect(Math.max(...meldZ) + (TILE_W / 2) * SIDE_MELD_SCALE_PORTRAIT).toBeLessThan(FELT_HALF);
   });
 });
 

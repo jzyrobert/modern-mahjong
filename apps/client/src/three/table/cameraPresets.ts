@@ -83,16 +83,19 @@ export const PORTRAIT_ZOOM_X_HALF = 7.9;
 export const PORTRAIT_ELEV_DEG = 70;
 export const PORTRAIT_FOV = 44;
 /**
- * Portrait discards render 30 % larger than the other table tiles: the
- * full-table view is width-bound at ~17 CSS px per tile, and the river
- * is the one zone the player reads at a glance — 1.3 puts a river tile
- * at ~22 CSS px on a 412 px phone, where 索 / 筒 faces read rather than
- * get guessed (round-4: up from 1.28 — pinning the far rail closer to
- * the strip pushes the table ~2 % deeper into the perspective). Six
- * columns × 1.3 still fit inside the walls in the pinwheel
- * (`layout.riverMetrics`: far edge 7.95 < 8.12).
+ * Portrait discards render 36 % larger than the other table tiles: the
+ * full-table view is width-bound at ~17.8 CSS px per tile, and the river
+ * is the one zone the player reads at a glance — 1.36 puts a river tile
+ * at ~24 CSS px on a 412 px phone (the far row, foreshortened, ~22.5),
+ * where the bold-cut 萬 numerals (`faceAtlas.drawMan`) read rather than
+ * get guessed (round-4 #1: up from 1.3). It is the most six columns ×
+ * three rows can take: with the first row's near edge pinned a fifth of
+ * a tile off the plate (`layout.RIVER_NEAR_EDGE`) the third row's far
+ * edge lands at 7.92 < 8.12 (the wall's inner edge), a 19th discard's
+ * right edge at 8.06, and the dealer chip's pocket beyond the pinwheel
+ * arm still clears the wall (`TableScene.CHIP_RADIUS`).
  */
-export const PORTRAIT_RIVER_SCALE = 1.3;
+export const PORTRAIT_RIVER_SCALE = 1.36;
 /**
  * Where the table centre sits in the band (0 top … 1 bottom). A touch
  * above centre: the far half of the table foreshortens, so 0.485 leaves
@@ -230,11 +233,12 @@ export function portraitCameraAnchored(
   xHalf: number,
   point: readonly [number, number, number],
   screenY: number,
+  elevDeg: number = PORTRAIT_ELEV_DEG,
 ): CameraPreset {
   const ppu = Math.max(1, width) / (2 * xHalf);
   const tanV = Math.tan((PORTRAIT_FOV * Math.PI) / 360);
   const dist = Math.max(1, height) / 2 / (tanV * ppu);
-  const elev = (PORTRAIT_ELEV_DEG * Math.PI) / 180;
+  const elev = (elevDeg * Math.PI) / 180;
   const make = (tz: number): CameraPreset => ({
     position: [0, dist * Math.sin(elev), tz + dist * Math.cos(elev)],
     target: [0, 0, tz],
@@ -251,6 +255,82 @@ export function portraitCameraAnchored(
     else hi = mid;
   }
   return make((lo + hi) / 2);
+}
+
+// ─── Landscape river zoom ──────────────────────────────────────────
+/**
+ * Elevation of the phone-landscape river zoom. The resting landscape
+ * camera sits at 31°, where a flat far-row river tile foreshortens to
+ * ~8 CSS px tall and its upside-down 萬 numerals smear (round-4 #2);
+ * 50° shows the river block nearly square-on (tile height × sin 50° ≈
+ * 0.77) while the block still fits the 2.2 : 1 frame between the chrome
+ * row and the footer.
+ */
+export const LANDSCAPE_ZOOM_ELEV_DEG = 50;
+export const LANDSCAPE_ZOOM_FOV = 42;
+/**
+ * Half-size of the square the zoom frames: the rivers' third-row far
+ * edge at the wide presets' 1× scale (`riverMetrics(1).farEdge` ≈ 6.4)
+ * plus a little felt, so the far wall's stacks stay behind the chrome
+ * and the near wall's under the footer.
+ */
+export const LANDSCAPE_ZOOM_HALF = 6.75;
+
+/** World point the landscape zoom keeps just off the bottom edge: the near wall's inner top edge. */
+export const LANDSCAPE_ZOOM_NEAR_POINT: [number, number, number] = [
+  0,
+  2 * TILE_D,
+  WALL_D - TILE_H / 2,
+];
+
+/**
+ * Phone-landscape river zoom: a `LANDSCAPE_ZOOM_ELEV_DEG` camera whose
+ * distance and pan put the river block's far edge (z = −HALF) at
+ * `yTop` — under the chrome row — and the near wall's inner top edge
+ * (`LANDSCAPE_ZOOM_NEAR_POINT`) at `yBottom`, just past the viewport's
+ * bottom, so the whole near wall, the hand row (z ≈ 11) and the near rail
+ * leave the frame and the footer pills sit on felt, never on stacks.
+ * Nested bisections: for a distance, the pan (target z) that lands the
+ * far edge on `yTop` is monotonic in the target; the near point's y then
+ * falls as the distance grows. Pure. The ✕ in the chrome row brings the
+ * table back.
+ */
+export function landscapeZoomCameraFor(
+  width: number,
+  height: number,
+  yTop: number,
+  yBottom: number,
+): CameraPreset {
+  const elev = (LANDSCAPE_ZOOM_ELEV_DEG * Math.PI) / 180;
+  const make = (dist: number, tz: number): CameraPreset => ({
+    position: [0, dist * Math.sin(elev), tz + dist * Math.cos(elev)],
+    target: [0, 0, tz],
+    fov: LANDSCAPE_ZOOM_FOV,
+  });
+  const far: [number, number, number] = [0, TILE_D / 2, -LANDSCAPE_ZOOM_HALF];
+  const near = LANDSCAPE_ZOOM_NEAR_POINT;
+  const panFor = (dist: number): number => {
+    // Larger tz pans the camera toward +z, moving the scene *up* (smaller y).
+    let lo = -40;
+    let hi = 40;
+    for (let i = 0; i < 40; i++) {
+      const mid = (lo + hi) / 2;
+      if (projectPreset(make(dist, mid), width, height, far).y > yTop) lo = mid;
+      else hi = mid;
+    }
+    return (lo + hi) / 2;
+  };
+  // A farther camera spans fewer px per unit, so the near edge rises.
+  let lo = 4;
+  let hi = 80;
+  for (let i = 0; i < 40; i++) {
+    const mid = (lo + hi) / 2;
+    const p = make(mid, panFor(mid));
+    if (projectPreset(p, width, height, near).y > yBottom) lo = mid;
+    else hi = mid;
+  }
+  const dist = (lo + hi) / 2;
+  return make(dist, panFor(dist));
 }
 
 /** Straight-on view of the debug tile sheet. */

@@ -272,6 +272,15 @@ test('phone portrait holds the hand near the camera at ≥ 44 px per tile', asyn
   expect(chipBox.y + chipBox.height).toBeLessThanOrEqual(sortBox.y);
   expect(chipBox.height).toBeGreaterThanOrEqual(36);
   await expect(page.getByLabel('Open players panel').getByText(/discard/i)).toHaveCount(0);
+  // The tray's resting readout under the turn chip: before the first
+  // discard it names the dealer who opens (the user, seed 5) and the
+  // prevailing wind; it never overlaps the chip or the footer.
+  const tableChip = page.getByTestId('table-chip');
+  await expect(tableChip).toBeVisible();
+  await expect(tableChip).toHaveAttribute('aria-label', /You open · 東 round/);
+  const tableChipBox = (await tableChip.boundingBox())!;
+  expect(tableChipBox.y).toBeGreaterThanOrEqual(chipBox.y + chipBox.height);
+  expect(tableChipBox.y + tableChipBox.height).toBeLessThanOrEqual(sortBox.y);
 
   // River zoom: tapping the discards region eases the camera into the
   // river block; the hand stays put (same hit-target rects, within a
@@ -387,6 +396,54 @@ test('phone landscape keeps ≥ 44 px hand tiles above the footer with glass chr
   const perf = await readPerf(page);
   expect(perf.drawCalls).toBeLessThanOrEqual(BUDGET.drawCalls);
   expect(perf.triangles).toBeLessThanOrEqual(BUDGET.triangles);
+  expect(errors, 'console / page errors').toEqual([]);
+});
+
+test('landscape river zoom lifts the camera over the discards while the bots hold', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 915, height: 412 });
+  // Park the bots: the zoom is offered only while the player waits on
+  // others, and the shell ends it when the turn comes round.
+  await page.addInitScript(() => {
+    (globalThis as { __MAHJONG_TEST_BOT_PACE_MS__?: number }).__MAHJONG_TEST_BOT_PACE_MS__ = 60_000;
+  });
+  const errors: string[] = [];
+  await startSolo(page, errors);
+  await page.waitForTimeout(1500);
+  const table = page.getByTestId('table-3d');
+  const region = page.getByTestId('shared-discards-region');
+  // The user is dealer (seed 5): their turn to discard, so the region is
+  // inert (no button) and the table is not zoomed.
+  await expect(region).toBeAttached();
+  await expect(page.getByRole('button', { name: 'Zoom into the discards' })).toHaveCount(0);
+  await expect(table).toHaveAttribute('data-river-zoom', 'false');
+  const tiles = page.getByTestId('own-hand-tile');
+  const restingTops = await tiles.evaluateAll((els) =>
+    els.map((el) => el.getBoundingClientRect().top),
+  );
+  await tiles.first().click();
+  // Bots hold → the claim window / their turn is open → the zoom is offered.
+  const zoomBtn = page.getByRole('button', { name: 'Zoom into the discards' });
+  await expect(zoomBtn).toBeVisible({ timeout: 10_000 });
+  await zoomBtn.click();
+  await expect(table).toHaveAttribute('data-river-zoom', 'true');
+  // The ✕ lives in the chrome row; the hand row has left the frame below
+  // the footer (its hit-targets follow it off-screen).
+  const exit = page.getByTestId('river-zoom-exit');
+  await expect(exit).toBeVisible();
+  const exitBox = (await exit.boundingBox())!;
+  expect(exitBox.y + exitBox.height).toBeLessThanOrEqual(52);
+  await page.waitForTimeout(1500);
+  const zoomedTops = await tiles.evaluateAll((els) =>
+    els.map((el) => el.getBoundingClientRect().top),
+  );
+  expect(Math.min(...zoomedTops)).toBeGreaterThan(412 - 1);
+  expect(Math.max(...restingTops)).toBeLessThan(412);
+  await exit.click();
+  await expect(table).toHaveAttribute('data-river-zoom', 'false');
+  const perf = await readPerf(page);
+  expect(perf.drawCalls).toBeLessThanOrEqual(BUDGET.drawCalls);
   expect(errors, 'console / page errors').toEqual([]);
 });
 

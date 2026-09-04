@@ -29,13 +29,14 @@ import { publishRiverInterior } from '../core/sceneRects';
 import { getSpotlightTiles, spotlightPulse, spotlightVersion } from '../core/spotlight';
 import { TilePool } from '../tiles/TilePool';
 import { TILE_D, TILE_H, TILE_W } from '../tiles/geometry';
-import { feltColors, setTileBackFinish } from '../tiles/materials';
+import { feltColors, setTileBackFinish, setTileBackGradient } from '../tiles/materials';
 import { Choreographer, slotPose } from './choreography';
 import {
   CENTRE_PLATE_RADIUS,
   FELT_HALF,
   type HeldHandFrame,
   type Layout,
+  OWN_HAND_Z,
   RAIL_H,
   RAIL_WIDTH,
   type Rel,
@@ -79,7 +80,7 @@ export interface SyncInput {
   shuffling: boolean;
   /** Phone portrait: the near-camera frame the user's hand is held in. */
   heldHand?: HeldHandFrame | null | undefined;
-  /** River tile scale (portrait draws discards 1.1×). */
+  /** River tile scale (portrait draws discards 1.36×). */
   riverScale?: number | undefined;
   /**
    * The table between hands (pre-game lobby): walls built, no dealer
@@ -106,18 +107,10 @@ export interface SyncInput {
   sideSeatOut?: number | undefined;
   /** Right seat's melds at the near end — see `LayoutOptions.sideMeldsNear`. */
   sideMeldsNear?: boolean | undefined;
-  /**
-   * Draw the dead-wall hairline along the stacks' *inner* (felt-side)
-   * edge instead of the outer one. The wide presets look at the table
-   * from a low angle: the outer hairline of the far and side walls hides
-   * behind their stacks, and the near wall's lands in the seam between
-   * the wall's bottom and the hand's top edge, where it reads as an
-   * underline for the hand (round-4 #3). Inside the walls it runs at
-   * the foot of each visible wall face (the near wall's is hidden by its
-   * own stacks — the darker backs mark that one). Portrait (near-
-   * overhead) keeps the outer edge, clear of the 1.28× rivers.
-   */
-  deadMarkerInner?: boolean | undefined;
+  /** Side seats' meld scale — see `LayoutOptions.sideMeldScale`. */
+  sideMeldScale?: number | undefined;
+  /** Far seat's melds stood on the rail — see `LayoutOptions.farMeldsOnRail`. */
+  farMeldsOnRail?: boolean | undefined;
 }
 
 export interface TableDebugTile {
@@ -158,6 +151,18 @@ export const TABLE_POOL_KEY = 'table';
  */
 export const TABLE_BACK_FINISH = { clearcoat: 0.12, roughness: 0.72 } as const;
 /**
+ * Back gradient range on the table (`materials.setTileBackGradient`):
+ * 0.55 keeps a wall stack's light end a readable blue instead of washing
+ * to near-white against the ivory bevel under the key + env, so the live
+ * and dead-wall segments read as one set at two shades (round-4 #5).
+ * Note the "step" the critic saw at the desktop near wall's right end is
+ * the pinwheel corner, not a jog: the right wall's near-end stack stands
+ * directly behind the near wall's last stack (verified from the debug
+ * poses — every stack at z 8.8, y 0.31 / 0.93) and its ivory side shows
+ * above that stack's top face.
+ */
+export const TABLE_BACK_GRADIENT = 0.55;
+/**
  * Dealer chip: a red lacquer disc parked in the dealer's near-left
  * corner pocket — the patch the pinwheel rivers never reach (see
  * `layout.dealerChipLocal`). At the wide presets' river scale it sits at
@@ -165,7 +170,7 @@ export const TABLE_BACK_FINISH = { clearcoat: 0.12, roughness: 0.72 } as const;
  * edge from the low phone-landscape camera, so the glyph is never
  * half-occluded.
  */
-export const CHIP_RADIUS = 0.62;
+export const CHIP_RADIUS = 0.56;
 export const CHIP_H = 0.22;
 /**
  * Dice offsets in *world* space on the plate's far rim (the camera
@@ -246,6 +251,10 @@ export class TableScene {
    *  only while the camera moves. */
   private readonly interiorCam = new Matrix4();
   private interiorPublished = false;
+  /** Camera matrix at the last frame — a moving camera re-renders the shadow pass too. */
+  private readonly frameCam = new Matrix4();
+  /** Goal-camera key the dead-wall hairline was last solved for. */
+  private deadMarkerCamKey = '';
   private lift = new Float32Array(136);
   private pulseT = 0;
   /** Pulses run for a few seconds after each cue, then hold steady so a still table idles. */
@@ -254,6 +263,7 @@ export class TableScene {
   private lastNow = 0;
   private nearWallDim = 1;
   private lastLayout: Layout | null = null;
+  private lastWaiting = false;
   /** Stable disposer for `SceneContext.onDestroy` while parked. */
   readonly destroyHook = (): void => this.dispose();
 
@@ -438,6 +448,7 @@ export class TableScene {
       atlasScale: quality.tier === 'high' ? 1.25 : 1,
     });
     setTileBackFinish(this.pool.material, TABLE_BACK_FINISH);
+    setTileBackGradient(this.pool.material, TABLE_BACK_GRADIENT);
     scene.add(this.pool.mesh);
 
     if (this.tileSheet) {
@@ -479,6 +490,8 @@ export class TableScene {
     this.markerScale = 1;
     this.deadMarker.visible = false;
     this.deadMarkerKey = '';
+    this.deadMarkerCamKey = '';
+    this.lastWaiting = false;
     this.dice.visible = false;
     this.diceValues = null;
     this.pool.hideAll();
@@ -507,12 +520,26 @@ export class TableScene {
   setSkins(felt: FeltSkin, tileBack: TileBackSkin): void {
     this.feltMat.color.copy(feltColors(felt).top);
     this.pool.setBackSkin(tileBack);
-    this.ctx.loop.requestRender();
+    this.requestFullFrame();
   }
 
   setHover(id: number | null): void {
     if (this.hoverId === id) return;
     this.hoverId = id;
+    this.requestFullFrame();
+  }
+
+  /**
+   * Every frame the table renders is a *full* frame — shadow pass
+   * included — so the perf sampler's numbers describe one consistent
+   * frame (round-4 #7: a hover-only or camera-only re-render skipped the
+   * shadow pass and reported 8 calls / 42k triangles against the 12 /
+   * 83k of every other still). The pass costs a fraction of a
+   * millisecond on the reference phone and only runs when something
+   * re-renders anyway.
+   */
+  private requestFullFrame(): void {
+    this.ctx.renderer.shadowMap.needsUpdate = true;
     this.ctx.loop.requestRender();
   }
 
@@ -531,11 +558,14 @@ export class TableScene {
       concealOwn: input.concealOwn,
       sideSeatOut: input.sideSeatOut,
       sideMeldsNear: input.sideMeldsNear,
+      sideMeldScale: input.sideMeldScale,
+      farMeldsOnRail: input.farMeldsOnRail,
       waitingWalls: input.waiting,
     });
     const prevLayout = this.lastLayout;
     this.lastLayout = layout;
     const waiting = input.waiting === true;
+    this.lastWaiting = waiting;
     this.choreo.setLayout(layout, state, me, now, {
       shuffling: input.shuffling,
       snap: input.snap ?? waiting,
@@ -575,7 +605,7 @@ export class TableScene {
       else this.pool.showFace(id);
     }
 
-    this.syncDeadMarker(layout, waiting, input.deadMarkerInner === true);
+    this.syncDeadMarker(layout, waiting);
 
     // Centre plate + marker + dice. No dealer exists before the opening
     // roll, so the waiting table shows neither chip nor dice.
@@ -616,18 +646,36 @@ export class TableScene {
 
   /**
    * Rebuild the dead-wall hairline for the current layout: one quad per
-   * wall side the dead stacks occupy (the segment wraps a corner at
-   * most once), laid on the felt just outside the stacks' outer edge.
+   * wall side the dead stacks occupy (the segment wraps a corner at most
+   * once), laid on the felt just outside the stacks' *outer* (rail-side)
+   * edge — the same rule on every preset. A side is drawn only when the
+   * camera can see that strip of felt: the ray from the goal camera to
+   * the hairline's midpoint must clear the wall's own stacks and, for the
+   * near wall, the user's hand row standing in front of it. From the low
+   * wide presets that leaves nothing for the far and side walls and, on
+   * landscape, the near wall (the hand covers the seam), so the darker
+   * back shade alone marks those segments; portrait and the desktop near
+   * wall get the line (round-4 #5: an inner-edge variant left a stray
+   * gold fragment at the landscape corner and vanished on desktop).
    * Hidden on the waiting table (no break yet).
    */
-  private syncDeadMarker(layout: Layout, waiting: boolean, inner: boolean): void {
+  private syncDeadMarker(layout: Layout, waiting: boolean): void {
     const byRel = new Map<Rel, { min: number; max: number }>();
+    const wallExtent = new Map<Rel, { min: number; max: number }>();
+    const alongOf = (slot: { rel: Rel; x: number; z: number }) =>
+      slot.rel === 0 ? slot.x : slot.rel === 1 ? -slot.z : slot.rel === 2 ? -slot.x : slot.z;
     if (!waiting) {
       for (const slot of layout) {
-        if (!slot || slot.zone !== 'deadWall') continue;
+        if (!slot || (slot.zone !== 'deadWall' && slot.zone !== 'wall')) continue;
         // Along-the-wall coordinate in the wall seat's frame.
-        const along =
-          slot.rel === 0 ? slot.x : slot.rel === 1 ? -slot.z : slot.rel === 2 ? -slot.x : slot.z;
+        const along = alongOf(slot);
+        const ext = wallExtent.get(slot.rel);
+        if (!ext) wallExtent.set(slot.rel, { min: along, max: along });
+        else {
+          ext.min = Math.min(ext.min, along);
+          ext.max = Math.max(ext.max, along);
+        }
+        if (slot.zone !== 'deadWall') continue;
         const e = byRel.get(slot.rel);
         if (!e) byRel.set(slot.rel, { min: along, max: along });
         else {
@@ -636,25 +684,50 @@ export class TableScene {
         }
       }
     }
-    const key = `${inner ? 'i' : 'o'}|${[...byRel.entries()]
+    const cam = this.ctx.rig.goalCamera();
+    const eye = cam.position;
+    const camKey = `${eye.x.toFixed(1)}:${eye.y.toFixed(1)}:${eye.z.toFixed(1)}`;
+    const key = `${camKey}|${[...byRel.entries()]
       .map(([rel, e]) => `${rel}:${e.min.toFixed(2)}:${e.max.toFixed(2)}`)
       .sort()
       .join('|')}`;
     if (key === this.deadMarkerKey) return;
     this.deadMarkerKey = key;
-    if (byRel.size === 0) {
-      this.deadMarker.visible = false;
-      return;
-    }
+    this.deadMarkerCamKey = camKey;
     const pos: number[] = [];
     const idx: number[] = [];
     const half = TILE_W / 2 + 0.02;
     const w = 0.09;
-    // Outer: 0.14 off the stacks' outer edge. Inner: the same clearance
-    // off their inner edge, the line running toward the centre.
-    const zOut = inner ? WALL_D - TILE_H / 2 - 0.14 - w : WALL_D + TILE_H / 2 + 0.14;
+    // 0.14 off the stacks' outer edge, running toward the rail.
+    const zOut = WALL_D + TILE_H / 2 + 0.14;
     const y = 0.012;
+    const ownHandVisible = layout.some((sl) => sl?.zone === 'hand' && sl.quat === undefined);
     for (const [rel, e] of byRel) {
+      // Occluders: this wall's stacks (the whole row, live stacks too) and,
+      // in front of the near wall, the user's standing hand row.
+      const ext = wallExtent.get(rel) ?? e;
+      const boxes: Box[] = [
+        seatBox(
+          rel,
+          ext.min - half,
+          ext.max + half,
+          WALL_D - TILE_H / 2,
+          WALL_D + TILE_H / 2,
+          0,
+          2 * TILE_D,
+        ),
+      ];
+      if (rel === 0 && ownHandVisible)
+        boxes.push(seatBox(0, -9, 9, OWN_HAND_Z - 0.75, OWN_HAND_Z + 0.75, 0, TILE_H * 1.05));
+      const [mx, mz] = toWorld(rel, (e.min + e.max) / 2, zOut + w / 2);
+      const [ax, az] = toWorld(rel, e.min - half + 0.2, zOut + w / 2);
+      const [bx, bz] = toWorld(rel, e.max + half - 0.2, zOut + w / 2);
+      const seen = [
+        [mx, y, mz],
+        [ax, y, az],
+        [bx, y, bz],
+      ].every((pt) => !boxes.some((b) => segmentHitsBox(eye, pt as V3, b)));
+      if (!seen) continue;
       const corners: [number, number][] = [
         toWorld(rel, e.min - half, zOut),
         toWorld(rel, e.max + half, zOut),
@@ -665,6 +738,10 @@ export class TableScene {
       for (const [cx, cz] of corners) pos.push(cx, y, cz);
       idx.push(base, base + 2, base + 1, base, base + 3, base + 2);
     }
+    if (pos.length === 0) {
+      this.deadMarker.visible = false;
+      return;
+    }
     const geo = new BufferGeometry();
     geo.setAttribute('position', new Float32BufferAttribute(pos, 3));
     geo.setIndex(idx);
@@ -672,6 +749,15 @@ export class TableScene {
     this.deadMarker.geometry.dispose();
     this.deadMarker.geometry = geo;
     this.deadMarker.visible = true;
+  }
+
+  /** The dead-wall hairline depends on the camera: re-solve when the goal moves. */
+  private refreshDeadMarkerForCamera(): void {
+    if (!this.lastLayout || this.tileSheet) return;
+    const eye = this.ctx.rig.goalCamera().position;
+    const camKey = `${eye.x.toFixed(1)}:${eye.y.toFixed(1)}:${eye.z.toFixed(1)}`;
+    if (camKey === this.deadMarkerCamKey) return;
+    this.syncDeadMarker(this.lastLayout, this.lastWaiting);
   }
 
   private updatePlate(wind: Wind, count: number | null): void {
@@ -739,7 +825,16 @@ export class TableScene {
     if (spotlightVersion() !== this.spotSeq || (spotIds.length > 0 && !this.choreo.reducedMotion))
       live = true;
     this.writePoses(now);
-    if (live) this.ctx.renderer.shadowMap.needsUpdate = true;
+    // A camera move (rig ease, parallax) re-renders without any tile
+    // moving; render it as a full frame too (see `requestFullFrame`).
+    const cam = this.ctx.rig.camera;
+    cam.updateMatrixWorld();
+    const camMoved = !cam.matrixWorld.equals(this.frameCam);
+    if (camMoved) {
+      this.frameCam.copy(cam.matrixWorld);
+      this.refreshDeadMarkerForCamera();
+    }
+    if (live || camMoved) this.ctx.renderer.shadowMap.needsUpdate = true;
     this.publishInterior();
     return live;
   }
@@ -1010,4 +1105,53 @@ function remapDieUv(geo: BufferGeometry): void {
     }
   }
   geo.setAttribute('uv', new Float32BufferAttribute(arr, 2));
+}
+
+type V3 = [number, number, number];
+interface Box {
+  min: V3;
+  max: V3;
+}
+
+/**
+ * World AABB of a slab authored in a seat's frame: `a0..a1` along the
+ * wall (the seat's x), `d0..d1` across it (the seat's z, toward the
+ * seat), `y0..y1` up.
+ */
+function seatBox(
+  rel: Rel,
+  a0: number,
+  a1: number,
+  d0: number,
+  d1: number,
+  y0: number,
+  y1: number,
+): Box {
+  const [x0, z0] = toWorld(rel, a0, d0);
+  const [x1, z1] = toWorld(rel, a1, d1);
+  return {
+    min: [Math.min(x0, x1), y0, Math.min(z0, z1)],
+    max: [Math.max(x0, x1), y1, Math.max(z0, z1)],
+  };
+}
+
+/** Does the segment from `eye` to `pt` pass through `box`? (slab test) */
+function segmentHitsBox(eye: Vector3, pt: V3, box: Box): boolean {
+  const o = [eye.x, eye.y, eye.z];
+  let tMin = 0;
+  let tMax = 1;
+  for (let i = 0; i < 3; i++) {
+    const d = pt[i]! - o[i]!;
+    if (Math.abs(d) < 1e-9) {
+      if (o[i]! < box.min[i]! || o[i]! > box.max[i]!) return false;
+      continue;
+    }
+    let t0 = (box.min[i]! - o[i]!) / d;
+    let t1 = (box.max[i]! - o[i]!) / d;
+    if (t0 > t1) [t0, t1] = [t1, t0];
+    tMin = Math.max(tMin, t0);
+    tMax = Math.min(tMax, t1);
+    if (tMin > tMax) return false;
+  }
+  return true;
 }

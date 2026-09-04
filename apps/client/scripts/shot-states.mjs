@@ -460,11 +460,12 @@ export const STATES = {
   },
   'match-river-zoom': {
     owner: 'table',
-    // Portrait only: tapping the discards eases the camera into the
+    // Phone portrait: tapping the discards eases the camera into the
     // river block (~26 px tiles); the ✕ in the chrome row brings the
-    // full table back. The region is inert on the wide viewports (their
-    // rivers already read at 29–40 px), so the recipe pins the phone
-    // viewport rather than producing duplicate mid-hand evidence.
+    // full table back. The region is inert on desktop (its rivers already
+    // read at 38–40 px), so the recipe pins the phone viewport rather
+    // than producing duplicate mid-hand evidence; the landscape variant
+    // is `match-river-zoom-landscape`.
     viewport: 'phone',
     steps: [
       ...START_SOLO,
@@ -475,6 +476,32 @@ export const STATES = {
       {
         evaluate: `document.querySelector('[data-testid="shared-discards-region"]')?.click()`,
       },
+      { waitMs: 1400 },
+    ],
+  },
+  'match-river-zoom-landscape': {
+    owner: 'table',
+    // Phone landscape: the same tap lifts the camera to 50° over the
+    // river block, framed between the chrome row and the footer (~28 px
+    // tiles, ~21 px tall vs ~8 from the resting 31° camera); the hand
+    // leaves the frame and the ✕ in the chrome brings it back. The recipe
+    // runs from a bot's turn (the shell exits the zoom by itself when the
+    // user's turn comes round), so it plays six turns and zooms while the
+    // bots are paced out of the frame.
+    viewport: 'phone-landscape',
+    steps: [
+      ...START_SOLO,
+      { waitForOwnHand: true },
+      { playTurns: 5 },
+      { waitForDrawCue: true },
+      // Park the bots before the sixth discard so the claim window / their
+      // turns hold and the zoom is not auto-exited by the user's next turn.
+      { evaluate: 'globalThis.__MAHJONG_TEST_BOT_PACE_MS__ = 60000;' },
+      { clickTestId: 'wall-draw-next' },
+      { waitMs: 400 },
+      { clickTestId: 'own-hand-tile', nth: 0 },
+      { waitMs: 500 },
+      { evaluate: `document.querySelector('[data-testid="shared-discards-region"]')?.click()` },
       { waitMs: 1400 },
     ],
   },

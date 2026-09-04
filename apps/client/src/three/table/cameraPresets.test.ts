@@ -3,6 +3,9 @@ import { describe, expect, test } from 'vitest';
 import { TILE_D, TILE_H } from '../tiles/geometry';
 import {
   HELD_BOTTOM_PX,
+  LANDSCAPE_ZOOM_ELEV_DEG,
+  LANDSCAPE_ZOOM_HALF,
+  LANDSCAPE_ZOOM_NEAR_POINT,
   PORTRAIT_APRON_MIN,
   PORTRAIT_BAND_BIAS,
   PORTRAIT_BAND_GAP,
@@ -20,6 +23,7 @@ import {
   classifyViewport,
   heldHandFrameFor,
   heldHandTopPx,
+  landscapeZoomCameraFor,
   portraitCameraAnchored,
   portraitCameraFor,
   projectPreset,
@@ -292,6 +296,42 @@ describe('heldHandFrameFor', () => {
     const riverRow1Bottom = px(0, TILE_D, 2.6 + TILE_H / 2).y;
     const nearWallTop = px(0, 2 * TILE_D, WALL_D - TILE_H / 2).y;
     expect(nearWallTop - riverRow1Bottom).toBeGreaterThanOrEqual(58);
+  });
+  test('landscape river zoom frames the river block between the chrome and the footer at 50°', () => {
+    const w = 915;
+    const h = 412;
+    const yTop = 8 + 38 + 6;
+    const yBottom = h + 3;
+    const preset = landscapeZoomCameraFor(w, h, yTop, yBottom);
+    const cam = new PerspectiveCamera(preset.fov, w / h, 0.1, 200);
+    cam.position.set(...preset.position);
+    cam.lookAt(...preset.target);
+    cam.updateMatrixWorld();
+    const px = (x: number, y: number, z: number) => {
+      const p = new Vector3(x, y, z).project(cam);
+      return { x: (p.x * 0.5 + 0.5) * w, y: (-p.y * 0.5 + 0.5) * h };
+    };
+    const elev = Math.atan2(
+      preset.position[1] - preset.target[1],
+      preset.position[2] - preset.target[2],
+    );
+    expect((elev * 180) / Math.PI).toBeCloseTo(LANDSCAPE_ZOOM_ELEV_DEG, 4);
+    // The block's far edge lands under the chrome; the near wall's inner
+    // top edge just off the bottom, so the footer pills sit on felt …
+    expect(Math.abs(px(0, TILE_D / 2, -LANDSCAPE_ZOOM_HALF).y - yTop)).toBeLessThan(1);
+    expect(Math.abs(px(...LANDSCAPE_ZOOM_NEAR_POINT).y - yBottom)).toBeLessThan(1);
+    // (the rivers' third-row far edge at 1× is 6.38 — see `riverMetrics`).
+    const footerTop = h - 5 - 40;
+    expect(px(0, TILE_D, 6.4).y).toBeLessThan(footerTop);
+    // … the block fits the width with room, and a river tile is ≥ 25 px
+    // wide and ≥ 18 px tall (vs ~20 × 8 from the resting 31° camera).
+    expect(px(-LANDSCAPE_ZOOM_HALF, 0, 0).x).toBeGreaterThan(40);
+    expect(px(1, TILE_D, 0).x - px(0, TILE_D, 0).x).toBeGreaterThanOrEqual(25);
+    expect(px(0, TILE_D, TILE_H / 2).y - px(0, TILE_D, -TILE_H / 2).y).toBeGreaterThanOrEqual(18);
+    // The hand row leaves the frame below the footer; the far wall's
+    // top edge sits above the chrome row's bottom.
+    expect(px(0, STAND_Y, OWN_HAND_Z).y).toBeGreaterThan(h);
+    expect(px(0, 2 * TILE_D, -(WALL_D - TILE_H / 2)).y).toBeLessThan(yTop);
   });
   test('projectPreset matches three.js projection and anchored presets pin their point', () => {
     for (const [w, h] of [

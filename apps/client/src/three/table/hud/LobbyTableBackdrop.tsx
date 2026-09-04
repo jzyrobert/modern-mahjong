@@ -1,4 +1,4 @@
-import { type GameState, type Seat, buildWall, emptyState } from '@mahjong/game-logic';
+import { type GameState, buildWall, emptyState } from '@mahjong/game-logic';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useGame } from '../../../state/game';
 import { type SceneContext, type SceneHandle, SceneHost } from '../../core/SceneHost';
@@ -9,8 +9,8 @@ import {
   acquireTableScene,
   releaseTableScene,
 } from '../TableScene';
-import { projectPreset } from '../cameraPresets';
-import { DEAD_TILES, FELT_HALF, RAIL_H, RAIL_WIDTH } from '../layout';
+import { portraitCameraAnchored, projectPreset } from '../cameraPresets';
+import { FELT_HALF, RAIL_H, RAIL_WIDTH } from '../layout';
 
 /**
  * The waiting room's scene: the match table itself, walls built and
@@ -28,41 +28,57 @@ export interface LobbyTableBackdropProps {
    * right half of the frame so the glass never straddles the plate.
    */
   side?: boolean | undefined;
-  /**
-   * Seats that have a player or a bot in them. Each filled seat gets a
-   * concealed 13-tile rack in front of it (dealt from the wall, backs
-   * out), so the waiting table fills up as the room does and the empty
-   * seats read as empty.
-   */
-  filled?: readonly boolean[] | undefined;
 }
 
-/** Tiles per rack on the waiting table (a dealt hand, before the dealer's 14th). */
-const WAITING_RACK = 13;
-
 /**
- * The table between hands: full walls, plus a concealed rack for every
- * filled seat, dealt from the wall the way the real deal will be (so
- * the walls show the matching gaps). Pure + deterministic.
+ * The table between hands: all 136 tiles in four full 17-stack walls and
+ * nothing else — the real pre-deal state. Round-4 #4: dealing a rack per
+ * filled seat left every wall a 10–11-stack run fronted by a 13-tile
+ * rack (each rack overhung its wall by a tile) and showed dealt hands
+ * before the opening roll. Pure + deterministic.
  */
-export function waitingTableState(filled: readonly boolean[] = []): GameState {
-  const tiles = buildWall();
-  const state = emptyState();
-  const wall = tiles.slice(DEAD_TILES);
-  const hands = { ...state.hands };
-  for (const seat of [0, 1, 2, 3] as Seat[]) {
-    if (!filled[seat]) continue;
-    // Pop from the end, as the engine deals.
-    hands[seat] = wall.splice(wall.length - WAITING_RACK, WAITING_RACK);
+export function waitingTableState(): GameState {
+  return { ...emptyState(), wall: buildWall() };
+}
+
+/** Portrait lobby camera elevation: whole stacks, not slabs (round-4 #4). */
+export const LOBBY_PORTRAIT_ELEV_DEG = 58;
+/** Portrait lobby: margin the near rail's corners keep from the viewport sides, CSS px. */
+const LOBBY_PORTRAIT_SIDE_PX = 8;
+
+/**
+ * Portrait lobby camera: the whole table, rails included, fitted to the
+ * width (the near rail's corners — the widest projected points from a
+ * 58° camera — sit `LOBBY_PORTRAIT_SIDE_PX` inside the viewport) and
+ * panned so the near rail's outer edge lands 10 px above the bottom. The
+ * near wall then shows as a row of whole stacks (~15 CSS px a back) with
+ * felt above it in the band under the Start / Leave row, instead of the
+ * 45° view's 50 px slabs cropped by the rail (round-4 #4).
+ */
+export function lobbyPortraitCameraFor(width: number, height: number): CameraPreset {
+  const corner: [number, number, number] = [FELT_HALF + RAIL_WIDTH, RAIL_H, FELT_HALF + RAIL_WIDTH];
+  const anchor: [number, number, number] = [0, 0, FELT_HALF + RAIL_WIDTH];
+  const anchorY = height - 10;
+  const make = (xHalf: number) =>
+    portraitCameraAnchored(width, height, xHalf, anchor, anchorY, LOBBY_PORTRAIT_ELEV_DEG);
+  // A wider frame (larger xHalf) pulls the corner inward — monotonic.
+  let lo = 11;
+  let hi = 24;
+  for (let i = 0; i < 40; i++) {
+    const mid = (lo + hi) / 2;
+    if (projectPreset(make(mid), width, height, corner).x > width - LOBBY_PORTRAIT_SIDE_PX)
+      lo = mid;
+    else hi = mid;
   }
-  return { ...state, deadWall: tiles.slice(0, DEAD_TILES), wall, hands };
+  return make(hi);
 }
 
 /**
- * Low three-quarter view. Portrait: the table fills the width and is
- * panned so its *near* rail and near wall fill the band under the
- * Start / Leave row (round-2 #8: a flat void sat there while the far
- * half hid behind the panels). Wide: the whole table in frame; with a
+ * Low three-quarter view. Portrait: `lobbyPortraitCameraFor` — the whole
+ * table fitted to the width, near rail at the bottom edge, so the band
+ * under the Start / Leave row shows whole wall stacks and felt (round-2
+ * #8 left a flat void there; round-4 #4 found 50 px slabs). Wide: the
+ * whole table in frame; with a
  * side column (`side`) the table is panned right until its near-right
  * rail corner — the widest point of the low perspective — sits 24 px
  * inside the viewport, so the right and near rails frame it while the
@@ -74,9 +90,7 @@ export function waitingTableState(filled: readonly boolean[] = []): GameState {
  */
 export function lobbyCameraFor(width: number, height: number, side: boolean): CameraPreset {
   const aspect = width / Math.max(1, height);
-  if (aspect < 0.9) {
-    return { position: [0, 21, 21], target: [0, 0, -1], fov: 46 };
-  }
+  if (aspect < 0.9) return lobbyPortraitCameraFor(width, height);
   const fov = 40;
   if (!side) {
     return { position: [0, 14.5, 27], target: [0, 0, 1.5], fov };
@@ -106,7 +120,7 @@ export function lobbyCameraFor(width: number, height: number, side: boolean): Ca
   return make(lo);
 }
 
-export function LobbyTableBackdrop({ side = false, filled }: LobbyTableBackdropProps) {
+export function LobbyTableBackdrop({ side = false }: LobbyTableBackdropProps) {
   const felt = useGame((s) => s.settings.felt);
   const tileBack = useGame((s) => s.settings.tileBack);
   const [ready, setReady] = useState(false);
@@ -134,11 +148,7 @@ export function LobbyTableBackdrop({ side = false, filled }: LobbyTableBackdropP
       if (timer !== null) clearTimeout(timer);
     };
   }, []);
-  const filledKey = (filled ?? []).map((f) => (f ? '1' : '0')).join('');
-  const state = useMemo(
-    () => waitingTableState(filledKey.split('').map((c) => c === '1')),
-    [filledKey],
-  );
+  const state = useMemo(() => waitingTableState(), []);
   const stateRef = useRef(state);
   stateRef.current = state;
   const sceneRef = useRef<TableScene | null>(null);
@@ -149,9 +159,7 @@ export function LobbyTableBackdrop({ side = false, filled }: LobbyTableBackdropP
   }, [side]);
 
   // Project the waiting state. `snap` lays the tiles out without motion
-  // (the first frame of a fresh or rebuilt scene); a later seat change
-  // flies the rack's tiles between the wall and the seat, so the room
-  // visibly fills up.
+  // (the first frame of a fresh or rebuilt scene).
   const project = useCallback((scene: TableScene, snap: boolean, st = stateRef.current) => {
     scene.sync(
       {
@@ -167,7 +175,6 @@ export function LobbyTableBackdrop({ side = false, filled }: LobbyTableBackdropP
         heldHand: null,
         waiting: true,
         snap,
-        concealOwn: true,
       },
       performance.now(),
     );

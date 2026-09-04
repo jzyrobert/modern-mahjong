@@ -41,6 +41,16 @@ export interface TileMaterialUniforms {
    */
   uDeadBack: { value: Color };
   uDeadBack2: { value: Color };
+  /**
+   * How much of the back skin's top→bottom gradient the −Z face shows:
+   * 1 (default) runs the full swatch range; smaller values compress it
+   * about the mid-tone so the light end stays a colour. See
+   * `setTileBackGradient` — the table sets 0.55 because a wall stack's
+   * near-white light end merged with the ivory edge highlight and the
+   * stack's top face read as sitting lower than its darker dead-wall
+   * neighbours (round-4 #5).
+   */
+  uBackGradAmount: { value: number };
 }
 
 /** Body roughness shared by the tile faces and, by default, the back. */
@@ -90,6 +100,7 @@ export function createTileMaterial(
     uBackRoughness: { value: TILE_BODY_ROUGHNESS },
     uDeadBack: { value: dead.top },
     uDeadBack2: { value: dead.bottom },
+    uBackGradAmount: { value: 1 },
   };
   const mat = new MeshPhysicalMaterial({
     color: 0xffffff,
@@ -148,6 +159,7 @@ export function createTileMaterial(
         uniform vec3 uHighlightColor;
         uniform float uBackClearcoat;
         uniform float uBackRoughness;
+        uniform float uBackGradAmount;
         uniform vec3 uDeadBack;
         uniform vec3 uDeadBack2;
         varying vec2 vAtlasUv;
@@ -165,9 +177,10 @@ export function createTileMaterial(
         // Slight negative LOD bias: minified river glyphs pick the
         // sharper mip (anisotropic filtering keeps it from shimmering).
         vec4 faceTexel = texture2D(uAtlas, vAtlasUv, -0.35);
+        float backGrad = mix(0.5, vBackGrad, uBackGradAmount);
         vec3 backCol = mix(
-          mix(uBackColor2, uBackColor, vBackGrad),
-          mix(uDeadBack2, uDeadBack, vBackGrad),
+          mix(uBackColor2, uBackColor, backGrad),
+          mix(uDeadBack2, uDeadBack, backGrad),
           vBackVariant
         );
         // Faint inset border on the back so face-down tiles read as
@@ -251,4 +264,15 @@ export function setTileBackFinish(
 ): void {
   mat.tileUniforms.uBackClearcoat.value = finish.clearcoat;
   mat.tileUniforms.uBackRoughness.value = finish.roughness;
+}
+
+/**
+ * Compress the back gradient (see `TileMaterialUniforms.uBackGradAmount`).
+ * Additive: stock materials keep the full range until a caller opts in.
+ */
+export function setTileBackGradient(
+  mat: MeshPhysicalMaterial & { tileUniforms: TileMaterialUniforms },
+  amount: number,
+): void {
+  mat.tileUniforms.uBackGradAmount.value = Math.min(1, Math.max(0, amount));
 }

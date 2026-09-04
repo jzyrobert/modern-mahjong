@@ -175,11 +175,20 @@ function text(
   size: number,
   color: string,
   weight = 700,
+  stroke = 0,
 ): void {
   ctx.fillStyle = color;
   ctx.font = `${weight} ${size}px ${SERIF}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
+  if (stroke > 0) {
+    // Synthetic emboldening: a round-joined stroke in the ink colour
+    // under the fill thickens every stem by `stroke` reference units.
+    ctx.strokeStyle = color;
+    ctx.lineWidth = stroke;
+    ctx.lineJoin = 'round';
+    ctx.strokeText(s, x, y);
+  }
   ctx.fillText(s, x, y);
 }
 
@@ -187,9 +196,22 @@ function text(
 // `ManText` in TileGlyph: numeral (18px, INK_BLACK) in the upper third
 // with 10% top padding, 萬 (12px, INK_RED) in the lower third with 14%
 // bottom padding, `space-between`. Line boxes → centres at y≈14 / 37.
+/**
+ * Extra stem weight for the 萬 faces' characters, in the 36-unit
+ * reference space. A river tile on the width-bound portrait table is
+ * ~24 CSS px across, so the atlas cell is minified ~10×: Noto Serif
+ * TC's 700 hairlines (≈ 0.5 units) vanish into the mip chain and 六 /
+ * 八 / 九 were told apart by silhouette, not read (round-4 #1). Stroking
+ * the glyph 0.8 units (numeral) / 0.55 (萬) lifts the thinnest stems to
+ * ≈ 1.3 / 1.05 units — a black-weight cut that still survives at ~1 CSS
+ * px after minification. Dots, bamboo and the honours already read at
+ * that size and keep the 700 cut.
+ */
+export const MAN_NUMERAL_STROKE = 0.8;
+export const MAN_SUIT_STROKE = 0.55;
 function drawMan(ctx: CanvasRenderingContext2D, rank: number): void {
-  text(ctx, CHINESE_NUM[rank] ?? '', CX, 14.4, 18, INK_BLACK, 700);
-  text(ctx, '萬', CX, 36.6, 12.5, INK_RED, 700);
+  text(ctx, CHINESE_NUM[rank] ?? '', CX, 14.4, 18, INK_BLACK, 700, MAN_NUMERAL_STROKE);
+  text(ctx, '萬', CX, 36.6, 12.5, INK_RED, 700, MAN_SUIT_STROKE);
 }
 
 // ─── Pin dots ──────────────────────────────────────────────────────
