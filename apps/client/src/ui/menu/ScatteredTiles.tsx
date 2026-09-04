@@ -97,7 +97,11 @@ export function ScatteredTiles({
   const first = fan[0];
   const last = fan[fan.length - 1];
   return (
+    // Pure decoration: hide the whole layer from the accessibility tree so
+    // the dummy tiles' labels don't surface (Lighthouse flagged them as
+    // `aria-prohibited-attr` on role-less divs).
     <View
+      aria-hidden
       style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflow: 'hidden' }}
     >
       {tiles.map((t) => (

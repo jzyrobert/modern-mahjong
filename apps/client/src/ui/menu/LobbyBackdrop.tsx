@@ -1,7 +1,7 @@
 import { Platform, View } from 'react-native';
 import { useGame } from '../../state/game';
 import { Menu3DBackdrop } from '../../three/entry';
-import { resolveRenderer } from '../../three/renderer';
+import { resolveMenuBackdrop } from '../../three/renderer';
 import { ScatteredTiles } from './ScatteredTiles';
 import { MENU, webStyle } from './theme';
 
@@ -31,7 +31,9 @@ export function LobbyBackdrop({
   glow = { x: 0.5, y: 0.3 },
 }: LobbyBackdropProps) {
   const rendererSetting = useGame((s) => s.settings.renderer);
-  const use3d = scene && Menu3DBackdrop !== null && resolveRenderer(rendererSetting) === '3d';
+  // `resolveMenuBackdrop` (not `resolveRenderer`): under `auto` the low
+  // quality tier keeps the classic scattered backs — see renderer.ts.
+  const use3d = scene && Menu3DBackdrop !== null && resolveMenuBackdrop(rendererSetting);
   const gx = `${Math.round(glow.x * 100)}%`;
   const gy = `${Math.round(glow.y * 100)}%`;
   return (
