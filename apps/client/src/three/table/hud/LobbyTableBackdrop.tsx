@@ -135,7 +135,6 @@ export function LobbyTableBackdrop({ side = false, filled }: LobbyTableBackdropP
     };
   }, []);
   const filledKey = (filled ?? []).map((f) => (f ? '1' : '0')).join('');
-  // biome-ignore lint/correctness/useExhaustiveDependencies: filledKey is the stable projection of `filled`
   const state = useMemo(
     () => waitingTableState(filledKey.split('').map((c) => c === '1')),
     [filledKey],
@@ -153,10 +152,10 @@ export function LobbyTableBackdrop({ side = false, filled }: LobbyTableBackdropP
   // (the first frame of a fresh or rebuilt scene); a later seat change
   // flies the rack's tiles between the wall and the seat, so the room
   // visibly fills up.
-  const project = useCallback((scene: TableScene, snap: boolean) => {
+  const project = useCallback((scene: TableScene, snap: boolean, st = stateRef.current) => {
     scene.sync(
       {
-        state: stateRef.current,
+        state: st,
         me: 0,
         sortMode: 'suit',
         manualOrder: [],
@@ -200,7 +199,7 @@ export function LobbyTableBackdrop({ side = false, filled }: LobbyTableBackdropP
   );
   useEffect(() => {
     const scene = sceneRef.current;
-    if (scene) project(scene, false);
+    if (scene) project(scene, false, state);
   }, [state, project]);
 
   if (failed || !mount) return null;

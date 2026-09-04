@@ -102,6 +102,22 @@ export interface SyncInput {
    * there, so the wall steps back a shade and the hand reads in front.
    */
   nearWallDim?: number | undefined;
+  /** Side seats' outward shift — see `LayoutOptions.sideSeatOut`. */
+  sideSeatOut?: number | undefined;
+  /** Right seat's melds at the near end — see `LayoutOptions.sideMeldsNear`. */
+  sideMeldsNear?: boolean | undefined;
+  /**
+   * Draw the dead-wall hairline along the stacks' *inner* (felt-side)
+   * edge instead of the outer one. The wide presets look at the table
+   * from a low angle: the outer hairline of the far and side walls hides
+   * behind their stacks, and the near wall's lands in the seam between
+   * the wall's bottom and the hand's top edge, where it reads as an
+   * underline for the hand (round-4 #3). Inside the walls it runs at
+   * the foot of each visible wall face (the near wall's is hidden by its
+   * own stacks — the darker backs mark that one). Portrait (near-
+   * overhead) keeps the outer edge, clear of the 1.28× rivers.
+   */
+  deadMarkerInner?: boolean | undefined;
 }
 
 export interface TableDebugTile {
@@ -513,6 +529,9 @@ export class TableScene {
       riverScale: input.riverScale ?? 1,
       hideSideWallsBeyondZ: input.hideSideWallsBeyondZ,
       concealOwn: input.concealOwn,
+      sideSeatOut: input.sideSeatOut,
+      sideMeldsNear: input.sideMeldsNear,
+      waitingWalls: input.waiting,
     });
     const prevLayout = this.lastLayout;
     this.lastLayout = layout;
@@ -556,7 +575,7 @@ export class TableScene {
       else this.pool.showFace(id);
     }
 
-    this.syncDeadMarker(layout, waiting);
+    this.syncDeadMarker(layout, waiting, input.deadMarkerInner === true);
 
     // Centre plate + marker + dice. No dealer exists before the opening
     // roll, so the waiting table shows neither chip nor dice.
@@ -601,7 +620,7 @@ export class TableScene {
    * most once), laid on the felt just outside the stacks' outer edge.
    * Hidden on the waiting table (no break yet).
    */
-  private syncDeadMarker(layout: Layout, waiting: boolean): void {
+  private syncDeadMarker(layout: Layout, waiting: boolean, inner: boolean): void {
     const byRel = new Map<Rel, { min: number; max: number }>();
     if (!waiting) {
       for (const slot of layout) {
@@ -617,10 +636,10 @@ export class TableScene {
         }
       }
     }
-    const key = [...byRel.entries()]
+    const key = `${inner ? 'i' : 'o'}|${[...byRel.entries()]
       .map(([rel, e]) => `${rel}:${e.min.toFixed(2)}:${e.max.toFixed(2)}`)
       .sort()
-      .join('|');
+      .join('|')}`;
     if (key === this.deadMarkerKey) return;
     this.deadMarkerKey = key;
     if (byRel.size === 0) {
@@ -630,8 +649,10 @@ export class TableScene {
     const pos: number[] = [];
     const idx: number[] = [];
     const half = TILE_W / 2 + 0.02;
-    const zOut = WALL_D + TILE_H / 2 + 0.14;
     const w = 0.09;
+    // Outer: 0.14 off the stacks' outer edge. Inner: the same clearance
+    // off their inner edge, the line running toward the centre.
+    const zOut = inner ? WALL_D - TILE_H / 2 - 0.14 - w : WALL_D + TILE_H / 2 + 0.14;
     const y = 0.012;
     for (const [rel, e] of byRel) {
       const corners: [number, number][] = [

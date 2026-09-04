@@ -11,6 +11,7 @@ import {
   OWN_MELD_RIGHT,
   RIVER_COLS,
   RIVER_ROWS,
+  SIDE_SEAT_OUT_LOW,
   STACKS_PER_WALL,
   WALL_D,
   computeLayout,
@@ -566,6 +567,156 @@ describe('held hand (phone portrait)', () => {
     }
   });
   test('tile sheet rows are each centred on the sheet axis', () => {
+    const layout = tileSheetLayout();
+    const honours = layout.filter((sl) => sl && sl.zone === 'sheet' && sl.id >= 27 * 4);
+    const xs = honours.map((sl) => sl!.x);
+    expect(Math.min(...xs) + Math.max(...xs)).toBeCloseTo(0, 5);
+  });
+});
+
+/** Seed 5 with a peng laid out for `seat`, claimed from the next seat. */
+function withMeldFor(seat: Seat): GameState {
+  const s = dealt();
+  return {
+    ...s,
+    hands: { ...s.hands, [seat]: s.hands[seat].slice(3) },
+    melds: {
+      ...s.melds,
+      [seat]: [{ kind: 'peng', tiles: s.hands[seat].slice(0, 3), from: (seat + 1) % 4 }],
+    },
+  } as GameState;
+}
+
+describe('low-camera side seats (phone landscape)', () => {
+  test('sideSeatOut moves the side racks and their melds out together; far and own rows stay', () => {
+    for (const seat of [1, 3] as Seat[]) {
+      const st = withMeldFor(seat);
+      const base = computeLayout(st, 0, OPTS);
+      const out = computeLayout(st, 0, { ...OPTS, sideSeatOut: SIDE_SEAT_OUT_LOW });
+      const rel = relOf(seat, 0);
+      const sign = rel === 1 ? 1 : -1;
+      for (const zone of ['oppHand', 'meld'] as const) {
+        const a = base.filter((sl) => sl?.zone === zone && sl.seat === seat);
+        const b = out.filter((sl) => sl?.zone === zone && sl.seat === seat);
+        expect(a.length).toBeGreaterThan(0);
+        expect(b).toHaveLength(a.length);
+        for (const sl of b) {
+          const src = a.find((x) => x!.id === sl!.id)!;
+          expect(sl!.x - src.x).toBeCloseTo(sign * SIDE_SEAT_OUT_LOW, 6);
+          expect(sl!.z).toBeCloseTo(src.z, 6);
+        }
+        // Still on the felt, clear of the rail.
+        for (const sl of b) expect(Math.abs(sl!.x) + TILE_H / 2).toBeLessThan(FELT_HALF);
+      }
+      // The far seat and the user's row are untouched.
+      for (const other of [0, 2] as Seat[]) {
+        const a = base.filter((sl) => sl && sl.seat === other && sl.zone !== 'wall');
+        const b = out.filter((sl) => sl && sl.seat === other && sl.zone !== 'wall');
+        expect(b.map((sl) => [sl!.x, sl!.z])).toEqual(a.map((sl) => [sl!.x, sl!.z]));
+      }
+    }
+  });
+  test('sideMeldsNear puts the right seat’s melds at the near (+z) end, left seat unchanged', () => {
+    const st = withMeldFor(1);
+    const base = computeLayout(st, 0, OPTS);
+    const near = computeLayout(st, 0, { ...OPTS, sideMeldsNear: true });
+    const meldZ = (l: typeof base) =>
+      l.filter((sl) => sl?.zone === 'meld' && sl.seat === 1).map((sl) => sl!.z);
+    const rackZ = (l: typeof base) =>
+      l.filter((sl) => sl?.zone === 'oppHand' && sl.seat === 1).map((sl) => sl!.z);
+    // Default: melds beyond the rack's far end (−z). Near: beyond its near end (+z).
+    expect(Math.max(...meldZ(base))).toBeLessThan(Math.min(...rackZ(base)));
+    expect(Math.min(...meldZ(near))).toBeGreaterThan(Math.max(...rackZ(near)));
+    // The row keeps its overall footprint (a rotated claimed tile is
+    // TILE_H long along the row) and the meld's internal order.
+    const extent = (l: typeof base) => {
+      const row = l.filter(
+        (sl) => (sl?.zone === 'meld' || sl?.zone === 'oppHand') && sl.seat === 1,
+      );
+      const edges = row.flatMap((sl) => {
+        const half = Math.abs(Math.cos(sl!.yaw - Math.PI / 2)) > 0.5 ? TILE_W / 2 : TILE_H / 2;
+        return [sl!.z - half, sl!.z + half];
+      });
+      return Math.max(...edges) - Math.min(...edges);
+    };
+    expect(extent(near)).toBeCloseTo(extent(base), 6);
+    const order = (l: typeof base) =>
+      l
+        .filter((sl) => sl?.zone === 'meld' && sl.seat === 1)
+        .sort((a, b) => a!.index - b!.index)
+        .map((sl) => sl!.z);
+    const dNear = order(near);
+    const dBase = order(base);
+    for (let i = 1; i < dNear.length; i++) {
+      expect(Math.sign(dNear[i]! - dNear[i - 1]!)).toBe(Math.sign(dBase[i]! - dBase[i - 1]!));
+    }
+    // The left seat's melds are already at the near end and do not move.
+    const st3 = withMeldFor(3);
+    const a = computeLayout(st3, 0, OPTS).filter((sl) => sl?.zone === 'meld');
+    const b = computeLayout(st3, 0, { ...OPTS, sideMeldsNear: true }).filter(
+      (sl) => sl?.zone === 'meld',
+    );
+    expect(b.map((sl) => [sl!.x, sl!.z])).toEqual(a.map((sl) => [sl!.x, sl!.z]));
+  });
+});
+
+describe('waiting-table walls', () => {
+  test('whole stacks only, four centred runs as even as the count allows, odd tile hidden', () => {
+    const s = dealt();
+    // 3 racks of 13 → 97 tiles left: 48 stacks (12 per wall) and one hidden tile.
+    const st: GameState = {
+      ...s,
+      hands: { 0: s.hands[0].slice(0, 13), 1: s.hands[1], 2: s.hands[2], 3: [] },
+      wall: [...s.wall, ...s.hands[3], s.hands[0][13]!],
+    } as GameState;
+    const layout = computeLayout(st, 0, { ...OPTS, waitingWalls: true });
+    const walls = layout.filter((sl) => sl?.zone === 'wall' || sl?.zone === 'deadWall');
+    expect(walls).toHaveLength(96);
+    expect(layout.filter((sl) => sl?.zone === 'deadWall')).toHaveLength(0);
+    for (const seat of [0, 1, 2, 3] as Seat[]) {
+      const mine = walls.filter((sl) => sl!.seat === seat);
+      expect(mine).toHaveLength(24);
+      // Every position holds exactly two tiles (a full stack).
+      const byPos = new Map<string, number>();
+      for (const sl of mine) {
+        const k = `${sl!.x.toFixed(3)}:${sl!.z.toFixed(3)}`;
+        byPos.set(k, (byPos.get(k) ?? 0) + 1);
+      }
+      expect([...byPos.values()].every((n) => n === 2)).toBe(true);
+      // Centred on the wall's shifted midline: the run's centre is within
+      // half a pitch of the 17-stack row's centre.
+      const rel = relOf(seat, 0);
+      const along = mine.map((sl) =>
+        rel === 0 ? sl!.x : rel === 1 ? -sl!.z : rel === 2 ? -sl!.x : sl!.z,
+      );
+      const mid = (Math.min(...along) + Math.max(...along)) / 2;
+      const rowMid = wallSlotPosition({ wallSeat: seat, stack: 8, level: 0, dead: false }, 0);
+      const rowMidAlong =
+        rel === 0 ? rowMid.x : rel === 1 ? -rowMid.z : rel === 2 ? -rowMid.x : rowMid.z;
+      expect(Math.abs(mid - rowMidAlong)).toBeLessThanOrEqual(0.6);
+    }
+    // Racks are laid out as usual.
+    expect(layout.filter((sl) => sl?.zone === 'oppHand')).toHaveLength(26);
+    expect(layout.filter((sl) => sl?.zone === 'hand')).toHaveLength(13);
+  });
+  test('full walls with no racks stay 17 stacks a side', () => {
+    const full = dealt();
+    const ring: GameState = {
+      ...full,
+      hands: { 0: [], 1: [], 2: [], 3: [] },
+      wall: [...full.wall, ...full.hands[0], ...full.hands[1], ...full.hands[2], ...full.hands[3]],
+    } as GameState;
+    const layout = computeLayout(ring, 0, { ...OPTS, waitingWalls: true });
+    const walls = layout.filter((sl) => sl?.zone === 'wall');
+    expect(walls).toHaveLength(136);
+    for (const seat of [0, 1, 2, 3] as Seat[]) {
+      expect(walls.filter((sl) => sl!.seat === seat)).toHaveLength(2 * STACKS_PER_WALL);
+    }
+  });
+});
+
+describe('tile sheet', () => {
+  test('tile sheet rows are each centred on the sheet axis (dup guard)', () => {
     const layout = tileSheetLayout();
     const honours = layout.filter((sl) => sl && sl.zone === 'sheet' && sl.id >= 27 * 4);
     const xs = honours.map((sl) => sl!.x);

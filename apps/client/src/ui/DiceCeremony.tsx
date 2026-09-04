@@ -10,9 +10,10 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { nameForSeat, useGame } from '../state/game';
 import { LESSONS, useActiveTutorialStep, useTutorial } from '../state/tutorial';
-import { portraitHeldHandTop } from '../three/entry';
+import { portraitHeldHandTop, portraitStripBottom } from '../three/entry';
 import { resolveRenderer } from '../three/renderer';
 import { useFadeInOut } from './animations';
 import { COLORS } from './colors';
@@ -137,15 +138,20 @@ export function DiceCeremony() {
   // and the hand row's tops (~300 px). Round-3: the 220 px card cut
   // across the top of every hand tile.
   const { width: vw, height: vh } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const wide = glass && vw >= 700;
   const short = glass && vh < 600;
   const dieSize = short ? 40 : 48;
   // Phone portrait over the 3D table: the held hand sits high (its top
-  // ~ 613 px on a 915 px phone, above the action tray), so the card is
-  // centred in the band above it instead of the whole viewport — it
-  // never covers the tiles.
+  // ~ 590 px on a 915 px phone, above the action tray) and the seat strip
+  // ends ~ 98 px down, so the card is centred in the band between them
+  // instead of the whole viewport — it never covers the tiles, and its
+  // top edge clears the strip (round-4: the table moved up under the
+  // strip and the centred card's top edge met the badges).
   const handTop = glass && !short && portraitHeldHandTop ? portraitHeldHandTop(vw, vh) : null;
+  const stripBottom = glass && !short && portraitStripBottom ? portraitStripBottom(vw, vh) : null;
   const scrimPadBottom = handTop !== null ? Math.max(20, vh - handTop + 12) : 20;
+  const scrimPadTop = stripBottom !== null ? Math.max(20, stripBottom + insets.top + 8) : 20;
   // Key dismissal by `state.seed` rather than a boolean — JSON.parse
   // on every server delta produces a fresh `openingRolls` reference,
   // so a bare `dismissed` boolean reset by `useEffect([rolls])` would
@@ -317,6 +323,7 @@ export function DiceCeremony() {
         // sits edge-to-edge on a portrait phone (a 320px iPhone SE
         // would otherwise clip the rounded corners).
         padding: 20,
+        paddingTop: scrimPadTop,
         paddingBottom: scrimPadBottom,
         zIndex: 100,
       }}

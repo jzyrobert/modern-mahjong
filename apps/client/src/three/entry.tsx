@@ -39,3 +39,9 @@ export const tutorialSceneRects: TutorialSceneRects | null = null;
  * native (no 3D table).
  */
 export const portraitHeldHandTop: ((width: number, height: number) => number | null) | null = null;
+/**
+ * Screen y (CSS px) of the bottom of the seat strip on the phone-portrait
+ * 3D table (chrome row + strip, before the device's top inset), or null
+ * off portrait. Root overlays centre between it and `portraitHeldHandTop`.
+ */
+export const portraitStripBottom: ((width: number, height: number) => number | null) | null = null;

@@ -83,14 +83,16 @@ export const PORTRAIT_ZOOM_X_HALF = 7.9;
 export const PORTRAIT_ELEV_DEG = 70;
 export const PORTRAIT_FOV = 44;
 /**
- * Portrait discards render 28 % larger than the other table tiles: the
- * full-table view is width-bound at ~18 CSS px per tile, and the river
- * is the one zone the player reads at a glance — 1.28 puts a river tile
+ * Portrait discards render 30 % larger than the other table tiles: the
+ * full-table view is width-bound at ~17 CSS px per tile, and the river
+ * is the one zone the player reads at a glance — 1.3 puts a river tile
  * at ~22 CSS px on a 412 px phone, where 索 / 筒 faces read rather than
- * get guessed. Six columns × 1.28 still fit inside the walls in the
- * pinwheel (`layout.riverMetrics`: far edge 7.85 < 8.1).
+ * get guessed (round-4: up from 1.28 — pinning the far rail closer to
+ * the strip pushes the table ~2 % deeper into the perspective). Six
+ * columns × 1.3 still fit inside the walls in the pinwheel
+ * (`layout.riverMetrics`: far edge 7.95 < 8.12).
  */
-export const PORTRAIT_RIVER_SCALE = 1.28;
+export const PORTRAIT_RIVER_SCALE = 1.3;
 /**
  * Where the table centre sits in the band (0 top … 1 bottom). A touch
  * above centre: the far half of the table foreshortens, so 0.485 leaves
@@ -113,12 +115,17 @@ export const PORTRAIT_BAND_GAP = 8;
  * Portrait full table: the width-bound table is shorter than the band
  * between the seat strip and the held hand, so instead of centring it
  * (≈ 90 px of void above *and* below — round-2 #3) the far rail's top
- * edge is pinned this far under the seat strip; toasts overlap the far
- * rail and the slack collects under the near rail, where the shell
- * paints the table's floor shadow. Falls back to the centred fit when
- * the table fills the band (short phones).
+ * edge is pinned this far under the seat strip. 38 px (round-4: down
+ * from 66, which left the largest void in the default phone view) is
+ * the least that keeps a 52 px toast — anchored so its bottom clears
+ * the far rack's tops by 6 px — from touching the strip: the rack's
+ * top edge projects 27 px below the rail's, so rail = strip + 6 + 52
+ * − 21 − 1. The slack that used to sit here is spent below the table:
+ * a lit ~38 px apron, a taller held-hand row gap and a 96 px action tray
+ * (`HELD_ROW_GAP`, `PORTRAIT_TRAY_H`). Falls back to the centred fit
+ * when the table fills the band (short phones).
  */
-export const PORTRAIT_FAR_RAIL_GAP = 66;
+export const PORTRAIT_FAR_RAIL_GAP = 38;
 /** Least apron (near rail bottom → hand top) the pinned view may leave. */
 export const PORTRAIT_APRON_MIN = 12;
 /** The far rail's top-back edge (world). */
@@ -348,13 +355,13 @@ export function riverZoomCameraFor(width: number, height: number, topInset = 0):
  * the two HUD rows under the hand are what closes the band between the
  * near rail and the hand (round-3 critique: 140 px of void there).
  */
-export const PORTRAIT_TRAY_H = 84;
+export const PORTRAIT_TRAY_H = 96;
 /** Gap between the hand's baseline and the tray, and the tray and the footer. */
 export const PORTRAIT_TRAY_GAP = 10;
 /** Safe-area inset + footer row + tray + gaps, CSS px (matches the shell). */
 export const HELD_BOTTOM_PX = 12 + 44 + PORTRAIT_TRAY_GAP + PORTRAIT_TRAY_H + PORTRAIT_TRAY_GAP;
-/** Side margin the hand keeps from the viewport edges, CSS px. */
-export const HELD_SIDE_PX = 16;
+/** Side margin the hand keeps from the viewport edges, CSS px (the phone safe area). */
+export const HELD_SIDE_PX = 12;
 /** Own-hand tile width bounds on screen, CSS px. */
 export const HELD_TILE_MIN_PX = 44;
 export const HELD_TILE_MAX_PX = 68;

@@ -16,6 +16,7 @@ import { type Position, SEAT_COLOR } from '../../ui/match/seatColor';
 import { layoutFor } from '../../ui/match/seatPlacement';
 import { TutorialTarget } from '../../ui/tutorial/TargetRegistry';
 import { type SceneContext, type SceneHandle, SceneHost } from '../core/SceneHost';
+import { TILE_H } from '../tiles/geometry';
 import {
   TABLE_POOL_KEY,
   type TableDebugSnapshot,
@@ -55,6 +56,7 @@ import {
   OWN_HAND_Z,
   RAIL_WIDTH,
   type Rel,
+  SIDE_SEAT_OUT_LOW,
   toWorld,
 } from './layout';
 import { type ScreenRect, padRect, rectsClose, unionRects } from './picking';
@@ -141,22 +143,30 @@ declare global {
 const VOID_BG =
   'radial-gradient(ellipse 80% 45% at 50% 34%, rgba(58,74,58,0.28), rgba(58,74,58,0) 70%), linear-gradient(180deg, #0b120f 0%, #16241d 100%)';
 /**
- * Portrait void. The table is width-bound, so the band above it (toast
- * slot on the far rail) and the apron below it (between the near rail
- * and the held hand) are structural. The apron is painted as the lit
- * edge of the parlour floor under the table — a warm, faintly lit
- * surface rather than canvas black — with a real contact shadow hugging
- * the near rail (peak alpha 0.6, ~60 % of the width), so the table reads
- * as an object standing on something and the hand as held in front of
- * it. Round-3: a shadow painted on near-black was below perceptual
- * threshold; the apron light is what makes it read.
+ * Portrait void. The table is width-bound, so the band above it (the
+ * far rail under the seat strip, where toasts land) and the apron below
+ * it (between the near rail and the held hand) are structural. The apron
+ * is painted as the lit edge of the parlour floor under the table: a
+ * contact shadow that takes the top ~10 px to near-black (rgba 0.78 →
+ * the floor reads as *under* the rail), then a warm lacquer-brown floor
+ * tone (#2a1d14 at 0.55) that fades into the void by the hand's top edge
+ * (`apronH`), so the table stands on something and the hand is held in
+ * front of it. Round-4 #5: the earlier radial glow measured as an ~8-unit
+ * RGB dip across the band — the floor is now a stop-to-stop linear band
+ * whose colours are chosen to be seen, not implied.
  */
-function portraitVoidBg(centrePct: number, nearRailBottom: number | null): string {
+function portraitVoidBg(
+  centrePct: number,
+  nearRailBottom: number | null,
+  apronH: number | null,
+): string {
   const c = Math.round(centrePct * 10) / 10;
+  const top = nearRailBottom !== null ? Math.round(nearRailBottom) : null;
+  const h = Math.max(24, Math.round(apronH ?? 36));
   const apron =
-    nearRailBottom !== null
-      ? `radial-gradient(ellipse 62% 34px at 50% ${Math.round(nearRailBottom + 12)}px, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0.36) 45%, rgba(0,0,0,0) 100%), ` +
-        `radial-gradient(ellipse 110% 150px at 50% ${Math.round(nearRailBottom + 96)}px, rgba(146,118,70,0.26) 0%, rgba(110,96,60,0.13) 55%, rgba(58,74,58,0) 100%), `
+    top !== null
+      ? `linear-gradient(180deg, rgba(0,0,0,0) ${top - 1}px, rgba(4,6,5,0.85) ${top}px, rgba(8,10,8,0.7) ${top + 9}px, rgba(42,29,20,0.58) ${top + 16}px, rgba(46,32,20,0.42) ${top + Math.round(h * 0.6)}px, rgba(30,26,18,0.12) ${top + h - 2}px, rgba(30,26,18,0) ${top + h + 2}px), ` +
+        `radial-gradient(ellipse 70% ${Math.round(h * 1.3)}px at 50% ${top + Math.round(h * 0.55)}px, rgba(176,132,72,0.28) 0%, rgba(120,96,56,0.14) 55%, rgba(58,74,58,0) 100%), `
       : '';
   return (
     `${apron}radial-gradient(ellipse 150% 46% at 50% ${c}%, rgba(138,118,72,0.5) 0%, rgba(98,108,68,0.3) 40%, rgba(58,74,58,0.1) 62%, rgba(58,74,58,0) 78%), ` +
@@ -181,6 +191,7 @@ const EMPTY_RECTS: HudRects = {
   discards: null,
   plateBottom: null,
   farRailTop: null,
+  farRowTop: null,
   nearRailBottom: null,
 };
 const POSITIONS: Position[] = ['bottom', 'right', 'top', 'left'];
@@ -314,6 +325,12 @@ export function Table3DShell(props: Table3DShellProps) {
         // Landscape: the hand stands right in front of the near wall, so
         // the wall steps back a shade and the hand reads in front of it.
         nearWallDim: ls ? 0.85 : 1,
+        // Landscape: side seats' racks + melds step out past the wall's
+        // occlusion line (see `SIDE_SEAT_OUT_LOW`).
+        sideSeatOut: ls ? SIDE_SEAT_OUT_LOW : 0,
+        sideMeldsNear: ls,
+        // Wide presets: the dead-wall hairline runs inside the walls.
+        deadMarkerInner: heldRef.current === null,
       },
       performance.now(),
     );
@@ -390,6 +407,7 @@ export function Table3DShell(props: Table3DShellProps) {
         discards: unionRects(discardRects),
         plateBottom: scene.projectPoint(0, 0.3, CENTRE_PLATE_RADIUS + 0.4).y,
         farRailTop: scene.projectPoint(...PORTRAIT_FAR_RAIL_POINT).y,
+        farRowTop: scene.projectPoint(0, TILE_H, -HAND_Z).y,
         nearRailBottom: scene.projectPoint(0, 0, FELT_HALF + RAIL_WIDTH).y,
       };
 
@@ -437,6 +455,7 @@ export function Table3DShell(props: Table3DShellProps) {
         !rectsClose(next.discards, lastRects.current.discards) ||
         Math.abs((next.plateBottom ?? 0) - (lastRects.current.plateBottom ?? 0)) > 0.75 ||
         Math.abs((next.farRailTop ?? 0) - (lastRects.current.farRailTop ?? 0)) > 0.75 ||
+        Math.abs((next.farRowTop ?? 0) - (lastRects.current.farRowTop ?? 0)) > 0.75 ||
         Math.abs((next.nearRailBottom ?? 0) - (lastRects.current.nearRailBottom ?? 0)) > 0.75;
       if (changed) {
         settleFrames.current = 0;
@@ -631,9 +650,11 @@ export function Table3DShell(props: Table3DShellProps) {
   const nearWallBottom = hudRects.nearWall
     ? hudRects.nearWall.top + hudRects.nearWall.height
     : null;
-  // Toasts. Portrait (full table): centred on the far rail's top edge
-  // (glass on wood — the rail is the one table surface that never holds
-  // a tile), which lets the table sit close under the seat strip.
+  // Toasts. Portrait (full table): over the far rail (glass on wood —
+  // the rail is the one table surface that never holds a tile), sitting
+  // as low as the far rack's tops allow (6 px clear) and never closer
+  // than 6 px to the seat strip, which lets the table sit close under
+  // the strip.
   // Portrait (river zoom): the far wall hides behind the zoom header,
   // so the toast drops to the felt between the near wall and the held
   // hand. Landscape: the chrome row beside the far seat's
@@ -650,12 +671,12 @@ export function Table3DShell(props: Table3DShellProps) {
   // Portrait-only offset; landscape and desktop park toasts in the
   // chrome row (see `toastSlot`), the one void that never holds a tile
   // or a discard-to-be.
-  const farRailTop = hudRects.farRailTop;
+  const farRowTop = hudRects.farRowTop;
   const toastTop = portrait
     ? zoomed && nearWallBottom !== null
       ? nearWallBottom + 10
-      : farRailTop !== null && !zoomed
-        ? Math.max(stripTop + 34 + 6, farRailTop - TOAST_H / 2)
+      : farRowTop !== null && !zoomed
+        ? Math.max(stripTop + 34 + 6, farRowTop - 6 - TOAST_H)
         : stripTop + 40
     : 0;
   // Portrait: where the table centre lands in the viewport (0–100 %),
@@ -736,7 +757,13 @@ export function Table3DShell(props: Table3DShellProps) {
         inset: 0,
         overflow: 'hidden',
         background: portrait
-          ? portraitVoidBg(tableCentrePct, zoomed ? null : hudRects.nearRailBottom)
+          ? portraitVoidBg(
+              tableCentrePct,
+              zoomed ? null : hudRects.nearRailBottom,
+              hudRects.nearRailBottom !== null
+                ? heldHandTopPx(width, height) - hudRects.nearRailBottom
+                : null,
+            )
           : VOID_BG,
         fontFamily: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
       }}

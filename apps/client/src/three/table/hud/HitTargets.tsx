@@ -27,6 +27,8 @@ export interface HudRects {
   plateBottom: number | null;
   /** Screen y of the far rail's top edge (portrait toasts overlap it). */
   farRailTop: number | null;
+  /** Screen y of the far seat's rack top edge (portrait toasts stop above it). */
+  farRowTop: number | null;
   /** Screen y of the near rail's bottom edge (portrait floor shadow). */
   nearRailBottom: number | null;
 }

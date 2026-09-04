@@ -362,6 +362,28 @@ test('phone landscape keeps ≥ 44 px hand tiles above the footer with glass chr
   // chrome row keeps the direct Settings control.
   await expect(page.getByRole('button', { name: 'Enter fullscreen' })).toBeVisible();
   await expect(page.getByTestId('open-settings')).toBeVisible();
+  // The low camera looks over the side walls' top edges: the side seats'
+  // rows (racks at |x| = HAND_Z on the other presets) step 0.65 further
+  // out so a flat meld beside them is never hidden by the wall, while
+  // the far seat's rack stays put.
+  const rows = await page.evaluate(() => {
+    const dbg = (
+      globalThis as {
+        __MAHJONG_TABLE_3D_DEBUG__?: () => {
+          tiles: { zone: string | null; x: number; z: number }[];
+        } | null;
+      }
+    ).__MAHJONG_TABLE_3D_DEBUG__?.();
+    const racks = dbg?.tiles.filter((t) => t.zone === 'oppHand') ?? [];
+    return {
+      side: racks.filter((t) => Math.abs(t.x) > Math.abs(t.z)).map((t) => Math.abs(t.x)),
+      far: racks.filter((t) => Math.abs(t.z) > Math.abs(t.x)).map((t) => -t.z),
+    };
+  });
+  expect(rows.side.length).toBe(26);
+  expect(rows.far.length).toBe(13);
+  for (const x of rows.side) expect(x).toBeCloseTo(10.55 + 0.65, 1);
+  for (const z of rows.far) expect(z).toBeCloseTo(10.55, 1);
   const perf = await readPerf(page);
   expect(perf.drawCalls).toBeLessThanOrEqual(BUDGET.drawCalls);
   expect(perf.triangles).toBeLessThanOrEqual(BUDGET.triangles);
