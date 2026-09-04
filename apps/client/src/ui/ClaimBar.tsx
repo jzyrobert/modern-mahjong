@@ -223,7 +223,15 @@ export function ClaimBar({
   const buttonPadH = isDesktop ? 11 : 10;
   const glyphSize = isDesktop ? 15 : 14;
   const labelSize = 10;
-  const cardShadow = isDesktop ? '0px 8px 24px rgba(0,0,0,0.14)' : '0px 4px 12px rgba(0,0,0,0.08)';
+  // Glass: the HUD's 0 12px 40px shadow so the strip floats above the
+  // felt (and, on landscape, the near wall's backs) instead of reading
+  // as painted on them.
+  const cardShadow =
+    theme === 'glass'
+      ? '0px 12px 40px rgba(0,0,0,0.35)'
+      : isDesktop
+        ? '0px 8px 24px rgba(0,0,0,0.14)'
+        : '0px 4px 12px rgba(0,0,0,0.08)';
 
   // Header tile + CLAIM? sublabel. Same content in every orientation;
   // the surrounding layout decides whether to stack with the actions

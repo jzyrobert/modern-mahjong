@@ -18,11 +18,15 @@ import { TutorialTarget } from '../../ui/tutorial/TargetRegistry';
 import { type SceneContext, type SceneHandle, SceneHost } from '../core/SceneHost';
 import { type TableDebugSnapshot, TableScene } from './TableScene';
 import {
+  PORTRAIT_BAND_BIAS,
+  PORTRAIT_BAND_GAP,
+  PORTRAIT_BAND_TOP,
   PORTRAIT_RIVER_SCALE,
   type ViewportClass,
   cameraFor,
   classifyViewport,
   heldHandFrameFor,
+  heldHandTopPx,
   riverZoomCameraFor,
   sheetCameraFor,
 } from './cameraPresets';
@@ -122,6 +126,22 @@ declare global {
 
 const VOID_BG =
   'radial-gradient(ellipse 80% 45% at 50% 34%, rgba(58,74,58,0.28), rgba(58,74,58,0) 70%), linear-gradient(180deg, #0b120f 0%, #16241d 100%)';
+/**
+ * Portrait void: the table is width-bound, so the bands above and below
+ * it are structural (toast slot / claim slot). A warm lamp glow centred
+ * on the table (`centrePct` of the height) and a fall-off to near-black
+ * at the chrome and footer make them read as the shadowed edge of a
+ * lamp-lit parlour rather than empty canvas.
+ */
+function portraitVoidBg(centrePct: number): string {
+  const c = Math.round(centrePct * 10) / 10;
+  return (
+    `radial-gradient(ellipse 150% 46% at 50% ${c}%, rgba(138,118,72,0.5) 0%, rgba(98,108,68,0.3) 40%, rgba(58,74,58,0.1) 62%, rgba(58,74,58,0) 78%), ` +
+    `linear-gradient(180deg, #080c0a 0%, #16241c ${c}%, #080c0a 100%)`
+  );
+}
+/** Portrait river zoom: side-seat tiles cropped by the frame fade out under these. */
+const ZOOM_EDGE_W = 18;
 
 const EMPTY_RECTS: HudRects = {
   ownHand: null,
@@ -556,33 +576,42 @@ export function Table3DShell(props: Table3DShellProps) {
   const chromeTop = (landscape ? 8 : pad) + insets.top;
   const stripTop = chromeTop + chromeH + 8;
   const zoomed = portrait && riverZoom && !resolved;
-  // Projected near-wall / river extents the toasts avoid.
-  const nearWallTop = hudRects.nearWall?.top ?? null;
+  // Projected near-wall extent the zoomed portrait toast drops below.
   const nearWallBottom = hudRects.nearWall
     ? hudRects.nearWall.top + hudRects.nearWall.height
     : null;
-  const discardsBottom = Math.max(
-    hudRects.discards ? hudRects.discards.top + hudRects.discards.height : 0,
-    hudRects.plateBottom ?? 0,
-  );
   // Toasts. Portrait (full table): the void between the seat strip and
   // the far rail. Portrait (river zoom): the far wall hides behind the
   // zoom header, so the toast drops to the felt between the near wall
   // and the held hand. Landscape: the chrome row beside the far seat's
-  // badge (the only void that never holds a tile). Desktop: the felt
-  // band above the near wall, never lower than the rivers — the claim
-  // strip lives in the footer, so the two can never stack.
+  // badge. Desktop: the chrome row between the status pill and the
+  // menu cluster — off the felt entirely, so a toast never lands on
+  // the own-river growth zone or stacks with the footer claim strip.
   const claimFloating = compact && (props.hasClaimOption || showCtas);
   const desktopStrip = !compact && props.hasClaimOption;
+  // Portrait-only offset; landscape and desktop park toasts in the
+  // chrome row (see `toastSlot`), the one void that never holds a tile
+  // or a discard-to-be.
   const toastTop = portrait
     ? zoomed && nearWallBottom !== null && !claimFloating
       ? nearWallBottom + 10
       : stripTop + 40
-    : landscape
-      ? 0
-      : nearWallTop !== null
-        ? Math.max(discardsBottom + 6, nearWallTop - TOAST_H - 10)
-        : height * 0.55;
+    : 0;
+  // Portrait: where the table centre lands in the viewport (0–100 %),
+  // for the void's lamp glow.
+  const tableCentrePct = portrait
+    ? (() => {
+        const bandTop = PORTRAIT_BAND_TOP + insets.top;
+        const bandBottom = heldHandTopPx(width, height) - PORTRAIT_BAND_GAP;
+        return ((bandTop + PORTRAIT_BAND_BIAS * Math.max(0, bandBottom - bandTop)) / height) * 100;
+      })()
+    : 50;
+  const toastSlot = (
+    <>
+      <ClaimMissedToast theme="glass" top={0} />
+      <ClaimAnnouncementToast theme="glass" top={0} />
+    </>
+  );
 
   const badgeFixedStyle = (pos: Position): React.CSSProperties => {
     if (!compact) return { position: 'absolute', left: 0, top: 0, willChange: 'transform' };
@@ -642,7 +671,7 @@ export function Table3DShell(props: Table3DShellProps) {
         position: 'absolute',
         inset: 0,
         overflow: 'hidden',
-        background: VOID_BG,
+        background: portrait ? portraitVoidBg(tableCentrePct) : VOID_BG,
         fontFamily: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
       }}
     >
@@ -657,6 +686,26 @@ export function Table3DShell(props: Table3DShellProps) {
         testID="table-3d-scene"
         {...(portrait && width <= PORTRAIT_SHARP_MAX_WIDTH ? { maxDpr: 2 } : {})}
       />
+      {zoomed
+        ? // The zoom frames the river block; the side seats' melds and
+          // rows would otherwise show as slivers at the viewport edges.
+          (['left', 'right'] as const).map((side) => (
+            <div
+              key={side}
+              aria-hidden="true"
+              style={{
+                position: 'absolute',
+                top: 0,
+                bottom: 0,
+                [side]: 0,
+                width: ZOOM_EDGE_W,
+                pointerEvents: 'none',
+                zIndex: 1,
+                background: `linear-gradient(${side === 'left' ? 90 : 270}deg, rgba(10,16,13,0.96), rgba(10,16,13,0))`,
+              }}
+            />
+          ))
+        : null}
 
       {tileSheet ? null : (
         <>
@@ -703,6 +752,24 @@ export function Table3DShell(props: Table3DShellProps) {
               compact={compact}
               style={landscape ? { minHeight: chromeH, padding: '4px 10px 4px 4px' } : undefined}
             />
+            {compact ? null : (
+              // Desktop toast slot: the free run of chrome between the
+              // status pill and the menu cluster (the far seat's badge
+              // projects lower, beside its hand row).
+              <div
+                data-testid="toast-slot"
+                style={{
+                  position: 'relative',
+                  flex: '1 1 auto',
+                  minWidth: 0,
+                  alignSelf: 'stretch',
+                  marginTop: -4,
+                  zIndex: 6,
+                }}
+              >
+                {toastSlot}
+              </div>
+            )}
             {menuButtons}
           </div>
 
@@ -894,15 +961,14 @@ export function Table3DShell(props: Table3DShellProps) {
                 zIndex: 6,
               }}
             >
-              <ClaimMissedToast theme="glass" top={0} />
-              <ClaimAnnouncementToast theme="glass" top={0} />
+              {toastSlot}
             </div>
-          ) : (
+          ) : portrait ? (
             <>
               <ClaimMissedToast theme="glass" top={toastTop} />
               <ClaimAnnouncementToast theme="glass" top={toastTop} />
             </>
-          )}
+          ) : null}
 
           {state.lastResult ? (
             <ResultVeil

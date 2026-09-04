@@ -1,7 +1,7 @@
 import type { OpeningRolls, Seat } from '@mahjong/game-logic';
 import { SEATS } from '@mahjong/game-logic';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Pressable, Text, View } from 'react-native';
+import { Animated, Easing, Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { nameForSeat, useGame } from '../state/game';
 import { LESSONS, useActiveTutorialStep, useTutorial } from '../state/tutorial';
 import { resolveRenderer } from '../three/renderer';
@@ -116,6 +116,13 @@ export function DiceCeremony() {
   const lobby = useGame((s) => s.lobby);
   const rendererSetting = useGame((s) => s.settings.renderer);
   const glass = resolveRenderer(rendererSetting) === '3d';
+  // Glass layout variants. Wide (landscape phone, desktop): the four
+  // seats sit in one row so the panel never wraps into a 2×2 block that
+  // would cover the chrome; short (landscape phone): tighter dice and
+  // gaps so the panel clears the 46 px chrome row with room to spare.
+  const { width: vw, height: vh } = useWindowDimensions();
+  const wide = glass && vw >= 700;
+  const short = glass && vh < 600;
   // Key dismissal by `state.seed` rather than a boolean — JSON.parse
   // on every server delta produces a fresh `openingRolls` reference,
   // so a bare `dismissed` boolean reset by `useEffect([rolls])` would
@@ -293,12 +300,14 @@ export function DiceCeremony() {
                 backgroundColor: GLASS_DICE.bg,
                 borderColor: GLASS_DICE.border,
                 borderWidth: 1,
-                padding: 22,
-                paddingTop: 18,
+                padding: short ? 16 : 22,
+                paddingTop: short ? 14 : 18,
                 borderRadius: 20,
                 alignItems: 'center',
                 width: '100%',
-                maxWidth: 400,
+                // Four 126 px columns + gaps + padding on wide viewports;
+                // 2×2 on portrait phones.
+                maxWidth: wide ? 620 : 400,
                 boxShadow: GLASS_DICE.shadow,
                 ...webStyle({
                   backdropFilter: 'blur(16px) saturate(140%)',
@@ -330,7 +339,7 @@ export function DiceCeremony() {
               textTransform: 'uppercase',
               color: GLASS_DICE.text2,
               fontFamily: GLASS_DICE.font,
-              marginBottom: 16,
+              marginBottom: short ? 10 : 16,
             }}
           >
             {title}
@@ -343,9 +352,9 @@ export function DiceCeremony() {
         <View
           style={{
             flexDirection: 'row',
-            gap: glass ? 22 : 24,
+            gap: glass ? (short ? 16 : 22) : 24,
             justifyContent: 'center',
-            flexWrap: 'wrap',
+            flexWrap: wide ? 'nowrap' : 'wrap',
           }}
         >
           {rolling.map((seat) => {
@@ -353,29 +362,52 @@ export function DiceCeremony() {
             if (!pair) return null;
             const isDealer = seat === dealer;
             return (
-              <View key={seat} style={{ alignItems: 'center', gap: glass ? 8 : 6 }}>
-                <Text
-                  style={
-                    glass
-                      ? {
-                          fontSize: 11,
-                          fontWeight: '700',
-                          letterSpacing: 1.2,
-                          color: isDealer ? GLASS_DICE.gold : GLASS_DICE.text2,
-                          fontFamily: GLASS_DICE.font,
-                          maxWidth: 110,
-                        }
-                      : { fontSize: 11, fontWeight: '700', color: COLORS.ink3 }
-                  }
-                  numberOfLines={1}
-                >
-                  {glass
-                    ? `${SEAT_WIND_GLYPH[seat]} ${nameForSeat(lobby, seat as Seat)}`
-                    : nameForSeat(lobby, seat as Seat)}
-                </Text>
+              <View
+                key={seat}
+                testID={glass ? 'dice-seat' : undefined}
+                style={{
+                  alignItems: 'center',
+                  gap: glass ? (short ? 6 : 8) : 6,
+                  // Fixed columns keep the dice rows aligned when one
+                  // name wraps to two lines.
+                  width: glass ? (wide ? 126 : 118) : undefined,
+                }}
+              >
+                {glass ? (
+                  <View
+                    style={{
+                      minHeight: 28,
+                      justifyContent: 'flex-end',
+                      alignItems: 'center',
+                      alignSelf: 'stretch',
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 11,
+                        fontWeight: '700',
+                        letterSpacing: 0.4,
+                        lineHeight: 14,
+                        textAlign: 'center',
+                        color: isDealer ? GLASS_DICE.gold : GLASS_DICE.text2,
+                        fontFamily: GLASS_DICE.font,
+                      }}
+                      numberOfLines={2}
+                    >
+                      {`${SEAT_WIND_GLYPH[seat]} ${nameForSeat(lobby, seat as Seat)}`}
+                    </Text>
+                  </View>
+                ) : (
+                  <Text
+                    style={{ fontSize: 11, fontWeight: '700', color: COLORS.ink3 }}
+                    numberOfLines={1}
+                  >
+                    {nameForSeat(lobby, seat as Seat)}
+                  </Text>
+                )}
                 <View style={{ flexDirection: 'row', gap: glass ? 8 : 6 }}>
-                  <Die value={pair[0]} delay={0} glass={glass} />
-                  <Die value={pair[1]} delay={120} glass={glass} />
+                  <Die value={pair[0]} delay={0} glass={glass} size={short ? 44 : undefined} />
+                  <Die value={pair[1]} delay={120} glass={glass} size={short ? 44 : undefined} />
                 </View>
                 <Text
                   style={
@@ -399,13 +431,13 @@ export function DiceCeremony() {
         {glass ? (
           <View
             style={{
-              marginTop: 18,
-              paddingTop: 12,
+              marginTop: short ? 12 : 18,
+              paddingTop: short ? 8 : 12,
               borderTopWidth: 1,
               borderTopColor: 'rgba(255,255,255,0.12)',
               alignSelf: 'stretch',
               alignItems: 'center',
-              gap: 6,
+              gap: short ? 4 : 6,
             }}
           >
             <Text style={{ fontSize: 13, color: GLASS_DICE.text, fontFamily: GLASS_DICE.font }}>
@@ -434,7 +466,18 @@ export function DiceCeremony() {
   );
 }
 
-function Die({ value, delay, glass = false }: { value: number; delay: number; glass?: boolean }) {
+function Die({
+  value,
+  delay,
+  glass = false,
+  size: sizeOverride,
+}: {
+  value: number;
+  delay: number;
+  glass?: boolean;
+  /** Glass only: die edge in px (48 default; short viewports pass 44). */
+  size?: number | undefined;
+}) {
   const animsEnabled = useGame((s) => s.settings.animations);
   const t = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -455,7 +498,7 @@ function Die({ value, delay, glass = false }: { value: number; delay: number; gl
       ? GLASS_DICE.pipRed
       : GLASS_DICE.pipInk
     : COLORS.red;
-  const size = glass ? 48 : 44;
+  const size = glass ? (sizeOverride ?? 48) : 44;
   const pips = Array.from({ length: 9 }, (_, i) => {
     const row = Math.floor(i / 3) + 1;
     const col = (i % 3) + 1;

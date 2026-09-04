@@ -148,6 +148,9 @@ export function SceneHost({
     const size = { width: host.clientWidth || 1, height: host.clientHeight || 1 };
     const rig = new CameraRig(initialCamera, size.width / size.height);
     rig.parallaxEnabled = quality.parallax && !reducedMotion;
+    // Reduced motion: preset changes settle in ≈ 120 ms like every
+    // other tween (scenes may tighten this further, never loosen it).
+    if (reducedMotion) rig.halfLife = 0.04;
     const perf = new PerfMonitor(renderer);
     perf.quality = quality.tier;
 
@@ -227,7 +230,7 @@ export function SceneHost({
       scene.clear();
     };
 
-    loop.add((dt) => rig.update(dt));
+    loop.add((dt, now) => rig.update(dt, now));
     loop.add((dt, now) => handle?.update?.(dt, now) ?? false);
     mount();
     loop.start();

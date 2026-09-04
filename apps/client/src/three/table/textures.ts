@@ -182,7 +182,8 @@ export function buildWoodMap(size = 512): Texture {
 
 export interface PlateInfo {
   prevailingWind: Wind;
-  wallCount: number;
+  /** Live wall count; `null` between hands (the waiting table shows the wind only). */
+  wallCount: number | null;
 }
 
 /**
@@ -220,9 +221,11 @@ export function drawPlate(ctx: CanvasRenderingContext2D, size: number, info: Pla
   ctx.fillText(WIND_GLYPH[info.prevailingWind], r, r * 1.02);
   // Wall count only — a caption under it would render at ~3 CSS px
   // on a phone; the status pill carries the "N left" wording.
-  ctx.fillStyle = 'rgba(216,168,90,0.95)';
-  ctx.font = `800 ${size * 0.13}px ${SANS}`;
-  ctx.fillText(`${info.wallCount}`, r, r * 1.5);
+  if (info.wallCount !== null) {
+    ctx.fillStyle = 'rgba(216,168,90,0.95)';
+    ctx.font = `800 ${size * 0.13}px ${SANS}`;
+    ctx.fillText(`${info.wallCount}`, r, r * 1.5);
+  }
 }
 
 export function buildPlateTexture(size = 512): {

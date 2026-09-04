@@ -1,5 +1,5 @@
 import { type GameState, buildWall, emptyState } from '@mahjong/game-logic';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useGame } from '../../../state/game';
 import { type SceneContext, type SceneHandle, SceneHost } from '../../core/SceneHost';
 import type { CameraPreset } from '../../core/camera';
@@ -34,6 +34,8 @@ export function waitingTableState(): GameState {
 /**
  * Low three-quarter view. `shiftX` pans the table toward +x on screen
  * (both camera and target move by −shiftX so perspective is unchanged).
+ * The dealer chip and dice are hidden in the waiting state (`waiting`
+ * on `SyncInput`), so nothing crisp straddles the glass edge on phones.
  */
 export function lobbyCameraFor(width: number, height: number, side: boolean): CameraPreset {
   const aspect = width / Math.max(1, height);
@@ -50,6 +52,29 @@ export function LobbyTableBackdrop({ side = false }: LobbyTableBackdropProps) {
   const tileBack = useGame((s) => s.settings.tileBack);
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
+  // Mount the canvas after the glass lobby has painted and the main
+  // thread is idle: the scene build (atlas, felt / wood canvases,
+  // shader compiles, first frame) is a few hundred ms on a phone and
+  // seconds on software GL, and it must never sit between the user and
+  // the Start match button.
+  const [mount, setMount] = useState(false);
+  useEffect(() => {
+    let idle: number | null = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const raf = requestAnimationFrame(() => {
+      const ric = (
+        globalThis as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number }
+      ).requestIdleCallback;
+      if (ric) idle = ric(() => setMount(true), { timeout: 600 });
+      else timer = setTimeout(() => setMount(true), 120);
+    });
+    return () => {
+      cancelAnimationFrame(raf);
+      if (idle !== null)
+        (globalThis as { cancelIdleCallback?: (id: number) => void }).cancelIdleCallback?.(idle);
+      if (timer !== null) clearTimeout(timer);
+    };
+  }, []);
   const state = useMemo(() => waitingTableState(), []);
   const initialCamera = useMemo(() => {
     const w = typeof window !== 'undefined' ? window.innerWidth : 1440;
@@ -79,6 +104,7 @@ export function LobbyTableBackdrop({ side = false }: LobbyTableBackdropProps) {
             needsDraw: false,
             shuffling: false,
             heldHand: null,
+            waiting: true,
           },
           performance.now(),
         );
@@ -93,7 +119,7 @@ export function LobbyTableBackdrop({ side = false }: LobbyTableBackdropProps) {
     [state, side],
   );
 
-  if (failed) return null;
+  if (failed || !mount) return null;
   return (
     <SceneHost
       build={build}

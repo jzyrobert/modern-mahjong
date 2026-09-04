@@ -352,6 +352,40 @@ test('phone landscape keeps ≥ 44 px hand tiles above the footer with glass chr
   expect(errors, 'console / page errors').toEqual([]);
 });
 
+test('landscape opening rolls sit in one row clear of the chrome', async ({ page }) => {
+  await page.setViewportSize({ width: 915, height: 412 });
+  await page.addInitScript(() => {
+    (globalThis as { __MAHJONG_TEST_HOLD_DICE__?: boolean }).__MAHJONG_TEST_HOLD_DICE__ = true;
+  });
+  const errors: string[] = [];
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(m.text());
+  });
+  page.on('pageerror', (e) => errors.push(String(e)));
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Play vs bots' }).click({ timeout: 20_000 });
+  await page.getByRole('button', { name: 'Start match' }).click({ timeout: 30_000 });
+  const glass = page.getByTestId('dice-ceremony-glass');
+  await expect(glass).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId('table-3d')).toBeVisible({ timeout: 20_000 });
+  // The four seats' dice share one row (no 2×2 wrap) …
+  const seats = page.getByTestId('dice-seat');
+  await expect(seats).toHaveCount(4);
+  const tops = await seats.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().top));
+  for (const t of tops) expect(Math.abs(t - tops[0]!)).toBeLessThan(1.5);
+  // … so the panel clears the 46 px chrome row (☰ / status pill / far
+  // badge) instead of covering it, and stays inside the viewport.
+  const box = (await glass.boundingBox())!;
+  expect(box.y).toBeGreaterThanOrEqual(52);
+  expect(box.y + box.height).toBeLessThanOrEqual(412 - 40);
+  expect(box.width).toBeGreaterThan(480);
+  // Dense landscape badges mark the dealer with the 莊 chip, not a dot.
+  const chips = page.locator('[aria-label="Dealer"]');
+  await expect(chips.first()).toBeVisible();
+  await expect(chips.first()).toHaveText('莊');
+  expect(errors, 'console / page errors').toEqual([]);
+});
+
 test('debug tile sheet renders every face with no errors', async ({ page }) => {
   await page.addInitScript(() => {
     (globalThis as { __MAHJONG_DEBUG_TILE_SHEET__?: boolean }).__MAHJONG_DEBUG_TILE_SHEET__ = true;

@@ -73,6 +73,12 @@ export interface SyncInput {
   heldHand?: HeldHandFrame | null | undefined;
   /** River tile scale (portrait draws discards 1.1×). */
   riverScale?: number | undefined;
+  /**
+   * The table between hands (pre-game lobby): walls built, no dealer
+   * yet — the plate shows the wind only, the dealer chip and dice stay
+   * hidden, and the layout is applied without a dispense.
+   */
+  waiting?: boolean | undefined;
 }
 
 export interface TableDebugTile {
@@ -157,7 +163,7 @@ export class TableScene {
   private plate: Mesh;
   private plateTopMesh: Mesh;
   private plateTex: { texture: Texture; ctx: CanvasRenderingContext2D; size: number };
-  private plateInfo: { wind: Wind | null; count: number } = { wind: null, count: -1 };
+  private plateInfo: { wind: Wind | null; count: number | null } = { wind: null, count: -1 };
   private marker: Mesh;
   private markerRel: Rel | null = null;
   private dice: InstancedMesh;
@@ -391,7 +397,8 @@ export class TableScene {
       riverScale: input.riverScale ?? 1,
     });
     this.lastLayout = layout;
-    this.choreo.setLayout(layout, state, me, now, { shuffling: input.shuffling });
+    const waiting = input.waiting === true;
+    this.choreo.setLayout(layout, state, me, now, { shuffling: input.shuffling, snap: waiting });
     if (input.latestDiscardId !== this.latestDiscardId || input.needsDraw !== this.needsDraw) {
       this.pulseUntil = now + PULSE_MS;
     }
@@ -413,10 +420,14 @@ export class TableScene {
       else this.pool.showFace(id);
     }
 
-    // Centre plate + marker + dice.
-    this.updatePlate(state.prevailingWind, state.wall.length);
+    // Centre plate + marker + dice. No dealer exists before the opening
+    // roll, so the waiting table shows neither chip nor dice.
+    this.updatePlate(state.prevailingWind, waiting ? null : state.wall.length);
     const rel = relOf(state.dealer, me);
-    if (rel !== this.markerRel) {
+    if (waiting) {
+      this.marker.visible = false;
+      this.markerRel = null;
+    } else if (rel !== this.markerRel) {
       this.markerRel = rel;
       // Parked in the dealer's near-right corner pocket, glyph facing
       // the dealer.
@@ -425,7 +436,7 @@ export class TableScene {
       this.marker.quaternion.setFromAxisAngle(Y_AXIS, (rel * Math.PI) / 2);
       this.marker.visible = true;
     }
-    const rolls = state.openingRolls;
+    const rolls = waiting ? undefined : state.openingRolls;
     const pair = rolls
       ? (rolls.dice[state.dealer] ?? Object.values(rolls.dice).find((d) => d !== undefined))
       : undefined;
@@ -443,7 +454,7 @@ export class TableScene {
     this.ctx.loop.requestRender();
   }
 
-  private updatePlate(wind: Wind, count: number): void {
+  private updatePlate(wind: Wind, count: number | null): void {
     if (this.plateInfo.wind === wind && this.plateInfo.count === count) return;
     this.plateInfo = { wind, count };
     drawPlate(this.plateTex.ctx, this.plateTex.size, { prevailingWind: wind, wallCount: count });
@@ -536,9 +547,11 @@ export class TableScene {
       else if (id === this.hintTileId) hl = 0.12;
       p.highlight = hl;
       p.tint.setScalar(1);
-      // Dead wall reads as a separate block: a clearly darker, slightly
-      // warmer back (no positional step — see `wallSlotPosition`).
-      if (t.slot?.zone === 'deadWall') p.tint.setRGB(0.56, 0.5, 0.46);
+      // Dead wall reads as a separate block: a warm ivory-tan multiply
+      // (toward #d8c8a8) rather than a darkening, so the stacks read as
+      // a marked block, never as dirty or grey (no positional step —
+      // see `wallSlotPosition`).
+      if (t.slot?.zone === 'deadWall') p.tint.setRGB(0.85, 0.76, 0.6);
     }
     this.pool.markDirty();
     this.pool.commit();

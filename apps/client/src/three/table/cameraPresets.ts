@@ -86,8 +86,13 @@ export const PORTRAIT_FOV = 44;
  * the near wall.
  */
 export const PORTRAIT_RIVER_SCALE = 1.1;
-/** Where the table centre sits in the band (0 top … 1 bottom). */
-export const PORTRAIT_BAND_BIAS = 0.5;
+/**
+ * Where the table centre sits in the band (0 top … 1 bottom). A touch
+ * above centre: the far half of the table foreshortens, so 0.485 leaves
+ * the visible rail-to-HUD gaps equal above (toast slot) and below
+ * (claim slot) instead of ~100 / ~80 px.
+ */
+export const PORTRAIT_BAND_BIAS = 0.485;
 /**
  * Top of the table band on portrait: safe pad + chrome row + gap +
  * dense seat strip + gap (mirrors `Table3DShell`'s layout constants).
