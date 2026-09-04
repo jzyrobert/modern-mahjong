@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "updatedAt": "2026-09-04T03:58:00Z",
-  "round": 1,
+  "updatedAt": "2026-09-04T06:33:00Z",
+  "round": 2,
   "passThreshold": 8.5,
   "subsystems": {
     "core": {
@@ -17,7 +17,7 @@
         },
         {
           "round": 1,
-          "note": "Placeholder triangle overrun closed by the real table (83,522 tris, 11 draw calls). Lighthouse regression from the menu backdrop fixed (0.66 \u2192 green) by deferring the mount past idle and skipping it on the low tier.",
+          "note": "Placeholder triangle overrun closed by the real table (83,522 tris, 11 draw calls). Lighthouse regression from the menu backdrop fixed (0.66 → green) by deferring the mount past idle and skipping it on the low tier.",
           "at": "2026-09-04T03:10:00Z"
         }
       ]
@@ -32,56 +32,56 @@
           "severity": "high",
           "title": "Desktop claim: toast stacks ON the ClaimBar, covering the PENG button",
           "state": "match-claim @ desktop 1440x900 (3d)",
-          "detail": "The 'CHI \u00b7 Sora called' toast (approx x 652-788, y 500-550 CSS) sits with its bottom ~20 px inside the claim strip (y 530-585): it covers the top border of the strip, the upper third of the gold \u78b0 PENG button and the tops of the three preview tiles (zoom crop /tmp/claude-0/-home-user-modern-mahjong/cdc52f96-171c-520e-b412-7b47ea831ea7/scratchpad/c1-desktop-claim-toast.png). This is HUD-over-HUD on the primary CTA during a claim window. The report says the toast is 'stacked above' the strip, but the stack has no gap \u2014 the toast is anchored to the band centre, not to the strip's measured top. Fix: anchor the toast bottom = ClaimBar top \u2212 8 px using the strip's measured layout height (or the same HudRects band top), and clamp so the toast never intersects the strip rect; alternatively reuse the landscape solution and put the desktop toast in the chrome row next to the far seat badge (there is ample room at 1440 px)."
+          "detail": "The 'CHI · Sora called' toast (approx x 652-788, y 500-550 CSS) sits with its bottom ~20 px inside the claim strip (y 530-585): it covers the top border of the strip, the upper third of the gold 碰 PENG button and the tops of the three preview tiles (zoom crop /tmp/claude-0/-home-user-modern-mahjong/cdc52f96-171c-520e-b412-7b47ea831ea7/scratchpad/c1-desktop-claim-toast.png). This is HUD-over-HUD on the primary CTA during a claim window. The report says the toast is 'stacked above' the strip, but the stack has no gap — the toast is anchored to the band centre, not to the strip's measured top. Fix: anchor the toast bottom = ClaimBar top − 8 px using the strip's measured layout height (or the same HudRects band top), and clamp so the toast never intersects the strip rect; alternatively reuse the landscape solution and put the desktop toast in the chrome row next to the far seat badge (there is ample room at 1440 px)."
         },
         {
           "rank": 2,
           "severity": "medium",
           "title": "Landscape ClaimBar lies on the near wall's tile backs",
           "state": "match-claim, match-mid-hand @ phone-landscape 915x412 (3d)",
-          "detail": "The 56 px ClaimBar (x ~325-590, y ~195-250 CSS) overlaps the near wall's blue tops by ~12 CSS px along its entire bottom edge in match-claim (full 17-stack near wall) and the first three stacks in match-mid-hand (crop c8-landscape-claim-strip.png). It reads as a panel dropped onto the wall rather than floating in a felt band; the engineer disclosed it as a known gap but it is exactly the 'HUD never overlaps tiles' rule. Fix options: (a) when band < strip height + 8, switch to a 44 px single-row variant (drop the preview-tile row and fold the preview into the button label \u78b0 PENG \u25b8 3\u00d7) so it fits the 41 px band; (b) own the overlap: centre the strip on the wall row itself with a stronger 0.78-alpha glass + shadow so the wall is clearly beneath it, never half-covered; (c) put the strip in the chrome row alongside the toast."
+          "detail": "The 56 px ClaimBar (x ~325-590, y ~195-250 CSS) overlaps the near wall's blue tops by ~12 CSS px along its entire bottom edge in match-claim (full 17-stack near wall) and the first three stacks in match-mid-hand (crop c8-landscape-claim-strip.png). It reads as a panel dropped onto the wall rather than floating in a felt band; the engineer disclosed it as a known gap but it is exactly the 'HUD never overlaps tiles' rule. Fix options: (a) when band < strip height + 8, switch to a 44 px single-row variant (drop the preview-tile row and fold the preview into the button label 碰 PENG ▸ 3×) so it fits the 41 px band; (b) own the overlap: centre the strip on the wall row itself with a stronger 0.78-alpha glass + shadow so the wall is clearly beneath it, never half-covered; (c) put the strip in the chrome row alongside the toast."
         },
         {
           "rank": 3,
           "severity": "medium",
-          "title": "River-zoom header: chrome row is not glass \u2014 rail and far-wall tops show between the pills",
+          "title": "River-zoom header: chrome row is not glass — rail and far-wall tops show between the pills",
           "state": "match-river-zoom @ phone 412x915 (3d)",
-          "detail": "The seat-strip glass starts at y\u224852 CSS; the chrome row above it (y 0-52) is painted directly over the wood rail and the far wall's near-top edge, so blue tile tops peek out between the DRAW pill and the \u2715 (x\u2248208-252, y\u224844-52) and behind the \u2715/gear/\u2630 buttons (crop c4-zoom-header.png). The report claims the wall's top edge is pinned behind the strip, but it is pinned to the strip's top, not below the chrome row. Fix: make the header glass full-bleed from y=0 (chrome row + seat strip as one panel with the blur) or bisect the anchored camera so the wall's projected top edge lands \u2265 6 px below the seat strip's *bottom* edge."
+          "detail": "The seat-strip glass starts at y≈52 CSS; the chrome row above it (y 0-52) is painted directly over the wood rail and the far wall's near-top edge, so blue tile tops peek out between the DRAW pill and the ✕ (x≈208-252, y≈44-52) and behind the ✕/gear/☰ buttons (crop c4-zoom-header.png). The report claims the wall's top edge is pinned behind the strip, but it is pinned to the strip's top, not below the chrome row. Fix: make the header glass full-bleed from y=0 (chrome row + seat strip as one panel with the blur) or bisect the anchored camera so the wall's projected top edge lands ≥ 6 px below the seat strip's *bottom* edge."
         },
         {
           "rank": 4,
           "severity": "medium",
           "title": "Landscape footer pills cover the bottom of the outer hand tiles",
           "state": "match-dealt, match-my-turn, match-mid-hand, match-claim @ phone-landscape 915x412 (3d)",
-          "detail": "The user badge (bottom-left) hides the bottom ~7 CSS px of \u516d\u842c/\u4e03\u842c and the sort picker hides the bottom of \u897f/\u767c (crops c6/c7-landscape-footer-*.png). Glyphs are clear but the hand looks like it is sinking behind the footer at both corners, and the tiles' rounded bottom edge/contact shadow is lost. Fix: in the landscape camera solve, add the footer pill height to the hand's bottom constraint (hand bottom \u2265 footer top \u2212 0 px, currently it is \u22127), or narrow the landscape footer pills (36 px tall, badge max-width 220 px) so they sit inside the rail gap under the hand instead of over its ends."
+          "detail": "The user badge (bottom-left) hides the bottom ~7 CSS px of 六萬/七萬 and the sort picker hides the bottom of 西/發 (crops c6/c7-landscape-footer-*.png). Glyphs are clear but the hand looks like it is sinking behind the footer at both corners, and the tiles' rounded bottom edge/contact shadow is lost. Fix: in the landscape camera solve, add the footer pill height to the hand's bottom constraint (hand bottom ≥ footer top − 0 px, currently it is −7), or narrow the landscape footer pills (36 px tall, badge max-width 220 px) so they sit inside the rail gap under the hand instead of over its ends."
         },
         {
           "rank": 5,
           "severity": "medium",
           "title": "Portrait composition: ~155 px of dead void above and below the table",
           "state": "match-dealt, match-my-turn, match-dealt-jade-plum @ phone 412x915 (3d)",
-          "detail": "The far rail top sits at y\u2248185 CSS while the seat badges end at y\u224897 \u2014 an 88 px empty band that is only used when a toast fires (mid-hand/claim). Below, the near rail ends at y\u2248620 and the hand starts at y\u2248688 \u2014 another 68 px. The table occupies 435 of 915 px and the left/right rails are cropped off, so the table reads as a horizontal felt band floating in a large dark field rather than a framed table. Fix: let toasts overlap the far rail (glass on wood reads fine) and raise the camera band so the far rail meets the badge row at ~20 px; spend the recovered height on scale (x \u00b112.4 would also bring a 6 px sliver of the side rails back into frame so the table is framed on all four sides and the opponents' racks are not touching the viewport edge at x\u224810 px)."
+          "detail": "The far rail top sits at y≈185 CSS while the seat badges end at y≈97 — an 88 px empty band that is only used when a toast fires (mid-hand/claim). Below, the near rail ends at y≈620 and the hand starts at y≈688 — another 68 px. The table occupies 435 of 915 px and the left/right rails are cropped off, so the table reads as a horizontal felt band floating in a large dark field rather than a framed table. Fix: let toasts overlap the far rail (glass on wood reads fine) and raise the camera band so the far rail meets the badge row at ~20 px; spend the recovered height on scale (x ±12.4 would also bring a 6 px sliver of the side rails back into frame so the table is framed on all four sides and the opponents' racks are not touching the viewport edge at x≈10 px)."
         },
         {
           "rank": 6,
           "severity": "low",
           "title": "Dead-wall 0.18 step reads as misaligned stacks, not a marker",
           "state": "match-dealt @ desktop (near wall right end), match-dealt @ phone (far wall right end)",
-          "detail": "The last two stacks step toward the rail by less than a fifth of a tile and the 0.62 tint is barely distinguishable, so the kink looks like a placement bug (crop c3-desktop-nearwall-kink.png; portrait far wall at x\u2248295-320, y\u2248238-262 CSS). Either make the separation unambiguous (a half-tile gap between live and dead stacks, as on a real table) or drop the offset and rely on a stronger tint (\u22480.5) plus a slightly warmer back colour."
+          "detail": "The last two stacks step toward the rail by less than a fifth of a tile and the 0.62 tint is barely distinguishable, so the kink looks like a placement bug (crop c3-desktop-nearwall-kink.png; portrait far wall at x≈295-320, y≈238-262 CSS). Either make the separation unambiguous (a half-tile gap between live and dead stacks, as on a real table) or drop the offset and rely on a stronger tint (≈0.5) plus a slightly warmer back colour."
         },
         {
           "rank": 7,
           "severity": "low",
           "title": "Portrait full-table river glyphs are soft at ~17.7 px",
           "state": "match-mid-hand @ phone 412x915 (3d)",
-          "detail": "Discards render at roughly 17-18 CSS px with dpr 1.5 (perf JSON shows dpr 1.5, not the viewport's 2), so \u7d22/\u842c glyphs and the upside-down far river are guessable rather than readable (crop c9-portrait-river.png). The zoom tap remains the path, but consider letting the 'low' tier use dpr 2 on \u2264 420 px viewports (11 draw calls leave headroom), or scale river tiles 1.1\u00d7 in portrait only."
+          "detail": "Discards render at roughly 17-18 CSS px with dpr 1.5 (perf JSON shows dpr 1.5, not the viewport's 2), so 索/萬 glyphs and the upside-down far river are guessable rather than readable (crop c9-portrait-river.png). The zoom tap remains the path, but consider letting the 'low' tier use dpr 2 on ≤ 420 px viewports (11 draw calls leave headroom), or scale river tiles 1.1× in portrait only."
         },
         {
           "rank": 8,
           "severity": "low",
-          "title": "Landscape chrome \u2630 button crowds the far wall's top-left corner",
+          "title": "Landscape chrome ☰ button crowds the far wall's top-left corner",
           "state": "match-dealt @ phone-landscape 915x412 (3d)",
-          "detail": "The \u2630 button's bottom-right corner is ~4 CSS px from the far wall's top-left end (crop c10-landscape-chrome-wall.png). Not overlapping, but the chrome row and the wall visually touch. Nudge the far wall's projected top \u2265 8 px below the chrome row in the landscape solve or shrink the chrome buttons to 40 px in landscape."
+          "detail": "The ☰ button's bottom-right corner is ~4 CSS px from the far wall's top-left end (crop c10-landscape-chrome-wall.png). Not overlapping, but the chrome row and the wall visually touch. Nudge the far wall's projected top ≥ 8 px below the chrome row in the landscape solve or shrink the chrome buttons to 40 px in landscape."
         },
         {
           "rank": 9,
@@ -100,50 +100,64 @@
           "pass": false,
           "critic": "art-director",
           "openIssues": 9,
-          "notes": "4 rounds: 7.9 \u2192 8.2 \u2192 8.2 \u2192 8.3. Zero errors; 11 draw calls / 83k triangles / 9 programs on every state. Merged into integration; open issues carried forward.",
+          "notes": "4 rounds: 7.9 → 8.2 → 8.2 → 8.3. Zero errors; 11 draw calls / 83k triangles / 9 programs on every state. Merged into integration; open issues carried forward.",
           "at": "2026-09-04T03:10:00Z"
         }
       ]
     },
     "menu": {
-      "score": 8.5,
+      "score": 8.6,
       "errors": 0,
       "pass": true,
       "issues": [
         {
           "rank": 1,
           "severity": "medium",
-          "title": "Desktop: dice pair straddles the Tutorial card's top-right corner",
-          "state": "menu, menu-tutorials, menu-reduced-motion @ desktop 1440x900 (3d)",
-          "detail": "At 1440x900 the hero dice sit at roughly (1215-1275, 305-355) CSS px while the Tutorial GlassCard's top-right corner is at (1255, 343). The zoomed crop shows one die half behind the glass (blurred, dimmed, with the card shadow across it) and half crisp outside \u2014 exactly the half-sharp/half-blurred straddle the occluder band exists to prevent. The dice are hero-adjacent, not drift tiles, so they bypass occluderFactor and are placed purely by layout. Fix: either run the dice resting position through the same occluder/keep-out test in reseedForOccluders (nudge them ~40 px up-right until factor >= 0.9), or move the desktop dice to the open void right of the fan's \u4e2d\u4e2d end where nothing is registered. Reproduce with the desktop menu shot; verify the die is fully clear of every glass rect."
+          "title": "Desktop: a drift tile back sits on the hero rack's 一萬 corner (rack keep-out is phone-only)",
+          "state": "menu, menu-tutorials @ desktop 1440x900 (3d)",
+          "detail": "At (277-330, 195-235) CSS a blue tile back overlaps the top-left corner of the rack's first tile 一萬 (crop c-desk-rack-left.png: the back's lower edge lands on the tile's bevel). The report says the projected-silhouette rack+dice keep-out was added 'on phones'; desktop and landscape still let the field touch the hero. It is a moving-field frame, but the seed is deterministic so every first paint shows it. Fix: apply the same projected rack silhouette + dice keep-out (2 px ramp) on every viewport, not only when width < tablet; assert in three-menu.spec desktop case that no drift disc intersects the rack rect."
         },
         {
           "rank": 2,
           "severity": "medium",
-          "title": "Phone portrait: drift tiles ghost inside the MATCH CODE input and across the Join match CTA",
-          "state": "menu, menu-tutorials @ phone 412x915 (3d)",
-          "detail": "Behind the Online match card five or more drift tiles are seeded 'deep behind glass', but the 0.62 glass + 16 px blur does not swallow them: a green \u7d22 face sits inside the match-code input right next to the ABCDE placeholder, a tile back overlaps the 'Join match' label, and two more sit around the input's right end. In the highest-attention form area this reads as debris behind the form rather than depth, and desktop cards show far fewer tiles behind them so the phone card looks comparatively busy. Fix options, cheapest first: (a) register the TextInput wrapper and the primary button as 'solid' occluders via useMenuOccluder('solid') so tiles fade anywhere inside them; (b) cap the factor for tiles fully inside a glass rect at ~0.35 so they read as faint depth cues; (c) in reseedForOccluders reserve the Online match card for far-depth tiles only. Reduced-motion phone (which has no drift field) shows how much calmer the card reads without them."
+          "title": "Desktop replay shelf reads small and aliased inside a 620 px card",
+          "state": "replay-library @ desktop 1440x900 (3d, dpr 1)",
+          "detail": "Tiles are ~46 CSS px wide; the seven-tile illustration spans x 550-905 (57 % of the card's inner width) with 28 px of air above and ~100 px of shadow + air before the 'Nothing on the shelf yet' heading (crop c-desk-shelf-wide.png). At dpr 1 the silhouettes and 東南西 strokes show stair-steps (SwiftShader ignores MSAA). Phone (dpr 2) looks right — tiles 60 CSS px, clean edges. Fix: on desktop size the shelf canvas to ~72 % of the card's inner width (tile ≈ 58 px) and trim the pad below the shadow to ~0.25 tile widths; render at min(2, dpr*2) when dpr < 1.5, the same supersampling path the settings preview uses."
         },
         {
           "rank": 3,
           "severity": "low",
-          "title": "Landscape phone lesson sheet hard-clips the third card with no trailing inset",
-          "state": "menu-tutorials @ phone-landscape 915x412 (3d)",
-          "detail": "The horizontal lesson rail inside the Tutorial glass sheet has a ~24 px inset on the left (card 01 starts at x 233 vs sheet edge 218) but zero on the right: card 03 'Reading the table' is cut by the sheet's inner border at x 697, with the sheet stroke drawn over it. The asymmetry makes the clip look accidental. Fix: add contentContainerStyle paddingRight equal to the left inset (or a partial 'peek' width so the third card is clearly cut mid-card), and/or a 24 px linear-gradient mask on the trailing edge of the scroller so the clip fades instead of ending on a hard line."
+          "title": "Reduced-motion portrait field is one lone edge-on tile in the left margin",
+          "state": "menu-reduced-motion @ phone 412x915 (3d)",
+          "detail": "With animations off the frozen field shows a single tile seen edge-on at (8-28, 262-298) CSS beside the rack (crop c-phone-rm-tile.png). It is whole and clear of the rack, but one dark sliver in the margin reads as a stray speck, not a field. Either park all of them (rack + dice alone is cleaner, as landscape RM shows) or seed 2-3 whole, face-up tiles in the band between the rack bottom (306) and the Online card (341) / the footer strip. Known gap carried from round 1 (#5), still low."
         },
         {
           "rank": 4,
           "severity": "low",
-          "title": "Landscape replay library: Import button floats mid-header",
-          "state": "replay-library @ phone-landscape 915x412 (3d)",
-          "detail": "Import replays spans x 464-662 CSS px while the FULLSCREEN chip starts at x 807, leaving a ~145 px void; the button ends up neither right-aligned nor centred, just parked at the edge of the 236 px chrome keep-out. Fix: right-align Import to the chip's left edge with a 12 px gap (measure the chip strip, not the fixed 236 px band) or, when the chip is present, drop Import below the title row on the left so the header reads Lobby / Replays / Import as one aligned cluster."
+          "title": "DISMISS pill label is ~0.55-alpha grey, below the 0.62 secondary-text spec",
+          "state": "menu, menu-tutorials, replay-library, settings @ phone-landscape 915x412 (3d)",
+          "detail": "Sampled glyph pixels are #8c908e on #0d1310 → 6.0:1, so it clears 4.5:1, but rgba(255,255,255,0.62) over that glass would be ≈#a2a5a3. Use the shared secondary token so the pill matches EDIT / micro-labels. Persists from round-1 issue #11."
         },
         {
           "rank": 5,
           "severity": "low",
-          "title": "Reduced-motion portrait backdrop has no visible drift field (known gap confirmed)",
-          "state": "menu-reduced-motion @ phone 412x915 (3d)",
-          "detail": "With animations off on portrait the backdrop shows only the rack and dice; every seeded drift tile sits behind glass and is invisible, so the portrait reduced-motion scene is measurably less rich than landscape/desktop reduced-motion, which are fully populated. It still looks clean rather than broken, so this is low. Fix: for the frozen field, seed the driftVisible tiles into the open bands portrait actually has \u2014 the side margins of the hero band (x < 12% and x > 88%) and the strip below the last card \u2014 instead of behind the cards; or lower driftVisible for reduced-motion portrait and document the decision in ARCHITECTURE.md."
+          "title": "Settings landscape letterbox still leaves ~38 % of the preview canvas as void",
+          "state": "settings, settings-jade-plum, settings-landscape @ phone-landscape 915x412 (3d)",
+          "detail": "The rail spans x 280-635 of a 570-wide canvas (62 %); tiles are ~50 CSS px tall, legible but modest, with 65-70 px of dark void each side. HFOV 60 is fine; instead let PREVIEW_MAX_ASPECT rise to ~2.4 or grow previewHeight to ~170-180 by trimming the section gap so the stage fills the frame. Settings issue #7 from round 1, partially improved."
+        },
+        {
+          "rank": 6,
+          "severity": "low",
+          "title": "Desktop dpr 1 preview: stair-step edges on tiles and glyph strokes",
+          "state": "settings, settings-jade-plum @ desktop 1440x900 (3d)",
+          "detail": "Crop c-desk-preview.png shows jaggies on the tile silhouettes and 五/萬/發 strokes at 3x. SwiftShader-only or not, the preview is 5-7 draw calls / 42k tris so a 2x supersample when dpr < 1.5 is cheap. Settings issue #3, unchanged; verify on a real GPU before deciding."
+        },
+        {
+          "rank": 7,
+          "severity": "low",
+          "title": "Regression run hijacked by a stale serve on 4173 (process hazard, not a menu defect)",
+          "state": "npx playwright test three-menu/three-settings/... from the menu worktree",
+          "detail": "The first run reported 11 failures (debug.dice not iterable, replay-shelf-3d not attached, void rgb(125,95,78) under the LIVE PREVIEW pill) because playwright.config's reuseExistingServer: !CI reused a `serve dist -l 4173` started at 04:22 from /home/user/mm-wt/table — a different worktree's bundle. Re-running with a wrapper config on port 4991 serving this worktree's dist gave 18 passed / 1 skipped / 0 failed. Suggest the e2e script pick a free port (PW_PORT env) or the runbook kill stale 4173 servers before `pnpm e2e`; the engineer's 'green' claim was only verifiable after that."
         }
       ],
       "history": [
@@ -155,8 +169,19 @@
           "pass": true,
           "critic": "art-director",
           "openIssues": 5,
-          "notes": "Passed round 3 (8.4 \u2192 8.4 \u2192 8.5). Merged into integration.",
+          "notes": "Passed round 3 (8.4 → 8.4 → 8.5). Merged into integration.",
           "at": "2026-09-04T01:28:00Z"
+        },
+        {
+          "round": 2,
+          "score": 8.6,
+          "errors": 0,
+          "perfPass": true,
+          "pass": true,
+          "critic": "art-director",
+          "openIssues": 7,
+          "notes": "Round-2 polish pass (menu + settings preview) passed at iteration 2 (8.1 → 8.6): drift/dice keep-outs, 3D replay shelf, settings preview framing/badge/hover/labels. Merged into integration.",
+          "at": "2026-09-04T06:33:00Z"
         }
       ]
     },
@@ -177,14 +202,14 @@
           "severity": "low",
           "title": "Blue back still reads cyan/pale toward the far edge",
           "state": "settings @ phone + desktop",
-          "detail": "Measured centre of the face-down tile is #6b9db4 (phone) / #669ab3 (desktop): \u0394E 3.5-3.7 against the Blue gradient, which is fine, but the far (top) edge is \u0394E 5.5 (phone) and 6.8 (desktop) from the #7fa9c1 top stop and visibly cooler/more cyan than the chip. Plum behaves the same (far edge \u0394E 9-10 vs top stop, 4 vs gradient). The single global albedo x0.8 / chroma x1.4 in compensateBackColor over-saturates cool hues. Fix: compensate per hue (e.g. saturation 1.25 for blue/mint, 1.4 for plum) or raise uBackRoughness toward 0.85 so the key's specular lift on the far edge drops; re-measure both edges, not just the centre."
+          "detail": "Measured centre of the face-down tile is #6b9db4 (phone) / #669ab3 (desktop): ΔE 3.5-3.7 against the Blue gradient, which is fine, but the far (top) edge is ΔE 5.5 (phone) and 6.8 (desktop) from the #7fa9c1 top stop and visibly cooler/more cyan than the chip. Plum behaves the same (far edge ΔE 9-10 vs top stop, 4 vs gradient). The single global albedo x0.8 / chroma x1.4 in compensateBackColor over-saturates cool hues. Fix: compensate per hue (e.g. saturation 1.25 for blue/mint, 1.4 for plum) or raise uBackRoughness toward 0.85 so the key's specular lift on the far edge drops; re-measure both edges, not just the centre."
         },
         {
           "rank": 3,
           "severity": "low",
           "title": "Desktop dpr 1 preview shows stair-step aliasing on tile edges and glyph strokes",
           "state": "settings / settings-jade-plum @ desktop (1440x900, dpr 1)",
-          "detail": "At 3x zoom of shots/critic-r2-desktop/settings-jade-plum.desktop.classic.png the tile silhouettes and the \u4e94/\u842c/\u767c strokes have visible jaggies; antialias:true is requested in SceneHost but SwiftShader does not honour MSAA, and the canvas is only 403x236 CSS px. Because the preview is tiny (6.6k tris, 5 draw calls) it can afford supersampling: render at min(2, dpr*2) via the new maxDpr path when dpr < 1.5, or add an FXAA/SMAA pass on desktop only. Verify on a real GPU before deciding whether this is SwiftShader-only."
+          "detail": "At 3x zoom of shots/critic-r2-desktop/settings-jade-plum.desktop.classic.png the tile silhouettes and the 五/萬/發 strokes have visible jaggies; antialias:true is requested in SceneHost but SwiftShader does not honour MSAA, and the canvas is only 403x236 CSS px. Because the preview is tiny (6.6k tris, 5 draw calls) it can afford supersampling: render at min(2, dpr*2) via the new maxDpr path when dpr < 1.5, or add an FXAA/SMAA pass on desktop only. Verify on a real GPU before deciding whether this is SwiftShader-only."
         },
         {
           "rank": 4,
@@ -205,14 +230,14 @@
           "severity": "low",
           "title": "match-dealt (table-owned) exceeds the triangle budget: 159,938 > 150,000",
           "state": "match-dealt @ phone, desktop, phone-landscape (--renderer 3d)",
-          "detail": "Zero errors on all three viewports, but budget.violations lists 'triangles 159938 > 150000' on each; the number is byte-identical to round 1 (critic-r1-phone-3d) and comes from the placeholder Table3DShell (3 draw calls, renders 1). Not attributable to the settings subsystem, so it is not counted against perfPass here \u2014 the orchestrator should keep gating it on the table subsystem. The warmupMs split (236-676 ms) and the gl.finish() change did remove the multi-second frame-2 stall seen in r1 (p95 2.2 -> steady-state 0 with renders 1)."
+          "detail": "Zero errors on all three viewports, but budget.violations lists 'triangles 159938 > 150000' on each; the number is byte-identical to round 1 (critic-r1-phone-3d) and comes from the placeholder Table3DShell (3 draw calls, renders 1). Not attributable to the settings subsystem, so it is not counted against perfPass here — the orchestrator should keep gating it on the table subsystem. The warmupMs split (236-676 ms) and the gl.finish() change did remove the multi-second frame-2 stall seen in r1 (p95 2.2 -> steady-state 0 with renders 1)."
         },
         {
           "rank": 7,
           "severity": "low",
           "title": "Phone landscape stage is small with ~45% of the canvas as empty void",
           "state": "settings-landscape @ 915x412",
-          "detail": "The 570x150 letterbox keeps both rails in frame (void luminance 0.006 above / 0.009 below, verified), but the rail occupies only ~55% of the width and the tiles are ~40 CSS px tall \u2014 legible but modest. Options: let PREVIEW_MAX_ASPECT rise to ~2.4 so the stage uses more width while still keeping void above/below, or grow previewHeight to ~170 px at height < 520 by trimming the section gap (22 -> 16) in the landscape layout."
+          "detail": "The 570x150 letterbox keeps both rails in frame (void luminance 0.006 above / 0.009 below, verified), but the rail occupies only ~55% of the width and the tiles are ~40 CSS px tall — legible but modest. Options: let PREVIEW_MAX_ASPECT rise to ~2.4 so the stage uses more width while still keeping void above/below, or grow previewHeight to ~170 px at height < 520 by trimming the section gap (22 -> 16) in the landscape layout."
         }
       ],
       "history": [
@@ -224,7 +249,7 @@
           "pass": true,
           "critic": "art-director",
           "openIssues": 7,
-          "notes": "Passed round 2 (8.4 \u2192 8.6). Merged into integration at e5bc1f3.",
+          "notes": "Passed round 2 (8.4 → 8.6). Merged into integration at e5bc1f3.",
           "at": "2026-09-03T23:53:00Z"
         }
       ]
@@ -239,28 +264,28 @@
           "severity": "medium",
           "title": "Landscape basics-0: spotlight ring bisects the hand row",
           "state": "tutorial-basics-0 @ phone-landscape (classic)",
-          "detail": "The dice modal overlaps the own-hand row in landscape (table-owned), but the ring drawn around it is tutorial-owned and its bottom stroke at y\u2248375 CSS cuts straight through every hand tile: pixel sample of tile \u6771 body is 251,248,240 (lit) at y\u2248356 and 41,42,37 (dimmed) at y\u2248385. Tiles \u516d..\u767c read as half-lit / half-dark with a gold line across them \u2014 this is the very first coach-mark a landscape user sees. encloseStraddlers does not help because the hand rect straddles by far more than STRADDLE_MAX (24 px). Fix: when the target rect intersects a large avoid rect (hand row) by more than STRADDLE_MAX, trim the focus/ring to the modal's portion above that rect and treat the bottom side as 'tight' (drop the stroke + feather it the way the screen-edge open side is handled), or move the landscape dice modal above the hand in the table shell. Either way the ring must not cross tiles."
+          "detail": "The dice modal overlaps the own-hand row in landscape (table-owned), but the ring drawn around it is tutorial-owned and its bottom stroke at y≈375 CSS cuts straight through every hand tile: pixel sample of tile 東 body is 251,248,240 (lit) at y≈356 and 41,42,37 (dimmed) at y≈385. Tiles 六..發 read as half-lit / half-dark with a gold line across them — this is the very first coach-mark a landscape user sees. encloseStraddlers does not help because the hand rect straddles by far more than STRADDLE_MAX (24 px). Fix: when the target rect intersects a large avoid rect (hand row) by more than STRADDLE_MAX, trim the focus/ring to the modal's portion above that rect and treat the bottom side as 'tight' (drop the stroke + feather it the way the screen-edge open side is handled), or move the landscape dice modal above the hand in the table shell. Either way the ring must not cross tiles."
         },
         {
           "rank": 2,
           "severity": "medium",
           "title": "Phone scoring-1: card floats 90 px below the ring, notch points at dimmed Rules chips",
           "state": "tutorial-scoring-1 @ phone (classic)",
-          "detail": "The focus band ring ends at y\u2248440 CSS and the card starts at y\u2248530; the intervening 90 px is the dimmed 'Rules / Minimum faan 0 1 3 5' remainder of the result panel (column sample at x=206: gold at 440, scrim-grey 77,78,74 from 450\u2013520, card at 530). The notch tip lands between the faan pills and visually points at 'Rules', not at the spotlit score header. The keepNotch-over-keepClear rule keeps the arrow but the composition still reads as 'look at the rules chips'. Fix: when the gap is entirely the target's own dimmed remainder, dock snug \u2014 top = haloBottom + CARD_GAP \u2014 and let the (already solid) card cover the remainder; the buttons below are hidden by the scrim anyway. Alternatively drop the notch when gap > NOTCH_MAX_GAP regardless of keepClear."
+          "detail": "The focus band ring ends at y≈440 CSS and the card starts at y≈530; the intervening 90 px is the dimmed 'Rules / Minimum faan 0 1 3 5' remainder of the result panel (column sample at x=206: gold at 440, scrim-grey 77,78,74 from 450–520, card at 530). The notch tip lands between the faan pills and visually points at 'Rules', not at the spotlit score header. The keepNotch-over-keepClear rule keeps the arrow but the composition still reads as 'look at the rules chips'. Fix: when the gap is entirely the target's own dimmed remainder, dock snug — top = haloBottom + CARD_GAP — and let the (already solid) card cover the remainder; the buttons below are hidden by the scrim anyway. Alternatively drop the notch when gap > NOTCH_MAX_GAP regardless of keepClear."
         },
         {
           "rank": 3,
           "severity": "low",
           "title": "Landscape scoring-1: ring lights the opponent seat strip and desktop seat badges",
           "state": "tutorial-scoring-1 @ phone-landscape and desktop (classic)",
-          "detail": "Landscape: the ring top sits at y\u224813 CSS while the result panel top is at \u224833, so '\u897f Niko  Bot (Easy)' and '\u5317 Tao' from the seat strip sit inside the lit hole (sample 51,60,52 vs 39,49,41 dimmed) and read as part of the lesson target. Desktop: the tops of the Kai \u5317 / Tao \u5357 seat badges peek lit above the panel edge inside the ring. Looks like the straddler enclosure pulling unrelated chrome in. Fix: only enclose straddlers whose centre lies inside the ring, or exclude seat-strip / seat-badge rects from candidates so the ring hugs the focus band (HALO_PAD 8) on the top side."
+          "detail": "Landscape: the ring top sits at y≈13 CSS while the result panel top is at ≈33, so '西 Niko  Bot (Easy)' and '北 Tao' from the seat strip sit inside the lit hole (sample 51,60,52 vs 39,49,41 dimmed) and read as part of the lesson target. Desktop: the tops of the Kai 北 / Tao 南 seat badges peek lit above the panel edge inside the ring. Looks like the straddler enclosure pulling unrelated chrome in. Fix: only enclose straddlers whose centre lies inside the ring, or exclude seat-strip / seat-badge rects from candidates so the ring hugs the focus band (HALO_PAD 8) on the top side."
         },
         {
           "rank": 4,
           "severity": "low",
           "title": "Landscape scoring-intro step 0: centred card reads off-centre and kisses the hand row",
           "state": "match-result (scoring-intro step 0) @ phone-landscape (classic)",
-          "detail": "placeCentred slides the 'Scoring 101' card left/up to clear the Order/Player toggle: it now spans x 163\u2013601 CSS in a 915 px viewport (centre 382 vs 457) and its bottom edge at \u2248345 sits 5 px above the hand tiles at \u2248350. The intent is clear from the code but the result looks accidentally misaligned next to the perfectly centred basics-1 / claims-0 cards. Fix: prefer a purely vertical shift or a slightly narrower card when the only conflict is a small toggle, or treat the toggle as coverable (card already paints solid when overlapsChrome) and keep the card horizontally centred; keep \u2265 12 px to the hand row."
+          "detail": "placeCentred slides the 'Scoring 101' card left/up to clear the Order/Player toggle: it now spans x 163–601 CSS in a 915 px viewport (centre 382 vs 457) and its bottom edge at ≈345 sits 5 px above the hand tiles at ≈350. The intent is clear from the code but the result looks accidentally misaligned next to the perfectly centred basics-1 / claims-0 cards. Fix: prefer a purely vertical shift or a slightly narrower card when the only conflict is a small toggle, or treat the toggle as coverable (card already paints solid when overlapsChrome) and keep the card horizontally centred; keep ≥ 12 px to the hand row."
         },
         {
           "rank": 5,
@@ -286,7 +311,7 @@
           "pass": false,
           "critic": "art-director",
           "openIssues": 6,
-          "notes": "4 rounds: 8.4 \u2192 8.4 \u2192 8.3 \u2192 8.3. Zero errors, perf ok, all tutorial specs green; merged into integration so the next loop resumes from these issues. 3D targeted steps depend on the table registering TutorialTarget rects.",
+          "notes": "4 rounds: 8.4 → 8.4 → 8.3 → 8.3. Zero errors, perf ok, all tutorial specs green; merged into integration so the next loop resumes from these issues. 3D targeted steps depend on the table registering TutorialTarget rects.",
           "at": "2026-09-04T01:40:00Z"
         }
       ]
@@ -302,7 +327,7 @@
         "title": "Opening-rolls dice modal is a classic cream-paper surface inside the 3D flow",
         "state": "tutorial-basics-0 (and every hand start) @ phone 412x915, phone-landscape 915x412, desktop 1440x900 (3d)",
         "subsystem": "table",
-        "detail": "The 'Opening rolls' modal (wg-phone-dice-modal.png crop) is an off-white paper card with black serif-ish text, red-pip 2D dice and a grey 'Tap anywhere to dismiss' \u2014 the legacy classic theme, sitting a few pixels from a dark-glass coach card and the dark glass HUD. It is the single most visible theme leak in the product because every match opens with it, not only the tutorial. Should be the same glass panel as ResultPanel/coach card: rgba dark glass + gold hairline, uppercase micro-label 'OPENING ROLLS', ivory 3D-shaded dice (or the scene's real dice via a short camera push), gold total, secondary 0.62-alpha dismiss hint."
+        "detail": "The 'Opening rolls' modal (wg-phone-dice-modal.png crop) is an off-white paper card with black serif-ish text, red-pip 2D dice and a grey 'Tap anywhere to dismiss' — the legacy classic theme, sitting a few pixels from a dark-glass coach card and the dark glass HUD. It is the single most visible theme leak in the product because every match opens with it, not only the tutorial. Should be the same glass panel as ResultPanel/coach card: rgba dark glass + gold hairline, uppercase micro-label 'OPENING ROLLS', ivory 3D-shaded dice (or the scene's real dice via a short camera push), gold total, secondary 0.62-alpha dismiss hint."
       },
       {
         "rank": 2,
@@ -310,7 +335,7 @@
         "title": "Desktop claim toast stacks on the ClaimBar and covers the PENG button",
         "state": "match-claim @ desktop 1440x900 (3d)",
         "subsystem": "table",
-        "detail": "Confirmed in wg-desktop-claim-toast.png: the 'CHI \u00b7 Bao called' glass toast sits ~20 CSS px inside the claim strip, hiding the strip's top border, the upper third of the gold \u78b0 PENG button and the tops of the three preview tiles. HUD-over-HUD on the one control the player must hit under time pressure. Anchor toasts above the strip when a ClaimBar is mounted (strip rect + 12 px gap) or move the toast to the top-centre chrome row as landscape already does."
+        "detail": "Confirmed in wg-desktop-claim-toast.png: the 'CHI · Bao called' glass toast sits ~20 CSS px inside the claim strip, hiding the strip's top border, the upper third of the gold 碰 PENG button and the tops of the three preview tiles. HUD-over-HUD on the one control the player must hit under time pressure. Anchor toasts above the strip when a ClaimBar is mounted (strip rect + 12 px gap) or move the toast to the top-centre chrome row as landscape already does."
       },
       {
         "rank": 3,
@@ -318,7 +343,7 @@
         "title": "Landscape ClaimBar sits on the near wall's tile tops; footer pills hide the bottom of the hand tiles",
         "state": "match-claim, match-mid-hand, match-dealt, match-my-turn @ phone-landscape 915x412 (3d)",
         "subsystem": "table",
-        "detail": "wg-landscape-claimbar.png: the 56 px strip's bottom edge lies across the blue tile tops of the near wall along its whole width, reading as a panel dropped onto the wall rather than floating in a felt band. wg-landscape-footer-left.png: the user badge covers the bottom ~7 CSS px of \u516d\u842c/\u4e03\u842c (rounded edge and contact shadow lost) and the SUIT pill covers \u767c. Add the footer pill height to the hand's bottom constraint in the landscape camera solve, and place the claim strip in the felt band between the near wall and the far river (or push the near wall 0.4 world units toward the camera so a clear band exists)."
+        "detail": "wg-landscape-claimbar.png: the 56 px strip's bottom edge lies across the blue tile tops of the near wall along its whole width, reading as a panel dropped onto the wall rather than floating in a felt band. wg-landscape-footer-left.png: the user badge covers the bottom ~7 CSS px of 六萬/七萬 (rounded edge and contact shadow lost) and the SUIT pill covers 發. Add the footer pill height to the hand's bottom constraint in the landscape camera solve, and place the claim strip in the felt band between the near wall and the far river (or push the near wall 0.4 world units toward the camera so a clear band exists)."
       },
       {
         "rank": 4,
@@ -326,7 +351,7 @@
         "title": "Portrait table reads as a flat top-down band with dead void above and below",
         "state": "match-dealt, match-my-turn, match-dealt-jade-plum @ phone 412x915 (3d)",
         "subsystem": "table",
-        "detail": "Near-orthographic 76\u00b0 camera, side rails cropped off, ~88 CSS px empty between the seat badges and the far rail and ~68 px between the near rail and the hand. Side walls become featureless white sticks and the scene loses the depth that makes desktop/landscape feel 3D. Tilt to ~62-65\u00b0 so wall sides and the near rail bevel are visible, fill the upper band with the far rail and seat badges (badges can sit on the rail), and let the toast band live inside the composition rather than in void."
+        "detail": "Near-orthographic 76° camera, side rails cropped off, ~88 CSS px empty between the seat badges and the far rail and ~68 px between the near rail and the hand. Side walls become featureless white sticks and the scene loses the depth that makes desktop/landscape feel 3D. Tilt to ~62-65° so wall sides and the near rail bevel are visible, fill the upper band with the far rail and seat badges (badges can sit on the rail), and let the toast band live inside the composition rather than in void."
       },
       {
         "rank": 5,
@@ -342,7 +367,7 @@
         "title": "Menu backdrop debris: drift tiles inside the MATCH CODE input (phone) and dice straddling the Tutorial card corner (desktop)",
         "state": "menu, menu-tutorials @ phone 412x915; menu @ desktop 1440x900 (3d)",
         "subsystem": "menu",
-        "detail": "Phone: a green \u7d22 face sits inside the match-code input beside the ABCDE placeholder, a tile back crosses the 'Join match' label and two more frame the input's right end \u2014 the glass does not swallow them. Desktop (wg-desktop-dice.png): one die is half behind the Tutorial glass (blurred, dimmed) and half crisp outside. Keep the drift field out of the card column entirely on phone (seed x outside the 24-px card inset) and add the hero dice to the occluder band so they never intersect a card edge."
+        "detail": "Phone: a green 索 face sits inside the match-code input beside the ABCDE placeholder, a tile back crosses the 'Join match' label and two more frame the input's right end — the glass does not swallow them. Desktop (wg-desktop-dice.png): one die is half behind the Tutorial glass (blurred, dimmed) and half crisp outside. Keep the drift field out of the card column entirely on phone (seed x outside the 24-px card inset) and add the hero dice to the occluder band so they never intersect a card edge."
       },
       {
         "rank": 7,
@@ -350,7 +375,7 @@
         "title": "Desktop ClaimBar floats mid-felt over the own-river growth zone",
         "state": "match-mid-hand, match-claim @ desktop 1440x900 (3d)",
         "subsystem": "table",
-        "detail": "The CHI/PENG strip is centred at y\u2248530-585 on the felt between the centre plate and the near wall \u2014 exactly where the player's own discards accumulate after ~8 turns. Early-hand shots look clean, but late-hand the strip will sit on top of readable river tiles. Anchor it to the hand row (12 px above the tallest hand tile, as landscape does) so it always reads as 'your action' and never covers discards."
+        "detail": "The CHI/PENG strip is centred at y≈530-585 on the felt between the centre plate and the near wall — exactly where the player's own discards accumulate after ~8 turns. Early-hand shots look clean, but late-hand the strip will sit on top of readable river tiles. Anchor it to the hand row (12 px above the tallest hand tile, as landscape does) so it always reads as 'your action' and never covers discards."
       },
       {
         "rank": 8,
@@ -358,7 +383,7 @@
         "title": "Portrait river glyphs are soft at ~17 CSS px (dpr 1.5)",
         "state": "match-mid-hand @ phone 412x915 (3d)",
         "subsystem": "table",
-        "detail": "wg-phone-river.png: discards render at 17-18 CSS px; \u7d22/\u842c glyphs and the upside-down far river are guessable, not readable. Tap-to-zoom exists but the default view should carry the game. Allow dpr 2 on the low tier for \u2264420 px viewports (11 draw calls leave headroom) or scale river tiles 1.1x in portrait."
+        "detail": "wg-phone-river.png: discards render at 17-18 CSS px; 索/萬 glyphs and the upside-down far river are guessable, not readable. Tap-to-zoom exists but the default view should carry the game. Allow dpr 2 on the low tier for ≤420 px viewports (11 draw calls leave headroom) or scale river tiles 1.1x in portrait."
       },
       {
         "rank": 9,
@@ -374,7 +399,7 @@
         "title": "Replay library empty-state uses flat 2D classic tile art",
         "state": "replay-library @ phone, phone-landscape, desktop (3d)",
         "subsystem": "menu",
-        "detail": "The 'Nothing on the shelf yet' illustration is flat blue-back cards and 2D \u6771\u5357\u897f faces \u2014 a different tile design from the ivory clearcoat tiles everywhere else. Replace with a pre-rendered PNG of the 3D tiles (same atlas faces, blue gradient backs) or reuse the settings PreviewScene at a shallow angle."
+        "detail": "The 'Nothing on the shelf yet' illustration is flat blue-back cards and 2D 東南西 faces — a different tile design from the ivory clearcoat tiles everywhere else. Replace with a pre-rendered PNG of the 3D tiles (same atlas faces, blue gradient backs) or reuse the settings PreviewScene at a shallow angle."
       },
       {
         "rank": 11,
@@ -398,7 +423,7 @@
         "title": "Tutorial: 'LESSON 1/14' label vs step dots count different things; landscape basics-0 ring cuts the hand row",
         "state": "all tutorial states; tutorial-basics-0 @ phone-landscape 915x412 (3d)",
         "subsystem": "tutorial",
-        "detail": "Header says LESSON 1/14 while the dots show 6 steps of the lesson; on basics-1 the 2nd dot is lit under '1/14'. In landscape the gold ring around the dice modal passes through the \u516b hand tile and the footer badge/sort pill, leaving them half-lit. Add a 'STEP 2 OF 6' micro-label beside the dots; in landscape shrink the ring to the modal rect and dim the whole hand row."
+        "detail": "Header says LESSON 1/14 while the dots show 6 steps of the lesson; on basics-1 the 2nd dot is lit under '1/14'. In landscape the gold ring around the dice modal passes through the 八 hand tile and the footer badge/sort pill, leaving them half-lit. Add a 'STEP 2 OF 6' micro-label beside the dots; in landscape shrink the ring to the modal rect and dim the whole hand row."
       }
     ],
     "history": [
@@ -432,7 +457,7 @@
           "viewport": "phone",
           "prefers": "3d",
           "confidence": 0.9,
-          "why": "B's perspective table with plum tile backs, wooden rim, and large two-row hand reads as a real game scene with depth; A is a flat green panel that is mostly empty space with small hand tiles. A's explicit 'YOUR TURN \u00b7 DISCARD' pill and bot-skill labels are clearer, and B wastes a large dark band above the table."
+          "why": "B's perspective table with plum tile backs, wooden rim, and large two-row hand reads as a real game scene with depth; A is a flat green panel that is mostly empty space with small hand tiles. A's explicit 'YOUR TURN · DISCARD' pill and bot-skill labels are clearer, and B wastes a large dark band above the table."
         },
         {
           "judge": 1,
@@ -468,7 +493,7 @@
           "viewport": "phone",
           "prefers": "3d",
           "confidence": 0.85,
-          "why": "B lifts the just-drawn tile out of the hand and highlights the wall draw spot on a rich 3D table, so what happened is obvious; A is a flat layout with four discards, a giant empty panel and a lone blue placeholder card in the middle. A's 'YOUR TURN \u00b7 DRAW' pill is more explicit than B's small DRAW tag."
+          "why": "B lifts the just-drawn tile out of the hand and highlights the wall draw spot on a rich 3D table, so what happened is obvious; A is a flat layout with four discards, a giant empty panel and a lone blue placeholder card in the middle. A's 'YOUR TURN · DRAW' pill is more explicit than B's small DRAW tag."
         },
         {
           "judge": 1,
@@ -513,7 +538,7 @@
           "viewport": "desktop",
           "prefers": "3d",
           "confidence": 0.9,
-          "why": "A is the perspective table with readable tiles and clear seat badges; B is the flat 2D board with small tiles, an empty discard well, and a dead lower third of the viewport. B's centered 'YOUR TURN \u00b7 DISCARD' pill is a clearer prompt."
+          "why": "A is the perspective table with readable tiles and clear seat badges; B is the flat 2D board with small tiles, an empty discard well, and a dead lower third of the viewport. B's centered 'YOUR TURN · DISCARD' pill is a clearer prompt."
         },
         {
           "judge": 1,
@@ -540,7 +565,7 @@
           "viewport": "desktop",
           "prefers": "3d",
           "confidence": 0.9,
-          "why": "B raises the drawn tile out of the hand and highlights the draw point on the wall, on a table with depth and lighting; A is the flat board with tiny river tiles and a mostly empty green well. A's explicit 'YOUR TURN \u00b7 DRAW' pill is the one thing it does better."
+          "why": "B raises the drawn tile out of the hand and highlights the draw point on the wall, on a table with depth and lighting; A is the flat board with tiny river tiles and a mostly empty green well. A's explicit 'YOUR TURN · DRAW' pill is the one thing it does better."
         },
         {
           "judge": 1,
@@ -549,7 +574,7 @@
           "viewport": "desktop",
           "prefers": "3d",
           "confidence": 0.85,
-          "why": "A is a complete landing screen: hero tile fan, three balanced columns, a tutorial grid that fits, and drifting tile decorations; B's tutorial list runs off the bottom, the first two columns are mostly empty, and the pastel tile shapes look like unfinished placeholders. B's large \u6771 tile logo is a nice focal element."
+          "why": "A is a complete landing screen: hero tile fan, three balanced columns, a tutorial grid that fits, and drifting tile decorations; B's tutorial list runs off the bottom, the first two columns are mostly empty, and the pastel tile shapes look like unfinished placeholders. B's large 東 tile logo is a nice focal element."
         },
         {
           "judge": 1,
@@ -576,7 +601,7 @@
           "viewport": "phone",
           "prefers": "3d",
           "confidence": 0.9,
-          "why": "A (the 3D table) has depth, a clear focal plate and big tiles; B is the same flat layout as pair 0 with a huge empty discard region and cramped 14-tile row. For B: the 'YOUR TURN \u00b7 DISCARD' chip is a slightly more explicit call to action than A's small 'DISCARD' pill."
+          "why": "A (the 3D table) has depth, a clear focal plate and big tiles; B is the same flat layout as pair 0 with a huge empty discard region and cramped 14-tile row. For B: the 'YOUR TURN · DISCARD' chip is a slightly more explicit call to action than A's small 'DISCARD' pill."
         },
         {
           "judge": 2,
@@ -603,7 +628,7 @@
           "viewport": "phone",
           "prefers": "3d",
           "confidence": 0.85,
-          "why": "B has a raised, selected tile in a large hand, a coherent 3D scene and no wasted space; A is mostly empty felt with one oversized pulsing tile. For A: the 'YOUR TURN \u00b7 DRAW' banner and the discards row are clearer at a glance."
+          "why": "B has a raised, selected tile in a large hand, a coherent 3D scene and no wasted space; A is mostly empty felt with one oversized pulsing tile. For A: the 'YOUR TURN · DRAW' banner and the discards row are clearer at a glance."
         },
         {
           "judge": 2,
@@ -666,7 +691,7 @@
           "viewport": "desktop",
           "prefers": "3d",
           "confidence": 0.8,
-          "why": "A's 3D scene with the raised \u4e00\u842c tile and a compact floating CHI/PASS bar looks polished; B's PENG toast overlaps the top opponent badge and the right-hand claim panel floats off the table edge. For B: labelled melds ('PENG', 'CHI') and larger flat discards are easier to read than A's small centre-table tiles."
+          "why": "A's 3D scene with the raised 一萬 tile and a compact floating CHI/PASS bar looks polished; B's PENG toast overlaps the top opponent badge and the right-hand claim panel floats off the table edge. For B: labelled melds ('PENG', 'CHI') and larger flat discards are easier to read than A's small centre-table tiles."
         },
         {
           "judge": 2,
@@ -675,7 +700,7 @@
           "viewport": "desktop",
           "prefers": "3d",
           "confidence": 0.85,
-          "why": "B's lifted tile and 3D table clearly signal 'your move' with real depth; A is mostly empty flat felt with a few scattered small discards. For A: the 'YOUR TURN \u00b7 DRAW' chip and highlighted own badge are explicit."
+          "why": "B's lifted tile and 3D table clearly signal 'your move' with real depth; A is mostly empty flat felt with a few scattered small discards. For A: the 'YOUR TURN · DRAW' chip and highlighted own badge are explicit."
         },
         {
           "judge": 2,
@@ -684,7 +709,7 @@
           "viewport": "desktop",
           "prefers": "3d",
           "confidence": 0.8,
-          "why": "A fits the whole menu including a 14-lesson tutorial grid into the viewport with a strong hero tile row and consistent dark/gold styling; B's tutorial column overflows the screen while the other two columns are largely empty. For B: the large \u6771 tile mark and cream palette are clean and friendly, and its buttons have stronger colour contrast."
+          "why": "A fits the whole menu including a 14-lesson tutorial grid into the viewport with a strong hero tile row and consistent dark/gold styling; B's tutorial column overflows the screen while the other two columns are largely empty. For B: the large 東 tile mark and cream palette are clean and friendly, and its buttons have stronger colour contrast."
         },
         {
           "judge": 2,
@@ -702,7 +727,7 @@
           "viewport": "phone",
           "prefers": "3d",
           "confidence": 0.9,
-          "why": "B's rendered 3D table with wood rim, shaded walls, dice plate and large readable hand tiles reads as a real game; A is a flat green panel with a huge empty 'Discards' box and small tiles. A's one-row hand plus explicit 'YOUR TURN \u00b7 DISCARD' pill is the only thing it does more clearly."
+          "why": "B's rendered 3D table with wood rim, shaded walls, dice plate and large readable hand tiles reads as a real game; A is a flat green panel with a huge empty 'Discards' box and small tiles. A's one-row hand plus explicit 'YOUR TURN · DISCARD' pill is the only thing it does more clearly."
         },
         {
           "judge": 3,
@@ -720,7 +745,7 @@
           "viewport": "phone",
           "prefers": "3d",
           "confidence": 0.75,
-          "why": "B's dark glass lobby with gold selected chips, a 'You \u00b7 Online' seat highlight, subtitle copy and fully visible rules feels more premium and complete; A's cream version is tidy but leaves two-thirds of the screen empty and hides rules behind a collapsed row. A is quicker to scan and less busy."
+          "why": "B's dark glass lobby with gold selected chips, a 'You · Online' seat highlight, subtitle copy and fully visible rules feels more premium and complete; A's cream version is tidy but leaves two-thirds of the screen empty and hides rules behind a collapsed row. A is quicker to scan and less busy."
         },
         {
           "judge": 3,
@@ -774,7 +799,7 @@
           "viewport": "desktop",
           "prefers": "3d",
           "confidence": 0.9,
-          "why": "B's perspective 3D table with wood frame, shaded jade-plum walls, dealer chip and full-width hand looks like a modern game; A is a flat, small, centered 2D board with tiny tiles and lots of unused canvas. A's explicit 'YOUR TURN \u00b7 DISCARD' pill next to the hand is more prominent than B's header pill."
+          "why": "B's perspective 3D table with wood frame, shaded jade-plum walls, dealer chip and full-width hand looks like a modern game; A is a flat, small, centered 2D board with tiny tiles and lots of unused canvas. A's explicit 'YOUR TURN · DISCARD' pill next to the hand is more prominent than B's header pill."
         },
         {
           "judge": 3,
@@ -792,7 +817,7 @@
           "viewport": "desktop",
           "prefers": "3d",
           "confidence": 0.65,
-          "why": "B's dark two-column lobby with gold selections and 'You \u00b7 Online' seat state feels more polished and game-like; A is well balanced and centered but visually plain. A's centered composition uses the desktop width better than B's left-heavy layout with empty right and bottom areas."
+          "why": "B's dark two-column lobby with gold selections and 'You · Online' seat state feels more polished and game-like; A is well balanced and centered but visually plain. A's centered composition uses the desktop width better than B's left-heavy layout with empty right and bottom areas."
         },
         {
           "judge": 3,
@@ -810,7 +835,7 @@
           "viewport": "desktop",
           "prefers": "3d",
           "confidence": 0.85,
-          "why": "B's rendered table with the raised drawn tile, break-wall highlight and readable hand is more inviting; A's flat board with a few tiny discards in a big dark rectangle looks sparse. A's 'YOUR TURN \u00b7 DRAW' pill beside the hand is a clearer call to action."
+          "why": "B's rendered table with the raised drawn tile, break-wall highlight and readable hand is more inviting; A's flat board with a few tiny discards in a big dark rectangle looks sparse. A's 'YOUR TURN · DRAW' pill beside the hand is a clearer call to action."
         },
         {
           "judge": 3,
@@ -833,7 +858,7 @@
       ],
       "judges": 3,
       "pairs": 15,
-      "method": "3 judges \u00d7 15 pairs; labels A/B assigned by a fixed parity shuffle, files copied to neutral names; judges never saw build names",
+      "method": "3 judges × 15 pairs; labels A/B assigned by a fixed parity shuffle, files copied to neutral names; judges never saw build names",
       "at": "2026-09-04T03:58:00Z"
     }
   ],
