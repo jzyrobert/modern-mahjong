@@ -134,6 +134,11 @@ interface Box {
 }
 const intersects = (a: Box, b: Box) =>
   a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+const contains = (outer: Box, inner: Box) =>
+  inner.x >= outer.x - 1 &&
+  inner.y >= outer.y - 1 &&
+  inner.x + inner.width <= outer.x + outer.width + 1 &&
+  inner.y + inner.height <= outer.y + outer.height + 1;
 
 test.describe('classic coach-marks: chrome avoidance (phone)', () => {
   test.use({ viewport: { width: 412, height: 915 }, isMobile: true, hasTouch: true });
@@ -202,7 +207,9 @@ test.describe('classic coach-marks: chrome avoidance (phone)', () => {
     expect(pageErrors, pageErrors.join('\n')).toEqual([]);
   });
 
-  test('portrait result-panel fallback paints the card solid over the panel', async ({ page }) => {
+  test('portrait result-panel: score header + hand spotlit, solid card docked below', async ({
+    page,
+  }) => {
     await page.goto('/');
     await expect(page.getByRole('heading', { name: 'Modern Mahjong' })).toBeVisible();
     await page.evaluate(() => {
@@ -214,14 +221,27 @@ test.describe('classic coach-marks: chrome avoidance (phone)', () => {
     await page.getByTestId('tutorial-next').click();
     await expect(page.getByRole('heading', { name: /平和/ })).toBeVisible();
     await expect(page.getByTestId('tutorial-halo')).toBeVisible();
+    // The spotlight is the focus band (header, faan line, winning hand,
+    // View breakdown) — not the whole panel — so the card docks *below*
+    // it with a notch, over the dimmed rules block, and paints solid.
     await expect
       .poll(async () => {
         const l = await page.evaluate(() => globalThis.__MAHJONG_TEST_TUTORIAL_LAYOUT__);
-        return l ? `${l.placement.kind}:${l.solid}:${l.placement.notch}` : 'none';
+        return l ? `${l.placement.kind}:${l.solid}:${l.placement.notch !== null}` : 'none';
       })
-      .toBe('below:true:null');
+      .toBe('below:true:true');
+    const halo = (await page.getByTestId('tutorial-halo').boundingBox()) as Box;
+    const hand = (await page.getByTestId('winning-hand').boundingBox()) as Box;
+    const breakdown = (await page
+      .getByRole('button', { name: 'View breakdown' })
+      .boundingBox()) as Box;
+    const rules = (await page.getByText('Minimum faan').boundingBox()) as Box;
+    expect(contains(halo, hand)).toBe(true);
+    expect(contains(halo, breakdown)).toBe(true);
+    expect(rules.y).toBeGreaterThan(halo.y + halo.height);
     const cta = page.getByTestId('tutorial-next');
     const card = cta.locator(CARD_XPATH);
+    expect(((await card.boundingBox()) as Box).y).toBeGreaterThan(halo.y + halo.height);
     // Solid card: no backdrop-filter, fully opaque background.
     const style = await card.evaluate((el) => {
       const cs = getComputedStyle(el);
@@ -295,6 +315,45 @@ test.describe('classic coach-marks: desktop own-hand side dock', () => {
   });
 });
 
+test.describe('classic coach-marks: desktop dice step', () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => {
+      (globalThis as { __MAHJONG_TEST_RENDERER__?: string }).__MAHJONG_TEST_RENDERER__ = 'classic';
+    });
+  });
+
+  test('the ring encloses the wall counter instead of bisecting it', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.getByRole('heading', { name: 'Modern Mahjong' })).toBeVisible();
+    await page.evaluate(() => {
+      (
+        globalThis as { __MAHJONG_TEST_START_TUTORIAL__?: (id: string) => void }
+      ).__MAHJONG_TEST_START_TUTORIAL__?.('basics');
+    });
+    await expect(page.getByText('Opening dice')).toBeVisible();
+    await expect(page.getByTestId('tutorial-halo')).toBeVisible();
+    const counter = page.getByText(/^\d+ left$/);
+    await expect(counter).toBeVisible();
+    // The dice modal's bottom edge lands on the counter; chrome discovery
+    // is asynchronous, so the ring must *end up* around it.
+    await expect
+      .poll(async () => {
+        const halo = await page.getByTestId('tutorial-halo').boundingBox();
+        const c = await counter.boundingBox();
+        if (!halo || !c) return 'no boxes';
+        if (contains(halo, c)) return 'enclosed';
+        return intersects(halo, c) ? 'bisected' : 'clear';
+      })
+      .not.toBe('bisected');
+    // The card keeps its praised composition: docked above the dice with a notch.
+    const layout = await page.evaluate(() => globalThis.__MAHJONG_TEST_TUTORIAL_LAYOUT__);
+    expect(layout?.placement.kind).toBe('above');
+    expect(layout?.placement.notch).not.toBeNull();
+  });
+});
+
 test.describe('classic coach-marks: landscape side dock', () => {
   test.use({ viewport: { width: 915, height: 412 }, isMobile: true, hasTouch: true });
 
@@ -322,20 +381,23 @@ test.describe('classic coach-marks: landscape side dock', () => {
     const fullscreen = page.getByRole('button', { name: 'Enter fullscreen' });
     await expect(fullscreen).toHaveCount(0);
 
-    // The panel is taller than the viewport: the ring keeps its 12 px
-    // side inset but *opens* top and bottom — it overhangs the viewport
-    // by at least its corner radius so no stroke is drawn across the
-    // panel's header or action row (round-3 critic, issue 6).
+    // The panel is taller than the viewport, but the spotlight is only
+    // its score header + winning hand (the focus band), so the ring sits
+    // fully inside the safe area and never crosses the hand tiles or
+    // the action row (round-4 critic, issue 3).
     const halo = (await page.getByTestId('tutorial-halo').boundingBox()) as Box;
     expect(halo.x).toBeGreaterThanOrEqual(12);
     expect(halo.x + halo.width).toBeLessThanOrEqual(915 - 12);
-    expect(halo.y).toBeLessThanOrEqual(-14);
-    expect(halo.y + halo.height).toBeGreaterThanOrEqual(412 + 14);
-    // The card sits over the dimmed round panel, so it is painted solid
-    // (no backdrop blur to smear the panel's labels through).
+    expect(halo.y).toBeGreaterThanOrEqual(12);
+    expect(halo.y + halo.height).toBeLessThanOrEqual(412 - 12);
+    const hand = (await page.getByTestId('winning-hand').boundingBox()) as Box;
+    expect(contains(halo, hand)).toBe(true);
+    for (const tile of await page.getByTestId('own-hand-tile').all()) {
+      const b = await tile.boundingBox();
+      if (b) expect(intersects(halo, b)).toBe(false);
+    }
     const layout = await page.evaluate(() => globalThis.__MAHJONG_TEST_TUTORIAL_LAYOUT__);
-    expect(layout?.placement.kind).toBe('right');
-    expect(layout?.solid).toBe(true);
+    expect(layout?.placement.kind).toMatch(/^(left|right)$/);
 
     const cta = page.getByTestId('tutorial-next');
     const ctaBox = (await cta.boundingBox()) as Box;
@@ -349,5 +411,42 @@ test.describe('classic coach-marks: landscape side dock', () => {
     await page.getByRole('button', { name: 'Skip lesson' }).click();
     await expect(page.getByTestId('tutorial-next')).toHaveCount(0);
     await expect(fullscreen).toBeVisible();
+  });
+
+  test('a centred (no-target) card slides clear of the discards toggle and the hand', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    await expect(page.getByRole('heading', { name: 'Modern Mahjong' })).toBeVisible();
+    await page.evaluate(() => {
+      (
+        globalThis as { __MAHJONG_TEST_START_TUTORIAL__?: (id: string) => void }
+      ).__MAHJONG_TEST_START_TUTORIAL__?.('scoring-intro');
+    });
+    await expect(page.getByText('Scoring 101')).toBeVisible();
+    await expect(page.getByTestId('tutorial-halo')).toHaveCount(0);
+    const card = page.getByTestId('tutorial-next').locator(CARD_XPATH);
+    const toggles = await page.getByText(/^(Order|Player)$/).all();
+    const tiles = await page.getByTestId('own-hand-tile').all();
+    expect(toggles.length).toBeGreaterThan(0);
+    expect(tiles.length).toBeGreaterThan(0);
+    await expect
+      .poll(
+        async () => {
+          const c = await card.boundingBox();
+          if (!c) return 'no card';
+          const boxes = await Promise.all([...toggles, ...tiles].map((l) => l.boundingBox()));
+          const cut = boxes.filter((b) => b && intersects(c, b));
+          const layout = await page.evaluate(() => globalThis.__MAHJONG_TEST_TUTORIAL_LAYOUT__);
+          return cut.length === 0 ? `clear:${layout?.placement.kind}` : `cuts ${cut.length}`;
+        },
+        { timeout: 5_000 },
+      )
+      .toBe('clear:center');
+    const c = (await card.boundingBox()) as Box;
+    expect(c.x).toBeGreaterThanOrEqual(12);
+    expect(c.y).toBeGreaterThanOrEqual(12);
+    expect(c.x + c.width).toBeLessThanOrEqual(915 - 12);
+    expect(c.y + c.height).toBeLessThanOrEqual(412 - 12);
   });
 });

@@ -1,25 +1,37 @@
 import { useEffect, useId, useRef } from 'react';
 import { Animated, Easing, Platform, StyleSheet, View, type ViewStyle } from 'react-native';
-import Svg, { ClipPath, Defs, G, Path } from 'react-native-svg';
+import Svg, {
+  Defs,
+  LinearGradient,
+  Mask,
+  Path,
+  RadialGradient,
+  Rect,
+  Stop,
+} from 'react-native-svg';
 import { COLORS } from '../colors';
 import { FEATHER_OUT, FEATHER_TIGHT, type FeatherSides, type HaloRect } from './placement';
 
 /**
  * Dim + spotlight for the tutorial coach-marks.
  *
- * One SVG paints the scrim as an even-odd path (outer rectangle minus
- * a rounded hole just outside the halo), then a handful of thin stroked
- * rounded-rect rings fill a 24 px feather band with rising opacity —
- * `FEATHER_IN` px of it inside the halo edge (over the halo's own
- * padding, never over the target itself) and up to `FEATHER_OUT` px
- * outside. Strokes only touch the perimeter, so the whole layer costs
- * about one full-screen fill plus a few outlines per repaint — cheap
- * enough to follow a moving rect at 60 fps while the 3D camera eases.
+ * One SVG paints the scrim as a full-screen fill through a luminance
+ * mask: white everywhere, a black hole just outside the halo, and the
+ * feather band between the hole and the halo filled with grey-ramp
+ * gradients — four linear side bands and four radial corner quadrants —
+ * rising on a smoothstep from `FEATHER_IN` px inside the halo edge
+ * (over the halo's own padding, never over the target itself) to the
+ * per-side outward feather. The corner gradients are elliptical
+ * (`rx = radius + feather.left`, `ry = radius + feather.top`, …) so a
+ * tight side and a free side meet at a corner without banding, and
+ * because every mask shape is opaque the pieces meet without the
+ * anti-aliasing seam two translucent fills would leave. Nine shapes and
+ * eight gradient defs per repaint — cheap enough to follow a moving
+ * rect at 60 fps while the 3D camera eases.
  *
- * `feather` shrinks the outward band per side (see `featherFor`): the
- * rings are clipped to the shrunken hole so a side that butts against
- * an opaque neighbour gets a firm edge instead of un-dimming a strip of
- * it.
+ * `feather` shrinks the outward band per side (see `featherFor`): a side
+ * that butts against an opaque neighbour gets a firm edge instead of
+ * un-dimming a strip of it.
  *
  * The pulse is a separate `Animated.View` ring: transform + opacity
  * only (compositor-friendly), 1.6 s breathing loop, held static under
@@ -29,7 +41,8 @@ export const SCRIM_RGB = '7,12,10';
 export const SCRIM_ALPHA = 0.7;
 export const FEATHER_IN = 10;
 export const FEATHER = FEATHER_IN + FEATHER_OUT;
-const RINGS = 16;
+/** Gradient stops across the feather band (smoothstep sampled). */
+const STOPS = 8;
 
 const FULL_FEATHER: FeatherSides = {
   top: FEATHER_OUT,
@@ -46,6 +59,20 @@ interface SpotlightScrimProps {
   feather?: FeatherSides | undefined;
 }
 
+/** Smoothstep luminance ramp from `t0` (black = clear) to 1 (white =
+ *  full scrim), as the `<Stop>` children a mask gradient takes. */
+function featherStops(t0: number) {
+  const stops = [];
+  for (let i = 0; i <= STOPS; i++) {
+    const u = i / STOPS;
+    const v = Math.round(255 * smoothstep(u));
+    stops.push(
+      <Stop key={String(i)} offset={t0 + (1 - t0) * u} stopColor={`rgb(${v},${v},${v})`} />,
+    );
+  }
+  return stops;
+}
+
 export function SpotlightScrim({
   width,
   height,
@@ -53,7 +80,7 @@ export function SpotlightScrim({
   radius,
   feather = FULL_FEATHER,
 }: SpotlightScrimProps) {
-  const clipId = `tutorial-spot-${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
+  const uid = `ts${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
   if (!halo) {
     return (
       <Svg
@@ -66,25 +93,56 @@ export function SpotlightScrim({
       </Svg>
     );
   }
-  const outer = expandSides(halo, feather);
-  const holePath = roundedRectPath(
-    outer.left,
-    outer.top,
-    outer.width,
-    outer.height,
-    radius + Math.min(feather.top, feather.right, feather.bottom, feather.left),
-  );
-  const step = FEATHER / RINGS;
-  const rings: { key: string; d: string; alpha: number }[] = [];
-  for (let k = 0; k < RINGS; k++) {
-    const dist = FEATHER_OUT - (k + 0.5) * step;
-    const r = expand(halo, dist);
-    rings.push({
-      key: dist.toFixed(2),
-      d: roundedRectPath(r.left, r.top, r.width, r.height, radius + dist),
-      alpha: SCRIM_ALPHA * smoothstep((dist + FEATHER_IN) / FEATHER),
-    });
-  }
+  const f = feather;
+  // Corner radius the hole actually gets (undersized halos become pills).
+  const R = Math.max(0, Math.min(radius, halo.width / 2, halo.height / 2));
+  const inR = Math.max(0, R - FEATHER_IN);
+  const hLeft = halo.left;
+  const hTop = halo.top;
+  const hRight = halo.left + halo.width;
+  const hBottom = halo.top + halo.height;
+  const outer = {
+    left: hLeft - f.left,
+    top: hTop - f.top,
+    right: hRight + f.right,
+    bottom: hBottom + f.bottom,
+  };
+  // Corner ellipse radii, clamped so opposite corners never cross.
+  const rxL = Math.min(R + f.left, (outer.right - outer.left) / 2);
+  const rxR = Math.min(R + f.right, (outer.right - outer.left) / 2);
+  const ryT = Math.min(R + f.top, (outer.bottom - outer.top) / 2);
+  const ryB = Math.min(R + f.bottom, (outer.bottom - outer.top) / 2);
+  // Every ramp ends in white, so its pieces overlap the white surround
+  // by a hair: white on white is invisible, whereas a shared edge would
+  // leave an anti-aliasing seam.
+  const seam = 0.7;
+  const hole =
+    `M${outer.left + rxL} ${outer.top} H${outer.right - rxR} ` +
+    `A${rxR} ${ryT} 0 0 1 ${outer.right} ${outer.top + ryT} V${outer.bottom - ryB} ` +
+    `A${rxR} ${ryB} 0 0 1 ${outer.right - rxR} ${outer.bottom} H${outer.left + rxL} ` +
+    `A${rxL} ${ryB} 0 0 1 ${outer.left} ${outer.bottom - ryB} V${outer.top + ryT} ` +
+    `A${rxL} ${ryT} 0 0 1 ${outer.left + rxL} ${outer.top} Z`;
+
+  // Side bands span between the corner centres.
+  const bandX = hLeft + R;
+  const bandW = Math.max(0, halo.width - 2 * R);
+  const bandY = hTop + R;
+  const bandH = Math.max(0, halo.height - 2 * R);
+
+  // Corner quadrants: each is filled by a radial gradient in bounding-
+  // box units centred on the quadrant's inner corner (the halo's corner
+  // centre), `r = 100%` — which the non-square bbox stretches into the
+  // `rx × ry` ellipse. Alpha 0 out to the inner circle `inR`, full at
+  // the ellipse edge; the larger radius sets the stop so the ramp never
+  // starts outside the halo padding.
+  const cornerT0 = (rx: number, ry: number) => Math.min(1, inR / Math.max(1, rx, ry));
+  const corners: Array<{ key: string; cx: string; cy: string; t0: number }> = [
+    { key: 'tl', cx: '100%', cy: '100%', t0: cornerT0(rxL, ryT) },
+    { key: 'tr', cx: '0%', cy: '100%', t0: cornerT0(rxR, ryT) },
+    { key: 'br', cx: '0%', cy: '0%', t0: cornerT0(rxR, ryB) },
+    { key: 'bl', cx: '100%', cy: '0%', t0: cornerT0(rxL, ryB) },
+  ];
+
   return (
     <Svg
       width={width}
@@ -93,26 +151,93 @@ export function SpotlightScrim({
       style={{ position: 'absolute', left: 0, top: 0 }}
     >
       <Defs>
-        <ClipPath id={clipId}>
-          <Path d={holePath} />
-        </ClipPath>
-      </Defs>
-      <Path
-        d={`${rectPath(0, 0, width, height)} ${holePath}`}
-        fill={`rgba(${SCRIM_RGB},${SCRIM_ALPHA})`}
-        fillRule="evenodd"
-      />
-      <G clipPath={`url(#${clipId})`}>
-        {rings.map((ring) => (
-          <Path
-            key={ring.key}
-            d={ring.d}
-            fill="none"
-            stroke={`rgba(${SCRIM_RGB},${ring.alpha.toFixed(3)})`}
-            strokeWidth={step + 0.35}
-          />
+        {/* Side bands: alpha 0 at the halo-side edge, full at the outer edge. */}
+        <LinearGradient id={`${uid}-t`} x1="0" y1="1" x2="0" y2="0">
+          {featherStops(0)}
+        </LinearGradient>
+        <LinearGradient id={`${uid}-b`} x1="0" y1="0" x2="0" y2="1">
+          {featherStops(0)}
+        </LinearGradient>
+        <LinearGradient id={`${uid}-l`} x1="1" y1="0" x2="0" y2="0">
+          {featherStops(0)}
+        </LinearGradient>
+        <LinearGradient id={`${uid}-r`} x1="0" y1="0" x2="1" y2="0">
+          {featherStops(0)}
+        </LinearGradient>
+        {/* Corner quadrants: elliptical radial ramps centred on the
+            corner centre, which sits at the quadrant's inner corner. */}
+        {corners.map((c) => (
+          <RadialGradient key={c.key} id={`${uid}-${c.key}`} cx={c.cx} cy={c.cy} r="100%">
+            {featherStops(c.t0)}
+          </RadialGradient>
         ))}
-      </G>
+        <Mask id={`${uid}-m`} maskUnits="userSpaceOnUse" x={0} y={0} width={width} height={height}>
+          <Rect x={0} y={0} width={width} height={height} fill="#fff" />
+          <Path d={hole} fill="#000" />
+          {bandW > 0 ? (
+            <>
+              <Rect
+                x={bandX}
+                y={outer.top - seam}
+                width={bandW}
+                height={ryT - inR + seam}
+                fill={`url(#${uid}-t)`}
+              />
+              <Rect
+                x={bandX}
+                y={hBottom - R + inR}
+                width={bandW}
+                height={ryB - inR + seam}
+                fill={`url(#${uid}-b)`}
+              />
+            </>
+          ) : null}
+          {bandH > 0 ? (
+            <>
+              <Rect
+                x={outer.left - seam}
+                y={bandY}
+                width={rxL - inR + seam}
+                height={bandH}
+                fill={`url(#${uid}-l)`}
+              />
+              <Rect
+                x={hRight - R + inR}
+                y={bandY}
+                width={rxR - inR + seam}
+                height={bandH}
+                fill={`url(#${uid}-r)`}
+              />
+            </>
+          ) : null}
+          {/* Elliptical quadrant sectors, not rects: a gradient pads past its
+                  last stop, so a rect would paint the region outside the ellipse. */}
+          <Path
+            d={sector(hLeft + R, hTop + R, rxL + seam, ryT + seam, -1, -1)}
+            fill={`url(#${uid}-tl)`}
+          />
+          <Path
+            d={sector(hRight - R, hTop + R, rxR + seam, ryT + seam, 1, -1)}
+            fill={`url(#${uid}-tr)`}
+          />
+          <Path
+            d={sector(hRight - R, hBottom - R, rxR + seam, ryB + seam, 1, 1)}
+            fill={`url(#${uid}-br)`}
+          />
+          <Path
+            d={sector(hLeft + R, hBottom - R, rxL + seam, ryB + seam, -1, 1)}
+            fill={`url(#${uid}-bl)`}
+          />
+        </Mask>
+      </Defs>
+      <Rect
+        x={0}
+        y={0}
+        width={width}
+        height={height}
+        fill={`rgba(${SCRIM_RGB},${SCRIM_ALPHA})`}
+        mask={`url(#${uid}-m)`}
+      />
     </Svg>
   );
 }
@@ -146,6 +271,13 @@ function tightSides(feather: FeatherSides | undefined): SideMask {
 /** How far the pulse ring grows past the halo on each side. */
 const PULSE_GROW_PX = 11;
 const PULSE_GROW_TIGHT_PX = 2;
+/** Peak opacity of the breathing ring. Low enough that a mid-cycle
+ *  frame never reads as a second hard outline beside the static ring;
+ *  the soft shadow around the stroke does the glowing. */
+const PULSE_PEAK = 0.35;
+const PULSE_STATIC = 0.3;
+const PULSE_STROKE = 1.5;
+const PULSE_SHADOW = '0 0 10px 1px rgba(216,168,90,0.55)';
 
 /** Scale + translate that grows a `w × h` ring by `PULSE_GROW_PX` on
  *  the free sides and `PULSE_GROW_TIGHT_PX` on the tight ones — the
@@ -198,7 +330,7 @@ function webPulseStyle(width: number, height: number, tight: SideMask): ViewStyl
         animationKeyframes: [
           {
             '0%': { opacity: 0, transform: 'translate(0px, 0px) scale(1, 1)' },
-            '15%': { opacity: 0.8 },
+            '15%': { opacity: PULSE_PEAK },
             '100%': {
               opacity: 0,
               transform: `translate(${tx.toFixed(1)}px, ${ty.toFixed(1)}px) scale(${sx.toFixed(4)}, ${sy.toFixed(4)})`,
@@ -229,11 +361,12 @@ function WebPulseRing({ halo, radius, reducedMotion, feather }: PulseRingProps) 
           width: halo.width,
           height: halo.height,
           borderRadius: radius,
-          borderWidth: 2,
+          borderWidth: PULSE_STROKE,
           borderColor: COLORS.gold,
+          boxShadow: PULSE_SHADOW,
         },
         reducedMotion
-          ? { opacity: 0.4 }
+          ? { opacity: PULSE_STATIC }
           : webPulseStyle(halo.width, halo.height, tightSides(feather)),
       ]}
     />
@@ -244,7 +377,7 @@ function NativePulseRing({ halo, radius, reducedMotion, feather }: PulseRingProp
   const t = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     if (reducedMotion) {
-      t.setValue(0.35);
+      t.setValue(PULSE_STATIC);
       return;
     }
     t.setValue(0);
@@ -269,8 +402,8 @@ function NativePulseRing({ halo, radius, reducedMotion, feather }: PulseRingProp
   const translateX = t.interpolate({ inputRange: [0, 1], outputRange: [0, tx] });
   const translateY = t.interpolate({ inputRange: [0, 1], outputRange: [0, ty] });
   const opacity = reducedMotion
-    ? 0.4
-    : t.interpolate({ inputRange: [0, 0.15, 1], outputRange: [0, 0.8, 0] });
+    ? PULSE_STATIC
+    : t.interpolate({ inputRange: [0, 0.15, 1], outputRange: [0, PULSE_PEAK, 0] });
 
   return (
     <Animated.View
@@ -282,8 +415,9 @@ function NativePulseRing({ halo, radius, reducedMotion, feather }: PulseRingProp
         width: halo.width,
         height: halo.height,
         borderRadius: radius,
-        borderWidth: 2,
+        borderWidth: PULSE_STROKE,
         borderColor: COLORS.gold,
+        boxShadow: PULSE_SHADOW,
         opacity,
         transform: [{ translateX }, { translateY }, { scaleX }, { scaleY }],
       }}
@@ -291,26 +425,31 @@ function NativePulseRing({ halo, radius, reducedMotion, feather }: PulseRingProp
   );
 }
 
-/**
- * Soft gold aura around the ring. A plain symmetric `box-shadow` spills
- * ~18 px onto whatever sits right outside the halo (the YOUR TURN pill
- * above the hand read as "lightened" on the phone shots), so on tight
- * sides the shadow is offset away from the neighbour and shrunk: the
- * aura stays on the free sides and all but vanishes on the tight ones.
- */
-export function haloGlow(feather: FeatherSides | undefined): string {
+/** How far the halo's glow reaches past the ring on a free side. */
+export const AURA_PX = 22;
+const AURA_SHADOW = '0 0 20px 3px rgba(216,168,90,0.32)';
+
+/** Per-side reach of the glow: full on free sides, none on a side that
+ *  butts against other chrome (the round panel above the landscape
+ *  hand) — the aura is clipped there rather than shrunk, so no
+ *  half-strength band lands on the neighbour. */
+export function auraReach(feather: FeatherSides | undefined): FeatherSides {
   const tight = tightSides(feather);
-  const any = tight.top || tight.right || tight.bottom || tight.left;
-  const ring = '0 0 0 1px rgba(216,168,90,0.25)';
-  if (!any) return `${ring}, 0 0 18px rgba(216,168,90,0.35)`;
-  const shift = 9;
-  const ox = (tight.left ? shift : 0) - (tight.right ? shift : 0);
-  const oy = (tight.top ? shift : 0) - (tight.bottom ? shift : 0);
-  return `${ring}, ${ox}px ${oy}px 16px -5px rgba(216,168,90,0.35)`;
+  return {
+    top: tight.top ? 0 : AURA_PX,
+    right: tight.right ? 0 : AURA_PX,
+    bottom: tight.bottom ? 0 : AURA_PX,
+    left: tight.left ? 0 : AURA_PX,
+  };
 }
 
-/** Static gold ring + soft aura at the exact halo rect. Carries the
- *  `tutorial-halo` testID the promoted-gang spec centres against. */
+/**
+ * Static gold ring at the exact halo rect plus one soft glow behind it.
+ * The glow is a single blurred shadow (no spread ring, no offset) whose
+ * alpha falls off smoothly, wrapped in a clipping box that stops at the
+ * halo edge on tight sides. Carries the `tutorial-halo` testID the
+ * promoted-gang spec centres against.
+ */
 export function HaloRing({
   halo,
   radius,
@@ -320,23 +459,59 @@ export function HaloRing({
   radius: number;
   feather?: FeatherSides | undefined;
 }) {
+  const reach = auraReach(feather);
   return (
-    <View
-      testID="tutorial-halo"
-      pointerEvents="none"
-      style={{
-        position: 'absolute',
-        left: halo.left,
-        top: halo.top,
-        width: halo.width,
-        height: halo.height,
-        borderRadius: radius,
-        borderWidth: 2,
-        borderColor: 'rgba(216,168,90,0.95)',
-        boxShadow: haloGlow(feather),
-      }}
-    />
+    <>
+      <View
+        pointerEvents="none"
+        style={{
+          position: 'absolute',
+          left: halo.left - reach.left,
+          top: halo.top - reach.top,
+          width: halo.width + reach.left + reach.right,
+          height: halo.height + reach.top + reach.bottom,
+          overflow: 'hidden',
+        }}
+      >
+        <View
+          style={{
+            position: 'absolute',
+            left: reach.left,
+            top: reach.top,
+            width: halo.width,
+            height: halo.height,
+            borderRadius: radius,
+            boxShadow: AURA_SHADOW,
+          }}
+        />
+      </View>
+      <View
+        testID="tutorial-halo"
+        pointerEvents="none"
+        style={{
+          position: 'absolute',
+          left: halo.left,
+          top: halo.top,
+          width: halo.width,
+          height: halo.height,
+          borderRadius: radius,
+          borderWidth: 2,
+          borderColor: 'rgba(216,168,90,0.95)',
+        }}
+      />
+    </>
   );
+}
+
+/** Quarter-ellipse pie slice centred on `(cx, cy)` with radii `rx × ry`
+ *  toward the `sx`/`sy` signed directions. Its bounding box is exactly
+ *  the quadrant, which is what the objectBoundingBox gradient needs. */
+function sector(cx: number, cy: number, rx: number, ry: number, sx: number, sy: number): string {
+  const px = cx + sx * rx;
+  const py = cy + sy * ry;
+  // Sweep direction depends on the quadrant so the arc bows outward.
+  const sweep = sx * sy > 0 ? 1 : 0;
+  return `M${cx} ${cy} L${px} ${cy} A${rx} ${ry} 0 0 ${sweep} ${cx} ${py} Z`;
 }
 
 function expand(h: HaloRect, by: number): HaloRect {

@@ -32,10 +32,12 @@ import {
   useTutorialTargetRect,
 } from './TargetRegistry';
 import { OVERLAY_ATTR, isChromeCandidate } from './chromeRects';
+import { focusFor } from './focus';
 import {
   type CaptionPlacement,
   HALO_RADIUS,
   type HaloRect,
+  encloseStraddlers,
   featherFor,
   haloFor,
   placeCaption,
@@ -44,7 +46,7 @@ import {
 import type { Lesson, LessonStep } from './types';
 import { useChromeRects } from './useChromeRects';
 import { useReducedMotion } from './useReducedMotion';
-import { useFollowedRect, useSettledRect } from './useTargetTracking';
+import { useFocusedRect, useFollowedRect, useSettledRect } from './useTargetTracking';
 import { useTutorialController } from './useTutorialController';
 
 /** Ease-out curve for the card entrance. */
@@ -167,10 +169,21 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
   const stepKey = `${lesson.id}:${step.id}:${stepIndex}`;
   const targetId = step.targetId ?? null;
 
-  const liveRect = useTutorialTargetRect(targetId);
+  const rootRef = useRef<View | null>(null);
+  const originNode = () =>
+    rootRef.current as unknown as { getBoundingClientRect(): DOMRect } | null;
+  const registeredRect = useTutorialTargetRect(targetId);
+  // Optional focus band (the result panel's score header + hand): the
+  // ring, the card and the tap panels all work from the clipped rect.
+  const liveRect = useFocusedRect(
+    registeredRect,
+    targetId,
+    focusFor(targetId, step.targetFocus),
+    originNode,
+  );
+  const focused = liveRect !== null && liveRect !== registeredRect;
   const haloRect = useFollowedRect(liveRect, reducedMotion);
   const cardRect = useSettledRect(liveRect, stepKey);
-  const rootRef = useRef<View | null>(null);
 
   // Chrome the card must not bisect and the feather must not un-dim:
   // DOM controls / labels on web, plus every other registered target.
@@ -180,8 +193,12 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
     stepKey,
     viewport: window,
     settledRect: cardRect,
-    originNode: () => rootRef.current as unknown as { getBoundingClientRect(): DOMRect } | null,
+    focusBand: focused ? toHalo(liveRect) : null,
+    originNode,
   });
+  // The whole target when only a band of it is spotlit: the card stays
+  // off it (side dock) or paints solid over its dimmed remainder.
+  const keepClear = focused ? toHalo(registeredRect) : null;
   const registryChrome = otherTargetRects(registry, targetId, window);
   const avoid = registryChrome.length > 0 ? [...domChrome, ...registryChrome] : domChrome;
 
@@ -214,13 +231,17 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
     if (h > 0) setMeasured({ key: measureKey, height: h });
   }, [cardHeight, measureKey]);
 
-  const halo = haloFor(haloRect, window);
+  // The ring grows to enclose any small control it would otherwise
+  // bisect (the wall counter under the dice modal); the card is placed
+  // against the same enlarged halo so the two never disagree.
+  const halo = encloseStraddlers(haloFor(haloRect, window), avoid, window);
   const feather = halo ? featherFor(halo, avoid) : undefined;
   const placement = placeCaption({
     viewport: { width: window.width, height: window.height },
-    halo: haloFor(cardRect, window),
+    halo: encloseStraddlers(haloFor(cardRect, window), avoid, window),
     cardHeight,
     avoid,
+    keepClear,
   });
   const solid = placement.overlapsChrome;
   const glassBg = solid ? GLASS_BG_SOLID : GLASS_BG;
@@ -517,6 +538,10 @@ function publishLayout(snapshot: TutorialLayoutSnapshot): void {
   (
     globalThis as unknown as { __MAHJONG_TEST_TUTORIAL_LAYOUT__?: TutorialLayoutSnapshot }
   ).__MAHJONG_TEST_TUTORIAL_LAYOUT__ = snapshot;
+}
+
+function toHalo(r: TargetRect | null): HaloRect | null {
+  return r ? { left: r.x, top: r.y, width: r.w, height: r.h } : null;
 }
 
 /** Tag the overlay root on web so the chrome scan skips its own DOM. */

@@ -1,5 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Platform } from 'react-native';
 import type { TargetRect } from './TargetRegistry';
+import { findFocusRect } from './chromeRects';
+import { HALO_PAD, focusRect } from './placement';
+import type { TargetFocus, TutorialTargetId } from './types';
 
 /**
  * Two smoothing layers between the registry's raw rect writes and the
@@ -106,4 +110,61 @@ function sameRect(a: TargetRect, b: TargetRect): boolean {
     Math.abs(a.w - b.w) < 0.5 &&
     Math.abs(a.h - b.h) < 0.5
   );
+}
+
+/** How often the focus descendant is re-read while the outer rect is
+ *  still (the winning-hand row wrapping to two lines a frame later). */
+const FOCUS_RESCAN_MS = 250;
+
+/**
+ * Clip the live target rect to the step's focus band (`focusRect`),
+ * reading the descendant from the DOM on web. Recomputed whenever the
+ * outer rect moves and on a slow interval in between; the result is
+ * deduped so callers re-render only when the band actually changes.
+ * Native (no DOM) and steps without a focus pass the rect through.
+ */
+export function useFocusedRect(
+  target: TargetRect | null,
+  targetId: TutorialTargetId | null,
+  focus: TargetFocus | null,
+  originNode: () => { getBoundingClientRect(): { left: number; top: number } } | null,
+): TargetRect | null {
+  const canScan = Platform.OS === 'web' && typeof document !== 'undefined';
+  const enabled = canScan && focus !== null && targetId !== null && target !== null;
+  // Latest inputs, read by the interval without re-arming it.
+  const inputs = useRef({ target, targetId, focus, originNode, enabled });
+  inputs.current = { target, targetId, focus, originNode, enabled };
+  const compute = useCallback(
+    (t: TargetRect | null, id: TutorialTargetId | null, f: TargetFocus | null) => {
+      const i = inputs.current;
+      if (!i.enabled || !t || !id || !f) return t;
+      const o = i.originNode()?.getBoundingClientRect();
+      const found = findFocusRect(document, id, f, { x: o?.left ?? 0, y: o?.top ?? 0 });
+      return focusRect(t, found?.through ?? null, HALO_PAD, found?.from ?? null);
+    },
+    [],
+  );
+  const latest = useCallback(() => {
+    const i = inputs.current;
+    return compute(i.target, i.targetId, i.focus);
+  }, [compute]);
+  const [focused, setFocused] = useState<TargetRect | null>(latest);
+  const focusedRef = useRef(focused);
+  const write = useCallback((next: TargetRect | null) => {
+    const prev = focusedRef.current;
+    if (prev === next || (prev && next && sameRect(prev, next))) return;
+    focusedRef.current = next;
+    setFocused(next);
+  }, []);
+  // Recompute whenever the outer rect (or the step) changes so the halo
+  // and the band never disagree for a frame; keep polling in between.
+  useEffect(() => {
+    write(compute(target, targetId, focus));
+  }, [target, targetId, focus, compute, write]);
+  useEffect(() => {
+    if (!enabled) return;
+    const id = setInterval(() => write(latest()), FOCUS_RESCAN_MS);
+    return () => clearInterval(id);
+  }, [enabled, latest, write]);
+  return enabled ? focused : target;
 }

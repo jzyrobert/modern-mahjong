@@ -9,10 +9,15 @@ import {
   NOTCH_DEPTH,
   NOTCH_MAX_GAP,
   SIDE_GUTTER,
+  STRADDLE_MAX,
+  STRADDLE_PAD,
+  encloseStraddlers,
   featherFor,
+  focusRect,
   haloFor,
   placeCaption,
   safeInset,
+  sideIdealTop,
 } from './placement';
 
 const phone = { width: 412, height: 915 };
@@ -362,5 +367,208 @@ describe('placeCaption', () => {
     const halo = { left: 12, top: 800, width: 388, height: 100 };
     const p = placeCaption({ viewport: phone, halo, cardHeight: null });
     expect(p.top).toBeGreaterThanOrEqual(safeInset(phone.width));
+  });
+});
+
+describe('placeCaption: centred card over chrome', () => {
+  // Landscape phone, scoring-intro step 0: the Order / Player toggle in
+  // the discards header and the hand row at the bottom both fall under
+  // a dead-centre 300 px card.
+  const toggle = { left: 602, top: 51, width: 94, height: 17 };
+  const hand = { left: 210, top: 350, width: 560, height: 62 };
+
+  test('dead centre with nothing underneath', () => {
+    const p = placeCaption({ viewport: landscape, halo: null, cardHeight: 300 });
+    expect(p.kind).toBe('center');
+    expect(p.left).toBe(Math.round((915 - 440) / 2));
+    expect(p.overlapsChrome).toBe(false);
+  });
+
+  test('slides off chrome it would otherwise ghost through', () => {
+    const p = placeCaption({
+      viewport: landscape,
+      halo: null,
+      cardHeight: 300,
+      avoid: [toggle, hand],
+    });
+    expect(p.kind).toBe('center');
+    const card = { left: p.left, top: p.top, width: p.width, height: 300 };
+    const hits = (r: typeof toggle) =>
+      card.left < r.left + r.width &&
+      card.left + card.width > r.left &&
+      card.top < r.top + r.height &&
+      card.top + card.height > r.top;
+    expect(hits(toggle)).toBe(false);
+    expect(hits(hand)).toBe(false);
+    expect(p.overlapsChrome).toBe(false);
+    expect(inside(p, 300, landscape)).toBe(true);
+    expect(p.left).toBeGreaterThanOrEqual(safeInset(915));
+  });
+
+  test('reports the overlap (→ solid card) when no nearby spot is clear', () => {
+    // A wall of chrome across the whole middle band: nothing within the
+    // shift budget clears it, so the card stays put and paints solid.
+    const wall = { left: 0, top: 100, width: 915, height: 60 };
+    const p = placeCaption({ viewport: landscape, halo: null, cardHeight: 300, avoid: [wall] });
+    expect(p.kind).toBe('center');
+    expect(p.overlapsChrome).toBe(true);
+  });
+});
+
+describe('encloseStraddlers', () => {
+  const halo = { left: 500, top: 280, width: 440, height: 340 };
+
+  test('grows to swallow a label the ring would bisect', () => {
+    // The "69 left" wall counter sits across the dice modal's bottom edge.
+    const counter = { left: 700, top: 612, width: 40, height: 14 };
+    const out = encloseStraddlers(halo, [counter], desktop);
+    expect(out).not.toBeNull();
+    expect(out!.top + out!.height).toBe(626 + STRADDLE_PAD);
+    expect(out!.left).toBe(halo.left);
+    expect(out!.width).toBe(halo.width);
+  });
+
+  test('grows sideways for a chip peeking past the right edge', () => {
+    const chip = { left: 900, top: 300, width: 60, height: 18 };
+    const out = encloseStraddlers(halo, [chip], desktop);
+    expect(out!.left + out!.width).toBe(960 + STRADDLE_PAD);
+  });
+
+  test('leaves the halo alone for a neighbour that overhangs too far', () => {
+    const region = { left: 400, top: 600, width: 640, height: 60 };
+    const out = encloseStraddlers(halo, [region], desktop);
+    expect(out).toBe(halo);
+    expect(600 + 60 - (halo.top + halo.height)).toBeGreaterThan(STRADDLE_MAX);
+  });
+
+  test('ignores chrome that does not touch the ring and clamps to the safe inset', () => {
+    const far = { left: 100, top: 100, width: 40, height: 14 };
+    expect(encloseStraddlers(halo, [far], desktop)).toBe(halo);
+    const edge = { left: 1400, top: 300, width: 30, height: 18 };
+    const wide = { left: 500, top: 280, width: 910, height: 340 };
+    const out = encloseStraddlers(wide, [edge], desktop);
+    expect(out!.left + out!.width).toBe(1440 - safeInset(1440));
+  });
+});
+
+describe('sideIdealTop', () => {
+  test('bottom-third halo aligns the card bottom to the halo bottom', () => {
+    const halo = { left: 420, top: 682, width: 600, height: 76 };
+    expect(sideIdealTop(halo, 216, 900)).toBe(682 + 76 - 216);
+  });
+  test('top-third halo aligns the card top to the halo top', () => {
+    const halo = { left: 229, top: 26, width: 456, height: 180 };
+    expect(sideIdealTop(halo, 330, 412)).toBe(26);
+  });
+  test('middle band centres on the halo', () => {
+    const halo = { left: 470, top: 200, width: 500, height: 400 };
+    expect(sideIdealTop(halo, 260, 900)).toBe(400 - 130);
+  });
+  test('desktop own-hand side dock stays on the felt', () => {
+    // The plate / sort-chip / turn-pill row above the hand pushes the
+    // above-dock away, so the card re-docks beside the halo; the
+    // bottom-third rule then hangs it from the halo's bottom edge
+    // instead of centring it half over the rail.
+    const halo = { left: 420, top: 682, width: 600, height: 76 };
+    const row = [
+      { left: 445, top: 635, width: 145, height: 50 },
+      { left: 605, top: 645, width: 210, height: 28 },
+      { left: 840, top: 645, width: 160, height: 28 },
+    ];
+    const p = placeCaption({ viewport: desktop, halo, cardHeight: 216, avoid: row });
+    expect(p.kind === 'left' || p.kind === 'right').toBe(true);
+    expect(p.top + 216).toBeLessThanOrEqual(halo.top + halo.height + 1);
+    expect(p.notch).not.toBeNull();
+  });
+});
+
+describe('focusRect', () => {
+  const panel = { x: 30, y: 200, w: 350, h: 620 };
+  test('clips the target to the band through the descendant', () => {
+    const button = { left: 60, top: 400, width: 120, height: 36 };
+    expect(focusRect(panel, button)).toEqual({ x: 30, y: 200, w: 350, h: 436 + HALO_PAD - 200 });
+  });
+  test('starts at the content box when the wrapper carries an outer margin', () => {
+    const wrapper = { x: 238, y: 16, w: 440, h: 427 };
+    const paper = { left: 238, top: 32, width: 440, height: 411 };
+    const button = { left: 253, top: 160, width: 120, height: 36 };
+    expect(focusRect(wrapper, button, HALO_PAD, paper)).toEqual({
+      x: 238,
+      y: 32,
+      w: 440,
+      h: 196 + HALO_PAD - 32,
+    });
+    // A "first child" that is not near the top (a scrolled list) is ignored.
+    const low = { left: 238, top: 300, width: 440, height: 100 };
+    expect(focusRect(wrapper, button, HALO_PAD, low).y).toBe(16);
+  });
+
+  test('returns the target unchanged without a descendant or when the clip is moot', () => {
+    expect(focusRect(panel, null)).toBe(panel);
+    const low = { left: 60, top: 810, width: 120, height: 36 };
+    expect(focusRect(panel, low)).toBe(panel);
+    const above = { left: 60, top: 100, width: 120, height: 36 };
+    expect(focusRect(panel, above)).toBe(panel);
+  });
+});
+
+describe('placeCaption: keepClear (partly spotlit target)', () => {
+  // Desktop: the result panel spans 360..1080 × 220..660 but only its
+  // score header + hand (top 200 px) is spotlit.
+  const panel = { left: 360, top: 220, width: 720, height: 440 };
+  const halo = { left: 352, top: 212, width: 736, height: 216 };
+
+  test('re-docks beside the halo instead of covering the rest of the panel', () => {
+    const p = placeCaption({ viewport: desktop, halo, cardHeight: 300, keepClear: panel });
+    expect(p.kind === 'left' || p.kind === 'right').toBe(true);
+    expect(p.left >= panel.left + panel.width || p.left + p.width <= panel.left).toBe(true);
+    expect(p.overlapsChrome).toBe(false);
+  });
+
+  test('stays vertical without keepClear', () => {
+    const p = placeCaption({ viewport: desktop, halo, cardHeight: 300 });
+    expect(p.kind).toBe('below');
+  });
+
+  test('keeps the notch across the dimmed remainder of the panel even past NOTCH_MAX_GAP', () => {
+    // Portrait: the ideal below-dock would bisect the panel's action
+    // row, so the card drops to just under the faan-chip row (~95 px off
+    // the halo). That gap is the panel's own dimmed rules block, so the
+    // pointer stays; without `keepClear` the same gap drops it.
+    const phonePanel = { left: 16, top: 200, width: 380, height: 620 };
+    const phoneHalo = { left: 12, top: 192, width: 388, height: 236 };
+    const faanChips = { left: 200, top: 490, width: 180, height: 25 };
+    const startButton = { left: 30, top: 700, width: 140, height: 44 };
+    const sortChips = { left: 240, top: 782, width: 160, height: 24 };
+    const avoid = [faanChips, startButton, sortChips];
+    const p = placeCaption({
+      viewport: phone,
+      halo: phoneHalo,
+      cardHeight: 284,
+      avoid,
+      keepClear: phonePanel,
+    });
+    expect(p.kind).toBe('below');
+    expect(p.top).toBe(490 + 25 + CHROME_GAP + NOTCH_DEPTH);
+    expect(p.gap).toBeGreaterThan(NOTCH_MAX_GAP);
+    expect(p.notch).not.toBeNull();
+    const without = placeCaption({ viewport: phone, halo: phoneHalo, cardHeight: 284, avoid });
+    expect(without.top).toBe(p.top);
+    expect(without.notch).toBeNull();
+  });
+
+  test('portrait phone: no side strip, so the card sits below and paints solid', () => {
+    const phonePanel = { left: 16, top: 200, width: 380, height: 620 };
+    const phoneHalo = { left: 12, top: 192, width: 388, height: 236 };
+    const p = placeCaption({
+      viewport: phone,
+      halo: phoneHalo,
+      cardHeight: 330,
+      keepClear: phonePanel,
+    });
+    expect(p.kind).toBe('below');
+    expect(p.notch).not.toBeNull();
+    expect(p.overlapsChrome).toBe(true);
+    expect(inside(p, 330, phone)).toBe(true);
   });
 });

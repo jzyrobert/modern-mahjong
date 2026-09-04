@@ -5,6 +5,7 @@ import {
   TARGET_ATTR,
   chromeSignature,
   collectChromeRects,
+  findFocusRect,
   isChromeCandidate,
 } from './chromeRects';
 
@@ -132,5 +133,69 @@ describe('collectChromeRects (DOM walk)', () => {
       activeTargetId: null,
     });
     expect(rects).toEqual([{ left: 200, top: 680, width: 60, height: 24 }]);
+  });
+});
+
+describe('findFocusRect', () => {
+  function stubRect(
+    el: HTMLElement,
+    r: { left: number; top: number; width: number; height: number },
+  ) {
+    el.getBoundingClientRect = () =>
+      ({ ...r, right: r.left + r.width, bottom: r.top + r.height, x: r.left, y: r.top }) as DOMRect;
+  }
+  function panel() {
+    document.body.innerHTML = `
+      <div ${TARGET_ATTR}="result-panel">
+        <div dir="auto">Seat 0 wins!</div>
+        <div data-testid="winning-hand"></div>
+        <div role="button"><div dir="auto">View breakdown</div></div>
+        <div role="button"><div dir="auto">Start next hand</div></div>
+      </div>`;
+    const root = document.querySelector<HTMLElement>(`[${TARGET_ATTR}]`)!;
+    stubRect(root.querySelector('[data-testid="winning-hand"]')!, {
+      left: 40,
+      top: 300,
+      width: 300,
+      height: 60,
+    });
+    const buttons = Array.from(root.querySelectorAll<HTMLElement>('[role="button"]'));
+    stubRect(buttons[0]!, { left: 40, top: 380, width: 120, height: 36 });
+    stubRect(buttons[1]!, { left: 40, top: 700, width: 140, height: 44 });
+  }
+
+  test('matches a button by its exact label, in overlay coordinates', () => {
+    panel();
+    const r = findFocusRect(
+      document,
+      'result-panel',
+      { through: [{ text: 'View breakdown' }, { testId: 'winning-hand' }] },
+      { x: 10, y: 20 },
+    );
+    // `from` is the target's first child; jsdom gives it no layout here.
+    expect(r).toEqual({ through: { left: 30, top: 360, width: 120, height: 36 }, from: null });
+  });
+
+  test('falls through the candidate list; null only for a missing target', () => {
+    panel();
+    expect(
+      findFocusRect(
+        document,
+        'result-panel',
+        { through: [{ text: 'Nope' }, { testId: 'winning-hand' }] },
+        { x: 0, y: 0 },
+      ),
+    ).toEqual({ through: { left: 40, top: 300, width: 300, height: 60 }, from: null });
+    expect(
+      findFocusRect(document, 'result-panel', { through: [{ text: 'Nope' }] }, { x: 0, y: 0 }),
+    ).toEqual({ through: null, from: null });
+    expect(
+      findFocusRect(
+        document,
+        'own-hand',
+        { through: [{ testId: 'winning-hand' }] },
+        { x: 0, y: 0 },
+      ),
+    ).toBeNull();
   });
 });

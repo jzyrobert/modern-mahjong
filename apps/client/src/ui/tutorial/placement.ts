@@ -63,6 +63,11 @@ export interface PlacementInput {
   cardHeight: number | null;
   /** Chrome rects (overlay coordinates) the card should stay clear of. */
   avoid?: readonly HaloRect[];
+  /** The whole target when only part of it is spotlit (the result
+   *  panel under a score-header focus). A vertical dock that lands on
+   *  it hides what the lesson is talking about, so a clean side dock is
+   *  preferred when one fits, and a card left over it paints solid. */
+  keepClear?: HaloRect | null;
 }
 
 export const HALO_PAD = 8;
@@ -169,6 +174,7 @@ export function placeCaption({
   halo,
   cardHeight,
   avoid,
+  keepClear = null,
 }: PlacementInput): CaptionPlacement {
   const W = viewport.width;
   const H = viewport.height;
@@ -177,17 +183,7 @@ export function placeCaption({
   const fullWidth = Math.max(120, Math.min(CARD_MAX_WIDTH, W - safe * 2));
   const maxTop = Math.max(safe, H - h - safe);
 
-  if (!halo) {
-    return {
-      kind: 'center',
-      left: Math.round((W - fullWidth) / 2),
-      top: clamp(Math.round((H - h) / 2), safe, maxTop),
-      width: fullWidth,
-      notch: null,
-      gap: null,
-      overlapsChrome: false,
-    };
-  }
+  if (!halo) return placeCentred(viewport, fullWidth, h, avoid ?? []);
 
   const chrome = avoid && avoid.length > 0 ? outsideHalo(avoid, halo) : [];
   const haloBottom = halo.top + halo.height;
@@ -240,6 +236,30 @@ export function placeCaption({
     }
   };
 
+  /** True when the strip between the card and the halo lies (≥ 80 %)
+   *  inside `keepClear`. */
+  const gapOverKeepClear = (kind: DockKind, card: HaloRect, gap: number): boolean => {
+    if (keepClear === null || gap <= 0) return false;
+    let strip: HaloRect;
+    switch (kind) {
+      case 'above':
+        strip = { left: card.left, top: card.top + card.height, width: card.width, height: gap };
+        break;
+      case 'below':
+        strip = { left: card.left, top: haloBottom, width: card.width, height: gap };
+        break;
+      case 'right':
+        strip = { left: haloRight, top: card.top, width: gap, height: card.height };
+        break;
+      case 'left':
+        strip = { left: card.left + card.width, top: card.top, width: gap, height: card.height };
+        break;
+      default:
+        return false;
+    }
+    return intersectionArea(strip, keepClear) >= strip.width * strip.height * 0.8;
+  };
+
   // Tint decision looks at *everything* the card ends up over — chrome
   // it could not dodge and the spotlit target itself (the portrait
   // fallback deliberately overlaps the result panel's bottom, whose
@@ -256,14 +276,20 @@ export function placeCaption({
     const width = Math.round(rawWidth);
     const card = { left, top, width, height: h };
     const covers =
-      intersectionArea(card, halo) > 0 || (avoid ?? []).some((r) => intersectionArea(card, r) > 0);
+      intersectionArea(card, halo) > 0 ||
+      (keepClear !== null && intersectionArea(card, keepClear) > 0) ||
+      (avoid ?? []).some((r) => intersectionArea(card, r) > 0);
     const gap = gapFor(kind, card);
+    // A long gap normally drops the notch (it would point across
+    // unrelated chrome) — unless the gap is the dimmed remainder of the
+    // very target being spotlit, where the pointer still reads true.
+    const keepNotch = gap <= NOTCH_MAX_GAP || gapOverKeepClear(kind, card, gap);
     return {
       kind,
       left,
       top,
       width,
-      notch: gap > NOTCH_MAX_GAP ? null : notch === null ? null : Math.round(notch),
+      notch: !keepNotch ? null : notch === null ? null : Math.round(notch),
       gap,
       overlapsChrome: covers,
     };
@@ -407,7 +433,7 @@ export function placeCaption({
     );
     // Slide along the strip away from whichever chrome the card cuts
     // (the top status row, the ☰ pill), bounded like the vertical docks.
-    const idealTop = clamp(Math.round(haloCy - h / 2), safe, maxTop);
+    const idealTop = clamp(sideIdealTop(halo, h, H), safe, maxTop);
     let top = bestTop(kind, left, width, idealTop, 'both');
     // A control straddling the card's inner edge (a chip at the end of
     // the row the halo sits in, even one the target itself half covers)
@@ -471,9 +497,27 @@ export function placeCaption({
     // a card docked beside the halo, notch aimed at it, reads better
     // than one floating mid-screen — take it when a roomy strip exists
     // and it cuts nothing.
-    if ((chosen.gap ?? 0) > NOTCH_MAX_GAP) {
+    // Likewise when the vertical dock lands on the rest of a partly
+    // spotlit target (the result panel's rules block under a score
+    // spotlight): a clean side dock beats a solid card over the panel.
+    const onTarget =
+      keepClear !== null &&
+      intersectionArea(
+        { left: chosen.left, top: chosen.top, width: chosen.width, height: h },
+        keepClear,
+      ) > 0;
+    if ((chosen.gap ?? 0) > NOTCH_MAX_GAP || onTarget) {
       const alt = side(SIDE_REDOCK_MIN_WIDTH);
-      if (alt && scoreAt(alt.kind, alt.left, alt.top, alt.width).partial === 0) return alt;
+      if (
+        alt &&
+        scoreAt(alt.kind, alt.left, alt.top, alt.width).partial === 0 &&
+        (keepClear === null ||
+          intersectionArea(
+            { left: alt.left, top: alt.top, width: alt.width, height: h },
+            keepClear,
+          ) === 0)
+      )
+        return alt;
     }
     return chosen;
   }
@@ -487,6 +531,197 @@ export function placeCaption({
   // sits at the top of the result panel; the bottom holds buttons the
   // user already knows.
   return finish('below', Math.round((W - fullWidth) / 2), maxTop, fullWidth, null);
+}
+
+/** A side dock aligns with the halo edge nearest the screen edge when
+ *  the halo sits in the outer thirds of the viewport (the hand row at
+ *  the bottom of a desktop table, a score header at the top of a
+ *  landscape phone) and centres on it otherwise. A centred card beside
+ *  a bottom-edge target would hang half off the felt into the void. */
+export function sideIdealTop(halo: HaloRect, cardHeight: number, viewportHeight: number): number {
+  const band = viewportHeight / 3;
+  const cy = halo.top + halo.height / 2;
+  if (cy > viewportHeight - band) return Math.round(halo.top + halo.height - cardHeight);
+  if (cy < band) return Math.round(halo.top);
+  return Math.round(cy - cardHeight / 2);
+}
+
+/** How far a centred (no-target) card may move off dead centre to
+ *  clear chrome underneath it. */
+export const MAX_CENTRE_SHIFT = 140;
+
+/**
+ * No-target card: dead centre unless that lands on chrome. Then the
+ * nearest spot (within `MAX_CENTRE_SHIFT` on either axis, inside the
+ * safe area) that bisects nothing — and, failing that, covers the least
+ * — wins, and `overlapsChrome` reports whatever is still underneath so
+ * the card paints solid rather than letting a toggle ghost through.
+ */
+function placeCentred(
+  viewport: { width: number; height: number },
+  width: number,
+  h: number,
+  chrome: readonly HaloRect[],
+): CaptionPlacement {
+  const W = viewport.width;
+  const H = viewport.height;
+  const safe = safeInset(W);
+  const maxTop = Math.max(safe, H - h - safe);
+  const maxLeft = Math.max(safe, W - safe - width);
+  const idealLeft = clamp(Math.round((W - width) / 2), safe, maxLeft);
+  const idealTop = clamp(Math.round((H - h) / 2), safe, maxTop);
+  const finish = (left: number, top: number): CaptionPlacement => ({
+    kind: 'center',
+    left,
+    top,
+    width,
+    notch: null,
+    gap: null,
+    overlapsChrome: chrome.some((r) => intersectionArea({ left, top, width, height: h }, r) > 0),
+  });
+  if (chrome.length === 0) return finish(idealLeft, idealTop);
+
+  const score = (left: number, top: number): [number, number] => {
+    let partial = 0;
+    let total = 0;
+    const card = { left, top, width, height: h };
+    for (const r of chrome) {
+      const a = intersectionArea(card, r);
+      if (a <= 0) continue;
+      total += a;
+      const contained =
+        r.left >= left - 1 &&
+        r.top >= top - 1 &&
+        r.left + r.width <= left + width + 1 &&
+        r.top + r.height <= top + h + 1;
+      if (!contained) partial += a;
+    }
+    return [partial, total];
+  };
+  const tops = new Set<number>([idealTop]);
+  const lefts = new Set<number>([idealLeft]);
+  for (const r of chrome) {
+    tops.add(Math.round(r.top - CHROME_GAP - h));
+    tops.add(Math.round(r.top + r.height + CHROME_GAP));
+    lefts.add(Math.round(r.left - CHROME_GAP - width));
+    lefts.add(Math.round(r.left + r.width + CHROME_GAP));
+  }
+  const usable = (set: Set<number>, ideal: number, lo: number, hi: number) =>
+    [...set].filter((v) => v >= lo && v <= hi && Math.abs(v - ideal) <= MAX_CENTRE_SHIFT);
+  const topList = usable(tops, idealTop, safe, maxTop);
+  const leftList = usable(lefts, idealLeft, safe, maxLeft);
+  let best: [number, number] = [idealLeft, idealTop];
+  let bestKey: [number, number, number] | null = null;
+  for (const t of topList) {
+    for (const l of leftList) {
+      const [partial, total] = score(l, t);
+      const dist = Math.hypot(l - idealLeft, t - idealTop);
+      const key: [number, number, number] = [partial, total, dist];
+      if (
+        bestKey === null ||
+        key[0] < bestKey[0] ||
+        (key[0] === bestKey[0] &&
+          (key[1] < bestKey[1] || (key[1] === bestKey[1] && key[2] < bestKey[2])))
+      ) {
+        best = [l, t];
+        bestKey = key;
+      }
+    }
+  }
+  return finish(best[0], best[1]);
+}
+
+/** Largest overhang (px outside the halo) of a control straddling a
+ *  ring edge that the halo will grow to enclose. Bigger overlaps are a
+ *  neighbouring region, not a label the ring happens to bisect. */
+export const STRADDLE_MAX = 24;
+/** Air between an enclosed straddler and the ring stroke. */
+export const STRADDLE_PAD = 4;
+
+/**
+ * Grow the halo so its ring never bisects a small control: any chrome
+ * rect from `avoid` that crosses a ring edge by at most `STRADDLE_MAX`
+ * px (the wall counter under the dice modal, the discards toggle
+ * peeking past it) is pulled inside the ring instead of cut in two.
+ * Sides that open onto the viewport edge and the safe insets are
+ * respected; the result is stable after at most two passes.
+ */
+export function encloseStraddlers(
+  halo: HaloRect | null,
+  avoid: readonly HaloRect[],
+  viewport: { width: number; height: number },
+): HaloRect | null {
+  if (!halo || avoid.length === 0) return halo;
+  const safe = safeInset(viewport.width);
+  let left = halo.left;
+  let top = halo.top;
+  let right = halo.left + halo.width;
+  let bottom = halo.top + halo.height;
+  // Every avoid rect counts here — a chip mostly inside the ring with a
+  // sliver outside is exactly the bisect this prevents.
+  for (let pass = 0; pass < 2; pass++) {
+    let changed = false;
+    for (const r of avoid) {
+      const rRight = r.left + r.width;
+      const rBottom = r.top + r.height;
+      // Must actually cross into the ring on the other axis too.
+      const spansY = r.top < bottom && rBottom > top;
+      const spansX = r.left < right && rRight > left;
+      if (spansY && r.left < right && rRight > right && rRight - right <= STRADDLE_MAX) {
+        right = Math.min(viewport.width - safe, rRight + STRADDLE_PAD);
+        changed = true;
+      }
+      if (spansY && rRight > left && r.left < left && left - r.left <= STRADDLE_MAX) {
+        left = Math.max(safe, r.left - STRADDLE_PAD);
+        changed = true;
+      }
+      if (spansX && r.top < bottom && rBottom > bottom && rBottom - bottom <= STRADDLE_MAX) {
+        bottom = Math.min(viewport.height - safe, rBottom + STRADDLE_PAD);
+        changed = true;
+      }
+      if (spansX && rBottom > top && r.top < top && top - r.top <= STRADDLE_MAX) {
+        top = Math.max(safe, r.top - STRADDLE_PAD);
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+  if (
+    left === halo.left &&
+    top === halo.top &&
+    right === halo.left + halo.width &&
+    bottom === halo.top + halo.height
+  ) {
+    return halo;
+  }
+  return { left, top, width: right - left, height: bottom - top };
+}
+
+/** Smallest spotlight worth keeping after a focus clip. */
+const FOCUS_MIN_HEIGHT = 32;
+
+/**
+ * Clip a target rect to the band from `from` (the target's content box,
+ * trimming a wrapper's outer margin; `null` keeps the target's own top)
+ * down to the bottom of a descendant (`through`, same coordinate space)
+ * plus `pad`. Used to spotlight only the score header + winning hand of
+ * the result panel instead of the whole panel with its rules block and
+ * action row. Returns the target unchanged when the descendant is
+ * missing, sits outside the target, or would leave too little to ring.
+ */
+export function focusRect(
+  target: TargetRect,
+  through: HaloRect | null,
+  pad = HALO_PAD,
+  from: HaloRect | null = null,
+): TargetRect {
+  if (!through) return target;
+  const top =
+    from && from.top > target.y && from.top < target.y + target.h / 2 ? from.top : target.y;
+  const bottom = through.top + through.height + pad;
+  const h = bottom - top;
+  if (through.top < top - 1 || bottom >= target.y + target.h || h < FOCUS_MIN_HEIGHT) return target;
+  return { x: target.x, y: top, w: target.w, h };
 }
 
 /** Per-side outward feather widths for the spotlight cutout. */

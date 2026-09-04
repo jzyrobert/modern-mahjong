@@ -21,6 +21,9 @@ interface Options {
   viewport: { width: number; height: number };
   /** Re-scan when the target settles somewhere new. */
   settledRect: TargetRect | null;
+  /** Focused band of the target (see `collectChromeRects.focusBand`);
+   *  `null` when the whole target is spotlit. */
+  focusBand?: HaloRect | null;
   /** DOM node the overlay is positioned in (its client rect is the origin). */
   originNode: () => { getBoundingClientRect(): { left: number; top: number } } | null;
 }
@@ -36,12 +39,15 @@ export function useChromeRects({
   stepKey,
   viewport,
   settledRect,
+  focusBand = null,
   originNode,
 }: Options): HaloRect[] {
   const [rects, setRects] = useState<HaloRect[]>(EMPTY);
   const sigRef = useRef('');
   const originRef = useRef(originNode);
   originRef.current = originNode;
+  const bandRef = useRef(focusBand);
+  bandRef.current = focusBand;
   // Latest scan closure, so a step / settle change can force an
   // immediate re-read without tearing down the interval.
   const scanRef = useRef<(...reason: unknown[]) => void>(() => {});
@@ -63,6 +69,7 @@ export function useChromeRects({
         origin: { x: o?.left ?? 0, y: o?.top ?? 0 },
         viewport,
         activeTargetId: targetId,
+        focusBand: bandRef.current,
       });
       const sig = chromeSignature(next);
       if (sig !== sigRef.current) {
@@ -77,8 +84,8 @@ export function useChromeRects({
   }, [active, targetId, viewport]);
 
   useEffect(() => {
-    scanRef.current(stepKey, settledRect);
-  }, [stepKey, settledRect]);
+    scanRef.current(stepKey, settledRect, focusBand);
+  }, [stepKey, settledRect, focusBand]);
 
   return rects;
 }
