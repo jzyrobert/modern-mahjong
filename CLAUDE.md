@@ -248,6 +248,18 @@ Hosting: **do not** commit the PNGs to the PR branch — they'd land on
    the merged PR body will 404, but that's fine — reviewers only need
    them while the PR is open.
 
+**Keep every image URL under ~150 characters.** The GitHub MCP write
+path (`update_pull_request`, comments) code-wraps any URL longer than
+that in double backticks, which silently breaks the `<img>` / `![]()`
+and the screenshot renders as a broken link. Measured on PR #434: the
+125-char `github.com/<owner>/<repo>/raw/<branch>/<path>/` prefix plus a
+32-char filename was wrapped, 31 chars was not, and the same body was
+otherwise untouched. Use a short sidecar slug and folder
+(`claude/3d-screenshots` + `docs/screenshots/3d/`) rather than the
+long descriptive form, prefer `github.com/.../raw/...` over
+`raw.githubusercontent.com` (11 chars shorter), and read the PR back
+after updating to confirm no `` `` `` landed around a URL.
+
 Any ad-hoc Playwright spec written purely to drive these shots stays
 untracked — it's a capture tool, not test coverage, and committing it
 clutters the suite. Stash or delete it after the shots are saved.
