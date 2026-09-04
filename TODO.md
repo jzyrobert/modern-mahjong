@@ -66,7 +66,7 @@ The art-director critics left these open after the per-subsystem gauntlet. The n
   - [ ] [low] Status pill and Live preview badge use 10 px labels (spec is 11 px) — _settings @ all viewports_
   - [ ] [low] match-dealt (table-owned) exceeds the triangle budget: 159,938 > 150,000 — _match-dealt @ phone, desktop, phone-landscape (--renderer 3d)_
   - [ ] [low] Phone landscape stage is small with ~45% of the canvas as empty void — _settings-landscape @ 915x412_
-- **whole game** (round 1: 8.2/10, weakest = table): 13 ranked issues in `docs/STATUS.json` → `wholeGame.issues`; top three: the cream 'Opening rolls' dice modal inside the 3D flow, the desktop claim toast covering PENG, the landscape ClaimBar sitting on the near wall.
+- **whole game** (round 2: **8.6/10, pass** — visual 8.6 / motion 8.6 / legibility 8.3 / polish 8.4 / cohesion 9.0; round 1 was 8.2): remaining ranked issues in `docs/STATUS.json` → `wholeGame.issues`; the mediums are all table framing (portrait band under the near rail, landscape opening-rolls modal on the hand tops, desktop lobby table cropped) plus a tutorial-claims-0 capture caught mid camera-dolly — a round-3 table gauntlet is closing them.
 - **blind judges**: 3 judges × 15 A/B pairs (3D vs pre-rewrite baseline, labels shuffled) → 45/45 preferred the rewrite (`docs/STATUS.json` → `blindJudges`).
 - [ ] Native (Android) still uses the classic shells — `expo-gl` port of `src/three/` is out of scope for this pass (ARCHITECTURE.md §0).
 
