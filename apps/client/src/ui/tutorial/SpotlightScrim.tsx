@@ -2,7 +2,7 @@ import { useEffect, useId, useRef } from 'react';
 import { Animated, Easing, Platform, StyleSheet, View, type ViewStyle } from 'react-native';
 import Svg, { ClipPath, Defs, G, Path } from 'react-native-svg';
 import { COLORS } from '../colors';
-import { FEATHER_OUT, type FeatherSides, type HaloRect } from './placement';
+import { FEATHER_OUT, FEATHER_TIGHT, type FeatherSides, type HaloRect } from './placement';
 
 /**
  * Dim + spotlight for the tutorial coach-marks.
@@ -121,6 +121,51 @@ interface PulseRingProps {
   halo: HaloRect;
   radius: number;
   reducedMotion: boolean;
+  /** Per-side feather; a `FEATHER_TIGHT` side has an opaque neighbour
+   *  right outside the halo, so the pulse barely grows toward it and
+   *  the glow leans away from it. */
+  feather?: FeatherSides | undefined;
+}
+
+interface SideMask {
+  top: boolean;
+  right: boolean;
+  bottom: boolean;
+  left: boolean;
+}
+
+function tightSides(feather: FeatherSides | undefined): SideMask {
+  return {
+    top: feather?.top === FEATHER_TIGHT,
+    right: feather?.right === FEATHER_TIGHT,
+    bottom: feather?.bottom === FEATHER_TIGHT,
+    left: feather?.left === FEATHER_TIGHT,
+  };
+}
+
+/** How far the pulse ring grows past the halo on each side. */
+const PULSE_GROW_PX = 11;
+const PULSE_GROW_TIGHT_PX = 2;
+
+/** Scale + translate that grows a `w × h` ring by `PULSE_GROW_PX` on
+ *  the free sides and `PULSE_GROW_TIGHT_PX` on the tight ones — the
+ *  ring swells away from a neighbouring control instead of over it. */
+function pulseTransform(
+  w: number,
+  h: number,
+  tight: SideMask,
+): { sx: number; sy: number; tx: number; ty: number } {
+  const g = (t: boolean) => (t ? PULSE_GROW_TIGHT_PX : PULSE_GROW_PX);
+  const gl = g(tight.left);
+  const gr = g(tight.right);
+  const gt = g(tight.top);
+  const gb = g(tight.bottom);
+  return {
+    sx: 1 + (gl + gr) / Math.max(40, w),
+    sy: 1 + (gt + gb) / Math.max(40, h),
+    tx: (gr - gl) / 2,
+    ty: (gb - gt) / 2,
+  };
 }
 
 /**
@@ -135,27 +180,29 @@ export function PulseRing(props: PulseRingProps) {
   return Platform.OS === 'web' ? <WebPulseRing {...props} /> : <NativePulseRing {...props} />;
 }
 
-const PULSE_GROW_PX = 22;
 const PULSE_BUCKET_PX = 40;
 const pulseStyles = new Map<string, ViewStyle>();
 
-function webPulseStyle(width: number, height: number): ViewStyle {
+function webPulseStyle(width: number, height: number, tight: SideMask): ViewStyle {
   const bw = Math.max(PULSE_BUCKET_PX, Math.round(width / PULSE_BUCKET_PX) * PULSE_BUCKET_PX);
   const bh = Math.max(PULSE_BUCKET_PX, Math.round(height / PULSE_BUCKET_PX) * PULSE_BUCKET_PX);
-  const key = `${bw}x${bh}`;
+  const mask = `${+tight.top}${+tight.right}${+tight.bottom}${+tight.left}`;
+  const key = `${bw}x${bh}:${mask}`;
   let style = pulseStyles.get(key);
   if (!style) {
-    const sx = (1 + PULSE_GROW_PX / bw).toFixed(4);
-    const sy = (1 + PULSE_GROW_PX / bh).toFixed(4);
+    const { sx, sy, tx, ty } = pulseTransform(bw, bh, tight);
     // `animationKeyframes` is a react-native-web extension, only honoured
     // through StyleSheet.create (compiled class), hence the cache + cast.
     const sheet = StyleSheet.create({
       ring: {
         animationKeyframes: [
           {
-            '0%': { opacity: 0, transform: 'scale(1, 1)' },
+            '0%': { opacity: 0, transform: 'translate(0px, 0px) scale(1, 1)' },
             '15%': { opacity: 0.8 },
-            '100%': { opacity: 0, transform: `scale(${sx}, ${sy})` },
+            '100%': {
+              opacity: 0,
+              transform: `translate(${tx.toFixed(1)}px, ${ty.toFixed(1)}px) scale(${sx.toFixed(4)}, ${sy.toFixed(4)})`,
+            },
           },
         ],
         animationDuration: '1600ms',
@@ -170,7 +217,7 @@ function webPulseStyle(width: number, height: number): ViewStyle {
   return style;
 }
 
-function WebPulseRing({ halo, radius, reducedMotion }: PulseRingProps) {
+function WebPulseRing({ halo, radius, reducedMotion, feather }: PulseRingProps) {
   return (
     <View
       pointerEvents="none"
@@ -185,13 +232,15 @@ function WebPulseRing({ halo, radius, reducedMotion }: PulseRingProps) {
           borderWidth: 2,
           borderColor: COLORS.gold,
         },
-        reducedMotion ? { opacity: 0.4 } : webPulseStyle(halo.width, halo.height),
+        reducedMotion
+          ? { opacity: 0.4 }
+          : webPulseStyle(halo.width, halo.height, tightSides(feather)),
       ]}
     />
   );
 }
 
-function NativePulseRing({ halo, radius, reducedMotion }: PulseRingProps) {
+function NativePulseRing({ halo, radius, reducedMotion, feather }: PulseRingProps) {
   const t = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     if (reducedMotion) {
@@ -214,14 +263,11 @@ function NativePulseRing({ halo, radius, reducedMotion }: PulseRingProps) {
     return () => loop.stop();
   }, [t, reducedMotion]);
 
-  const scaleX = t.interpolate({
-    inputRange: [0, 1],
-    outputRange: [1, 1 + 22 / Math.max(40, halo.width)],
-  });
-  const scaleY = t.interpolate({
-    inputRange: [0, 1],
-    outputRange: [1, 1 + 22 / Math.max(40, halo.height)],
-  });
+  const { sx, sy, tx, ty } = pulseTransform(halo.width, halo.height, tightSides(feather));
+  const scaleX = t.interpolate({ inputRange: [0, 1], outputRange: [1, sx] });
+  const scaleY = t.interpolate({ inputRange: [0, 1], outputRange: [1, sy] });
+  const translateX = t.interpolate({ inputRange: [0, 1], outputRange: [0, tx] });
+  const translateY = t.interpolate({ inputRange: [0, 1], outputRange: [0, ty] });
   const opacity = reducedMotion
     ? 0.4
     : t.interpolate({ inputRange: [0, 0.15, 1], outputRange: [0, 0.8, 0] });
@@ -239,15 +285,41 @@ function NativePulseRing({ halo, radius, reducedMotion }: PulseRingProps) {
         borderWidth: 2,
         borderColor: COLORS.gold,
         opacity,
-        transform: [{ scaleX }, { scaleY }],
+        transform: [{ translateX }, { translateY }, { scaleX }, { scaleY }],
       }}
     />
   );
 }
 
-/** Static gold ring + inner sheen at the exact halo rect. Carries the
+/**
+ * Soft gold aura around the ring. A plain symmetric `box-shadow` spills
+ * ~18 px onto whatever sits right outside the halo (the YOUR TURN pill
+ * above the hand read as "lightened" on the phone shots), so on tight
+ * sides the shadow is offset away from the neighbour and shrunk: the
+ * aura stays on the free sides and all but vanishes on the tight ones.
+ */
+export function haloGlow(feather: FeatherSides | undefined): string {
+  const tight = tightSides(feather);
+  const any = tight.top || tight.right || tight.bottom || tight.left;
+  const ring = '0 0 0 1px rgba(216,168,90,0.25)';
+  if (!any) return `${ring}, 0 0 18px rgba(216,168,90,0.35)`;
+  const shift = 9;
+  const ox = (tight.left ? shift : 0) - (tight.right ? shift : 0);
+  const oy = (tight.top ? shift : 0) - (tight.bottom ? shift : 0);
+  return `${ring}, ${ox}px ${oy}px 16px -5px rgba(216,168,90,0.35)`;
+}
+
+/** Static gold ring + soft aura at the exact halo rect. Carries the
  *  `tutorial-halo` testID the promoted-gang spec centres against. */
-export function HaloRing({ halo, radius }: { halo: HaloRect; radius: number }) {
+export function HaloRing({
+  halo,
+  radius,
+  feather,
+}: {
+  halo: HaloRect;
+  radius: number;
+  feather?: FeatherSides | undefined;
+}) {
   return (
     <View
       testID="tutorial-halo"
@@ -261,7 +333,7 @@ export function HaloRing({ halo, radius }: { halo: HaloRect; radius: number }) {
         borderRadius: radius,
         borderWidth: 2,
         borderColor: 'rgba(216,168,90,0.95)',
-        boxShadow: '0 0 0 1px rgba(216,168,90,0.25), 0 0 18px rgba(216,168,90,0.35)',
+        boxShadow: haloGlow(feather),
       }}
     />
   );

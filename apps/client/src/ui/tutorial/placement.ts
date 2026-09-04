@@ -42,6 +42,13 @@ export interface CaptionPlacement {
    *  card-local px (x for above/below, y for left/right). `null` when
    *  the card is centred with no target. */
   notch: number | null;
+  /** Distance between the card edge facing the halo and the halo edge
+   *  (0 when the card overlaps the halo; `null` for a centred card).
+   *  Above `NOTCH_MAX_GAP` the pointer notch is dropped — a notch that
+   *  points across a band of unrelated chrome misleads more than it
+   *  helps — and, when a wide enough side strip exists, the card
+   *  re-docks beside the halo instead. */
+  gap: number | null;
   /** True when the card ends up over something it should not — an
    *  `avoid` rect it could not dodge, or the spotlit target itself (the
    *  portrait fallback overlaps the result panel's bottom). The overlay
@@ -73,6 +80,29 @@ export const CARD_HEIGHT_ESTIMATE = 240;
 export const SIDE_CARD_MIN_WIDTH = 168;
 export const SIDE_GAP = 12;
 export const NOTCH_INSET = 26;
+/** How far the pointer notch protrudes from the card edge. Counted as
+ *  part of the card's footprint for chrome avoidance so the tip never
+ *  lands on a dimmed control (the wall counter under the own-hand
+ *  card on desktop). */
+export const NOTCH_DEPTH = 11;
+/** Largest card ↔ halo gap that still gets a pointer notch. */
+export const NOTCH_MAX_GAP = 48;
+/** A side strip must be at least this wide (card width) before a
+ *  pushed-away vertical dock is traded for it — narrower side cards
+ *  are the compact landscape layout, not an upgrade. */
+export const SIDE_REDOCK_MIN_WIDTH = 260;
+/** Vertical docks slide sideways to keep at least this much air between
+ *  the card's side edge and any chrome beside it (the landscape round
+ *  panel's labels) — a card that kisses a neighbour reads as cramped. */
+export const SIDE_GUTTER = 20;
+/** Overhang past the viewport edge for a halo side that opens onto it
+ *  (the target itself runs to the edge). Radius + stroke so neither the
+ *  corner arcs nor the stroke are visible on that side. */
+export const HALO_OVERHANG = HALO_RADIUS + 4;
+/** A target edge closer than this to the safe line leaves no room for a
+ *  visible ring gap; the ring opens on that side instead of being drawn
+ *  across the target's edge. */
+const MIN_RING_PAD = 4;
 
 export function safeInset(viewportWidth: number): number {
   return viewportWidth >= 1024 ? 24 : 12;
@@ -95,10 +125,21 @@ export function haloFor(
   let bottom = rect.y + rect.h + HALO_PAD;
   if (viewport) {
     const safe = safeInset(viewport.width);
+    const H = viewport.height;
+    // Horizontal: clamp to the safe area. Both shells keep ≥ 12 px of
+    // horizontal padding inside every target container (the hand row
+    // spans the phone edge to edge but its tiles start at x ≈ 21), so a
+    // side clamp always lands in padding, never across content.
     left = Math.max(safe, left);
-    top = Math.max(safe, top);
     right = Math.min(viewport.width - safe, right);
-    bottom = Math.min(viewport.height - safe, bottom);
+    // Vertical: a target whose edge reaches the safe line runs to the
+    // screen edge (hand tiles at the bottom of a phone, a result panel
+    // taller than a landscape viewport). The halo then overhangs so its
+    // stroke and corners are clipped away rather than drawn across the
+    // target's edge; otherwise the padded halo is clamped like the sides.
+    top = rect.y <= safe + MIN_RING_PAD ? -HALO_OVERHANG : Math.max(safe, top);
+    bottom =
+      rect.y + rect.h >= H - safe - MIN_RING_PAD ? H + HALO_OVERHANG : Math.min(H - safe, bottom);
   } else {
     left = Math.max(0, left);
     top = Math.max(0, top);
@@ -143,6 +184,7 @@ export function placeCaption({
       top: clamp(Math.round((H - h) / 2), safe, maxTop),
       width: fullWidth,
       notch: null,
+      gap: null,
       overlapsChrome: false,
     };
   }
@@ -165,25 +207,70 @@ export function placeCaption({
   // screen → above; the tsumo button in the top chrome → below.
   const preferBelow = spaceBelow > spaceAbove;
 
+  /** Card rect plus the pointer notch's band on the halo-facing edge —
+   *  what chrome avoidance scores, so the notch tip clears controls too. */
+  const footprint = (kind: DockKind, card: HaloRect): HaloRect => {
+    switch (kind) {
+      case 'above':
+        return { ...card, height: card.height + NOTCH_DEPTH };
+      case 'below':
+        return { ...card, top: card.top - NOTCH_DEPTH, height: card.height + NOTCH_DEPTH };
+      case 'right':
+        return { ...card, left: card.left - NOTCH_DEPTH, width: card.width + NOTCH_DEPTH };
+      case 'left':
+        return { ...card, width: card.width + NOTCH_DEPTH };
+      default:
+        return card;
+    }
+  };
+
+  /** Gap between the card's halo-facing edge and the halo. */
+  const gapFor = (kind: DockKind, card: HaloRect): number => {
+    switch (kind) {
+      case 'above':
+        return Math.max(0, halo.top - (card.top + card.height));
+      case 'below':
+        return Math.max(0, card.top - haloBottom);
+      case 'right':
+        return Math.max(0, card.left - haloRight);
+      case 'left':
+        return Math.max(0, halo.left - (card.left + card.width));
+      default:
+        return 0;
+    }
+  };
+
   // Tint decision looks at *everything* the card ends up over — chrome
   // it could not dodge and the spotlit target itself (the portrait
   // fallback deliberately overlaps the result panel's bottom, whose
   // buttons would otherwise read through the lighter glass).
   const finish = (
     kind: DockKind,
-    left: number,
-    top: number,
-    width: number,
+    rawLeft: number,
+    rawTop: number,
+    rawWidth: number,
     notch: number | null,
   ): CaptionPlacement => {
+    const left = Math.round(rawLeft);
+    const top = Math.round(rawTop);
+    const width = Math.round(rawWidth);
     const card = { left, top, width, height: h };
     const covers =
       intersectionArea(card, halo) > 0 || (avoid ?? []).some((r) => intersectionArea(card, r) > 0);
-    return { kind, left, top, width, notch, overlapsChrome: covers };
+    const gap = gapFor(kind, card);
+    return {
+      kind,
+      left,
+      top,
+      width,
+      notch: gap > NOTCH_MAX_GAP ? null : notch === null ? null : Math.round(notch),
+      gap,
+      overlapsChrome: covers,
+    };
   };
 
   /**
-   * Score a card rect against the chrome: `partial` is the area of
+   * Score a footprint against the chrome: `partial` is the area of
    * controls the card would *bisect* (intersecting but not fully
    * covering — the one thing that must never happen), `total` the whole
    * covered area. Candidates compare lexicographically: no bisect first,
@@ -206,21 +293,29 @@ export function placeCaption({
     return { partial, total };
   };
 
+  const scoreAt = (kind: DockKind, left: number, top: number, width: number) =>
+    score(footprint(kind, { left, top, width, height: h }));
+
   /** Best `top` for a card of `width` at `left`: the ideal dock, or a
    *  spot aligned just past a chrome edge (within the safe area and
-   *  `MAX_CHROME_SHIFT`) that stops the card from cutting a control. */
+   *  `MAX_CHROME_SHIFT`) that stops the card (notch included) from
+   *  cutting a control. */
   const bestTop = (
+    kind: DockKind,
     left: number,
     width: number,
     ideal: number,
     direction: 'up' | 'down' | 'both',
   ): number => {
     if (chrome.length === 0) return ideal;
+    // Notch band above / below the card, per dock kind.
+    const notchAbove = kind === 'below' ? NOTCH_DEPTH : 0;
+    const notchBelow = kind === 'above' ? NOTCH_DEPTH : 0;
     const tops = new Set<number>([ideal, safe, maxTop]);
     for (const r of chrome) {
       if (r.left + r.width <= left || r.left >= left + width) continue;
-      tops.add(Math.round(r.top - CHROME_GAP - h));
-      tops.add(Math.round(r.top + r.height + CHROME_GAP));
+      tops.add(Math.round(r.top - CHROME_GAP - h - notchBelow));
+      tops.add(Math.round(r.top + r.height + CHROME_GAP + notchAbove));
     }
     let best = ideal;
     let bestKey: [number, number, number] | null = null;
@@ -230,7 +325,7 @@ export function placeCaption({
       if (direction === 'down' && t < ideal) continue;
       const dist = Math.abs(t - ideal);
       if (dist > MAX_CHROME_SHIFT) continue;
-      const { partial, total } = score({ left, top: t, width, height: h });
+      const { partial, total } = scoreAt(kind, left, t, width);
       const key: [number, number, number] = [partial, total, dist];
       if (
         bestKey === null ||
@@ -245,8 +340,28 @@ export function placeCaption({
     return best;
   };
 
+  /** Slide a vertical dock sideways (within the safe area) when a
+   *  chrome rect beside it sits closer than `SIDE_GUTTER`. */
+  const gutterShift = (left: number, top: number, width: number): number => {
+    const maxLeft = Math.max(safe, W - safe - width);
+    let shifted = left;
+    for (let pass = 0; pass < 2; pass++) {
+      for (const r of chrome) {
+        if (r.top >= top + h || r.top + r.height <= top) continue;
+        const rRight = r.left + r.width;
+        const cardRight = shifted + width;
+        if (r.left >= cardRight && r.left - cardRight < SIDE_GUTTER) {
+          shifted = Math.max(safe, r.left - SIDE_GUTTER - width);
+        } else if (rRight <= shifted && shifted - rRight < SIDE_GUTTER) {
+          shifted = Math.min(maxLeft, rRight + SIDE_GUTTER);
+        }
+      }
+    }
+    return Math.abs(shifted - left) <= SIDE_GUTTER ? shifted : left;
+  };
+
   const vertical = (kind: 'above' | 'below'): CaptionPlacement => {
-    const left = Math.round(
+    const centred = Math.round(
       clamp(haloCx - fullWidth / 2, safe, Math.max(safe, W - safe - fullWidth)),
     );
     const ideal =
@@ -255,13 +370,77 @@ export function placeCaption({
         : clamp(Math.round(haloBottom + CARD_GAP), safe, maxTop);
     // The card must clear the *whole* adjacent row (YOUR TURN pill,
     // sort chips) rather than leave its bottom half peeking out.
-    const top = bestTop(left, fullWidth, ideal, kind === 'above' ? 'up' : 'down');
+    const top = bestTop(kind, centred, fullWidth, ideal, kind === 'above' ? 'up' : 'down');
+    const left = gutterShift(centred, top, fullWidth);
     return finish(
       kind,
       left,
       top,
       fullWidth,
       clamp(haloCx - left, NOTCH_INSET, fullWidth - NOTCH_INSET),
+    );
+  };
+
+  /**
+   * Side strip dock (wide viewports, tall centred targets like the
+   * result panel). Right wins ties so the caption stays clear of the
+   * result panel's top-left heading. `null` when neither strip has
+   * room for at least `minWidth` of card.
+   */
+  const side = (minWidth: number): CaptionPlacement | null => {
+    // Outer edge of the strip is the safe inset (24 px on desktop), the
+    // inner edge the halo gap.
+    const sideNeed = minWidth + SIDE_GAP + safe;
+    const leftFits = spaceLeft >= sideNeed;
+    const rightFits = spaceRight >= sideNeed;
+    if (!leftFits && !rightFits) return null;
+    // `- 1`: a centred target leaves both strips equal up to layout
+    // rounding; right must win that tie deterministically.
+    const useRight = rightFits && (!leftFits || spaceRight >= spaceLeft - 1);
+    const kind: DockKind = useRight ? 'right' : 'left';
+    const strip = useRight ? spaceRight : spaceLeft;
+    let width = Math.max(minWidth, Math.min(CARD_MAX_WIDTH, strip - SIDE_GAP - safe));
+    let left = clamp(
+      useRight ? Math.round(haloRight + SIDE_GAP) : Math.round(halo.left - SIDE_GAP - width),
+      safe,
+      Math.max(safe, W - safe - width),
+    );
+    // Slide along the strip away from whichever chrome the card cuts
+    // (the top status row, the ☰ pill), bounded like the vertical docks.
+    const idealTop = clamp(Math.round(haloCy - h / 2), safe, maxTop);
+    let top = bestTop(kind, left, width, idealTop, 'both');
+    // A control straddling the card's inner edge (a chip at the end of
+    // the row the halo sits in, even one the target itself half covers)
+    // cannot be dodged vertically: pull the edge past it while the card
+    // stays wide enough to read, then re-pick the row for the new column.
+    const card = { left, top, width, height: h };
+    let nudged = false;
+    for (const r of avoid ?? []) {
+      if (intersectionArea(card, r) <= 0) continue;
+      const rRight = r.left + r.width;
+      if (useRight && r.left < left && rRight > left) {
+        const newLeft = Math.round(rRight + CHROME_GAP);
+        const newWidth = left + width - newLeft;
+        if (newWidth >= minWidth) {
+          width = newWidth;
+          left = newLeft;
+          nudged = true;
+        }
+      } else if (!useRight && r.left < left + width && rRight > left + width) {
+        const newWidth = Math.round(r.left - CHROME_GAP) - left;
+        if (newWidth >= minWidth) {
+          width = newWidth;
+          nudged = true;
+        }
+      }
+    }
+    if (nudged) top = bestTop(kind, left, width, idealTop, 'both');
+    return finish(
+      kind,
+      left,
+      top,
+      width,
+      clamp(haloCy - top, NOTCH_INSET, Math.max(NOTCH_INSET, h - NOTCH_INSET)),
     );
   };
 
@@ -276,7 +455,7 @@ export function placeCaption({
     let best: CaptionPlacement | null = null;
     let bestKey: [number, number] | null = null;
     for (const c of candidates) {
-      const { partial, total } = score({ left: c.left, top: c.top, width: c.width, height: h });
+      const { partial, total } = scoreAt(c.kind, c.left, c.top, c.width);
       if (
         bestKey === null ||
         partial < bestKey[0] ||
@@ -286,61 +465,22 @@ export function placeCaption({
         bestKey = [partial, total];
       }
     }
-    return best ?? vertical(order[0] ?? 'above');
+    const chosen = best ?? vertical(order[0] ?? 'above');
+    // Chrome pushed the card well away from the halo (the own-hand card
+    // lifted over the plate / sort-chip / turn-pill row on desktop):
+    // a card docked beside the halo, notch aimed at it, reads better
+    // than one floating mid-screen — take it when a roomy strip exists
+    // and it cuts nothing.
+    if ((chosen.gap ?? 0) > NOTCH_MAX_GAP) {
+      const alt = side(SIDE_REDOCK_MIN_WIDTH);
+      if (alt && scoreAt(alt.kind, alt.left, alt.top, alt.width).partial === 0) return alt;
+    }
+    return chosen;
   }
 
-  // Neither vertical slot fits: try a side strip. Right wins ties so
-  // the caption stays clear of the result panel's top-left heading.
-  const sideNeed = SIDE_CARD_MIN_WIDTH + SIDE_GAP * 2;
-  const leftFits = spaceLeft >= sideNeed;
-  const rightFits = spaceRight >= sideNeed;
-  if (leftFits || rightFits) {
-    const useRight = rightFits && (!leftFits || spaceRight >= spaceLeft);
-    const strip = useRight ? spaceRight : spaceLeft;
-    let width = Math.max(SIDE_CARD_MIN_WIDTH, Math.min(CARD_MAX_WIDTH, strip - SIDE_GAP * 2));
-    let left = clamp(
-      useRight ? Math.round(haloRight + SIDE_GAP) : Math.round(halo.left - SIDE_GAP - width),
-      safe,
-      Math.max(safe, W - safe - width),
-    );
-    // Slide along the strip away from whichever chrome the card cuts
-    // (the top status row, the ☰ pill), bounded like the vertical docks.
-    const idealTop = clamp(Math.round(haloCy - h / 2), safe, maxTop);
-    let top = bestTop(left, width, idealTop, 'both');
-    // A control straddling the card's inner edge (a chip at the end of
-    // the row the halo sits in, even one the target itself half covers)
-    // cannot be dodged vertically: pull the edge past it while the card
-    // stays wide enough to read, then re-pick the row for the new column.
-    const card = { left, top, width, height: h };
-    let nudged = false;
-    for (const r of avoid ?? []) {
-      if (intersectionArea(card, r) <= 0) continue;
-      const rRight = r.left + r.width;
-      if (useRight && r.left < left && rRight > left) {
-        const newLeft = Math.round(rRight + CHROME_GAP);
-        const newWidth = left + width - newLeft;
-        if (newWidth >= SIDE_CARD_MIN_WIDTH) {
-          width = newWidth;
-          left = newLeft;
-          nudged = true;
-        }
-      } else if (!useRight && r.left < left + width && rRight > left + width) {
-        const newWidth = Math.round(r.left - CHROME_GAP) - left;
-        if (newWidth >= SIDE_CARD_MIN_WIDTH) {
-          width = newWidth;
-          nudged = true;
-        }
-      }
-    }
-    if (nudged) top = bestTop(left, width, idealTop, 'both');
-    return finish(
-      useRight ? 'right' : 'left',
-      left,
-      top,
-      width,
-      clamp(haloCy - top, NOTCH_INSET, Math.max(NOTCH_INSET, h - NOTCH_INSET)),
-    );
-  }
+  // Neither vertical slot fits: try a side strip.
+  const strip = side(SIDE_CARD_MIN_WIDTH);
+  if (strip) return strip;
 
   // Tall centred halo on a phone: overlap the bottom of the halo. The
   // pedagogically load-bearing content (winning hand, faan summary)

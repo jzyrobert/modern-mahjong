@@ -4,7 +4,11 @@ import {
   CHROME_GAP,
   FEATHER_OUT,
   FEATHER_TIGHT,
+  HALO_OVERHANG,
   HALO_PAD,
+  NOTCH_DEPTH,
+  NOTCH_MAX_GAP,
+  SIDE_GUTTER,
   featherFor,
   haloFor,
   placeCaption,
@@ -35,10 +39,33 @@ describe('haloFor', () => {
     expect(haloFor(null)).toBeNull();
   });
 
-  test('clamps to the safe area when the viewport is known', () => {
-    // Result panel taller than a landscape phone: ring stays inset.
+  test('opens onto the viewport edge where the target itself reaches the safe line', () => {
+    // Result panel taller than a landscape phone: the ring overhangs
+    // top and bottom (clipped by the overlay) so no stroke is drawn
+    // across the panel's header or action row; the sides stay padded.
     const h = haloFor({ x: 220, y: 4, w: 480, h: 460 }, landscape);
-    expect(h).toEqual({ left: 212, top: 12, width: 496, height: 412 - 24 });
+    expect(h).toEqual({
+      left: 212,
+      top: -HALO_OVERHANG,
+      width: 496,
+      height: 412 + HALO_OVERHANG * 2,
+    });
+    // Horizontal sides never open: the hand container spans a phone
+    // edge to edge but its tiles sit inside the shell padding, so the
+    // side clamp frames them.
+    const wide = haloFor({ x: 0, y: 815, w: 412, h: 100 }, phone);
+    expect(wide?.left).toBe(12);
+    expect((wide?.left ?? 0) + (wide?.width ?? 0)).toBe(400);
+    expect((wide?.top ?? 0) + (wide?.height ?? 0)).toBe(915 + HALO_OVERHANG);
+    // Hand tiles running to 3 px past the safe line: bottom opens, the
+    // three other sides keep their pad.
+    const hand = haloFor({ x: 195, y: 335, w: 595, h: 67 }, landscape);
+    expect(hand?.top).toBe(335 - HALO_PAD);
+    expect(hand?.left).toBe(195 - HALO_PAD);
+    expect((hand?.top ?? 0) + (hand?.height ?? 0)).toBe(412 + HALO_OVERHANG);
+    // Padding alone poking past the safe line is still clamped.
+    const inset = haloFor({ x: 100, y: 20, w: 40, h: 20 }, phone);
+    expect(inset?.top).toBe(12);
     // A well-inset target is untouched.
     expect(haloFor({ x: 100, y: 100, w: 40, h: 20 }, phone)).toEqual({
       left: 92,
@@ -62,8 +89,15 @@ describe('placeCaption with chrome to avoid', () => {
     expect(p.kind).toBe('above');
     expect(p.top + 220 + CHROME_GAP).toBeLessThanOrEqual(770);
     expect(p.overlapsChrome).toBe(false);
-    // Still aims the notch at the halo centre and stays on screen.
-    expect((p.notch ?? 0) + p.left).toBeCloseTo(hand.left + hand.width / 2, 0);
+    // The notch survives while the gap is small, aimed at the halo
+    // centre; a card pushed further away drops it (see below).
+    const gap = hand.top - (p.top + 220);
+    expect(p.gap).toBe(gap);
+    if (gap <= NOTCH_MAX_GAP) {
+      expect((p.notch ?? 0) + p.left).toBeCloseTo(hand.left + hand.width / 2, 0);
+    } else {
+      expect(p.notch).toBeNull();
+    }
     expect(inside(p, 220, phone)).toBe(true);
   });
 
@@ -146,6 +180,87 @@ describe('placeCaption with chrome to avoid', () => {
     expect(p.top).toBeGreaterThanOrEqual(54 + CHROME_GAP);
     expect(p.overlapsChrome).toBe(false);
     expect(inside(p, 320, landscape)).toBe(true);
+  });
+});
+
+describe('placeCaption: notch footprint and side re-dock', () => {
+  test('the notch tip clears chrome too, not just the card body', () => {
+    // Desktop own-hand: the wall counter pill sits 60 px above the halo.
+    const hand = { left: 200, top: 680, width: 600, height: 80 };
+    const counter = [{ left: 700, top: 612, width: 40, height: 14 }];
+    // Neither side strip is wide enough, so the dock must stay vertical.
+    const vp = { width: 1000, height: 900 };
+    const p = placeCaption({ viewport: vp, halo: hand, cardHeight: 215, avoid: counter });
+    expect(p.kind).toBe('above');
+    // Card bottom + notch + gutter ends above the pill.
+    expect(p.top + 215 + NOTCH_DEPTH + CHROME_GAP).toBeLessThanOrEqual(612);
+  });
+
+  test('a vertical dock pushed far from the halo drops its notch', () => {
+    const halo = { left: 12, top: 800, width: 388, height: 100 };
+    // Solid chrome band directly above the hand, too tall to sit beside.
+    const band = [{ left: 12, top: 720, width: 388, height: 60 }];
+    const p = placeCaption({ viewport: phone, halo, cardHeight: 200, avoid: band });
+    expect(p.kind).toBe('above');
+    expect(p.gap ?? 0).toBeGreaterThan(NOTCH_MAX_GAP);
+    expect(p.notch).toBeNull();
+    expect(p.overlapsChrome).toBe(false);
+  });
+
+  test('re-docks beside the halo on desktop when chrome pushes the card away', () => {
+    // 1440×900 own-hand step: plate + sort chips + turn pill row above
+    // the hand, wall counter above that. Right of the hand there is a
+    // 420 px strip.
+    const hand = { left: 420, top: 680, width: 600, height: 80 };
+    const row = [
+      { left: 450, top: 636, width: 130, height: 40 },
+      { left: 600, top: 644, width: 200, height: 30 },
+      { left: 830, top: 644, width: 160, height: 30 },
+      { left: 700, top: 612, width: 40, height: 14 },
+    ];
+    const p = placeCaption({ viewport: desktop, halo: hand, cardHeight: 215, avoid: row });
+    expect(p.kind).toBe('right');
+    expect(p.left).toBe(1020 + 12);
+    expect(p.left + p.width).toBe(1440 - 24);
+    expect(p.notch).not.toBeNull();
+    expect(p.top + 215).toBeLessThanOrEqual(900 - 24);
+    expect(inside(p, 215, desktop)).toBe(true);
+  });
+
+  test('keeps the vertical dock when the only side strip is too narrow', () => {
+    // Landscape phone: 195 px left of the hand is room for a compact
+    // side card but not a comfortable one — stay above with no notch.
+    const hand = { left: 195, top: 327, width: 595, height: 100 };
+    const band = [{ left: 195, top: 250, width: 595, height: 60 }];
+    const p = placeCaption({ viewport: landscape, halo: hand, cardHeight: 150, avoid: band });
+    expect(p.kind).toBe('above');
+    expect(p.notch).toBeNull();
+  });
+
+  test('a vertical dock slides sideways to keep a gutter from chrome beside it', () => {
+    // Landscape phone own-hand: the round panel's labels start 8 px
+    // right of where the centred card would end.
+    const hand = { left: 204, top: 342, width: 580, height: 88 };
+    const labels = [
+      { left: 722, top: 134, width: 20, height: 11 },
+      { left: 722, top: 149, width: 31, height: 11 },
+    ];
+    const plain = placeCaption({ viewport: landscape, halo: hand, cardHeight: 216 });
+    const p = placeCaption({ viewport: landscape, halo: hand, cardHeight: 216, avoid: labels });
+    expect(plain.left + plain.width).toBe(714);
+    expect(p.left + p.width).toBeLessThanOrEqual(722 - SIDE_GUTTER);
+    expect(p.kind).toBe('above');
+    // Notch still aims at the halo centre.
+    expect((p.notch ?? 0) + p.left).toBeCloseTo(hand.left + hand.width / 2, 0);
+  });
+
+  test('side dock respects the 24 px desktop inset on its outer edge', () => {
+    // Result panel centred on desktop; the card must not touch the halo.
+    const panel = { left: 420, top: 100, width: 600, height: 700 };
+    const p = placeCaption({ viewport: desktop, halo: panel, cardHeight: 300 });
+    expect(p.kind).toBe('right');
+    expect(p.gap).toBe(12);
+    expect(p.left + p.width).toBeLessThanOrEqual(1440 - 24);
   });
 });
 

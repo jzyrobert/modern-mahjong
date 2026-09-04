@@ -133,10 +133,13 @@ interface ActiveStepProps {
 }
 
 const GLASS_BG = 'rgba(14,20,17,0.74)';
-/** Deeper tint for a card that has to sit over dimmed chrome: with the
- *  scrim already flattening what is behind, the blur has little to
- *  bite on and the tint alone has to stop labels reading through. */
-const GLASS_BG_DENSE = 'rgba(14,20,17,0.97)';
+/** Opaque card for the docks that land over chrome or the spotlit
+ *  target itself (the portrait result-panel fallback, a card flush to
+ *  the top HUD). Glass has nothing worth showing through there, and a
+ *  backdrop blur over bright chrome smears its labels into the card
+ *  instead of hiding them — so no tint-only compromise: solid ink, no
+ *  backdrop-filter. */
+const GLASS_BG_SOLID = 'rgb(16,22,19)';
 const GLASS_BORDER = 'rgba(255,255,255,0.12)';
 const TEXT_PRIMARY = 'rgba(255,255,255,0.92)';
 const TEXT_SECONDARY = 'rgba(255,255,255,0.64)';
@@ -219,7 +222,18 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
     cardHeight,
     avoid,
   });
-  const glassBg = placement.overlapsChrome ? GLASS_BG_DENSE : GLASS_BG;
+  const solid = placement.overlapsChrome;
+  const glassBg = solid ? GLASS_BG_SOLID : GLASS_BG;
+  publishLayout({
+    stepKey,
+    placement,
+    halo,
+    feather,
+    avoid,
+    cardHeight,
+    solid,
+    viewport: { width: window.width, height: window.height },
+  });
 
   // Step transition: fade + 8 px slide once the new card is measured.
   // `ready` drops to false on every step change (the measurement is
@@ -287,7 +301,18 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
           prev.w === width && prev.h === height ? prev : { w: width, h: height },
         );
       }}
-      style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, zIndex: 1000 }}
+      // `overflow: hidden` clips a halo side that overhangs the viewport
+      // (see `haloFor`): the ring simply runs off the edge there instead
+      // of drawing its stroke across the target.
+      style={{
+        position: 'absolute',
+        left: 0,
+        top: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 1000,
+        overflow: 'hidden',
+      }}
       pointerEvents="box-none"
     >
       <SpotlightScrim
@@ -313,8 +338,13 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
       ))}
       {halo ? (
         <>
-          <PulseRing halo={halo} radius={HALO_RADIUS} reducedMotion={reducedMotion} />
-          <HaloRing halo={halo} radius={HALO_RADIUS} />
+          <PulseRing
+            halo={halo}
+            radius={HALO_RADIUS}
+            reducedMotion={reducedMotion}
+            feather={feather}
+          />
+          <HaloRing halo={halo} radius={HALO_RADIUS} feather={feather} />
         </>
       ) : null}
 
@@ -366,7 +396,7 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
               gap: compact ? 6 : 10,
               boxShadow: '0 12px 40px rgba(0,0,0,0.35)',
             },
-            webOnly({ backdropFilter: 'blur(16px) saturate(140%)' }),
+            solid ? null : webOnly({ backdropFilter: 'blur(16px) saturate(140%)' }),
           ]}
         >
           <View
@@ -464,6 +494,31 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
   );
 }
 
+/**
+ * Test hook: the last computed coach-mark layout, readable from the
+ * page as `globalThis.__MAHJONG_TEST_TUTORIAL_LAYOUT__`. Lets the e2e
+ * specs assert placement invariants (no bisected chrome, notch dropped
+ * when the card is pushed away, solid card over chrome) in overlay
+ * coordinates instead of re-deriving them from bounding boxes. Plain
+ * assignment, no React state — cheap enough to run every render.
+ */
+export interface TutorialLayoutSnapshot {
+  stepKey: string;
+  placement: CaptionPlacement;
+  halo: HaloRect | null;
+  feather: ReturnType<typeof featherFor> | undefined;
+  avoid: readonly HaloRect[];
+  cardHeight: number | null;
+  solid: boolean;
+  viewport: { width: number; height: number };
+}
+
+function publishLayout(snapshot: TutorialLayoutSnapshot): void {
+  (
+    globalThis as unknown as { __MAHJONG_TEST_TUTORIAL_LAYOUT__?: TutorialLayoutSnapshot }
+  ).__MAHJONG_TEST_TUTORIAL_LAYOUT__ = snapshot;
+}
+
 /** Tag the overlay root on web so the chrome scan skips its own DOM. */
 function markOverlay(node: unknown): void {
   if (Platform.OS !== 'web') return;
@@ -526,8 +581,8 @@ interface ButtonProps {
   accessibilityLabel?: string;
   testID?: string;
   stretch?: boolean;
-  /** Narrow side-dock cards: tighter padding (quiet links drop to 36 px;
-   *  the primary CTA keeps the 44 px floor). */
+  /** Narrow side-dock cards: tighter horizontal padding. Every button
+   *  keeps the 44 px hit-target floor regardless. */
   compact?: boolean;
 }
 
@@ -581,8 +636,8 @@ function QuietButton({ label, onPress, accessibilityLabel, compact }: ButtonProp
       accessibilityLabel={accessibilityLabel ?? label}
       onPress={onPress}
       style={(s: HoverState) => ({
-        minHeight: compact ? 36 : 44,
-        paddingHorizontal: 10,
+        minHeight: 44,
+        paddingHorizontal: compact ? 8 : 10,
         borderRadius: 10,
         justifyContent: 'center',
         backgroundColor: s.pressed
@@ -668,11 +723,22 @@ interface Panel {
  *  the overlay edge it shares with the halo so the panels fill the
  *  overlay's real bounds (the Android nav-bar inset included). */
 function scrimAround(halo: HaloRect): Array<Panel & { key: string }> {
+  // A halo side that overhangs the viewport (open ring) has no strip
+  // on that side; clamp so no panel gets a negative size.
+  const top = Math.max(0, halo.top);
+  const bottom = Math.max(top, halo.top + halo.height);
+  const left = Math.max(0, halo.left);
   return [
-    { key: 'top', left: 0, top: 0, right: 0, height: halo.top },
-    { key: 'bottom', left: 0, top: halo.top + halo.height, right: 0, bottom: 0 },
-    { key: 'left', left: 0, top: halo.top, width: halo.left, height: halo.height },
-    { key: 'right', left: halo.left + halo.width, top: halo.top, right: 0, height: halo.height },
+    { key: 'top', left: 0, top: 0, right: 0, height: top },
+    { key: 'bottom', left: 0, top: bottom, right: 0, bottom: 0 },
+    { key: 'left', left: 0, top, width: left, height: bottom - top },
+    {
+      key: 'right',
+      left: Math.max(left, halo.left + halo.width),
+      top,
+      right: 0,
+      height: bottom - top,
+    },
   ];
 }
 
