@@ -102,7 +102,7 @@ async function serveDist(distDir, port) {
   }
   // Detached so the whole `npx → serve` process group can be killed at
   // teardown; otherwise the grandchild keeps the event loop alive.
-  const child = spawn('npx', ['--yes', 'serve', distAbs, '-l', String(port), '-s', '-n'], {
+  const child = spawn('npx', ['serve', distAbs, '-l', String(port), '-s', '-n'], {
     stdio: 'ignore',
     cwd: clientRoot,
     detached: true,
@@ -257,25 +257,41 @@ async function runStep(page, step, ctx) {
     return;
   }
   if (step.openSettings) {
-    // Both renderers expose a settings entry; try the common labels.
-    const candidates = [
-      '[data-testid="open-settings"]',
-      'role=button[name="Settings"]',
-      'text=Settings',
-      'role=button[name="☰"]',
-      '[data-testid="menu-pill"]',
-    ];
-    for (const sel of candidates) {
-      const loc = page.locator(sel).first();
-      if (await loc.isVisible().catch(() => false)) {
-        await loc.click();
-        const settings = page.getByText('Settings', { exact: true }).first();
-        if ((await settings.isVisible().catch(() => false)) && sel !== 'text=Settings')
-          await settings.click().catch(() => {});
-        return;
+    // Every shell exposes `data-testid="open-settings"` — directly in
+    // the 3D HUD, or inside the ☰ menu on the classic shells. Try the
+    // direct entry first, then open the menu (aria-label "Open menu"
+    // on the classic TopBar / MenuPill) and pick the row.
+    const direct = page.locator('[data-testid="open-settings"]').first();
+    if (await direct.isVisible().catch(() => false)) {
+      await direct.click();
+    } else {
+      const menuTriggers = [
+        '[data-testid="open-menu"]',
+        '[aria-label="Open menu"]',
+        'role=button[name="Open menu"]',
+        '[data-testid="menu-pill"]',
+      ];
+      let opened = false;
+      for (const sel of menuTriggers) {
+        const loc = page.locator(sel).first();
+        if (await loc.isVisible().catch(() => false)) {
+          await loc.click();
+          opened = true;
+          break;
+        }
       }
+      if (!opened) throw new Error('no settings entry found');
+      const row = page
+        .locator('[data-testid="open-settings"]')
+        .or(page.getByRole('button', { name: 'Settings' }))
+        .first();
+      await row.click({ timeout: step.timeout ?? 8000 });
     }
-    throw new Error('no settings entry found');
+    // The panel is open once its title is on screen.
+    return page
+      .getByText('Settings', { exact: true })
+      .first()
+      .waitFor({ timeout: step.timeout ?? 8000 });
   }
   if (step.startTutorial) {
     return page.evaluate((id) => {
@@ -304,11 +320,15 @@ async function runStep(page, step, ctx) {
       .click({ timeout: 8000 });
   }
   if (step.waitForPerf) {
+    // Resolves to 'stale' (recorded as `perfStale` in the log) instead
+    // of silently continuing when the snapshot never advances — a
+    // "sample: 1, renders: 0" snapshot must not pass as fresh telemetry.
     return page
       .waitForFunction(() => (globalThis.__MAHJONG_PERF__?.sample ?? 0) >= 2, null, {
         timeout: 8000,
       })
-      .catch(() => {});
+      .then(() => 'fresh')
+      .catch(() => 'stale');
   }
   throw new Error(`unknown step ${JSON.stringify(step)}`);
 }
@@ -338,7 +358,20 @@ function judgeBudget(perf, budget, renderer) {
 }
 
 async function shootState(browser, name, recipe, opts, ctx) {
-  const vp = VIEWPORTS[opts.viewport];
+  // A recipe may pin its own viewport (`viewport: 'phone-landscape'` or
+  // `{ width, height, dpr }`) so orientation-specific states are checked
+  // whichever CLI viewport the run uses.
+  const vpName =
+    typeof recipe.viewport === 'string'
+      ? recipe.viewport
+      : recipe.viewport
+        ? 'custom'
+        : opts.viewport;
+  const vp =
+    typeof recipe.viewport === 'string'
+      ? VIEWPORTS[recipe.viewport]
+      : (recipe.viewport ?? VIEWPORTS[opts.viewport]);
+  if (!vp) throw new Error(`unknown recipe viewport ${recipe.viewport}`);
   const consoleErrors = [];
   const consoleWarnings = [];
   const pageErrors = [];
@@ -374,17 +407,21 @@ async function shootState(browser, name, recipe, opts, ctx) {
 
   const started = Date.now();
   let driveError = null;
+  let perfStale = false;
   try {
     for (const step of recipe.steps) {
       if (opts.verbose) console.error(`  [${name}] ${JSON.stringify(step).slice(0, 80)}`);
-      await runStep(page, step, ctx);
+      const r = await runStep(page, step, ctx);
+      if (step.waitForPerf && r === 'stale') perfStale = true;
     }
-    if (opts.renderer === '3d') await runStep(page, { waitForPerf: true }, ctx);
+    if (opts.renderer === '3d') {
+      perfStale = (await runStep(page, { waitForPerf: true }, ctx)) === 'stale';
+    }
   } catch (e) {
     driveError = String(e?.message || e).split('\n')[0];
   }
   const perf = await page.evaluate(() => globalThis.__MAHJONG_PERF__ ?? null).catch(() => null);
-  const base = `${name}.${opts.viewport}.${opts.renderer}`;
+  const base = `${name}.${vpName}.${opts.renderer}`;
   const png = path.join(opts.out, `${base}.png`);
   await page
     .screenshot({ path: png, fullPage: false })
@@ -398,7 +435,7 @@ async function shootState(browser, name, recipe, opts, ctx) {
     state: name,
     owner: recipe.owner,
     renderer: opts.renderer,
-    viewport: { ...vp, name: opts.viewport },
+    viewport: { ...vp, name: vpName },
     url: page.url(),
     driveMs: Date.now() - started,
     driveError,
@@ -406,6 +443,8 @@ async function shootState(browser, name, recipe, opts, ctx) {
     consoleWarnings: consoleWarnings.slice(0, 20),
     pageErrors,
     perf,
+    /** True when `__MAHJONG_PERF__` never advanced past its first sample. */
+    perfStale,
     budget,
     pass: !driveError && consoleErrors.length === 0 && pageErrors.length === 0 && budget.pass,
     png: path.relative(clientRoot, png),

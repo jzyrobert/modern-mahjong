@@ -25,6 +25,12 @@ export interface PerfSnapshot {
   idle: boolean;
   /** Total renders since mount — lets tests assert "nothing re-rendered". */
   renders: number;
+  /**
+   * JS time of the very first render (shader compile + first upload),
+   * kept out of the p50 / p95 ring so a scene that idles after a frame
+   * or two reports its steady-state cost, not its warm-up.
+   */
+  warmupMs: number;
   dpr: number;
   width: number;
   height: number;
@@ -48,15 +54,20 @@ export class PerfMonitor {
   private lastRenderAt = 0;
   private renders = 0;
   private sample = 0;
+  private warmupMs = 0;
   quality: QualityTier = 'mid';
 
   constructor(private readonly renderer: WebGLRenderer) {}
 
   /** Call once per rendered frame with the JS time the frame took. */
   recordFrame(frameMs: number, now: number): void {
-    this.times[this.head] = frameMs;
-    this.head = (this.head + 1) % RING;
-    if (this.count < RING) this.count++;
+    if (this.renders === 0) {
+      this.warmupMs = frameMs;
+    } else {
+      this.times[this.head] = frameMs;
+      this.head = (this.head + 1) % RING;
+      if (this.count < RING) this.count++;
+    }
     this.framesThisSecond++;
     this.renders++;
     this.lastRenderAt = now;
@@ -93,6 +104,7 @@ export class PerfMonitor {
       programs: info.programs?.length ?? 0,
       idle: now - this.lastRenderAt > 500,
       renders: this.renders,
+      warmupMs: round(this.warmupMs),
       dpr: this.renderer.getPixelRatio(),
       width: size.x,
       height: size.y,

@@ -60,6 +60,20 @@ function queryOverride(): ResolvedRenderer | null {
   return null;
 }
 
+/**
+ * The session override in effect, if any — the test-harness global or
+ * the `?renderer=` query param — with where it came from. `null` when
+ * the persisted setting is what decides. Lets the settings panel say
+ * *why* the status pill disagrees with the selected option.
+ */
+export function rendererOverride(): { value: ResolvedRenderer; source: 'test' | 'query' } | null {
+  const test = globalThis.__MAHJONG_TEST_RENDERER__;
+  if (test === '3d' || test === 'classic') return { value: test, source: 'test' };
+  const q = queryOverride();
+  if (q) return { value: q, source: 'query' };
+  return null;
+}
+
 export function resolveRenderer(setting: RendererChoice): ResolvedRenderer {
   const test = globalThis.__MAHJONG_TEST_RENDERER__;
   if (test === '3d' || test === 'classic') return test;

@@ -29,6 +29,9 @@ interface MenuRowProps {
   hint: string;
   onPress: () => void;
   destructive?: boolean;
+  /** Optional `data-testid` for rows that scripts / specs drive
+   *  directly (e.g. `open-settings`, shared with the 3D HUD). */
+  testID?: string;
 }
 
 /**
@@ -166,8 +169,9 @@ export function MenuRowsList({
       <MenuRow
         icon="⚙"
         title="Settings"
-        hint="Felt, tile back, sound, animations."
+        hint="Renderer, quality, felt, tile back, sound, animations."
         onPress={handle(onOpenSettings)}
+        testID="open-settings"
       />
       <MenuRow
         icon="📜"
@@ -292,12 +296,13 @@ export function EmoteRow({ onSendChat }: { onSendChat: (emote: string) => void }
   );
 }
 
-export function MenuRow({ icon, title, hint, onPress, destructive }: MenuRowProps) {
+export function MenuRow({ icon, title, hint, onPress, destructive, testID }: MenuRowProps) {
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={title}
+      testID={testID}
       style={({ pressed }) => ({
         flexDirection: 'row',
         alignItems: 'center',

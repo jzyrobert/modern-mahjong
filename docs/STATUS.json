@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "updatedAt": "2026-09-03T22:05:00Z",
-  "round": 0,
+  "updatedAt": "2026-09-03T23:53:00Z",
+  "round": 2,
   "passThreshold": 8.5,
   "subsystems": {
     "core": {
@@ -14,7 +14,7 @@
           "severity": "medium",
           "title": "Placeholder 3D table exceeds triangle budget (159,938 > 150,000)",
           "state": "match-dealt",
-          "detail": "RoundedBoxGeometry with 3 segments \u00d7 136 instances. The table agent replaces the geometry (segments 2 or a cheaper rounded slab)."
+          "detail": "RoundedBoxGeometry with 3 segments × 136 instances. The table agent replaces the geometry (segments 2 or a cheaper rounded slab)."
         }
       ],
       "history": [
@@ -40,11 +40,73 @@
       "history": []
     },
     "settings": {
-      "score": null,
+      "score": 8.6,
       "errors": 0,
-      "pass": false,
-      "issues": [],
-      "history": []
+      "pass": true,
+      "issues": [
+        {
+          "rank": 1,
+          "severity": "medium",
+          "title": "Phone portrait: rail corners clip the frame edge and the Live preview pill sits on the wood",
+          "state": "settings / settings-jade-plum @ phone (412x915)",
+          "detail": "In shots/critic-r2-phone/settings.phone.classic.png the near rail's rounded corners run into the preview frame's left and right edges (x~30 and x~795 of the 824px capture) so there is no void either side at the widest point, and only ~14 CSS px of void beneath the near bevel; the 'LIVE PREVIEW' badge (left 12, bottom 10) therefore overlaps the wood rail rather than floating in the parlour void as it does on desktop and phone-landscape. Fix: for aspects below ~1.9 back the camera off slightly (e.g. PREVIEW_CAMERA.position z 6.35 -> ~6.9, or PREVIEW_HFOV_DEG 52 -> ~56 in previewConfig.ts) so ~8-10 px of void separates the rail from the frame on all four sides, and/or move the badge to the top-left where the void is guaranteed. The three-settings spec's 'void below' assertion should then sample 8 px up with margin to spare."
+        },
+        {
+          "rank": 2,
+          "severity": "low",
+          "title": "Blue back still reads cyan/pale toward the far edge",
+          "state": "settings @ phone + desktop",
+          "detail": "Measured centre of the face-down tile is #6b9db4 (phone) / #669ab3 (desktop): ΔE 3.5-3.7 against the Blue gradient, which is fine, but the far (top) edge is ΔE 5.5 (phone) and 6.8 (desktop) from the #7fa9c1 top stop and visibly cooler/more cyan than the chip. Plum behaves the same (far edge ΔE 9-10 vs top stop, 4 vs gradient). The single global albedo x0.8 / chroma x1.4 in compensateBackColor over-saturates cool hues. Fix: compensate per hue (e.g. saturation 1.25 for blue/mint, 1.4 for plum) or raise uBackRoughness toward 0.85 so the key's specular lift on the far edge drops; re-measure both edges, not just the centre."
+        },
+        {
+          "rank": 3,
+          "severity": "low",
+          "title": "Desktop dpr 1 preview shows stair-step aliasing on tile edges and glyph strokes",
+          "state": "settings / settings-jade-plum @ desktop (1440x900, dpr 1)",
+          "detail": "At 3x zoom of shots/critic-r2-desktop/settings-jade-plum.desktop.classic.png the tile silhouettes and the 五/萬/發 strokes have visible jaggies; antialias:true is requested in SceneHost but SwiftShader does not honour MSAA, and the canvas is only 403x236 CSS px. Because the preview is tiny (6.6k tris, 5 draw calls) it can afford supersampling: render at min(2, dpr*2) via the new maxDpr path when dpr < 1.5, or add an FXAA/SMAA pass on desktop only. Verify on a real GPU before deciding whether this is SwiftShader-only."
+        },
+        {
+          "rank": 4,
+          "severity": "low",
+          "title": "No hover state on skin chips or segmented controls",
+          "state": "settings @ desktop",
+          "detail": "The visual language specifies hover = translateY(-1px) + brightness(1.05) over 160 ms for buttons; SkinChip and Segmented in SettingsPanel.tsx only style the pressed state (scale 0.97, surfaceHi). On a pointer device the chips feel inert until clicked. Fix: use Pressable's onHoverIn/onHoverOut (react-native-web supports them) to set a hovered style with the 1 px lift and a brightness filter, with a 160 ms transition."
+        },
+        {
+          "rank": 5,
+          "severity": "low",
+          "title": "Status pill and Live preview badge use 10 px labels (spec is 11 px)",
+          "state": "settings @ all viewports",
+          "detail": "StatusPill text ('CLASSIC ACTIVE') is fontSize 10 with letterSpacing 1.2 and the 'LIVE PREVIEW' badge is fontSize 10 / letterSpacing 2; the shared language says small labels are 11 px, uppercase, 2 px tracking, weight 700. Contrast is fine (0.62 white over glass ~7:1) but 10 px at dpr 1 is at the edge of comfortable. Bump both to 11 px and align the pill's tracking to 2 px."
+        },
+        {
+          "rank": 6,
+          "severity": "low",
+          "title": "match-dealt (table-owned) exceeds the triangle budget: 159,938 > 150,000",
+          "state": "match-dealt @ phone, desktop, phone-landscape (--renderer 3d)",
+          "detail": "Zero errors on all three viewports, but budget.violations lists 'triangles 159938 > 150000' on each; the number is byte-identical to round 1 (critic-r1-phone-3d) and comes from the placeholder Table3DShell (3 draw calls, renders 1). Not attributable to the settings subsystem, so it is not counted against perfPass here — the orchestrator should keep gating it on the table subsystem. The warmupMs split (236-676 ms) and the gl.finish() change did remove the multi-second frame-2 stall seen in r1 (p95 2.2 -> steady-state 0 with renders 1)."
+        },
+        {
+          "rank": 7,
+          "severity": "low",
+          "title": "Phone landscape stage is small with ~45% of the canvas as empty void",
+          "state": "settings-landscape @ 915x412",
+          "detail": "The 570x150 letterbox keeps both rails in frame (void luminance 0.006 above / 0.009 below, verified), but the rail occupies only ~55% of the width and the tiles are ~40 CSS px tall — legible but modest. Options: let PREVIEW_MAX_ASPECT rise to ~2.4 so the stage uses more width while still keeping void above/below, or grow previewHeight to ~170 px at height < 520 by trimming the section gap (22 -> 16) in the landscape layout."
+        }
+      ],
+      "history": [
+        {
+          "round": 2,
+          "score": 8.6,
+          "errors": 0,
+          "perfPass": true,
+          "pass": true,
+          "critic": "art-director",
+          "openIssues": 7,
+          "notes": "Passed round 2 (8.4 → 8.6). Merged into integration at e5bc1f3.",
+          "at": "2026-09-03T23:53:00Z"
+        }
+      ]
     },
     "tutorial": {
       "score": null,
