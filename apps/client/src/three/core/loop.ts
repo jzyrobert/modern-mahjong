@@ -81,8 +81,10 @@ export class Loop {
     for (const u of this.updaters) {
       if (u(dt, now)) live = true;
     }
+    let rendered = false;
     if (live || this.dirty) {
       this.dirty = false;
+      rendered = true;
       this.opts.render();
       const cost = performance.now() - t0;
       this.opts.perf.recordFrame(cost, now);
@@ -98,6 +100,11 @@ export class Loop {
         this.overSince = 0;
       }
     }
-    this.opts.perf.maybePublish(now);
+    // A render with no live updater is the render → idle transition
+    // (first frame on a still scene, a resize, a one-shot re-tint).
+    // Publish right away so the last frame's numbers are never lost to
+    // the once-a-second window — otherwise a scene that idles after one
+    // frame can leave `__MAHJONG_PERF__` frozen at "renders: 0".
+    this.opts.perf.maybePublish(now, rendered && !live);
   };
 }

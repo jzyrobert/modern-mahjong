@@ -23,7 +23,9 @@
    { openSettings: true }                 opens the in-match settings surface
    { startTutorial: 'basics' }            launches a lesson from the lobby
    { clickTutorialNext: true }            presses the caption card's CTA
- *   { viewport: { width, height, dpr } }   override the CLI viewport for this recipe
+ *
+ * A recipe may also carry `viewport: 'phone-landscape' | { width, height, dpr }`
+ * to pin its own viewport regardless of the CLI `--viewport`.
  *
  * `owner` is the subsystem the state belongs to (used by STATUS.json).
  * `budget` overrides the default per-subsystem perf budget.
@@ -70,6 +72,24 @@ const MENU_SETTLED = [
   { waitForFunction: MENU_INTRO_SETTLED },
   // One drift step + the canvas fade-in (400 ms) after the intro.
   { waitMs: 450 },
+/** Scroll every scrolled container back to the top (the sheet's ScrollView). */
+const SCROLL_TO_TOP = `
+(() => {
+  for (const el of document.querySelectorAll('*')) if (el.scrollTop > 0) el.scrollTop = 0;
+})();
+`;
+
+/**
+ * Tap one skin chip, then the original, let the tint tween settle, and
+ * scroll the sheet back up (Playwright scrolls the chips into view).
+ */
+const RETINT_ROUNDTRIP = (away, back) => [
+  { clickTestId: away },
+  { waitMs: 350 },
+  { clickTestId: back },
+  { waitMs: 900 },
+  { evaluate: SCROLL_TO_TOP },
+  { waitMs: 250 },
 ];
 
 export const STATES = {
@@ -137,7 +157,16 @@ export const STATES = {
   // ── Settings ─────────────────────────────────────────────────────────
   settings: {
     owner: 'settings',
-    steps: [...START_SOLO, { waitForOwnHand: true }, { openSettings: true }, { waitMs: 700 }],
+    steps: [
+      ...START_SOLO,
+      { waitForOwnHand: true },
+      { openSettings: true },
+      { waitForPerf: true },
+      // Round-trip a skin so the perf snapshot holds steady-state frames
+      // from the live re-tint (the preview otherwise idles after its one
+      // warm-up frame); the final look is the default sage / blue.
+      ...RETINT_ROUNDTRIP('felt-jade', 'felt-sage'),
+    ],
   },
   'settings-jade-plum': {
     owner: 'settings',
@@ -146,7 +175,21 @@ export const STATES = {
       ...START_SOLO,
       { waitForOwnHand: true },
       { openSettings: true },
-      { waitMs: 700 },
+      { waitForPerf: true },
+      ...RETINT_ROUNDTRIP('tileback-blue', 'tileback-plum'),
+    ],
+  },
+  // Letterbox preview (~3.8:1 canvas) — pinned to phone landscape so the
+  // rail framing is checked every round regardless of the CLI viewport.
+  'settings-landscape': {
+    owner: 'settings',
+    viewport: 'phone-landscape',
+    steps: [
+      ...START_SOLO,
+      { waitForOwnHand: true },
+      { openSettings: true },
+      { waitForPerf: true },
+      ...RETINT_ROUNDTRIP('felt-jade', 'felt-sage'),
     ],
   },
 
