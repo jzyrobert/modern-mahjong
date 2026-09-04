@@ -31,6 +31,44 @@ Live tracker for queued and out-of-scope work. The full design lives in [`docs/P
 
 - [ ] Extract `HOST_PORT` + `onHostLan` + `OnlineConnectionStatus` + `LessonRow` (small visual delta — 18 vs 22 px circle) out of `MobileLobby.tsx` / `Lobby.tsx` into a shared module. The original deferral cited "retirement of `Lobby.tsx`" as the blocker, but the investigation found that `Lobby.tsx` is the active phone-vs-desktop dispatcher (not legacy) and its inline `DesktopLobby` is the tablet/desktop surface — there is no retirement plan. A `useLanHost(transport)` hook + a shared `LessonRow` with a `compact` prop is the cleanest shape.
 
+### Three.js rewrite follow-ups (PR #434 gauntlet — see `docs/STATUS.json`)
+
+The art-director critics left these open after the per-subsystem gauntlet. The next `/loop` iteration resumes from the lowest-scoring subsystem; each item names the state and viewport where the critic saw it.
+
+- **table** (final 8.3/10, below 8.5):
+  - [ ] [high] Desktop claim: toast stacks ON the ClaimBar, covering the PENG button — _match-claim @ desktop 1440x900 (3d)_
+  - [ ] [medium] Landscape ClaimBar lies on the near wall's tile backs — _match-claim, match-mid-hand @ phone-landscape 915x412 (3d)_
+  - [ ] [medium] River-zoom header: chrome row is not glass — rail and far-wall tops show between the pills — _match-river-zoom @ phone 412x915 (3d)_
+  - [ ] [medium] Landscape footer pills cover the bottom of the outer hand tiles — _match-dealt, match-my-turn, match-mid-hand, match-claim @ phone-landscape 915x412 (3d)_
+  - [ ] [medium] Portrait composition: ~155 px of dead void above and below the table — _match-dealt, match-my-turn, match-dealt-jade-plum @ phone 412x915 (3d)_
+  - [ ] [low] Dead-wall 0.18 step reads as misaligned stacks, not a marker — _match-dealt @ desktop (near wall right end), match-dealt @ phone (far wall right end)_
+  - [ ] [low] Portrait full-table river glyphs are soft at ~17.7 px — _match-mid-hand @ phone 412x915 (3d)_
+  - [ ] [low] Landscape chrome ☰ button crowds the far wall's top-left corner — _match-dealt @ phone-landscape 915x412 (3d)_
+  - [ ] [low] DISMISS pill text contrast looks under 4.5:1 — _all landscape states with the FullscreenPrompt_
+- **tutorial** (final 8.3/10, below 8.5):
+  - [ ] [medium] Landscape basics-0: spotlight ring bisects the hand row — _tutorial-basics-0 @ phone-landscape (classic)_
+  - [ ] [medium] Phone scoring-1: card floats 90 px below the ring, notch points at dimmed Rules chips — _tutorial-scoring-1 @ phone (classic)_
+  - [ ] [low] Landscape scoring-1: ring lights the opponent seat strip and desktop seat badges — _tutorial-scoring-1 @ phone-landscape and desktop (classic)_
+  - [ ] [low] Landscape scoring-intro step 0: centred card reads off-centre and kisses the hand row — _match-result (scoring-intro step 0) @ phone-landscape (classic)_
+  - [ ] [low] Progress dots and 'LESSON N/14' label count different things — _all tutorial states, all viewports_
+  - [ ] [low] 3D renderer: targeted steps still fall back to the centred card (known gap) — _tutorial-basics-0 @ phone / desktop (3d)_
+- **menu** (final 8.5/10, pass):
+  - [ ] [medium] Desktop: dice pair straddles the Tutorial card's top-right corner — _menu, menu-tutorials, menu-reduced-motion @ desktop 1440x900 (3d)_
+  - [ ] [medium] Phone portrait: drift tiles ghost inside the MATCH CODE input and across the Join match CTA — _menu, menu-tutorials @ phone 412x915 (3d)_
+  - [ ] [low] Landscape phone lesson sheet hard-clips the third card with no trailing inset — _menu-tutorials @ phone-landscape 915x412 (3d)_
+  - [ ] [low] Landscape replay library: Import button floats mid-header — _replay-library @ phone-landscape 915x412 (3d)_
+  - [ ] [low] Reduced-motion portrait backdrop has no visible drift field (known gap confirmed) — _menu-reduced-motion @ phone 412x915 (3d)_
+- **settings** (final 8.6/10, pass):
+  - [ ] [medium] Phone portrait: rail corners clip the frame edge and the Live preview pill sits on the wood — _settings / settings-jade-plum @ phone (412x915)_
+  - [ ] [low] Blue back still reads cyan/pale toward the far edge — _settings @ phone + desktop_
+  - [ ] [low] Desktop dpr 1 preview shows stair-step aliasing on tile edges and glyph strokes — _settings / settings-jade-plum @ desktop (1440x900, dpr 1)_
+  - [ ] [low] No hover state on skin chips or segmented controls — _settings @ desktop_
+  - [ ] [low] Status pill and Live preview badge use 10 px labels (spec is 11 px) — _settings @ all viewports_
+  - [ ] [low] match-dealt (table-owned) exceeds the triangle budget: 159,938 > 150,000 — _match-dealt @ phone, desktop, phone-landscape (--renderer 3d)_
+  - [ ] [low] Phone landscape stage is small with ~45% of the canvas as empty void — _settings-landscape @ 915x412_
+- [ ] Whole-game critic + blind A/B judging verdicts land in `docs/STATUS.json`; fold their ranked issues in here.
+- [ ] Native (Android) still uses the classic shells — `expo-gl` port of `src/three/` is out of scope for this pass (ARCHITECTURE.md §0).
+
 ### Future (post-MVP)
 
 - Maestro / UIAutomator UI driving so the Android lifecycle smoke can drive a match into mid-hand, background it, and assert the snapshot really did restore (the current smoke only catches crash-on-resume, not state loss).
