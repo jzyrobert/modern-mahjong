@@ -31,6 +31,14 @@ export interface TileMaterialUniforms {
    */
   uBackClearcoat: { value: number };
   uBackRoughness: { value: number };
+  /**
+   * Second back colour, selected per instance by `aBackVariant` (1):
+   * the warm ivory-tan the table marks its dead-wall stacks with,
+   * independent of the skin so it reads as a marked block on blue, plum
+   * or mint rather than a tinted (greyed) copy of them.
+   */
+  uDeadBack: { value: Color };
+  uDeadBack2: { value: Color };
 }
 
 /** Body roughness shared by the tile faces and, by default, the back. */
@@ -60,6 +68,8 @@ export function createTileMaterial(
     uHighlightColor: { value: new Color('#ffcf6b') },
     uBackClearcoat: { value: 1 },
     uBackRoughness: { value: TILE_BODY_ROUGHNESS },
+    uDeadBack: { value: new Color('#dccaa4') },
+    uDeadBack2: { value: new Color('#bda57c') },
   };
   const mat = new MeshPhysicalMaterial({
     color: 0xffffff,
@@ -81,6 +91,7 @@ export function createTileMaterial(
         attribute vec2 aFaceCell;
         attribute vec3 aTint;
         attribute float aHighlight;
+        attribute float aBackVariant;
         uniform vec2 uCellScale;
         varying vec2 vAtlasUv;
         varying vec3 vTint;
@@ -88,7 +99,8 @@ export function createTileMaterial(
         varying float vFace;
         varying float vBack;
         varying float vBackGrad;
-        varying float vBackCell;`,
+        varying float vBackCell;
+        varying float vBackVariant;`,
       )
       .replace(
         '#include <beginnormal_vertex>',
@@ -102,7 +114,8 @@ export function createTileMaterial(
         vBackCell = step(aFaceCell.x, -0.5);
         vAtlasUv = uv * uCellScale + max(aFaceCell, vec2(0.0));
         vTint = aTint;
-        vHighlight = aHighlight;`,
+        vHighlight = aHighlight;
+        vBackVariant = aBackVariant;`,
       );
     shader.fragmentShader = shader.fragmentShader
       .replace(
@@ -115,13 +128,16 @@ export function createTileMaterial(
         uniform vec3 uHighlightColor;
         uniform float uBackClearcoat;
         uniform float uBackRoughness;
+        uniform vec3 uDeadBack;
+        uniform vec3 uDeadBack2;
         varying vec2 vAtlasUv;
         varying vec3 vTint;
         varying float vHighlight;
         varying float vFace;
         varying float vBack;
         varying float vBackGrad;
-        varying float vBackCell;`,
+        varying float vBackCell;
+        varying float vBackVariant;`,
       )
       .replace(
         '#include <color_fragment>',
@@ -129,12 +145,19 @@ export function createTileMaterial(
         // Slight negative LOD bias: minified river glyphs pick the
         // sharper mip (anisotropic filtering keeps it from shimmering).
         vec4 faceTexel = texture2D(uAtlas, vAtlasUv, -0.35);
-        vec3 backCol = mix(uBackColor2, uBackColor, vBackGrad);
+        vec3 backCol = mix(
+          mix(uBackColor2, uBackColor, vBackGrad),
+          mix(uDeadBack2, uDeadBack, vBackGrad),
+          vBackVariant
+        );
         // Faint inset border on the back so face-down tiles read as
         // separate pieces in a wall / opponent row.
         vec2 edge = abs(vUv - 0.5) * 2.0;
         float rim = smoothstep(0.86, 0.97, max(edge.x, edge.y));
         backCol = mix(backCol, backCol * 0.82, rim * 0.6);
+        // Any printed-back pixel — the true −Z face or the +Z sentinel
+        // (a concealed rack seen from the user's seat) — also takes the
+        // back finish below, so a blue rack never wears the ivory gloss.
         float showBack = max(vBack, vFace * vBackCell);
         vec3 body = mix(uBodyColor, backCol, showBack);
         float showFace = vFace * (1.0 - vBackCell);
@@ -146,15 +169,15 @@ export function createTileMaterial(
       .replace(
         '#include <roughnessmap_fragment>',
         `#include <roughnessmap_fragment>
-        roughnessFactor = mix(roughnessFactor, uBackRoughness, vBack);`,
+        roughnessFactor = mix(roughnessFactor, uBackRoughness, showBack);`,
       )
       .replace(
         'material.clearcoat = clearcoat;',
-        'material.clearcoat = clearcoat * mix(1.0, uBackClearcoat, vBack);',
+        'material.clearcoat = clearcoat * mix(1.0, uBackClearcoat, showBack);',
       )
       .replace(
         'material.sheenColor = sheenColor;',
-        'material.sheenColor = sheenColor * mix(1.0, uBackClearcoat, vBack);',
+        'material.sheenColor = sheenColor * mix(1.0, uBackClearcoat, showBack);',
       )
       .replace(
         '#include <emissivemap_fragment>',
@@ -164,7 +187,7 @@ export function createTileMaterial(
   };
   // Distinct cache key so three doesn't share the program with a stock
   // MeshPhysicalMaterial.
-  mat.customProgramCacheKey = () => 'mahjong-tile-v4';
+  mat.customProgramCacheKey = () => 'mahjong-tile-v5';
   return mat;
 }
 

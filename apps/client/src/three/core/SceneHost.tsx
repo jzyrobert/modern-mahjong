@@ -33,6 +33,16 @@ export interface SceneContext {
   canvas: HTMLCanvasElement;
   /** CSS-pixel size. */
   size: { width: number; height: number };
+  /**
+   * True when this runtime lives in the `poolKey` pool: it outlives the
+   * host that mounted it, so a subsystem may *park* its scene objects
+   * on `dispose()` (leaving them in `scene`) for the next host with the
+   * same key to pick up already compiled and uploaded. Anything parked
+   * must register its final disposer in `onDestroy`, which runs when
+   * the pooled runtime is eventually torn down.
+   */
+  pooled: boolean;
+  onDestroy: Set<() => void>;
 }
 
 export interface SceneHandle {
@@ -75,9 +85,244 @@ export interface SceneHostProps {
    * sharpness on every tier so face glyphs stay crisp.
    */
   maxDpr?: number;
+  /**
+   * Share one renderer (canvas, WebGL context, compiled programs, loop,
+   * camera rig) between successive hosts that pass the same key. On
+   * unmount the runtime is *parked* instead of destroyed — the canvas
+   * leaves the DOM, the loop stops — and the next host with the key
+   * re-attaches it, so the scene it builds (see `SceneContext.pooled`)
+   * starts with every shader compiled and every texture uploaded. A
+   * parked runtime that nobody claims within `POOL_PARK_MS` is torn
+   * down. Used by the pre-game lobby → match hand-off: the match's
+   * first frame is a camera move onto the lobby's table, not a
+   * multi-second compile stall under the opening rolls.
+   */
+  poolKey?: string;
 }
 
 const MAX_CONTEXT_LOSSES = 2;
+/** How long a parked pooled runtime waits for its next host. */
+export const POOL_PARK_MS = 20_000;
+
+/**
+ * Everything one WebGL context owns. Per-mount state (`host`, `handle`,
+ * `maxDpr`, callbacks) is (re)assigned on attach so the loop's
+ * closures read the *current* mount through this object.
+ */
+interface Runtime {
+  renderer: WebGLRenderer;
+  scene: Scene;
+  rig: CameraRig;
+  loop: Loop;
+  perf: PerfMonitor;
+  quality: QualityProfile;
+  reducedMotion: boolean;
+  canvas: HTMLCanvasElement;
+  size: { width: number; height: number };
+  ctx: SceneContext;
+  /** Renderer-level props the runtime was created with. */
+  signature: string;
+  losses: number;
+  // ── per-mount ──
+  host: HTMLElement | null;
+  handle: SceneHandle | null;
+  build: ((ctx: SceneContext) => SceneHandle) | null;
+  maxDpr: number | undefined;
+  awaitingFirstFrame: boolean;
+  onReady: (() => void) | null;
+  onFatal: ((reason: string) => void) | null;
+  setVeil: ((v: 'loading' | 'restoring' | null) => void) | null;
+  sizedOnce: boolean;
+  parkTimer: ReturnType<typeof setTimeout> | null;
+}
+
+const POOL = new Map<string, Runtime>();
+
+function createRuntime(
+  signature: string,
+  o: {
+    transparent: boolean;
+    clearColor: number;
+    qualitySetting: Parameters<typeof resolveQuality>[0];
+    animations: boolean;
+    initialCamera: CameraPreset;
+    pooled: boolean;
+  },
+): Runtime {
+  const canvas = document.createElement('canvas');
+  canvas.style.display = 'block';
+  canvas.style.width = '100%';
+  canvas.style.height = '100%';
+  canvas.style.touchAction = 'none';
+  const renderer = new WebGLRenderer({
+    canvas,
+    antialias: true,
+    alpha: o.transparent,
+    powerPreference: 'high-performance',
+    stencil: false,
+  });
+  const gl = renderer.getContext();
+  const hints = readDeviceHints(gl);
+  const quality = resolveQuality(o.qualitySetting, hints);
+  const reducedMotion =
+    !o.animations ||
+    (typeof window !== 'undefined' &&
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true);
+
+  renderer.outputColorSpace = SRGBColorSpace;
+  renderer.toneMapping = ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.05;
+  renderer.shadowMap.enabled = quality.shadowMapSize > 0;
+  // r185 deprecates PCFSoftShadowMap (and falls back to this anyway).
+  renderer.shadowMap.type = PCFShadowMap;
+  if (!o.transparent) renderer.setClearColor(o.clearColor, 1);
+  else renderer.setClearColor(0x000000, 0);
+
+  const scene = new Scene();
+  const size = { width: 1, height: 1 };
+  const rig = new CameraRig(o.initialCamera, 1);
+  rig.parallaxEnabled = quality.parallax && !reducedMotion;
+  // Reduced motion: preset changes settle in ≈ 120 ms like every
+  // other tween (scenes may tighten this further, never loosen it).
+  if (reducedMotion) rig.halfLife = 0.04;
+  const perf = new PerfMonitor(renderer);
+  perf.quality = quality.tier;
+
+  const rt: Runtime = {
+    renderer,
+    scene,
+    rig,
+    loop: null as unknown as Loop,
+    perf,
+    quality,
+    reducedMotion,
+    canvas,
+    size,
+    ctx: null as unknown as SceneContext,
+    signature,
+    losses: 0,
+    host: null,
+    handle: null,
+    build: null,
+    maxDpr: undefined,
+    awaitingFirstFrame: true,
+    onReady: null,
+    onFatal: null,
+    setVeil: null,
+    sizedOnce: false,
+    parkTimer: null,
+  };
+
+  const loop = new Loop({
+    renderer,
+    perf,
+    render: () => {
+      renderer.render(scene, rig.camera);
+      if (rt.awaitingFirstFrame) {
+        rt.awaitingFirstFrame = false;
+        // Drivers compile pipelines asynchronously on the first draw;
+        // without this the stall lands on the *next* frame's first GL
+        // call and shows up in the perf ring as a multi-second frame.
+        // Block here instead, inside the veiled warm-up frame that the
+        // perf monitor already keeps out of p50 / p95.
+        renderer.getContext().finish();
+        rt.setVeil?.(null);
+        rt.onReady?.();
+        perf.maybePublish(performance.now(), true);
+      }
+    },
+    overBudgetMs: DOWNGRADE_P95_MS,
+    overBudgetWindowMs: DOWNGRADE_WINDOW_MS,
+    onOverBudget: () => {
+      if (rt.quality.tier === 'low') return;
+      rt.quality = QUALITY_PROFILES[downgrade(rt.quality.tier)];
+      perf.quality = rt.quality.tier;
+      renderer.shadowMap.enabled = rt.quality.shadowMapSize > 0;
+      rig.parallaxEnabled = rt.quality.parallax && !reducedMotion;
+      rt.handle?.setQuality?.(rt.quality);
+      applySize(rt);
+    },
+  });
+  rt.loop = loop;
+  rt.ctx = {
+    renderer,
+    scene,
+    rig,
+    loop,
+    quality,
+    reducedMotion,
+    canvas,
+    size,
+    pooled: o.pooled,
+    onDestroy: new Set(),
+  };
+  loop.add((dt, now) => rig.update(dt, now));
+  loop.add((dt, now) => rt.handle?.update?.(dt, now) ?? false);
+
+  canvas.addEventListener('webglcontextlost', (e: Event) => {
+    e.preventDefault();
+    rt.losses++;
+    if (rt.losses > MAX_CONTEXT_LOSSES) {
+      rt.onFatal?.('WebGL context lost repeatedly');
+      return;
+    }
+    rt.setVeil?.('restoring');
+  });
+  canvas.addEventListener('webglcontextrestored', () => {
+    // Rebuild only while a host is attached; a parked runtime's next
+    // attach builds afresh anyway.
+    if (!rt.host || !rt.build) return;
+    rt.handle?.dispose();
+    rt.handle = null;
+    scene.clear();
+    rt.handle = rt.build(rt.ctx);
+    rt.setVeil?.(null);
+  });
+  return rt;
+}
+
+/** Size the renderer to the attached host (no-op when nothing changed). */
+function applySize(rt: Runtime): void {
+  const host = rt.host;
+  if (!host) return;
+  const w = host.clientWidth || 1;
+  const h = host.clientHeight || 1;
+  const dpr = Math.min(window.devicePixelRatio || 1, rt.maxDpr ?? rt.quality.maxDpr);
+  // The ResizeObserver's initial callback and a `resize` event that
+  // didn't touch this host would otherwise re-render an identical
+  // frame — skip them (the quality downgrade changes `dpr`, so it
+  // still gets through).
+  if (
+    rt.sizedOnce &&
+    w === rt.size.width &&
+    h === rt.size.height &&
+    dpr === rt.renderer.getPixelRatio()
+  )
+    return;
+  rt.sizedOnce = true;
+  rt.size.width = w;
+  rt.size.height = h;
+  rt.renderer.setPixelRatio(dpr);
+  rt.renderer.setSize(rt.size.width, rt.size.height, false);
+  rt.rig.setAspect(rt.size.width / rt.size.height);
+  rt.handle?.resize?.(rt.size.width, rt.size.height);
+  rt.loop.requestRender();
+}
+
+function destroyRuntime(rt: Runtime, releaseContext: boolean): void {
+  if (rt.parkTimer !== null) clearTimeout(rt.parkTimer);
+  rt.parkTimer = null;
+  rt.loop.stop();
+  rt.handle?.dispose();
+  rt.handle = null;
+  for (const fn of rt.ctx.onDestroy) fn();
+  rt.ctx.onDestroy.clear();
+  rt.scene.clear();
+  rt.perf.dispose();
+  rt.renderer.dispose();
+  if (releaseContext) rt.renderer.forceContextLoss();
+  rt.canvas.remove();
+}
 
 export function SceneHost({
   build,
@@ -91,8 +336,9 @@ export function SceneHost({
   testID,
   releaseContextOnUnmount = false,
   maxDpr,
+  poolKey,
 }: SceneHostProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const hostRef = useRef<HTMLDivElement>(null);
   const buildRef = useRef(build);
   buildRef.current = build;
   const onReadyRef = useRef(onReady);
@@ -108,166 +354,104 @@ export function SceneHost({
   // rebuild" signal (skin change etc.).
   // biome-ignore lint/correctness/useExhaustiveDependencies: see above
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const host = canvas.parentElement;
+    const host = hostRef.current;
     if (!host) return;
-    let disposed = false;
-    let losses = 0;
-    let renderer: WebGLRenderer;
-    try {
-      renderer = new WebGLRenderer({
-        canvas,
-        antialias: true,
-        alpha: transparent,
-        powerPreference: 'high-performance',
-        stencil: false,
-      });
-    } catch (e) {
-      onFatalRef.current?.(`WebGLRenderer failed: ${String(e)}`);
-      return;
-    }
-    const gl = renderer.getContext();
-    const hints = readDeviceHints(gl);
-    let quality = resolveQuality(qualitySetting, hints);
-    const reducedMotion =
-      !animations ||
-      (typeof window !== 'undefined' &&
-        window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true);
+    const signature = `${qualitySetting}|${animations}|${transparent}|${clearColor}`;
 
-    renderer.outputColorSpace = SRGBColorSpace;
-    renderer.toneMapping = ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.05;
-    renderer.shadowMap.enabled = quality.shadowMapSize > 0;
-    // r185 deprecates PCFSoftShadowMap (and falls back to this anyway).
-    renderer.shadowMap.type = PCFShadowMap;
-    if (!transparent) renderer.setClearColor(clearColor, 1);
-    else renderer.setClearColor(0x000000, 0);
-
-    const scene = new Scene();
-    const size = { width: host.clientWidth || 1, height: host.clientHeight || 1 };
-    const rig = new CameraRig(initialCamera, size.width / size.height);
-    rig.parallaxEnabled = quality.parallax && !reducedMotion;
-    // Reduced motion: preset changes settle in ≈ 120 ms like every
-    // other tween (scenes may tighten this further, never loosen it).
-    if (reducedMotion) rig.halfLife = 0.04;
-    const perf = new PerfMonitor(renderer);
-    perf.quality = quality.tier;
-
-    let sizedOnce = false;
-    const applySize = () => {
-      const w = host.clientWidth || 1;
-      const h = host.clientHeight || 1;
-      const dpr = Math.min(window.devicePixelRatio || 1, maxDpr ?? quality.maxDpr);
-      // The ResizeObserver's initial callback and a `resize` event that
-      // didn't touch this host would otherwise re-render an identical
-      // frame — skip them (the quality downgrade changes `dpr`, so it
-      // still gets through).
-      if (sizedOnce && w === size.width && h === size.height && dpr === renderer.getPixelRatio())
-        return;
-      sizedOnce = true;
-      size.width = w;
-      size.height = h;
-      renderer.setPixelRatio(dpr);
-      renderer.setSize(size.width, size.height, false);
-      rig.setAspect(size.width / size.height);
-      handle?.resize?.(size.width, size.height);
-      loop.requestRender();
-    };
-
-    let handle: SceneHandle | null = null;
-    let firstFrame = true;
-    const loop = new Loop({
-      renderer,
-      perf,
-      render: () => {
-        renderer.render(scene, rig.camera);
-        if (firstFrame) {
-          firstFrame = false;
-          // Drivers compile pipelines asynchronously on the first draw;
-          // without this the stall lands on the *next* frame's first GL
-          // call and shows up in the perf ring as a multi-second frame.
-          // Block here instead, inside the veiled warm-up frame that the
-          // perf monitor already keeps out of p50 / p95.
-          renderer.getContext().finish();
-          setVeil(null);
-          onReadyRef.current?.();
-          perf.maybePublish(performance.now(), true);
+    // Claim a parked runtime with this key (same renderer-level props,
+    // not attached elsewhere); otherwise create one.
+    let rt: Runtime | undefined;
+    let key = poolKey;
+    if (key) {
+      const parked = POOL.get(key);
+      if (parked) {
+        if (parked.host !== null) {
+          // Another host holds it — this mount runs unpooled.
+          key = undefined;
+        } else if (parked.signature !== signature) {
+          POOL.delete(key);
+          destroyRuntime(parked, false);
+        } else {
+          rt = parked;
+          if (rt.parkTimer !== null) clearTimeout(rt.parkTimer);
+          rt.parkTimer = null;
+          rt.perf.reset();
+          rt.awaitingFirstFrame = true;
+          rt.sizedOnce = false;
         }
-      },
-      overBudgetMs: DOWNGRADE_P95_MS,
-      overBudgetWindowMs: DOWNGRADE_WINDOW_MS,
-      onOverBudget: () => {
-        if (quality.tier === 'low') return;
-        quality = QUALITY_PROFILES[downgrade(quality.tier)];
-        perf.quality = quality.tier;
-        renderer.shadowMap.enabled = quality.shadowMapSize > 0;
-        rig.parallaxEnabled = quality.parallax && !reducedMotion;
-        handle?.setQuality?.(quality);
-        applySize();
-      },
-    });
-
-    const ctx: SceneContext = {
-      renderer,
-      scene,
-      rig,
-      loop,
-      quality,
-      reducedMotion,
-      canvas,
-      size,
-    };
-
-    const mount = () => {
-      handle = buildRef.current(ctx);
-      applySize();
-      loop.requestRender();
-    };
-    const unmount = () => {
-      handle?.dispose();
-      handle = null;
-      scene.clear();
-    };
-
-    loop.add((dt, now) => rig.update(dt, now));
-    loop.add((dt, now) => handle?.update?.(dt, now) ?? false);
-    mount();
-    loop.start();
-
-    const ro = new ResizeObserver(applySize);
-    ro.observe(host);
-    window.addEventListener('resize', applySize);
-
-    const onLost = (e: Event) => {
-      e.preventDefault();
-      losses++;
-      if (losses > MAX_CONTEXT_LOSSES) {
-        onFatalRef.current?.('WebGL context lost repeatedly');
+      }
+    }
+    if (!rt) {
+      try {
+        rt = createRuntime(signature, {
+          transparent,
+          clearColor,
+          qualitySetting,
+          animations,
+          initialCamera,
+          pooled: key !== undefined,
+        });
+      } catch (e) {
+        onFatalRef.current?.(`WebGLRenderer failed: ${String(e)}`);
         return;
       }
-      setVeil('restoring');
+      if (key) POOL.set(key, rt);
+    }
+    const runtime = rt;
+    let disposed = false;
+
+    runtime.host = host;
+    runtime.maxDpr = maxDpr;
+    runtime.build = (ctx) => buildRef.current(ctx);
+    runtime.onReady = () => {
+      if (!disposed) onReadyRef.current?.();
     };
-    const onRestored = () => {
-      if (disposed) return;
-      unmount();
-      mount();
-      setVeil(null);
+    runtime.onFatal = (reason) => {
+      if (!disposed) onFatalRef.current?.(reason);
     };
-    canvas.addEventListener('webglcontextlost', onLost);
-    canvas.addEventListener('webglcontextrestored', onRestored);
+    runtime.setVeil = (v) => {
+      if (!disposed) setVeil(v);
+    };
+    // The canvas sits under the veil (React's only child of the host).
+    host.prepend(runtime.canvas);
+
+    runtime.handle = runtime.build(runtime.ctx);
+    applySize(runtime);
+    runtime.loop.requestRender();
+    runtime.loop.start();
+
+    const onResize = () => applySize(runtime);
+    const ro = new ResizeObserver(onResize);
+    ro.observe(host);
+    window.addEventListener('resize', onResize);
 
     return () => {
       disposed = true;
       ro.disconnect();
-      window.removeEventListener('resize', applySize);
-      canvas.removeEventListener('webglcontextlost', onLost);
-      canvas.removeEventListener('webglcontextrestored', onRestored);
-      loop.stop();
-      unmount();
-      perf.dispose();
-      renderer.dispose();
-      if (releaseContextOnUnmount) renderer.forceContextLoss();
+      window.removeEventListener('resize', onResize);
+      runtime.loop.stop();
+      runtime.handle?.dispose();
+      runtime.handle = null;
+      runtime.host = null;
+      runtime.build = null;
+      runtime.onReady = null;
+      runtime.onFatal = null;
+      runtime.setVeil = null;
+      if (key && POOL.get(key) === runtime) {
+        // Park: keep the context, programs and whatever the subsystem
+        // left in the scene; drop the stale perf snapshot so nothing
+        // reads the previous host's numbers while nothing renders.
+        runtime.canvas.remove();
+        runtime.perf.dispose();
+        runtime.parkTimer = setTimeout(() => {
+          if (POOL.get(key) === runtime && runtime.host === null) {
+            POOL.delete(key);
+            destroyRuntime(runtime, releaseContextOnUnmount);
+          }
+        }, POOL_PARK_MS);
+      } else {
+        destroyRuntime(runtime, releaseContextOnUnmount);
+      }
     };
   }, [
     rebuildKey,
@@ -277,10 +461,12 @@ export function SceneHost({
     clearColor,
     releaseContextOnUnmount,
     maxDpr,
+    poolKey,
   ]);
 
   return (
     <div
+      ref={hostRef}
       data-testid={testID}
       style={{
         position: 'absolute',
@@ -290,10 +476,6 @@ export function SceneHost({
         ...style,
       }}
     >
-      <canvas
-        ref={canvasRef}
-        style={{ display: 'block', width: '100%', height: '100%', touchAction: 'none' }}
-      />
       {veil ? (
         <div
           data-testid="scene-veil"

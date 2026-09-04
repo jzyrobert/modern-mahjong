@@ -13,6 +13,7 @@ import {
   Object3D,
   PlaneGeometry,
   Quaternion,
+  type Scene,
   type Texture,
   Vector3,
 } from 'three';
@@ -24,13 +25,14 @@ import type { SceneContext } from '../core/SceneHost';
 import { type LightRig, buildLights } from '../core/lights';
 import type { QualityProfile } from '../core/quality';
 import { TilePool } from '../tiles/TilePool';
-import { feltColors } from '../tiles/materials';
+import { feltColors, setTileBackFinish } from '../tiles/materials';
 import { Choreographer } from './choreography';
 import {
   CENTRE_PLATE_RADIUS,
   FELT_HALF,
   type HeldHandFrame,
   type Layout,
+  RAIL_H,
   RAIL_WIDTH,
   type Rel,
   computeLayout,
@@ -79,6 +81,14 @@ export interface SyncInput {
    * hidden, and the layout is applied without a dispense.
    */
   waiting?: boolean | undefined;
+  /** Portrait river zoom — see `LayoutOptions.hideSideWallsBeyondZ`. */
+  hideSideWallsBeyondZ?: number | undefined;
+  /**
+   * Albedo multiplier for the near wall's stacks (rel 0). Phone
+   * landscape sets 0.85: the hand stands directly in front of the wall
+   * there, so the wall steps back a shade and the hand reads in front.
+   */
+  nearWallDim?: number | undefined;
 }
 
 export interface TableDebugTile {
@@ -109,7 +119,15 @@ export interface TableSceneOptions {
   tileSheet?: boolean | undefined;
 }
 
-const RAIL_H = 0.55;
+/** `SceneHost` pool shared by the waiting table and the match table. */
+export const TABLE_POOL_KEY = 'table';
+/**
+ * Tile-back finish: a matte inlay (clearcoat almost off, rough) so the
+ * blue / plum skin reads as its swatch colour under the bright key and
+ * env instead of washing to near-white at the gradient's light end
+ * (round-2: opponents' racks looked like white sticks).
+ */
+export const TABLE_BACK_FINISH = { clearcoat: 0.12, roughness: 0.72 } as const;
 /**
  * Dealer chip centre in the dealer's seat frame (x right, z toward
  * them): the near-right corner pocket inside the walls. Every river
@@ -185,7 +203,10 @@ export class TableScene {
   private pulseUntil = 0;
   /** Last `update()` timestamp — springs use wall-clock time, not the loop's clamped dt. */
   private lastNow = 0;
+  private nearWallDim = 1;
   private lastLayout: Layout | null = null;
+  /** Stable disposer for `SceneContext.onDestroy` while parked. */
+  readonly destroyHook = (): void => this.dispose();
 
   constructor(ctx: SceneContext, opts: TableSceneOptions) {
     this.ctx = ctx;
@@ -351,6 +372,7 @@ export class TableScene {
       anisotropy: Math.max(1, Math.min(maxAniso, quality.tier === 'low' ? quality.anisotropy : 16)),
       atlasScale: quality.tier === 'high' ? 1.25 : 1,
     });
+    setTileBackFinish(this.pool.material, TABLE_BACK_FINISH);
     scene.add(this.pool.mesh);
 
     if (this.tileSheet) {
@@ -362,6 +384,47 @@ export class TableScene {
       this.choreo.setLayout(layout, null, 0, 0, { snap: true });
       this.writePoses();
     }
+  }
+
+  /**
+   * Return a parked scene to its just-built state for a new host: no
+   * layout, no cues, chip / dice hidden, plate blank, skins current.
+   * Meshes, materials (compiled programs) and textures are untouched —
+   * that is the point of parking (see `acquireTableScene`).
+   */
+  reset(opts: TableSceneOptions): void {
+    this.choreo.reset();
+    this.choreo.reducedMotion = opts.reducedMotion;
+    this.lastLayout = null;
+    this.latestDiscardId = null;
+    this.drawnTileId = null;
+    this.hintTileId = null;
+    this.nextDrawId = null;
+    this.needsDraw = false;
+    this.hoverId = null;
+    this.lift.fill(0);
+    this.pulseT = 0;
+    this.pulseUntil = 0;
+    this.lastNow = 0;
+    this.nearWallDim = 1;
+    this.plateInfo = { wind: null, count: -1 };
+    this.marker.visible = false;
+    this.markerRel = null;
+    this.dice.visible = false;
+    this.diceValues = null;
+    this.pool.hideAll();
+    this.pool.commit();
+    this.setSkins(opts.felt, opts.tileBack);
+    this.ctx.renderer.shadowMap.autoUpdate = false;
+    this.ctx.renderer.shadowMap.needsUpdate = true;
+  }
+
+  get isDisposed(): boolean {
+    return this.disposed;
+  }
+
+  get isTileSheet(): boolean {
+    return this.tileSheet;
   }
 
   setQuality(q: QualityProfile): void {
@@ -395,6 +458,7 @@ export class TableScene {
       reveal: state.phase === 'resolved',
       heldHand: input.heldHand ?? null,
       riverScale: input.riverScale ?? 1,
+      hideSideWallsBeyondZ: input.hideSideWallsBeyondZ,
     });
     this.lastLayout = layout;
     const waiting = input.waiting === true;
@@ -406,6 +470,7 @@ export class TableScene {
     this.drawnTileId = input.drawnTileId;
     this.hintTileId = input.hintTileId;
     this.needsDraw = input.needsDraw;
+    this.nearWallDim = input.nearWallDim ?? 1;
     const next = state.wall[state.wall.length - 1];
     this.nextDrawId = next
       ? (layout.findIndex((s) => s?.zone === 'wall' && s.index === 0) ?? null)
@@ -547,11 +612,15 @@ export class TableScene {
       else if (id === this.hintTileId) hl = 0.12;
       p.highlight = hl;
       p.tint.setScalar(1);
-      // Dead wall reads as a separate block: a warm ivory-tan multiply
-      // (toward #d8c8a8) rather than a darkening, so the stacks read as
-      // a marked block, never as dirty or grey (no positional step —
-      // see `wallSlotPosition`).
-      if (t.slot?.zone === 'deadWall') p.tint.setRGB(0.85, 0.76, 0.6);
+      const zone = t.slot?.zone;
+      // Dead wall reads as a separate block: its backs take the warm
+      // ivory-tan variant (`uDeadBack*` in the tile material) instead of
+      // the skin gradient — a real second back colour rather than a
+      // multiply on blue, which only ever reached khaki-grey. No
+      // positional step (see `wallSlotPosition`).
+      p.backVariant = zone === 'deadWall' ? 1 : 0;
+      if ((zone === 'wall' || zone === 'deadWall') && t.slot?.rel === 0 && this.nearWallDim !== 1)
+        p.tint.setScalar(this.nearWallDim);
     }
     this.pool.markDirty();
     this.pool.commit();
@@ -633,6 +702,41 @@ export class TableScene {
     this.dice.dispose();
     this.ctx.renderer.shadowMap.autoUpdate = true;
   }
+}
+
+/** Scenes parked in a pooled runtime, keyed by the runtime's three `Scene`. */
+const PARKED = new WeakMap<Scene, TableScene>();
+
+/**
+ * The table scene for a `SceneContext`: the one parked in it by the
+ * previous host (pre-game lobby → match, or back) reset for `opts`, or
+ * a fresh build. Pair with `releaseTableScene` in the handle's
+ * `dispose()`. Parking keeps the compiled tile / felt / rail programs
+ * and the uploaded face atlas alive across the hand-off, so the match
+ * table's first frame costs a layout, not a shader compile.
+ */
+export function acquireTableScene(ctx: SceneContext, opts: TableSceneOptions): TableScene {
+  const parked = PARKED.get(ctx.scene);
+  if (parked) {
+    PARKED.delete(ctx.scene);
+    ctx.onDestroy.delete(parked.destroyHook);
+    if (!parked.isDisposed && parked.isTileSheet === (opts.tileSheet ?? false)) {
+      parked.reset(opts);
+      return parked;
+    }
+    parked.dispose();
+  }
+  return new TableScene(ctx, opts);
+}
+
+/** Park the scene in a pooled runtime, or dispose it in an unpooled one. */
+export function releaseTableScene(ctx: SceneContext, scene: TableScene): void {
+  if (!ctx.pooled || scene.isDisposed) {
+    scene.dispose();
+    return;
+  }
+  PARKED.set(ctx.scene, scene);
+  ctx.onDestroy.add(scene.destroyHook);
 }
 
 /**

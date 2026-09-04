@@ -160,6 +160,22 @@ export class Choreographer {
     }
   }
 
+  /** Forget every tile and layout — the next `setLayout` is a first layout again. */
+  reset(): void {
+    for (const t of this.tiles) {
+      t.visible = false;
+      t.scale = 0;
+      t.bounceY = 0;
+      t.bounceAmp = 0;
+      t.bounceAt = 0;
+      t.target = null;
+      t.flight = null;
+      t.slot = null;
+    }
+    this.prevLayout = null;
+    this.prevSeed = null;
+  }
+
   /**
    * Apply a new layout. `state` drives the new-hand detection (seed
    * change) and the dispense order, `me` the dispense origin (tiles

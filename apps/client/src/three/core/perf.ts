@@ -122,6 +122,23 @@ export class PerfMonitor {
     globalThis.__MAHJONG_PERF__ = snap;
   }
 
+  /**
+   * Start a fresh sampling life (a pooled renderer re-attached to a new
+   * host): the ring, render / sample counters and `warmupMs` restart so
+   * the next snapshot describes this host's scene, not the previous one's.
+   */
+  reset(): void {
+    this.times.fill(0);
+    this.head = 0;
+    this.count = 0;
+    this.framesThisSecond = 0;
+    this.lastPublish = 0;
+    this.lastRenderAt = 0;
+    this.renders = 0;
+    this.sample = 0;
+    this.warmupMs = 0;
+  }
+
   dispose(): void {
     globalThis.__MAHJONG_PERF__ = undefined;
   }

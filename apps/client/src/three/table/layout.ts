@@ -131,6 +131,8 @@ export const RIVER_Z0 = 2.6;
 /** Felt half-size and rail dimensions, shared with `TableScene`. */
 export const FELT_HALF = 11.9;
 export const RAIL_WIDTH = 1.1;
+/** Height of the wood rail above the felt. */
+export const RAIL_H = 0.55;
 export const CENTRE_PLATE_RADIUS = 1.9;
 
 export const FLAT_Y = TILE_D / 2;
@@ -330,6 +332,11 @@ export function orderOwnHand(hand: readonly Tile[], opts: HandOrderOptions): Til
 }
 
 // ─── Full layout ───────────────────────────────────────────────────
+/** See `LayoutOptions.hideSideWallsBeyondZ`. */
+function hideSideWall(p: { rel: Rel; z: number }, beyondZ: number | undefined): boolean {
+  return beyondZ !== undefined && (p.rel === 1 || p.rel === 3) && p.z < beyondZ;
+}
+
 export interface LayoutOptions extends HandOrderOptions {
   /** Hand end: opponents' concealed tiles lie face up in their row. */
   reveal: boolean;
@@ -344,6 +351,15 @@ export interface LayoutOptions extends HandOrderOptions {
    * discards 1.1× so their glyphs read at the width-bound table scale.
    */
   riverScale?: number | undefined;
+  /**
+   * Portrait river zoom: drop the side walls' stacks (rel 1 / 3) whose
+   * world z is beyond this (toward the far side). The zoom frames the
+   * river block and crops the walls off-screen, but perspective folds
+   * the side walls' far ends back in under the header bar, where their
+   * top faces peek out as a sliver; hiding that far third keeps the
+   * header's bottom edge clean. `undefined` keeps every stack.
+   */
+  hideSideWallsBeyondZ?: number | undefined;
 }
 
 /**
@@ -504,6 +520,7 @@ export function computeLayout(state: GameState, me: Seat, opts: LayoutOptions): 
     const tile = state.wall[state.wall.length - 1 - i];
     if (!tile) return;
     const p = wallSlotPosition(ref, me);
+    if (hideSideWall(p, opts.hideSideWallsBeyondZ)) return;
     put(layout, {
       id: tileId(tile),
       zone: 'wall',
@@ -526,6 +543,7 @@ export function computeLayout(state: GameState, me: Seat, opts: LayoutOptions): 
     const tile = state.deadWall[i];
     if (!tile) return;
     const p = wallSlotPosition(ref, me);
+    if (hideSideWall(p, opts.hideSideWallsBeyondZ)) return;
     put(layout, {
       id: tileId(tile),
       zone: 'deadWall',

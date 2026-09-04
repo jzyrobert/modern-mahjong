@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useGame } from '../../../state/game';
 import { type SceneContext, type SceneHandle, SceneHost } from '../../core/SceneHost';
 import type { CameraPreset } from '../../core/camera';
-import { TableScene } from '../TableScene';
+import { TABLE_POOL_KEY, acquireTableScene, releaseTableScene } from '../TableScene';
 import { DEAD_TILES } from '../layout';
 
 /**
@@ -41,8 +41,11 @@ export function lobbyCameraFor(width: number, height: number, side: boolean): Ca
   const aspect = width / Math.max(1, height);
   const shift = side ? -7.5 : 0;
   if (aspect < 0.9) {
-    // Portrait: the table fills the width, its far half under the header.
-    return { position: [0, 21, 24], target: [0, 0, 2], fov: 46 };
+    // Portrait: the table fills the width and is panned so its *near*
+    // rail and near wall fill the band under the Start / Leave row
+    // (round-2 #8: a flat void sat there while the far half hid behind
+    // the panels).
+    return { position: [0, 21, 21], target: [0, 0, -1], fov: 46 };
   }
   return { position: [shift, 14.5, 27], target: [shift, 0, 1.5], fov: 40 };
 }
@@ -84,12 +87,13 @@ export function LobbyTableBackdrop({ side = false }: LobbyTableBackdropProps) {
 
   const build = useCallback(
     (ctx: SceneContext): SceneHandle => {
-      const scene = new TableScene(ctx, {
+      const scene = acquireTableScene(ctx, {
         felt: useGame.getState().settings.felt,
         tileBack: useGame.getState().settings.tileBack,
         reducedMotion: ctx.reducedMotion,
       });
       ctx.rig.snap(lobbyCameraFor(ctx.size.width, ctx.size.height, side));
+      ctx.rig.halfLife = ctx.reducedMotion ? 0.04 : 0.22;
       ctx.rig.parallaxStrength = 0.25;
       const sync = () =>
         scene.sync(
@@ -113,7 +117,7 @@ export function LobbyTableBackdrop({ side = false }: LobbyTableBackdropProps) {
         update: (dt, now) => scene.update(dt, now),
         resize: (w, h) => ctx.rig.setPreset(lobbyCameraFor(w, h, side)),
         setQuality: (q) => scene.setQuality(q),
-        dispose: () => scene.dispose(),
+        dispose: () => releaseTableScene(ctx, scene),
       };
     },
     [state, side],
@@ -126,6 +130,7 @@ export function LobbyTableBackdrop({ side = false }: LobbyTableBackdropProps) {
       initialCamera={initialCamera}
       transparent
       rebuildKey={`${felt}:${tileBack}:${side}`}
+      poolKey={TABLE_POOL_KEY}
       onReady={() => setReady(true)}
       onFatal={() => setFailed(true)}
       testID="lobby-table-3d"

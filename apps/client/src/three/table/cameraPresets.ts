@@ -2,10 +2,13 @@ import type { CameraPreset } from '../core/camera';
 import { TILE_D, TILE_H } from '../tiles/geometry';
 import {
   DRAWN_GAP,
+  FELT_HALF,
   HAND_PITCH,
   HELD_ROW_GAP,
   HELD_ROW_MAX,
   type HeldHandFrame,
+  RAIL_H,
+  RAIL_WIDTH,
   WALL_D,
 } from './layout';
 
@@ -105,12 +108,29 @@ export const PORTRAIT_STRIP_H = 34;
 /** Gap kept between the table band and the held hand's top edge. */
 export const PORTRAIT_BAND_GAP = 8;
 /**
- * River zoom: the far wall's near-top edge is pinned this far below the
- * strip's top, i.e. at the strip's bottom edge — the whole far wall row
- * (~25 px tall on screen) then sits behind the zoom header bar the
- * shell draws across the strip, so no tile is half-visible under HUD.
+ * Portrait full table: the width-bound table is shorter than the band
+ * between the seat strip and the held hand, so instead of centring it
+ * (≈ 90 px of void above *and* below — round-2 #3) the far rail's top
+ * edge is pinned this far under the seat strip; toasts overlap the far
+ * rail and the slack collects under the near rail, where the shell
+ * paints the table's floor shadow. Falls back to the centred fit when
+ * the table fills the band (short phones).
  */
-export const ZOOM_WALL_ANCHOR_Y = PORTRAIT_STRIP_TOP + PORTRAIT_STRIP_H;
+export const PORTRAIT_FAR_RAIL_GAP = 55;
+/** The far rail's top-back edge (world). */
+export const PORTRAIT_FAR_RAIL_POINT: [number, number, number] = [
+  0,
+  RAIL_H,
+  -(FELT_HALF + RAIL_WIDTH),
+];
+/**
+ * River zoom: the far wall's near-top edge is pinned this far below the
+ * strip's top — 12 px *above* the zoom header's bottom edge (strip +
+ * 6 px pad), so the whole far wall row (~25 px tall on screen) and the
+ * dead-wall stacks that wrap onto it sit behind the header bar the shell
+ * draws across the strip; no tile is half-visible under HUD.
+ */
+export const ZOOM_WALL_ANCHOR_Y = PORTRAIT_STRIP_TOP + PORTRAIT_STRIP_H - 6;
 /** World point pinned by the river zoom: the far wall's near-top edge. */
 export const ZOOM_WALL_ANCHOR: [number, number, number] = [0, 2 * TILE_D, -(WALL_D - TILE_H / 2)];
 
@@ -254,12 +274,20 @@ export function sheetCameraFor(width: number, height: number): CameraPreset {
 export function cameraFor(width: number, height: number, topInset = 0): CameraPreset {
   const cls = classifyViewport(width, height);
   if (cls === 'phone-portrait') {
-    return portraitCameraFor(
+    const fit = portraitCameraFor(
       width,
       height,
       PORTRAIT_BAND_TOP + topInset,
       heldHandTopPx(width, height) - PORTRAIT_BAND_GAP,
     );
+    // Slack in the band: lift the table until the far rail sits
+    // `PORTRAIT_FAR_RAIL_GAP` under the seat strip (never lower it —
+    // a short phone keeps the centred fit).
+    const railY = PORTRAIT_STRIP_TOP + PORTRAIT_STRIP_H + topInset + PORTRAIT_FAR_RAIL_GAP;
+    if (projectPreset(fit, width, height, PORTRAIT_FAR_RAIL_POINT).y > railY + 0.5) {
+      return portraitCameraAnchored(width, height, PORTRAIT_X_HALF, PORTRAIT_FAR_RAIL_POINT, railY);
+    }
+    return fit;
   }
   return TABLE_CAMERA[cls];
 }

@@ -177,10 +177,18 @@ interface ActionRowProps extends ActionCtasProps {
    * a centred slot for `centre` (desktop's claim strip); `'auto'` keeps
    * the phone layout (badge left, sort right, or sort centred alone).
    */
-  sortAlign?: 'auto' | 'end' | undefined;
-  /** Centred footer content (desktop claim strip). */
+  sortAlign?: 'auto' | 'end' | 'replace' | undefined;
+  /** Centred footer content (desktop / landscape claim strip). */
   centre?: ReactNode;
 }
+
+/**
+ * Landscape claim footer: the user's badge is capped at this width so
+ * the centred strip (`calc(100% − 2·(cap + gap))`) can never run under
+ * it, and a three-option chi row still fits in the ~590 px that leaves
+ * on a 915 px phone (≈ 540 px).
+ */
+export const FOOTER_LEADING_MAX = 176;
 
 /**
  * Bottom action row over the hand: sort picker and (on desktop) the
@@ -215,7 +223,46 @@ export function ActionRow(props: ActionRowProps) {
       }}
     >
       {ctasExternal ? null : <ActionCtas {...props} />}
-      {sortAlign === 'end' ? (
+      {sortAlign === 'replace' ? (
+        // Landscape claim window: the claim strip *replaces* the sort
+        // control (irrelevant while a claim is pending) and sits centred
+        // on the viewport in the footer row, so it never lies on the near
+        // wall's tile backs; the badge keeps its corner.
+        <div
+          style={{
+            position: 'relative',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'flex-end',
+            minHeight: dense ? 40 : 44,
+          }}
+        >
+          <div
+            style={{
+              position: 'absolute',
+              left: 0,
+              bottom: 0,
+              maxWidth: FOOTER_LEADING_MAX,
+              display: 'flex',
+              alignItems: 'center',
+            }}
+          >
+            {leading}
+          </div>
+          <div
+            style={{
+              maxWidth: `calc(100% - ${2 * (FOOTER_LEADING_MAX + 12)}px)`,
+              minWidth: 0,
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'flex-end',
+              gap: 8,
+            }}
+          >
+            {centre}
+          </div>
+        </div>
+      ) : sortAlign === 'end' ? (
         // Three columns: [leading] [centre] [sort], bottom-aligned so a
         // taller centre strip grows upward from the row's baseline.
         <div

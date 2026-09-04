@@ -25,6 +25,15 @@ interface ClaimBarProps {
    *  floats it in the free-felt band between the rivers and the near
    *  wall, which is only ~45–65 px tall. */
   dense?: boolean;
+  /**
+   * Glass-strip scale (portrait orientation only). `footer` is the
+   * phone-landscape footer variant: a 41 px strip that replaces the
+   * sort control in the row under the hand, so a claim never lies on
+   * the near wall's tile backs. `large` is the desktop footer strip:
+   * 44 px buttons, 22 px meld previews, 18 px glyphs, for a primary CTA
+   * that reads at 1440 px instead of the phone's compact sizing.
+   */
+  size?: 'default' | 'footer' | 'large';
 }
 
 export type ClaimBarTheme = 'paper' | 'glass';
@@ -146,6 +155,7 @@ export function ClaimBar({
   orientation = 'portrait',
   theme = 'paper',
   dense = false,
+  size = 'default',
 }: ClaimBarProps) {
   const pal = PALETTES[theme];
   const state = useGame((s) => s.state);
@@ -215,14 +225,18 @@ export function ClaimBar({
   // previews 13×18 — matches the V2 handoff so the rail's claim card
   // reads with the same hierarchy as the portrait bar's tile preview
   // rather than shrinking the live tile to a thumbnail.
-  const tileW = isDesktop ? 44 : 32;
-  const tileH = isDesktop ? 60 : 44;
-  const previewW = isDesktop ? 22 : 13;
-  const previewH = isDesktop ? 30 : 18;
-  const buttonPadV = dense ? 6 : 7;
-  const buttonPadH = isDesktop ? 11 : 10;
-  const glyphSize = isDesktop ? 15 : 14;
-  const labelSize = 10;
+  const large = size === 'large';
+  const footer = size === 'footer';
+  const tileW = large || isDesktop ? 44 : footer ? 26 : 32;
+  const tileH = large || isDesktop ? 60 : footer ? 35 : 44;
+  const previewW = large || isDesktop ? 22 : footer ? 12 : 13;
+  const previewH = large || isDesktop ? 30 : footer ? 16 : 18;
+  const buttonPadV = large ? 12 : footer ? 5 : dense ? 6 : 7;
+  const buttonPadH = large ? 14 : isDesktop ? 11 : 10;
+  const glyphSize = large ? 18 : isDesktop ? 15 : footer ? 13 : 14;
+  const labelSize = large ? 12 : 10;
+  /** Vertical padding of the dense strip: 41 px footer (incl. border), 74 px large. */
+  const stripPadV = footer ? 2 : dense ? 6 : 10;
   // Glass: the HUD's 0 12px 40px shadow so the strip floats above the
   // felt (and, on landscape, the near wall's backs) instead of reading
   // as painted on them.
@@ -407,8 +421,8 @@ export function ClaimBar({
             flexDirection: 'row',
             alignItems: 'center',
             gap: 10,
-            paddingVertical: dense ? 6 : 10,
-            paddingHorizontal: 12,
+            paddingVertical: stripPadV,
+            paddingHorizontal: footer ? 10 : 12,
           }}
         >
           {tileHeader}

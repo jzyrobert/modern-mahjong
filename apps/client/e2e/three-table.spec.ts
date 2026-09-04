@@ -386,6 +386,95 @@ test('landscape opening rolls sit in one row clear of the chrome', async ({ page
   expect(errors, 'console / page errors').toEqual([]);
 });
 
+test('the match re-attaches the lobby table renderer instead of compiling a new one', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(m.text());
+  });
+  page.on('pageerror', (e) => errors.push(String(e)));
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Play vs bots' }).click({ timeout: 20_000 });
+  const lobbyCanvas = page.getByTestId('lobby-table-3d').locator('canvas');
+  await expect(lobbyCanvas).toBeAttached({ timeout: 30_000 });
+  // Mark the lobby's canvas; the match must inherit the very same
+  // element (pooled WebGL context + compiled programs), so the opening
+  // rolls never wait on a fresh scene build.
+  await lobbyCanvas.evaluate((c) => c.setAttribute('data-probe', 'pooled'));
+  await page.getByRole('button', { name: 'Start match' }).click({ timeout: 30_000 });
+  const tableCanvas = page.getByTestId('table-3d-scene').locator('canvas');
+  await expect(tableCanvas).toBeAttached({ timeout: 20_000 });
+  await expect(tableCanvas).toHaveAttribute('data-probe', 'pooled');
+  await expect(page.locator('canvas')).toHaveCount(1);
+  await dismissDice(page);
+  await expect(page.getByTestId('own-hand-tile').first()).toBeVisible({ timeout: 20_000 });
+  expect(errors, 'console / page errors').toEqual([]);
+});
+
+test('landscape claim window moves the strip into the footer, off the near wall', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 915, height: 412 });
+  await page.addInitScript(() => {
+    const g = globalThis as {
+      __MAHJONG_TEST_SEED__?: number;
+      __MAHJONG_TEST_BOT_SCRIPTS__?: Record<number, { discards?: unknown[] }>;
+    };
+    g.__MAHJONG_TEST_SEED__ = 30;
+    g.__MAHJONG_TEST_BOT_SCRIPTS__ = { 1: {}, 2: {}, 3: {} };
+  });
+  const errors: string[] = [];
+  await startSolo(page, errors);
+  await page.waitForTimeout(1600);
+  // Seed 30: the user (dealer) holds a pair bot 1 also holds one of.
+  // Script bot 1 to discard it and discard something else ourselves.
+  await page.evaluate(() => {
+    type T = { kind: string; suit?: string; rank?: number; honor?: string };
+    const g = globalThis as {
+      __MAHJONG_TEST_GET_STATE__?: () => { state: { hands: Record<number, T[]> }; you: number };
+      __MAHJONG_TEST_BOT_SCRIPTS__?: Record<number, { discards?: T[] }>;
+    };
+    const s = g.__MAHJONG_TEST_GET_STATE__!();
+    const key = (t: T) => (t.kind === 'suit' ? `s:${t.suit}:${t.rank}` : `h:${t.honor}`);
+    const mine = s.state.hands[s.you]!;
+    const counts = new Map<string, number>();
+    for (const t of mine) counts.set(key(t), (counts.get(key(t)) ?? 0) + 1);
+    const botFaces = new Set(s.state.hands[1]!.map(key));
+    const target = mine.find((t) => (counts.get(key(t)) ?? 0) >= 2 && botFaces.has(key(t)))!;
+    g.__MAHJONG_TEST_BOT_SCRIPTS__![1] = { discards: [target] };
+    const names: Record<string, string> = {
+      E: 'East wind',
+      S: 'South wind',
+      W: 'West wind',
+      N: 'North wind',
+      Z: 'Red dragon',
+      F: 'Green dragon',
+      B: 'White dragon',
+    };
+    const name = (t: T) => (t.kind === 'suit' ? `${t.rank} ${t.suit}` : names[t.honor!]!);
+    const avoid = name(target);
+    const btn = Array.from(
+      document.querySelectorAll<HTMLElement>('[data-testid="own-hand-tile"]'),
+    ).find((b) => !(b.getAttribute('aria-label') || '').startsWith(avoid))!;
+    btn.click();
+  });
+  const bar = page.getByTestId('claim-bar');
+  await expect(bar).toBeVisible({ timeout: 20_000 });
+  const barBox = (await bar.boundingBox())!;
+  const handBottom = await page
+    .getByTestId('own-hand-tile')
+    .evaluateAll((els) => Math.max(...els.map((el) => el.getBoundingClientRect().bottom)));
+  // The strip sits in the 41 px footer row under the hand — never on the
+  // near wall's backs above it — and replaces the sort control there.
+  expect(barBox.y).toBeGreaterThanOrEqual(handBottom - 3);
+  expect(barBox.y + barBox.height).toBeLessThanOrEqual(412 - 4);
+  expect(barBox.height).toBeLessThanOrEqual(46);
+  await expect(page.getByRole('button', { name: 'Sort by Suit' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Peng' })).toBeVisible();
+  expect(errors, 'console / page errors').toEqual([]);
+});
+
 test('debug tile sheet renders every face with no errors', async ({ page }) => {
   await page.addInitScript(() => {
     (globalThis as { __MAHJONG_DEBUG_TILE_SHEET__?: boolean }).__MAHJONG_DEBUG_TILE_SHEET__ = true;
