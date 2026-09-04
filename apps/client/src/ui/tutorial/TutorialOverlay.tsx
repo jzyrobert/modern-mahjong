@@ -1,357 +1,347 @@
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { Pressable, Text, View, useWindowDimensions } from 'react-native';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import {
+  Animated,
+  Easing,
+  Platform,
+  Pressable,
+  type PressableStateCallbackType,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  type ViewStyle,
+  useWindowDimensions,
+} from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { useTransport } from '../../net/transport-context';
 import { useGame } from '../../state/game';
-import { LESSONS, nextLesson, useActiveTutorialStep, useTutorial } from '../../state/tutorial';
+import {
+  LESSONS,
+  LESSON_ORDER,
+  nextLesson,
+  useActiveTutorialStep,
+  useTutorial,
+} from '../../state/tutorial';
 import { COLORS } from '../colors';
-import { type TargetRect, useTutorialTargetRect } from './TargetRegistry';
+import { HaloRing, PulseRing, SCRIM_ALPHA, SCRIM_RGB, SpotlightScrim } from './SpotlightScrim';
+import {
+  type TargetRect,
+  type TargetRegistryApi,
+  useTargetRegistry,
+  useTutorialTargetRect,
+} from './TargetRegistry';
+import { OVERLAY_ATTR, isChromeCandidate } from './chromeRects';
+import { focusFor } from './focus';
+import {
+  type CaptionPlacement,
+  HALO_RADIUS,
+  type HaloRect,
+  encloseStraddlers,
+  featherFor,
+  haloFor,
+  placeCaption,
+  safeInset,
+} from './placement';
+import type { Lesson, LessonStep } from './types';
+import { useChromeRects } from './useChromeRects';
+import { useReducedMotion } from './useReducedMotion';
+import { useFocusedRect, useFollowedRect, useSettledRect } from './useTargetTracking';
 import { useTutorialController } from './useTutorialController';
 
+/** Ease-out curve for the card entrance. */
+const CARD_EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
+
 /**
- * Full-screen tutorial overlay. Mounted under both `MobileShell` and
- * `DesktopShell` and gated on `useActiveTutorialStep()` — when no
- * lesson is active, it renders nothing.
- *
- * Layout pieces:
- *   - **Halo** — a 4px translucent gold ring around the target rect
- *     with `borderRadius: 12`. Provides the "this is what you're
- *     meant to interact with" affordance. The dimming around it is
- *     painted by a huge-spread `boxShadow` on the same View so the
- *     dimmed area's inner edge follows the rounded corners exactly.
- *     Without that, sharp cutout corners would leave undimmed
- *     "L"-fragments at the four halo corners.
- *   - **Scrim panels** — four transparent, absolutely-positioned
- *     rectangles surrounding the halo bounding rect. They absorb
- *     taps outside the highlighted region but contribute no pixels
- *     of their own — the halo's `boxShadow` does the actual
- *     painting. When no target is registered for the active step,
- *     these collapse to a single full-screen panel that *does* paint
- *     the scrim color (no halo means no rounded cutout to respect).
- *   - **Caption card** — title + body + Skip / Next buttons.
- *     Positioned below the target if there's room, above otherwise;
- *     centered when there's no target. Tap-to-pass-through, so the
- *     user can still hit the highlighted element.
- *
- * After the lesson's last step is advanced, the overlay flips to a
- * `<CompletionPrompt>` modal (drained by `useTutorial.justCompleted`)
- * that offers the next curriculum lesson, "continue playing", or
- * "back to lobby". See the component docstring below.
+ * Web card entrance: fade + 8 px slide as a compiled CSS keyframe class
+ * (`animationKeyframes` is a react-native-web extension that only works
+ * through StyleSheet.create). Compositor-driven, starts on the element's
+ * first frame, and needs no painted "from" state or JS ticks — a
+ * JS-driven `Animated.timing` depends on requestAnimationFrame, which a
+ * software-rendered or CPU-starved page can stall for hundreds of ms
+ * (the verifier caught the card frozen at opacity 0).
  */
-export function TutorialOverlay() {
-  // Drive the controller while the overlay is mounted. Mounting
-  // happens at every shell render, but the controller's effect is
-  // gated on `active`, so this is a no-op when no lesson is in flight.
-  useTutorialController();
-
-  const active = useActiveTutorialStep();
-  const justCompleted = useTutorial((s) => s.justCompleted);
-  const dismiss = useTutorial((s) => s.dismiss);
-  const advance = useTutorial((s) => s.advance);
-  const window = useWindowDimensions();
-  const targetRect = useTutorialTargetRect(active?.step.targetId ?? null);
-  // Measured overlay-wrapper size — drives the dim SVG so it spans
-  // the actual rendered area on Android edge-to-edge (where
-  // `useWindowDimensions()` excludes the nav-bar inset and would
-  // otherwise leave a strip undimmed). Seeded with the visible window
-  // dimensions so the SVG paints on the first commit; `onLayout`
-  // corrects to the wrapper's real bounds (typically larger on
-  // Android edge-to-edge) on the next frame. Without the seed the
-  // halo + caption would render for one frame with no dim, briefly
-  // showing the un-scrimmed game beneath the overlay. Guarded with a
-  // same-size identity check so a no-op layout pass doesn't trigger
-  // a render.
-  const [overlaySize, setOverlaySize] = useState<{ w: number; h: number }>({
-    w: window.width,
-    h: window.height,
-  });
-  // Measured caption-card height. Driven by the inner card's
-  // `onLayout` below. The placement clamp at the bottom of the
-  // caption-positioning block reads this to guarantee the entire
-  // card (including the "Got it" / "Done" CTA) stays inside the
-  // viewport. `null` = not yet measured; falls back to a generous
-  // estimate that's larger than the largest real card we've seen
-  // on phone shells, so the first-paint clamp errs on the side of
-  // not pushing content off-screen.
-  const [captionHeight, setCaptionHeight] = useState<number | null>(null);
-  // Invalidate the measured height when the step or window
-  // dimensions change. The card's content (title + body) is
-  // step-specific, and its width — which drives wrap height —
-  // depends on which dock the placement logic chose (which in
-  // turn depends on window dimensions). Without this reset a
-  // desktop → portrait resize would carry a too-short desktop
-  // measurement through one render and clip the CTA on the new
-  // viewport. PR #426 hit a similar re-measure trap for the
-  // target rect; same fix shape here.
-  const stepId = active?.step.id ?? null;
-  // Deps are intentional trigger keys, not read inside the effect:
-  // the effect resets the measured caption height whenever the
-  // active step or window dimensions change. Same pattern as
-  // `HandTile.tsx`'s draw-animation effect.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: re-fire-key deps
-  useEffect(() => {
-    setCaptionHeight(null);
-  }, [stepId, window.width, window.height]);
-
-  // Post-completion prompt takes precedence — the active step is
-  // already cleared by `advance()` when the lesson finished, and
-  // we want the prompt mounted instead of the regular caption.
-  if (!active && justCompleted) {
-    return <CompletionPrompt lessonId={justCompleted} />;
-  }
-  if (!active) return null;
-  const { step } = active;
-
-  // Pad the highlight so the halo doesn't crowd the target's edges.
-  const PAD = 8;
-  const HALO_BORDER = 3;
-  const HALO_RADIUS = 12;
-  const SCRIM_COLOR = 'rgba(20,15,10,0.55)';
-
-  // The target's rect is registered relative to the registry root,
-  // which sits at the top of the activity content frame. On Android
-  // Fabric in edge-to-edge mode the activity content frame extends
-  // above the visible window (its `measureInWindow` y reads negative,
-  // since the status bar overlays the top of the frame). The
-  // `(target - root)` subtraction in `TutorialTarget` already cancels
-  // that negative offset, so the rect's y here is already in the
-  // overlay's coord space — no further safe-area correction needed.
-  const halo = targetRect
-    ? {
-        left: Math.max(0, targetRect.x - PAD),
-        top: Math.max(0, targetRect.y - PAD),
-        width: targetRect.w + PAD * 2,
-        height: targetRect.h + PAD * 2,
-      }
+const webEntrance =
+  Platform.OS === 'web'
+    ? (() => {
+        const frames = [
+          {
+            from: { opacity: 0, transform: 'translateY(8px)' },
+            to: { opacity: 1, transform: 'translateY(0px)' },
+          },
+        ];
+        return StyleSheet.create({
+          normal: {
+            animationKeyframes: frames,
+            animationDuration: '220ms',
+            animationTimingFunction: CARD_EASE,
+            animationFillMode: 'both',
+          },
+          reduced: {
+            animationKeyframes: frames,
+            animationDuration: '100ms',
+            animationTimingFunction: CARD_EASE,
+            animationFillMode: 'both',
+          },
+        } as unknown as Record<'normal' | 'reduced', ViewStyle>);
+      })()
     : null;
 
-  // Caption placement: anchor to a screen edge rather than to the
-  // halo. An earlier draft positioned the caption right below the
-  // halo, which broke for the watch-the-discards step on mobile —
-  // as the discard pool grows with each bot turn the halo expands
-  // downward and the caption ends up overlapping (or being pushed
-  // off-screen by) new tiles. Anchoring to a fixed edge keeps the
-  // caption stable regardless of how the targeted element resizes.
+/**
+ * Full-screen tutorial coach-mark overlay. Mounted once at the app
+ * root (`app/_layout.tsx`) above every shell — classic and 3D — and
+ * gated on `useActiveTutorialStep()`; renders nothing between lessons.
+ *
+ * Layers, bottom to top:
+ *   - `<SpotlightScrim>` — dim with a soft-edged (24 px feathered)
+ *     rounded cutout around the target rect.
+ *   - Tap panels — four transparent rectangles around the halo (or
+ *     one full-screen panel with no target) that absorb taps outside
+ *     the highlighted region so the user can only interact with the
+ *     spotlit element.
+ *   - `<PulseRing>` + `<HaloRing>` — breathing gold ring and the static
+ *     `tutorial-halo` ring the specs centre against.
+ *   - Caption card — glass panel with the `LESSON N/M` label,
+ *     step-progress dots, title, body, `Skip lesson` link and the CTA
+ *     (`tutorial-next`). Docked adjacent to the halo with a pointer
+ *     notch, clamped to the safe area (`placement.ts`), and cross-faded
+ *     (fade + 8 px slide, 220 ms) between steps.
+ *
+ * Rect flow: the registry's live rect → `useFollowedRect` (halo eases
+ * toward it each frame) and `useSettledRect` (card repositions only
+ * once the rect stops moving). The 3D table re-registers its projected
+ * hit targets every frame while the camera eases, so both layers are
+ * what keep the overlay from jittering there.
+ *
+ * After a lesson's last step the overlay flips to `<CompletionPrompt>`
+ * (drained by `useTutorial.justCompleted`).
+ */
+export function TutorialOverlay() {
+  // Drive the controller while the overlay is mounted. Its effect is
+  // gated on `active`, so this is a no-op between lessons.
+  useTutorialController();
+  const active = useActiveTutorialStep();
+  const justCompleted = useTutorial((s) => s.justCompleted);
+
+  if (!active && justCompleted) return <CompletionPrompt lessonId={justCompleted} />;
+  if (!active) return null;
+  return <ActiveStep lesson={active.lesson} step={active.step} stepIndex={active.stepIndex} />;
+}
+
+interface ActiveStepProps {
+  lesson: Lesson;
+  step: LessonStep;
+  stepIndex: number;
+}
+
+const GLASS_BG = 'rgba(14,20,17,0.74)';
+/** Opaque card for the docks that land over chrome or the spotlit
+ *  target itself (the portrait result-panel fallback, a card flush to
+ *  the top HUD). Glass has nothing worth showing through there, and a
+ *  backdrop blur over bright chrome smears its labels into the card
+ *  instead of hiding them — so no tint-only compromise: solid ink, no
+ *  backdrop-filter. */
+const GLASS_BG_SOLID = 'rgb(16,22,19)';
+const GLASS_BORDER = 'rgba(255,255,255,0.12)';
+const TEXT_PRIMARY = 'rgba(255,255,255,0.92)';
+const TEXT_SECONDARY = 'rgba(255,255,255,0.64)';
+const INK_ON_GOLD = '#2a2418';
+
+const webOnly = (style: Record<string, unknown>): ViewStyle =>
+  Platform.OS === 'web' ? (style as ViewStyle) : {};
+
+const TITLE_FONT = Platform.select({
+  web: "Nunito, 'Noto Serif TC', system-ui, -apple-system, sans-serif",
+  default: undefined,
+});
+const BODY_FONT = Platform.select({
+  web: "system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Serif TC', sans-serif",
+  default: undefined,
+});
+
+function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
+  const dismiss = useTutorial((s) => s.dismiss);
+  const advance = useTutorial((s) => s.advance);
+  const transport = useTransport();
+  const window = useWindowDimensions();
+  const reducedMotion = useReducedMotion();
+  const registry = useTargetRegistry();
+  const stepKey = `${lesson.id}:${step.id}:${stepIndex}`;
+  const targetId = step.targetId ?? null;
+
+  const rootRef = useRef<View | null>(null);
+  const originNode = () =>
+    rootRef.current as unknown as { getBoundingClientRect(): DOMRect } | null;
+  const registeredRect = useTutorialTargetRect(targetId);
+  // Optional focus band (the result panel's score header + hand): the
+  // ring, the card and the tap panels all work from the clipped rect.
+  const liveRect = useFocusedRect(
+    registeredRect,
+    targetId,
+    focusFor(targetId, step.targetFocus),
+    originNode,
+  );
+  const focused = liveRect !== null && liveRect !== registeredRect;
+  const haloRect = useFollowedRect(liveRect, reducedMotion);
+  const cardRect = useSettledRect(liveRect, stepKey);
+
+  // Chrome the card must not bisect and the feather must not un-dim:
+  // DOM controls / labels on web, plus every other registered target.
+  const domChrome = useChromeRects({
+    active: true,
+    targetId,
+    stepKey,
+    viewport: window,
+    settledRect: cardRect,
+    focusBand: focused ? toHalo(liveRect) : null,
+    originNode,
+  });
+  // The whole target when only a band of it is spotlit: the card stays
+  // off it (side dock) or paints solid over its dimmed remainder.
+  const keepClear = focused ? toHalo(registeredRect) : null;
+  const registryChrome = otherTargetRects(registry, targetId, window);
+  const avoid = registryChrome.length > 0 ? [...domChrome, ...registryChrome] : domChrome;
+
+  // Overlay wrapper size drives the scrim SVG so it spans the actual
+  // rendered area on Android edge-to-edge (where `useWindowDimensions`
+  // excludes the nav-bar inset). Seeded from the window so the scrim
+  // paints on the first commit.
+  const [overlaySize, setOverlaySize] = useState({ w: window.width, h: window.height });
+
+  // Card height, measured per step. Keyed so a stale height from the
+  // previous step (or a previous viewport) is never used for this one —
+  // the card stays invisible until its own measurement lands, then
+  // fades in at the right spot. No effect-based reset needed.
+  const measureKey = `${stepKey}|${window.width}x${window.height}`;
+  const [measured, setMeasured] = useState<{ key: string; height: number } | null>(null);
+  const cardHeight = measured?.key === measureKey ? measured.height : null;
+  const cardRef = useRef<View | null>(null);
+
+  // Web: measure synchronously before paint. RNW's `onLayout` goes
+  // through ResizeObserver + setTimeout, i.e. it waits for a frame — on a
+  // starved renderer that is hundreds of ms of invisible card. Reading
+  // the rect here positions the card correctly on its very first paint;
+  // `onLayout` stays attached for later size changes (font load).
+  useLayoutEffect(() => {
+    if (Platform.OS !== 'web' || cardHeight !== null) return;
+    const node = cardRef.current as unknown as {
+      getBoundingClientRect?: () => { height: number };
+    } | null;
+    const h = node?.getBoundingClientRect?.().height ?? 0;
+    if (h > 0) setMeasured({ key: measureKey, height: h });
+  }, [cardHeight, measureKey]);
+
+  // The ring grows to enclose any small control it would otherwise
+  // bisect (the wall counter under the dice modal); the card is placed
+  // against the same enlarged halo so the two never disagree.
+  const halo = encloseStraddlers(haloFor(haloRect, window), avoid, window);
+  const feather = halo ? featherFor(halo, avoid) : undefined;
+  const placement = placeCaption({
+    viewport: { width: window.width, height: window.height },
+    halo: encloseStraddlers(haloFor(cardRect, window), avoid, window),
+    cardHeight,
+    avoid,
+    keepClear,
+  });
+  const solid = placement.overlapsChrome;
+  const glassBg = solid ? GLASS_BG_SOLID : GLASS_BG;
+  publishLayout({
+    stepKey,
+    placement,
+    halo,
+    feather,
+    avoid,
+    cardHeight,
+    solid,
+    viewport: { width: window.width, height: window.height },
+  });
+
+  // Step transition: fade + 8 px slide once the new card is measured.
+  // `ready` drops to false on every step change (the measurement is
+  // keyed per step), so the effect re-fires per step without an extra
+  // key dependency.
   //
-  // Heuristic: dock at whichever screen edge has the most clear
-  // space free of the halo. An earlier upper-third check correctly
-  // bottom-docked for small chrome targets and top-docked for the
-  // hand / claim bar, but failed for the portrait discard pool: the
-  // pool's halo *centre* sits below the upper-third line (so the
-  // rule pinned the caption to the top), yet the pool's halo *top*
-  // is high enough that a 60-px-padded 160-px caption pinned at
-  // y=60 overlapped the pool's upper edge. Comparing free space
-  // above and below the halo correctly bottom-docks when the halo
-  // hugs the screen top, and keeps top-docking the user's hand
-  // (which sits at the very bottom). Without a target, centre
-  // vertically.
-  //
-  // For tall, near-screen-centred halos (the `result-panel` on
-  // portrait + landscape phones, where the ResultPanel's centred
-  // card eats most of the vertical space) neither top- nor bottom-
-  // dock can place the caption without overlapping the panel — its
-  // winning-hand row sits at the top of the panel, so a top-docked
-  // caption hides exactly the content the scoring lesson wants the
-  // user to see. When the wider horizontal axis has more clear space
-  // beside the halo than the vertical axis has above or below it,
-  // dock the caption to the side instead. The side dock pins the
-  // caption to a clear strip of felt, leaving the entire halo
-  // (winning hand + score breakdown + start-next-hand row) visible.
-  // Two card-height knobs:
-  //   - `CAPTION_HEIGHT`: a fixed estimate used by the placement
-  //     heuristic (which edge to dock against). 160 px matches the
-  //     desktop top-dock card; keeping the estimate at the original
-  //     PR #432 value preserves every dock decision the heuristic
-  //     made before this fix landed.
-  //   - `clampHeight`: the LIVE measurement from `onLayout`. Real
-  //     cards range from ~120 px (desktop) to ~330 px (landscape
-  //     side-dock where the body copy stacks tall in a narrow
-  //     column). Used ONLY by the final viewport clamp so a tall
-  //     card pinned to a high `top` gets pulled up enough that the
-  //     CTA stays on-screen. Falling back to an over-estimate (320)
-  //     on first paint keeps the CTA on-screen until `onLayout`
-  //     fires, at the cost of a tiny over-shift on the first frame.
-  const CAPTION_HEIGHT = 160;
-  const CLAMP_HEIGHT_ESTIMATE = 320;
-  const clampHeight = captionHeight ?? CLAMP_HEIGHT_ESTIMATE;
-  // Minimum width a side-dock caption stays readable at. Below this
-  // the card wraps so aggressively (Chinese-glyph headings, mixed
-  // glyph + ASCII body copy) that the side dock buys nothing over a
-  // partially-overlapping vertical dock. Tuned to the landscape-
-  // phone ResultPanel case: 852 px wide minus a ~480 px centred
-  // panel leaves a ~186 px strip on either side, just clearing the
-  // floor with a tight gap.
-  const SIDE_CAPTION_MIN_WIDTH = 160;
-  const EDGE_GAP = 60;
-  // Minimum padding to keep between the caption's top/bottom edges
-  // and the viewport. Smaller than EDGE_GAP — when the card is tall
-  // enough that EDGE_GAP would push the CTA out we trade the
-  // top-of-screen breathing room for keeping the button on-screen.
-  const VIEWPORT_PADDING = 8;
-  const SIDE_GAP = 12;
+  // On web the motion is the `webEntrance` keyframe class on a wrapper
+  // that remounts per step (`key={stepKey}`); native keeps the Animated
+  // path below.
+  const opacity = useRef(new Animated.Value(0)).current;
+  const slide = useRef(new Animated.Value(8)).current;
+  const ready = cardHeight !== null;
+  useEffect(() => {
+    if (!ready || Platform.OS === 'web') return;
+    opacity.setValue(0);
+    slide.setValue(8);
+    const duration = reducedMotion ? 100 : 220;
+    const anim = Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }),
+      Animated.timing(slide, {
+        toValue: 0,
+        duration,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }),
+    ]);
+    anim.start();
+    return () => anim.stop();
+  }, [ready, opacity, slide, reducedMotion]);
 
-  type Dock =
-    | { kind: 'top' | 'bottom'; top: number }
-    | { kind: 'left' | 'right'; top: number; width: number };
-  let dock: Dock;
-  if (!halo) {
-    dock = { kind: 'top', top: Math.max(40, window.height / 2 - CAPTION_HEIGHT / 2) };
-  } else {
-    const spaceAbove = halo.top;
-    const spaceBelow = window.height - (halo.top + halo.height);
-    const spaceLeft = halo.left;
-    const spaceRight = window.width - (halo.left + halo.width);
+  const lessonIndex = LESSON_ORDER.indexOf(lesson.id);
+  const lessonLabel =
+    lessonIndex >= 0 ? `Lesson ${lessonIndex + 1}/${LESSON_ORDER.length}` : 'Tutorial';
+  const compact = placement.width < 260;
+  // Hard CTA-visibility guarantee: cap the body copy so the whole card
+  // fits between the safe insets even for a narrow side dock (landscape
+  // phone beside the result panel). `CHROME` approximates everything in
+  // the card that is not body text; overflow scrolls inside the card.
+  const chrome = compact ? 196 : 236;
+  const bodyMaxHeight = Math.max(64, window.height - safeInset(window.width) * 2 - chrome);
+  const ctaLabel = step.ctaLabel ?? 'Got it';
+  const canRestart = stepIndex > 0 && lesson.id !== '_stub';
 
-    // Pick the better vertical edge with the *original* "more
-    // vertical space wins" rule (PR #348). Equal space tie-breaks
-    // to top-dock (strict-greater on spaceBelow), matching the
-    // pre-PR behaviour exactly so existing tutorial steps render
-    // unchanged.
-    // `own-hand` (very bottom of screen) → spaceAbove >> spaceBelow
-    // → top-dock. `tsumo-button` (chrome at top) → spaceBelow >>
-    // spaceAbove → bottom-dock. `result-panel` on portrait phones
-    // → near-equal spaces, ties to top-dock by default; the
-    // overlap-tolerance escape hatch below promotes it to a side
-    // or bottom dock when the top dock would hide load-bearing
-    // content.
-    const verticalDockBottom = spaceBelow > spaceAbove;
-    const verticalDockTop = verticalDockBottom
-      ? window.height - EDGE_GAP - CAPTION_HEIGHT
-      : EDGE_GAP;
-    // How much of the halo would the vertical dock visually
-    // overlap? (caption rect intersected with halo rect, vertical
-    // extent). If the overlap is small the vertical dock is good
-    // enough — keep the existing behaviour unchanged. If the
-    // overlap is large *and* a side strip has comfortable room,
-    // prefer the side dock so the entire halo stays visible.
-    const verticalCaptionBottom = verticalDockTop + CAPTION_HEIGHT;
-    const haloBottom = halo.top + halo.height;
-    const verticalOverlap = Math.max(
-      0,
-      Math.min(verticalCaptionBottom, haloBottom) - Math.max(verticalDockTop, halo.top),
-    );
-    // 50 px tolerance — `result-panel` halos with a ~14 px internal
-    // padding can lose ~40 px to the caption (desktop's top-dock
-    // case) without hiding the "Seat 0 wins!" heading or the
-    // winning-hand row that sits beneath it. Above this threshold
-    // the caption starts covering meaningful pedagogical surface
-    // and we either escape sideways (when a side strip fits) or
-    // flip to the opposite vertical edge.
-    const VERTICAL_OVERLAP_TOLERATED = 50;
-
-    // A side dock fits if either side strip is wider than the
-    // readability floor (after a SIDE_GAP padding on each side).
-    const sideSlackNeeded = SIDE_CAPTION_MIN_WIDTH + SIDE_GAP * 2;
-    const leftFits = spaceLeft >= sideSlackNeeded;
-    const rightFits = spaceRight >= sideSlackNeeded;
-    // Side-dock width: fill the strip up to the standard 460 px cap.
-    const sideWidth = (strip: number) =>
-      Math.max(SIDE_CAPTION_MIN_WIDTH, Math.min(460, strip - SIDE_GAP * 2));
-    // Vertically centre the side dock so it lands beside the halo.
-    // The final clamp below keeps the caption fully on screen for
-    // every branch (side + vertical) — so this is just the
-    // preferred position before clamping.
-    const sideTop = halo.top + halo.height / 2 - CAPTION_HEIGHT / 2;
-
-    if (verticalOverlap > VERTICAL_OVERLAP_TOLERATED) {
-      if (leftFits || rightFits) {
-        // Side-dock to whichever strip has more clearance; right
-        // wins ties to keep the caption away from the top-left
-        // win-summary heading on the landscape ResultPanel.
-        if (rightFits && (!leftFits || spaceRight >= spaceLeft)) {
-          dock = { kind: 'right', top: sideTop, width: sideWidth(spaceRight) };
-        } else {
-          dock = { kind: 'left', top: sideTop, width: sideWidth(spaceLeft) };
-        }
-      } else {
-        // No side strip fits — promote a top-dock to a bottom-dock
-        // when overlap is high. The `result-panel` and similar
-        // centred portrait halos render their pedagogically-load-
-        // bearing content (winning hand + faan summary) at the
-        // *top* of the halo; bottom-dock covers buttons + rules
-        // (which the user has already learned by this point in
-        // the curriculum) instead.
-        dock = {
-          kind: 'bottom',
-          top: window.height - EDGE_GAP - CAPTION_HEIGHT,
-        };
-      }
-    } else {
-      dock = {
-        kind: verticalDockBottom ? 'bottom' : 'top',
-        top: verticalDockTop,
-      };
-    }
-  }
-  // Final viewport clamp — the hard invariant is that the entire
-  // caption card (including its CTA button) must stay on-screen.
-  // Uses `clampHeight` (live measurement) so the clamp tracks the
-  // card's actual size, not the placement-heuristic estimate. The
-  // placement above runs against the fixed 160-px estimate to keep
-  // its dock decisions stable across all viewports; the clamp here
-  // is what guarantees the CTA visibility invariant.
-  //
-  // If the card is taller than the viewport the clamp pins the top
-  // to VIEWPORT_PADDING — the bottom will still clip, but in
-  // practice no real lesson copy exceeds the phone-portrait
-  // viewport. The clamp may force the caption to overlap the halo
-  // by a few pixels (especially on landscape where vertical space
-  // is genuinely scarce); CTA visibility trumps non-overlap.
-  const maxTop = Math.max(VIEWPORT_PADDING, window.height - clampHeight - VIEWPORT_PADDING);
-  const captionTop = Math.max(VIEWPORT_PADDING, Math.min(dock.top, maxTop));
-
-  // Tap-capture panels — four transparent rectangles around the halo
-  // bounding box (or one full-screen panel when no target). They
-  // absorb taps outside the highlight without painting any dim
-  // themselves; the dim region is rendered by `<DimLayer>` below as
-  // a single SVG with a rounded cutout, which is the only way to
-  // make the dim's inner edge actually follow the halo's
-  // `borderRadius`. Earlier the panels DID paint the dim, but their
-  // rectangular silhouette left four tiny L-shape patches at the
-  // halo's corners undimmed — that's what reads as "hard corners"
-  // around the highlighted target.
   const tapPanels: ReadonlyArray<Panel & { key: string }> = halo
     ? scrimAround(halo)
     : [{ key: 'full', left: 0, top: 0, right: 0, bottom: 0 }];
 
   return (
-    // Plain absolute-positioned overlay rather than `RNModal`:
-    // react-native-web's `Modal` wraps children in a focus-trap
-    // backdrop that absorbs every click that isn't on a Pressable
-    // child, which would defeat the whole point of letting the user
-    // tap the highlighted element. We get the same z-stacking via a
-    // top-level mount in `app/_layout.tsx` (the overlay sits after
-    // every other root-level child).
+    // Plain absolute overlay rather than `RNModal`: react-native-web's
+    // Modal focus-trap backdrop would swallow the taps we want to let
+    // through to the spotlit element.
     <View
+      ref={(node) => {
+        rootRef.current = node;
+        markOverlay(node);
+      }}
       onLayout={(e) => {
         const { width, height } = e.nativeEvent.layout;
         setOverlaySize((prev) =>
-          prev && prev.w === width && prev.h === height ? prev : { w: width, h: height },
+          prev.w === width && prev.h === height ? prev : { w: width, h: height },
         );
       }}
+      // `overflow: hidden` clips a halo side that overhangs the viewport
+      // (see `haloFor`): the ring simply runs off the edge there instead
+      // of drawing its stroke across the target.
       style={{
         position: 'absolute',
         left: 0,
         top: 0,
         right: 0,
         bottom: 0,
-        // Stack above any sibling we don't statically know about.
-        // Web maps `elevation` to z-index; the scrim's specific
-        // panels rely on their absolute position instead.
         zIndex: 1000,
+        overflow: 'hidden',
       }}
-      // `box-none` so the wrapper itself never absorbs touches; only
-      // the scrim panels (which want to block) and the caption card
-      // (which wants to handle taps) do.
       pointerEvents="box-none"
     >
-      <DimLayer
+      <SpotlightScrim
         width={overlaySize.w}
         height={overlaySize.h}
         halo={halo}
-        haloRadius={HALO_RADIUS}
-        color={SCRIM_COLOR}
+        radius={HALO_RADIUS}
+        feather={feather}
       />
       {tapPanels.map((panel) => (
         <View
@@ -364,130 +354,384 @@ export function TutorialOverlay() {
             bottom: panel.bottom,
             width: panel.width,
             height: panel.height,
-            // Transparent — the panel only exists to absorb taps.
-            // The dim is painted by the SVG above (which has
-            // `pointerEvents="none"` so it doesn't block tap-capture).
           }}
         />
       ))}
       {halo ? (
-        <View
-          testID="tutorial-halo"
-          style={{
-            position: 'absolute',
-            left: halo.left,
-            top: halo.top,
-            width: halo.width,
-            height: halo.height,
-            borderWidth: HALO_BORDER,
-            borderColor: COLORS.gold,
-            borderRadius: HALO_RADIUS,
-          }}
-          pointerEvents="none"
-        />
+        <>
+          <PulseRing
+            halo={halo}
+            radius={HALO_RADIUS}
+            reducedMotion={reducedMotion}
+            feather={feather}
+          />
+          <HaloRing halo={halo} radius={HALO_RADIUS} feather={feather} />
+        </>
       ) : null}
-      <View
-        style={{
-          position: 'absolute',
-          // Side docks pin to the relevant edge so the caption sits
-          // beside the halo rather than spanning the viewport, with
-          // an explicit width so the inner card's `width: '100%'`
-          // resolves to the strip beside the halo instead of
-          // collapsing.
-          left: dock.kind === 'right' ? undefined : dock.kind === 'left' ? SIDE_GAP : 20,
-          right: dock.kind === 'left' ? undefined : dock.kind === 'right' ? SIDE_GAP : 20,
-          top: captionTop,
-          width: dock.kind === 'left' || dock.kind === 'right' ? dock.width : undefined,
-          alignItems: dock.kind === 'left' || dock.kind === 'right' ? 'flex-start' : 'center',
-        }}
+
+      <Animated.View
+        // Remount per step so web `onLayout` (ResizeObserver, size
+        // changes only) re-fires even when two consecutive cards happen
+        // to be the same height, and so the CSS transition has a painted
+        // "from" state to ease out of.
+        key={stepKey}
         pointerEvents="box-none"
+        style={[
+          {
+            position: 'absolute',
+            left: placement.left,
+            top: placement.top,
+            width: placement.width,
+          },
+          webEntrance
+            ? ready
+              ? reducedMotion
+                ? webEntrance.reduced
+                : webEntrance.normal
+              : { opacity: 0 }
+            : { opacity: ready ? opacity : 0, transform: [{ translateY: slide }] },
+        ]}
       >
         <View
-          // Tap-eater so taps on the card don't fall through to the
-          // scrim and pass to whatever sits underneath.
+          // Tap-eater so taps on the card never fall through to the
+          // scrim. Also the CTA's grandparent — the scoring specs
+          // measure the card via `xpath=ancestor::*[2]` of "Got it".
+          ref={cardRef}
           pointerEvents="auto"
-          // Measure the real card height each layout pass — the
-          // body copy width depends on the dock (side dock narrows
-          // to ~180 px and stacks taller), and the placement clamp
-          // above needs a live measurement to keep the CTA on
-          // screen. Same identity-check guard as the overlay
-          // wrapper so a no-op layout pass doesn't re-render.
           onLayout={(e) => {
             const { height } = e.nativeEvent.layout;
-            setCaptionHeight((prev) => (prev === height ? prev : height));
+            setMeasured((prev) =>
+              prev?.key === measureKey && prev.height === height
+                ? prev
+                : { key: measureKey, height },
+            );
           }}
-          style={{
-            maxWidth: 460,
-            width: '100%',
-            backgroundColor: COLORS.paperHi,
-            borderRadius: 14,
-            borderWidth: 1,
-            borderColor: COLORS.hairline,
-            padding: 18,
-            gap: 10,
-            boxShadow: '0px 8px 24px rgba(0,0,0,0.18)',
-          }}
+          style={[
+            {
+              width: '100%',
+              backgroundColor: glassBg,
+              borderRadius: 16,
+              borderWidth: 1,
+              borderColor: GLASS_BORDER,
+              padding: compact ? 12 : 18,
+              gap: compact ? 6 : 10,
+              boxShadow: '0 12px 40px rgba(0,0,0,0.35)',
+            },
+            solid ? null : webOnly({ backdropFilter: 'blur(16px) saturate(140%)' }),
+          ]}
         >
+          <View
+            style={{
+              flexDirection: compact ? 'column' : 'row',
+              alignItems: compact ? 'flex-start' : 'center',
+              justifyContent: 'space-between',
+              gap: 8,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 11,
+                fontWeight: '700',
+                letterSpacing: 2,
+                textTransform: 'uppercase',
+                color: COLORS.gold,
+                fontFamily: BODY_FONT,
+              }}
+            >
+              {lessonLabel}
+            </Text>
+            <StepDots ids={lesson.steps.map((st) => st.id)} index={stepIndex} />
+          </View>
           <Text
             accessibilityRole="header"
             accessibilityLabel={`Tutorial step: ${step.caption.title}`}
             style={{
-              fontSize: 16,
-              fontWeight: '900',
-              color: COLORS.ink,
+              fontSize: compact ? 15 : 20,
+              lineHeight: compact ? 19 : 26,
+              fontWeight: '800',
+              letterSpacing: -0.3,
+              color: TEXT_PRIMARY,
+              fontFamily: TITLE_FONT,
             }}
           >
             {step.caption.title}
           </Text>
-          <Text style={{ fontSize: 13, color: COLORS.ink2, lineHeight: 19 }}>
-            {step.caption.body}
-          </Text>
+          <ScrollView
+            style={{ maxHeight: bodyMaxHeight, flexGrow: 0 }}
+            showsVerticalScrollIndicator
+            nestedScrollEnabled
+          >
+            <Text
+              style={{
+                fontSize: compact ? 12.5 : 14,
+                lineHeight: compact ? 17 : 21,
+                color: 'rgba(255,255,255,0.78)',
+                fontFamily: BODY_FONT,
+              }}
+            >
+              {step.caption.body}
+            </Text>
+          </ScrollView>
           <View
             style={{
-              flexDirection: 'row',
+              flexDirection: compact ? 'column-reverse' : 'row',
               justifyContent: 'space-between',
-              alignItems: 'center',
-              marginTop: 4,
+              alignItems: compact ? 'stretch' : 'center',
+              gap: compact ? 0 : 10,
+              marginTop: compact ? 0 : 2,
             }}
           >
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Skip lesson"
-              onPress={dismiss}
-              style={({ pressed }) => ({
-                paddingHorizontal: 12,
-                paddingVertical: 8,
-                borderRadius: 8,
-                backgroundColor: pressed ? COLORS.creamLow : 'transparent',
-              })}
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: compact ? 'center' : 'flex-start',
+                gap: 4,
+                flexShrink: 1,
+              }}
             >
-              <Text style={{ fontSize: 12, fontWeight: '700', color: COLORS.ink3 }}>
-                Skip lesson
-              </Text>
-            </Pressable>
+              <QuietButton label="Skip lesson" onPress={dismiss} compact={compact} />
+              {canRestart ? (
+                <QuietButton
+                  label="Restart"
+                  accessibilityLabel="Restart lesson"
+                  onPress={() => transport.joinSoloTutorial(lesson.id)}
+                />
+              ) : null}
+            </View>
             {step.completedWhen ? null : (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={step.ctaLabel ?? 'Got it'}
+              <PrimaryButton
+                label={ctaLabel}
                 onPress={advance}
-                style={({ pressed }) => ({
-                  paddingHorizontal: 16,
-                  paddingVertical: 9,
-                  borderRadius: 9,
-                  backgroundColor: pressed ? COLORS.creamPressed : COLORS.accentSalmonSwatch,
-                  borderWidth: 1,
-                  borderColor: COLORS.accentSalmonEdge,
-                })}
-              >
-                <Text style={{ fontSize: 13, fontWeight: '900', color: COLORS.red }}>
-                  {step.ctaLabel ?? 'Got it'}
-                </Text>
-              </Pressable>
+                testID="tutorial-next"
+                stretch={compact}
+              />
             )}
           </View>
         </View>
-      </View>
+        {placement.notch !== null ? <Notch placement={placement} fill={glassBg} /> : null}
+      </Animated.View>
     </View>
+  );
+}
+
+/**
+ * Test hook: the last computed coach-mark layout, readable from the
+ * page as `globalThis.__MAHJONG_TEST_TUTORIAL_LAYOUT__`. Lets the e2e
+ * specs assert placement invariants (no bisected chrome, notch dropped
+ * when the card is pushed away, solid card over chrome) in overlay
+ * coordinates instead of re-deriving them from bounding boxes. Plain
+ * assignment, no React state — cheap enough to run every render.
+ */
+export interface TutorialLayoutSnapshot {
+  stepKey: string;
+  placement: CaptionPlacement;
+  halo: HaloRect | null;
+  feather: ReturnType<typeof featherFor> | undefined;
+  avoid: readonly HaloRect[];
+  cardHeight: number | null;
+  solid: boolean;
+  viewport: { width: number; height: number };
+}
+
+function publishLayout(snapshot: TutorialLayoutSnapshot): void {
+  (
+    globalThis as unknown as { __MAHJONG_TEST_TUTORIAL_LAYOUT__?: TutorialLayoutSnapshot }
+  ).__MAHJONG_TEST_TUTORIAL_LAYOUT__ = snapshot;
+}
+
+function toHalo(r: TargetRect | null): HaloRect | null {
+  return r ? { left: r.x, top: r.y, width: r.w, height: r.h } : null;
+}
+
+/** Tag the overlay root on web so the chrome scan skips its own DOM. */
+function markOverlay(node: unknown): void {
+  if (Platform.OS !== 'web') return;
+  const el = node as { setAttribute?: (name: string, value: string) => void } | null;
+  el?.setAttribute?.(OVERLAY_ATTR, '1');
+}
+
+/** Rects of every registered target other than the active one, sized
+ *  like chrome (a tall region such as the discard pool is skipped). */
+function otherTargetRects(
+  registry: TargetRegistryApi,
+  activeId: string | null,
+  viewport: { width: number; height: number },
+): HaloRect[] {
+  const out: HaloRect[] = [];
+  for (const [id, r] of registry.readAll()) {
+    if (id === activeId) continue;
+    const rect = { left: r.x, top: r.y, width: r.w, height: r.h };
+    if (isChromeCandidate({ rect, control: true, text: null }, viewport)) out.push(rect);
+  }
+  return out;
+}
+
+function StepDots({ ids, index }: { ids: string[]; index: number }) {
+  const count = ids.length;
+  if (count <= 1) return null;
+  return (
+    <View
+      accessibilityLabel={`Step ${index + 1} of ${count}`}
+      style={{ flexDirection: 'row', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}
+    >
+      {ids.map((id, i) => {
+        const state = i === index ? 'active' : i < index ? 'done' : 'todo';
+        return (
+          <View
+            key={id}
+            style={{
+              width: state === 'active' ? 18 : 6,
+              height: 6,
+              borderRadius: 3,
+              backgroundColor:
+                state === 'active'
+                  ? COLORS.gold
+                  : state === 'done'
+                    ? 'rgba(216,168,90,0.55)'
+                    : 'rgba(255,255,255,0.22)',
+            }}
+          />
+        );
+      })}
+    </View>
+  );
+}
+
+type HoverState = PressableStateCallbackType & { hovered?: boolean };
+
+interface ButtonProps {
+  label: string;
+  onPress: () => void;
+  accessibilityLabel?: string;
+  testID?: string;
+  stretch?: boolean;
+  /** Narrow side-dock cards: tighter horizontal padding. Every button
+   *  keeps the 44 px hit-target floor regardless. */
+  compact?: boolean;
+}
+
+function PrimaryButton({
+  label,
+  onPress,
+  accessibilityLabel,
+  testID,
+  stretch,
+  compact,
+}: ButtonProps) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? label}
+      testID={testID}
+      onPress={onPress}
+      style={(s: HoverState) => [
+        {
+          minHeight: 44,
+          paddingHorizontal: compact ? 14 : 20,
+          borderRadius: 12,
+          backgroundColor: COLORS.gold,
+          alignItems: 'center',
+          justifyContent: 'center',
+          alignSelf: stretch ? 'stretch' : 'auto',
+          transform: [
+            { translateY: s.hovered && !s.pressed ? -1 : 0 },
+            { scale: s.pressed ? 0.97 : 1 },
+          ],
+          boxShadow: '0 6px 18px rgba(216,168,90,0.28)',
+        },
+        webOnly({
+          filter: s.hovered && !s.pressed ? 'brightness(1.05)' : 'none',
+          transitionProperty: 'transform, filter',
+          transitionDuration: '160ms',
+        }),
+      ]}
+    >
+      <Text style={{ fontSize: 14, fontWeight: '800', color: INK_ON_GOLD, fontFamily: BODY_FONT }}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+function QuietButton({ label, onPress, accessibilityLabel, compact }: ButtonProps) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? label}
+      onPress={onPress}
+      style={(s: HoverState) => ({
+        minHeight: 44,
+        paddingHorizontal: compact ? 8 : 10,
+        borderRadius: 10,
+        justifyContent: 'center',
+        backgroundColor: s.pressed
+          ? 'rgba(255,255,255,0.10)'
+          : s.hovered
+            ? 'rgba(255,255,255,0.06)'
+            : 'transparent',
+      })}
+    >
+      <Text
+        style={{
+          fontSize: 13,
+          fontWeight: '700',
+          color: TEXT_SECONDARY,
+          fontFamily: BODY_FONT,
+        }}
+      >
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+const NOTCH_W = 22;
+const NOTCH_H = 11;
+
+/** Pointer notch on the card edge that faces the halo. Drawn as an
+ *  SVG so the two outer edges carry the glass border while the base
+ *  overlaps the card by 1 px and hides the border segment beneath. */
+function Notch({ placement, fill }: { placement: CaptionPlacement; fill: string }) {
+  const n = placement.notch ?? 0;
+  let style: ViewStyle;
+  let body: string;
+  let edge: string;
+  let w = NOTCH_W;
+  let h = NOTCH_H;
+  switch (placement.kind) {
+    case 'above':
+      style = { bottom: -NOTCH_H + 1, left: n - NOTCH_W / 2 };
+      body = `M0 0 L${NOTCH_W / 2} ${NOTCH_H} L${NOTCH_W} 0 Z`;
+      edge = `M0 0 L${NOTCH_W / 2} ${NOTCH_H} L${NOTCH_W} 0`;
+      break;
+    case 'below':
+      style = { top: -NOTCH_H + 1, left: n - NOTCH_W / 2 };
+      body = `M0 ${NOTCH_H} L${NOTCH_W / 2} 0 L${NOTCH_W} ${NOTCH_H} Z`;
+      edge = `M0 ${NOTCH_H} L${NOTCH_W / 2} 0 L${NOTCH_W} ${NOTCH_H}`;
+      break;
+    case 'right':
+      w = NOTCH_H;
+      h = NOTCH_W;
+      style = { left: -NOTCH_H + 1, top: n - NOTCH_W / 2 };
+      body = `M${NOTCH_H} 0 L0 ${NOTCH_W / 2} L${NOTCH_H} ${NOTCH_W} Z`;
+      edge = `M${NOTCH_H} 0 L0 ${NOTCH_W / 2} L${NOTCH_H} ${NOTCH_W}`;
+      break;
+    case 'left':
+      w = NOTCH_H;
+      h = NOTCH_W;
+      style = { right: -NOTCH_H + 1, top: n - NOTCH_W / 2 };
+      body = `M0 0 L${NOTCH_H} ${NOTCH_W / 2} L0 ${NOTCH_W} Z`;
+      edge = `M0 0 L${NOTCH_H} ${NOTCH_W / 2} L0 ${NOTCH_W}`;
+      break;
+    default:
+      return null;
+  }
+  return (
+    <Svg width={w} height={h} pointerEvents="none" style={[{ position: 'absolute' }, style]}>
+      <Path d={body} fill={fill} />
+      <Path d={edge} fill="none" stroke={GLASS_BORDER} strokeWidth={1} />
+    </Svg>
   );
 }
 
@@ -500,116 +744,36 @@ interface Panel {
   height?: number;
 }
 
-interface DimLayerProps {
-  width: number;
-  height: number;
-  halo: HaloRect | null;
-  haloRadius: number;
-  color: string;
-}
-
-/**
- * Full-overlay dim painted as a single SVG with an even-odd path —
- * the outer rectangle fills the screen, the inner rounded rect at
- * the halo position acts as a hole. The dim's inner edge follows
- * the halo's `borderRadius` exactly, so there are no L-shape
- * patches in the corners between the halo's gold border and its
- * bounding box.
- *
- * `pointerEvents: 'none'` so the SVG sits visually above but doesn't
- * block the tap-capture panels underneath.
- */
-function DimLayer({ width, height, halo, haloRadius, color }: DimLayerProps) {
-  const d = halo
-    ? `${rectPath(0, 0, width, height)} ${roundedRectPath(halo.left, halo.top, halo.width, halo.height, haloRadius)}`
-    : rectPath(0, 0, width, height);
-  return (
-    <Svg
-      width={width}
-      height={height}
-      pointerEvents="none"
-      style={{ position: 'absolute', left: 0, top: 0 }}
-    >
-      <Path d={d} fill={color} fillRule="evenodd" />
-    </Svg>
-  );
-}
-
-function rectPath(x: number, y: number, w: number, h: number): string {
-  return `M${x} ${y} H${x + w} V${y + h} H${x} Z`;
-}
-
-function roundedRectPath(x: number, y: number, w: number, h: number, r: number): string {
-  // Clamp the radius so undersized halos (smaller than 2r) still
-  // produce a valid path — degenerate cases collapse to a pill.
-  const cr = Math.min(r, w / 2, h / 2);
-  return `M${x + cr} ${y} H${x + w - cr} A${cr} ${cr} 0 0 1 ${x + w} ${y + cr} V${y + h - cr} A${cr} ${cr} 0 0 1 ${x + w - cr} ${y + h} H${x + cr} A${cr} ${cr} 0 0 1 ${x} ${y + h - cr} V${y + cr} A${cr} ${cr} 0 0 1 ${x + cr} ${y} Z`;
-}
-
-interface HaloRect {
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-}
-
-/** Compute the four scrim rectangles surrounding a halo cut-out. Each
- *  rectangle is anchored to the overlay edge it shares with the halo
- *  (e.g. the top strip uses `top: 0 / right: 0 / left: 0` and a
- *  computed `height`), so the panels reliably fill the overlay
- *  parent's actual bounds — `useWindowDimensions()` excludes the
- *  Android nav-bar inset, so width/height-based sizing left a strip
- *  behind the nav bar undimmed. The halo region itself is left
- *  uncovered; the rest is painted with SCRIM_COLOR by the caller. */
+/** Four tap-absorbing rectangles around the halo. Each is anchored to
+ *  the overlay edge it shares with the halo so the panels fill the
+ *  overlay's real bounds (the Android nav-bar inset included). */
 function scrimAround(halo: HaloRect): Array<Panel & { key: string }> {
+  // A halo side that overhangs the viewport (open ring) has no strip
+  // on that side; clamp so no panel gets a negative size.
+  const top = Math.max(0, halo.top);
+  const bottom = Math.max(top, halo.top + halo.height);
+  const left = Math.max(0, halo.left);
   return [
-    // Top strip — full width, from y=0 to halo.top
-    { key: 'top', left: 0, top: 0, right: 0, height: halo.top },
-    // Bottom strip — from halo bottom to overlay bottom
-    {
-      key: 'bottom',
-      left: 0,
-      top: halo.top + halo.height,
-      right: 0,
-      bottom: 0,
-    },
-    // Left strip — from x=0 to halo.left, between halo top + bottom
-    {
-      key: 'left',
-      left: 0,
-      top: halo.top,
-      width: halo.left,
-      height: halo.height,
-    },
-    // Right strip — from halo right edge to overlay right edge
+    { key: 'top', left: 0, top: 0, right: 0, height: top },
+    { key: 'bottom', left: 0, top: bottom, right: 0, bottom: 0 },
+    { key: 'left', left: 0, top, width: left, height: bottom - top },
     {
       key: 'right',
-      left: halo.left + halo.width,
-      top: halo.top,
+      left: Math.max(left, halo.left + halo.width),
+      top,
       right: 0,
-      height: halo.height,
+      height: bottom - top,
     },
   ];
 }
 
 /**
- * Centered modal-style card shown after the last step of a user-
- * facing lesson finishes. Offers three follow-ups:
- *   - "Next lesson: <title>" (only when another lesson is still
- *     unfinished in `LESSON_ORDER`) starts the next curriculum
- *     entry via `transport.joinSoloTutorial`. The active match is
- *     replaced by a fresh tutorial seed, same as launching from the
- *     lobby card.
- *   - "Continue playing" tears the prompt down and leaves the user
- *     in the just-finished tutorial's match — the engine's still
- *     mid-hand with passive bots, fine to keep poking around.
- *   - "Back to lobby" leaves the match and routes to `/`. Matches
- *     the in-match `Leave` flow.
- *
- * Lives outside `useActiveTutorialStep`'s gate because the active
- * step is already cleared by `advance()` when the lesson finishes —
- * the overlay's primary `if (!active)` short-circuit forwards to
- * this prompt instead of returning null when `justCompleted` is set.
+ * Centred modal card shown after the last step of a user-facing
+ * lesson. Offers "Next lesson: <title>" (while the curriculum has an
+ * unfinished entry), "Continue playing" (stay in the finished hand)
+ * and "Back to lobby" (leave + route home). Lives outside the active-
+ * step gate because `advance()` already cleared the step when the
+ * lesson finished.
  */
 function CompletionPrompt({ lessonId }: { lessonId: string }) {
   const router = useRouter();
@@ -617,31 +781,29 @@ function CompletionPrompt({ lessonId }: { lessonId: string }) {
   const dismissCompletion = useTutorial((s) => s.dismissCompletion);
   const tutorialsCompleted = useGame((s) => s.settings.tutorialsCompleted);
   const window = useWindowDimensions();
-
-  // `LESSONS` always has the entry — `advance()` only flips
-  // `justCompleted` after the lesson it actually ran resolved, and
-  // lessons aren't deleted at runtime. Fall back gracefully just in
-  // case (skips the title interpolation rather than crashing).
+  const reducedMotion = useReducedMotion();
   const lesson = LESSONS[lessonId];
-  // Pick the next incomplete lesson after the freshly-finished one.
-  // `nextLesson()` walks LESSON_ORDER and returns the first entry
-  // not in `tutorialsCompleted` — by the time we render this prompt
-  // `tutorialsCompleted` already includes `lessonId`, so the next
-  // call returns the *following* curriculum entry (or null when the
-  // user just finished the last one).
   const next = nextLesson(tutorialsCompleted);
+  const done = LESSON_ORDER.filter((id) => tutorialsCompleted.includes(id)).length;
 
-  const SCRIM_COLOR = 'rgba(20,15,10,0.55)';
-  const CARD_MAX_WIDTH = 460;
+  const opacity = useRef(new Animated.Value(0)).current;
+  const slide = useRef(new Animated.Value(8)).current;
+  useEffect(() => {
+    const duration = reducedMotion ? 100 : 260;
+    Animated.parallel([
+      Animated.timing(opacity, { toValue: 1, duration, useNativeDriver: false }),
+      Animated.timing(slide, {
+        toValue: 0,
+        duration,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }),
+    ]).start();
+  }, [opacity, slide, reducedMotion]);
 
-  const onContinue = () => {
-    dismissCompletion();
-  };
   const onNextLesson = () => {
     if (!next) return;
-    // `joinSoloTutorial` calls `useTutorial.begin(nextId)` which
-    // resets `justCompleted: null` on its own — no need to
-    // dismissCompletion() first.
+    // `joinSoloTutorial` → `begin(nextId)` resets `justCompleted`.
     transport.joinSoloTutorial(next.id);
   };
   const onLeaveToLobby = () => {
@@ -659,96 +821,110 @@ function CompletionPrompt({ lessonId }: { lessonId: string }) {
         right: 0,
         bottom: 0,
         zIndex: 1000,
-        backgroundColor: SCRIM_COLOR,
+        backgroundColor: `rgba(${SCRIM_RGB},${SCRIM_ALPHA})`,
         alignItems: 'center',
         justifyContent: 'center',
         padding: 20,
       }}
-      // The prompt is modal — every tap outside the card should
-      // hit the scrim (no pass-through). Default `pointerEvents` on
-      // the wrapper does exactly that since the scrim covers the
-      // whole screen.
     >
-      <View
-        style={{
-          width: Math.min(CARD_MAX_WIDTH, window.width - 40),
-          backgroundColor: COLORS.paperHi,
-          borderRadius: 14,
-          borderWidth: 1,
-          borderColor: COLORS.hairline,
-          padding: 20,
-          gap: 14,
-          boxShadow: '0px 12px 32px rgba(0,0,0,0.22)',
-        }}
+      <Animated.View
+        style={[
+          {
+            width: Math.min(440, window.width - 40),
+            backgroundColor: GLASS_BG,
+            borderRadius: 16,
+            borderWidth: 1,
+            borderColor: GLASS_BORDER,
+            padding: 22,
+            gap: 12,
+            boxShadow: '0 12px 40px rgba(0,0,0,0.35)',
+            opacity,
+            transform: [{ translateY: slide }],
+          },
+          webOnly({ backdropFilter: 'blur(16px) saturate(140%)' }),
+        ]}
       >
         <Text
+          style={{
+            fontSize: 11,
+            fontWeight: '700',
+            letterSpacing: 2,
+            textTransform: 'uppercase',
+            color: COLORS.gold,
+            fontFamily: BODY_FONT,
+          }}
+        >
+          {`Curriculum · ${done}/${LESSON_ORDER.length} done`}
+        </Text>
+        <Text
           accessibilityRole="header"
-          style={{ fontSize: 17, fontWeight: '900', color: COLORS.ink }}
+          style={{
+            fontSize: 24,
+            lineHeight: 30,
+            fontWeight: '800',
+            letterSpacing: -0.4,
+            color: TEXT_PRIMARY,
+            fontFamily: TITLE_FONT,
+          }}
         >
           Nice work!
         </Text>
-        <Text style={{ fontSize: 13, color: COLORS.ink2, lineHeight: 19 }}>
+        <Text
+          style={{
+            fontSize: 14,
+            lineHeight: 21,
+            color: 'rgba(255,255,255,0.78)',
+            fontFamily: BODY_FONT,
+          }}
+        >
           {next
             ? `You finished "${lesson?.title ?? 'the lesson'}". Want to keep going with the next lesson, or keep playing this hand?`
             : `That's every lesson done. Keep playing this hand, or head back to the lobby for a real match.`}
         </Text>
-        <View style={{ gap: 8 }}>
+        <View style={{ gap: 8, marginTop: 4 }}>
           {next ? (
-            <Pressable
-              accessibilityRole="button"
+            <PrimaryButton
+              label={`Next lesson: ${next.title}`}
               accessibilityLabel={`Start next lesson: ${next.title}`}
               onPress={onNextLesson}
-              style={({ pressed }) => ({
-                paddingHorizontal: 16,
-                paddingVertical: 11,
-                borderRadius: 9,
-                backgroundColor: pressed ? COLORS.creamPressed : COLORS.accentSalmonSwatch,
-                borderWidth: 1,
-                borderColor: COLORS.accentSalmonEdge,
-                alignItems: 'center',
-              })}
-            >
-              <Text style={{ fontSize: 13, fontWeight: '900', color: COLORS.red }}>
-                Next lesson: {next.title}
-              </Text>
-            </Pressable>
+              stretch
+            />
           ) : null}
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Continue playing"
-            onPress={onContinue}
-            style={({ pressed }) => ({
-              paddingHorizontal: 16,
-              paddingVertical: 11,
-              borderRadius: 9,
-              backgroundColor: pressed ? COLORS.creamLow : COLORS.cream,
-              borderWidth: 1,
-              borderColor: COLORS.hairline,
+            onPress={dismissCompletion}
+            style={(s: HoverState) => ({
+              minHeight: 44,
+              paddingHorizontal: 18,
+              borderRadius: 12,
               alignItems: 'center',
+              justifyContent: 'center',
+              borderWidth: 1,
+              borderColor: 'rgba(216,168,90,0.45)',
+              backgroundColor: s.pressed
+                ? 'rgba(255,255,255,0.12)'
+                : s.hovered
+                  ? 'rgba(255,255,255,0.08)'
+                  : 'rgba(255,255,255,0.05)',
             })}
           >
-            <Text style={{ fontSize: 13, fontWeight: '800', color: COLORS.ink }}>
+            <Text
+              style={{
+                fontSize: 14,
+                fontWeight: '800',
+                color: TEXT_PRIMARY,
+                fontFamily: BODY_FONT,
+              }}
+            >
               Continue playing
             </Text>
           </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Back to lobby"
-            onPress={onLeaveToLobby}
-            style={({ pressed }) => ({
-              paddingHorizontal: 12,
-              paddingVertical: 9,
-              borderRadius: 8,
-              backgroundColor: pressed ? COLORS.creamLow : 'transparent',
-              alignItems: 'center',
-            })}
-          >
-            <Text style={{ fontSize: 12, fontWeight: '700', color: COLORS.ink3 }}>
-              Back to lobby
-            </Text>
-          </Pressable>
+          <View style={{ alignItems: 'center' }}>
+            <QuietButton label="Back to lobby" onPress={onLeaveToLobby} />
+          </View>
         </View>
-      </View>
+      </Animated.View>
     </View>
   );
 }

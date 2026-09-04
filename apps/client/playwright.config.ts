@@ -76,6 +76,8 @@ const SHARD_3_SPECS = [
   'three-menu.spec.ts',
   // 3D render layer — settings panel + live preview (~15 s).
   'three-settings.spec.ts',
+  // 3D tutorial coach-marks (~8 s).
+  'three-tutorial.spec.ts',
 ];
 
 const ASSIGNED_SPECS = [...SHARD_1_SPECS, ...SHARD_2_SPECS, ...SHARD_3_SPECS];
