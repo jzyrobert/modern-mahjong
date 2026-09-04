@@ -31,8 +31,15 @@ import { MenuButtons } from './hud/MenuButtons';
 import { ResultVeil } from './hud/ResultVeil';
 import { SeatBadge, type SeatBadgeModel } from './hud/SeatBadges';
 import { StatusPill } from './hud/StatusPill';
-import { GlassButton, HUD_CSS } from './hud/glass';
-import { HAND_Z, type HeldHandFrame, type Rel, toWorld } from './layout';
+import { GLASS, GlassButton, HUD_CSS } from './hud/glass';
+import {
+  CENTRE_PLATE_RADIUS,
+  HAND_Z,
+  type HeldHandFrame,
+  OWN_HAND_Z,
+  type Rel,
+  toWorld,
+} from './layout';
 import { type ScreenRect, padRect, rectsClose, unionRects } from './picking';
 
 /**
@@ -113,7 +120,14 @@ declare global {
 const VOID_BG =
   'radial-gradient(ellipse 80% 45% at 50% 34%, rgba(58,74,58,0.28), rgba(58,74,58,0) 70%), linear-gradient(180deg, #0b120f 0%, #16241d 100%)';
 
-const EMPTY_RECTS: HudRects = { ownHand: null, wallDraw: null, river: null };
+const EMPTY_RECTS: HudRects = {
+  ownHand: null,
+  wallDraw: null,
+  river: null,
+  nearWall: null,
+  discards: null,
+  plateBottom: null,
+};
 const POSITIONS: Position[] = ['bottom', 'right', 'top', 'left'];
 const REL_OF_POSITION: Record<Position, Rel> = { bottom: 0, right: 1, top: 2, left: 3 };
 /** Height of the top chrome row (pill / menu buttons), CSS px. */
@@ -137,7 +151,11 @@ function heldFrameFor(
     : null;
 }
 /** Approximate height of a glass toast, CSS px (anchor maths only). */
-const TOAST_H = 56;
+const TOAST_H = 52;
+/** Height of the dense landscape claim strip, CSS px (anchor maths only). */
+const CLAIM_STRIP_H = 58;
+/** Width the root `FullscreenPrompt` reserves at the landscape top-right. */
+const FULLSCREEN_PROMPT_W = 124;
 
 export function Table3DShell(props: Table3DShellProps) {
   const felt = useGame((s) => s.settings.felt);
@@ -229,14 +247,28 @@ export function Table3DShell(props: Table3DShellProps) {
       if (camMoved) lastCam.current.copy(cam.matrixWorld);
       if (!force && !camMoved && settleFrames.current > 2) return;
       const { props: p } = inputRef.current;
-      const hand = scene.layout
-        ? scene.layout.filter((s) => s !== null && s.zone === 'hand').map((s) => s!.id)
-        : [];
       const handRects: ScreenRect[] = [];
-      for (const id of hand) {
-        const r = scene.tileRect(id);
-        hitRef.current?.setTileRect(id, r);
-        if (r) handRects.push({ ...r });
+      // Projected extents the HUD anchors to: the near wall's stacks
+      // (rel 0) and every river, so toasts / the landscape claim strip
+      // land on free felt instead of a fixed offset that only held for
+      // one break position.
+      const nearWallRects: ScreenRect[] = [];
+      const discardRects: ScreenRect[] = [];
+      if (scene.layout) {
+        for (const s of scene.layout) {
+          if (!s) continue;
+          if (s.zone === 'hand') {
+            const r = scene.tileRect(s.id);
+            hitRef.current?.setTileRect(s.id, r);
+            if (r) handRects.push({ ...r });
+          } else if ((s.zone === 'wall' || s.zone === 'deadWall') && s.rel === 0) {
+            const r = scene.tileRect(s.id);
+            if (r) nearWallRects.push({ ...r });
+          } else if (s.zone === 'discard') {
+            const r = scene.tileRect(s.id);
+            if (r) discardRects.push({ ...r });
+          }
+        }
       }
       const nextId = scene.nextDrawTileId;
       const wallRect = p.needsDraw && nextId !== null ? scene.tileRect(nextId) : null;
@@ -264,6 +296,9 @@ export function Table3DShell(props: Table3DShellProps) {
         ownHand: clampRect(unionRects(handRects) ? padRect(unionRects(handRects)!, 6) : null),
         wallDraw: clampRect(wallRect ? padRect(wallRect, 8) : null),
         river: clampRect(river),
+        nearWall: unionRects(nearWallRects),
+        discards: unionRects(discardRects),
+        plateBottom: scene.projectPoint(0, 0.3, CENTRE_PLATE_RADIUS + 0.4).y,
       };
 
       // Desktop: seat badges follow their seat's hand row. Phones pin
@@ -276,7 +311,7 @@ export function Table3DShell(props: Table3DShellProps) {
           const [ax, az] = toWorld(
             rel,
             pos === 'bottom' ? -8.6 : 0,
-            HAND_Z + (pos === 'bottom' ? 0 : 1.1),
+            pos === 'bottom' ? OWN_HAND_Z : HAND_Z + 1.1,
           );
           const q = scene.projectPoint(ax, 0.9, az);
           const bw = el.offsetWidth;
@@ -305,7 +340,10 @@ export function Table3DShell(props: Table3DShellProps) {
       const changed =
         !rectsClose(next.ownHand, lastRects.current.ownHand) ||
         !rectsClose(next.wallDraw, lastRects.current.wallDraw) ||
-        !rectsClose(next.river, lastRects.current.river);
+        !rectsClose(next.river, lastRects.current.river) ||
+        !rectsClose(next.nearWall, lastRects.current.nearWall) ||
+        !rectsClose(next.discards, lastRects.current.discards) ||
+        Math.abs((next.plateBottom ?? 0) - (lastRects.current.plateBottom ?? 0)) > 0.75;
       if (changed) {
         settleFrames.current = 0;
         if (force || now - lastRectPush.current > 140) {
@@ -490,27 +528,52 @@ export function Table3DShell(props: Table3DShellProps) {
   // projected top edge (portrait: between the near rail and the held
   // hand; landscape: over the near felt).
   const handTop = hudRects.ownHand?.top ?? null;
+  const resolved = state.lastResult !== null && state.lastResult !== undefined;
   const aboveHandBottom =
     handTop !== null ? Math.max(pad + insets.bottom + 60, height - handTop + 10) : height * 0.32;
 
   const chromeTop = pad + insets.top;
   const stripTop = chromeTop + CHROME_H + 8;
-  // Toasts: portrait uses the void between the seat strip and the far
-  // rail (the camera leaves ~85 px there); landscape/desktop anchor
-  // just above the hand, over the near wall's backs, so the toast never
-  // covers the far wall or the rivers the claim is about.
-  // (Desktop has room to clear the near wall too: the toast lands on
-  // the felt between the rivers and the wall. Landscape shares that
-  // slot with the floating claim card, so while a card is up the toast
-  // falls back to the top centre under the far seat's badge.)
+  const zoomed = portrait && riverZoom && !resolved;
+  // Projected free-felt band between the rivers (or the plate, while the
+  // rivers are empty) and the near wall's top edge — the one patch of
+  // table no tile ever covers from the user's side.
+  const nearWallTop = hudRects.nearWall?.top ?? null;
+  const nearWallBottom = hudRects.nearWall
+    ? hudRects.nearWall.top + hudRects.nearWall.height
+    : null;
+  const discardsBottom = Math.max(
+    hudRects.discards ? hudRects.discards.top + hudRects.discards.height : 0,
+    hudRects.plateBottom ?? 0,
+  );
+  const bandTop = discardsBottom + 4;
+  const bandBottom = (nearWallTop ?? height * 0.6) - 4;
+  // Toasts. Portrait (full table): the void between the seat strip and
+  // the far rail. Portrait (river zoom): the far wall hides behind the
+  // zoom header, so the toast drops to the felt between the near wall
+  // and the held hand. Landscape: the chrome row beside the far seat's
+  // badge (the only void that never holds a tile). Desktop: the felt
+  // band above the near wall, never lower than the rivers.
   const claimFloating = compact && (props.hasClaimOption || showCtas);
+  // Landscape / desktop claim strip: centred in the band when it fits,
+  // else its top hugs the rivers so it only ever overlaps the near
+  // wall's backs (never a discard).
+  const claimStripTop =
+    bandBottom - bandTop >= CLAIM_STRIP_H
+      ? bandTop + (bandBottom - bandTop - CLAIM_STRIP_H) / 2
+      : bandTop;
+  const desktopStrip = !compact && props.hasClaimOption;
   const toastTop = portrait
-    ? stripTop + 40
-    : handTop !== null && !(landscape && claimFloating)
-      ? Math.max(chromeTop + 52, handTop - TOAST_H - (landscape ? 10 : 84))
-      : landscape
-        ? chromeTop + 52
-        : height - 320;
+    ? zoomed && nearWallBottom !== null && !claimFloating
+      ? nearWallBottom + 10
+      : stripTop + 40
+    : landscape
+      ? 0
+      : desktopStrip
+        ? Math.max(discardsBottom + 6, claimStripTop - TOAST_H - 8)
+        : nearWallTop !== null
+          ? Math.max(discardsBottom + 6, nearWallTop - TOAST_H - 10)
+          : height * 0.55;
 
   const badgeFixedStyle = (pos: Position): React.CSSProperties => {
     if (!compact) return { position: 'absolute', left: 0, top: 0, willChange: 'transform' };
@@ -525,7 +588,6 @@ export function Table3DShell(props: Table3DShellProps) {
       return { position: 'absolute', left: pad + insets.left, top: chromeTop + 58 };
     return { position: 'absolute', right: pad + insets.right, top: chromeTop + 76 };
   };
-  const resolved = state.lastResult !== null && state.lastResult !== undefined;
   const youBadge = badgeAt('bottom');
 
   const menuButtons = (
@@ -536,6 +598,19 @@ export function Table3DShell(props: Table3DShellProps) {
       matchCode={props.matchCode}
       viewers={lobby?.viewers ?? null}
       compact={compact}
+      leading={
+        zoomed ? (
+          <GlassButton
+            kind="secondary"
+            ariaLabel="Show the full table"
+            testID="river-zoom-exit"
+            onClick={toggleRiverZoom}
+            style={{ width: 44, height: 44, borderRadius: 999, padding: 0, fontSize: 18 }}
+          >
+            ✕
+          </GlassButton>
+        ) : null
+      }
     />
   );
 
@@ -583,31 +658,6 @@ export function Table3DShell(props: Table3DShellProps) {
             riverZoomed={portrait && riverZoom}
           />
 
-          {/* Portrait river zoom: exit pill at the top-right of the band. */}
-          {portrait && riverZoom && !resolved ? (
-            <div
-              className="mj-hud-fade"
-              style={{
-                position: 'absolute',
-                right: pad + insets.right,
-                top: stripTop + 40,
-                pointerEvents: 'none',
-                zIndex: 4,
-              }}
-            >
-              <GlassButton
-                kind="secondary"
-                minHeight={36}
-                ariaLabel="Show the full table"
-                testID="river-zoom-exit"
-                onClick={toggleRiverZoom}
-                style={{ borderRadius: 999, padding: '0 14px', fontSize: 11, letterSpacing: 1.2 }}
-              >
-                ✕ FULL TABLE
-              </GlassButton>
-            </div>
-          ) : null}
-
           {/* Top chrome. Landscape keeps everything in the left cluster
               because the root FullscreenPrompt owns the top-right. */}
           <div
@@ -643,17 +693,32 @@ export function Table3DShell(props: Table3DShellProps) {
           {resolved ? null : portrait ? (
             <div
               data-testid="seat-strip"
+              data-zoom-bar={zoomed ? 'true' : 'false'}
               style={{
                 position: 'absolute',
-                left: pad + insets.left,
-                right: pad + insets.right,
-                top: stripTop,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 gap: 6,
                 pointerEvents: 'none',
                 zIndex: 2,
+                // River zoom: the strip becomes a full-bleed glass header
+                // and the camera parks the far wall row behind it (see
+                // `ZOOM_WALL_ANCHOR_Y`), so no tile peeks out under HUD.
+                ...(zoomed
+                  ? {
+                      left: 0,
+                      right: 0,
+                      top: stripTop - 6,
+                      padding: `6px ${pad + insets.right}px 6px ${pad + insets.left}px`,
+                      background: GLASS.bg,
+                      backdropFilter: GLASS.blur,
+                      WebkitBackdropFilter: GLASS.blur,
+                      borderTop: GLASS.border,
+                      borderBottom: GLASS.border,
+                      transition: 'background 240ms ease-out',
+                    }
+                  : { left: pad + insets.left, right: pad + insets.right, top: stripTop }),
               }}
             >
               {(['left', 'top', 'right'] as Position[]).map((pos) => {
@@ -676,22 +741,34 @@ export function Table3DShell(props: Table3DShellProps) {
                   }}
                   style={{ ...badgeFixedStyle(b.position), pointerEvents: 'none', zIndex: 2 }}
                 >
-                  <SeatBadge model={b} lobby={lobby} compact={compact} />
+                  <SeatBadge
+                    model={b}
+                    lobby={lobby}
+                    compact={compact}
+                    // Landscape: the far badge shares the 44 px chrome row
+                    // with the far wall's top edge just below it.
+                    dense={landscape && b.position === 'top'}
+                  />
                 </div>
               ))
           )}
 
-          {/* Phones: claims + CTAs float just above the hand. */}
+          {/* Phones: claims + CTAs float on free felt. Portrait stacks
+              them just above the held hand; landscape lays them in one
+              dense strip anchored to the projected band between the
+              rivers and the near wall (desktop's strip is below). */}
           {compact && (props.hasClaimOption || showCtas) ? (
             <div
+              data-testid="claim-float"
               style={{
                 position: 'absolute',
                 left: pad + insets.left,
                 right: pad + insets.right,
-                bottom: aboveHandBottom,
+                ...(landscape ? { top: claimStripTop } : { bottom: aboveHandBottom }),
                 display: 'flex',
-                flexDirection: 'column',
+                flexDirection: landscape ? 'row' : 'column',
                 alignItems: 'center',
+                justifyContent: 'center',
                 gap: 8,
                 pointerEvents: 'none',
                 zIndex: 4,
@@ -706,6 +783,7 @@ export function Table3DShell(props: Table3DShellProps) {
                       seat={seat}
                       orientation="portrait"
                       theme="glass"
+                      dense={landscape}
                     />
                   </div>
                 </TutorialTarget>
@@ -741,38 +819,32 @@ export function Table3DShell(props: Table3DShellProps) {
             />
           </div>
 
-          {/* Desktop claim column — bottom-aligned beside the hand, clear
-              of the right seat's badge. */}
-          {props.hasClaimOption && !compact ? (
+          {/* Desktop claim strip — centred on the free felt between the
+              rivers and the near wall (a right-hand column covered the
+              near-right wall corner). */}
+          {desktopStrip ? (
             <div
+              data-testid="claim-float"
               style={{
                 position: 'absolute',
+                left: pad + insets.left,
                 right: pad + insets.right,
-                top: pad + insets.top + 60,
-                bottom: pad + insets.bottom + 70,
-                width: 260,
+                top: claimStripTop,
                 display: 'flex',
-                alignItems: 'flex-end',
-                justifyContent: 'flex-end',
+                justifyContent: 'center',
+                alignItems: 'center',
                 pointerEvents: 'none',
                 zIndex: 4,
               }}
             >
-              <TutorialTarget id="claim-bar" style={{ maxHeight: '100%', width: '100%' }}>
-                <div
-                  className="mj-hud-fade"
-                  style={{
-                    pointerEvents: 'auto',
-                    maxHeight: '100%',
-                    overflowY: 'auto',
-                    width: '100%',
-                  }}
-                >
+              <TutorialTarget id="claim-bar" style={{ maxWidth: '100%' }}>
+                <div className="mj-hud-fade" style={{ pointerEvents: 'auto', maxWidth: '100%' }}>
                   <ClaimBar
                     onAction={props.onAction}
                     seat={seat}
-                    orientation="desktop"
+                    orientation="portrait"
                     theme="glass"
+                    dense
                   />
                 </div>
               </TutorialTarget>
@@ -780,8 +852,31 @@ export function Table3DShell(props: Table3DShellProps) {
           ) : null}
 
           <ChatBubbles seatToPosition={seatToPosition} />
-          <ClaimMissedToast theme="glass" top={toastTop} />
-          <ClaimAnnouncementToast theme="glass" top={toastTop} />
+          {landscape ? (
+            // Chrome-row slot to the right of the far seat's badge and
+            // left of the root FullscreenPrompt — the one void on the
+            // landscape frame that never holds a tile.
+            <div
+              data-testid="toast-slot"
+              style={{
+                position: 'absolute',
+                left: 'calc(50% + 60px)',
+                right: pad + insets.right + FULLSCREEN_PROMPT_W,
+                top: chromeTop - 4,
+                height: TOAST_H,
+                pointerEvents: 'none',
+                zIndex: 6,
+              }}
+            >
+              <ClaimMissedToast theme="glass" top={0} />
+              <ClaimAnnouncementToast theme="glass" top={0} />
+            </div>
+          ) : (
+            <>
+              <ClaimMissedToast theme="glass" top={toastTop} />
+              <ClaimAnnouncementToast theme="glass" top={toastTop} />
+            </>
+          )}
 
           {state.lastResult ? (
             <ResultVeil

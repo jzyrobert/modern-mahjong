@@ -2,9 +2,12 @@ import { type GameState, type Seat, emptyState, startHand, tileId } from '@mahjo
 import { describe, expect, test } from 'vitest';
 import { TILE_D, TILE_H, TILE_W } from '../tiles/geometry';
 import {
+  DEAD_WALL_OFFSET,
   FELT_HALF,
   HAND_PITCH,
   HAND_Z,
+  MELD_Z,
+  OWN_HAND_Z,
   OWN_MELD_RIGHT,
   STACKS_PER_WALL,
   computeLayout,
@@ -100,11 +103,16 @@ describe('wallSlotPosition', () => {
     expect(top.y - bottom.y).toBeCloseTo(TILE_D);
     expect(bottom.rel).toBe(0);
   });
-  test('dead stacks sit in their natural slots (no gap shift)', () => {
+  test('dead stacks keep their slot along the row and step toward the rail', () => {
     const live = wallSlotPosition({ wallSeat: 0, stack: 8, level: 0, dead: false }, 0);
     const dead = wallSlotPosition({ wallSeat: 0, stack: 8, level: 0, dead: true }, 0);
     expect(dead.x - live.x).toBeCloseTo(0);
-    expect(dead.z).toBeCloseTo(live.z);
+    expect(dead.z - live.z).toBeCloseTo(DEAD_WALL_OFFSET);
+    // The step is along the owner's outward axis on every wall.
+    const right = wallSlotPosition({ wallSeat: 1, stack: 3, level: 0, dead: true }, 0);
+    const rightLive = wallSlotPosition({ wallSeat: 1, stack: 3, level: 0, dead: false }, 0);
+    expect(right.x - rightLive.x).toBeCloseTo(DEAD_WALL_OFFSET);
+    expect(right.z).toBeCloseTo(rightLive.z);
   });
   test('the dead wall wraps onto the next seat when the break is near the right end', () => {
     // Dealer 0, roll 4: break wall 3, dead = left wall 13..16 + near wall 0..2.
@@ -241,7 +249,7 @@ describe('computeLayout', () => {
     expect(hand).toHaveLength(st.hands[0].length);
     for (const s of hand) {
       expect(s!.base).toBe('standing');
-      expect(s!.z).toBeCloseTo(HAND_Z);
+      expect(s!.z).toBeCloseTo(OWN_HAND_Z);
       expect(s!.back).toBe(false);
     }
     const xs = hand.map((s) => s!.x).sort((a, b) => a - b);
@@ -471,7 +479,7 @@ describe('held hand (phone portrait)', () => {
     const melds = layout.filter((sl) => sl?.zone === 'meld' && sl.seat === 0);
     expect(melds).toHaveLength(3);
     for (const m of melds) {
-      expect(m!.z).toBeCloseTo(HAND_Z, 5);
+      expect(m!.z).toBeCloseTo(MELD_Z, 5);
       expect(m!.x).toBeLessThanOrEqual(OWN_MELD_RIGHT + 0.01);
       expect(m!.x).toBeGreaterThan(5);
     }

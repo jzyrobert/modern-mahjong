@@ -230,7 +230,18 @@ test('phone portrait holds the hand near the camera at ≥ 44 px per tile', asyn
   await expect(region).toHaveAccessibleName('Zoom into the discards');
   await region.click();
   await expect(table).toHaveAttribute('data-river-zoom', 'true');
-  await expect(page.getByTestId('river-zoom-exit')).toBeVisible();
+  // The exit control lives in the chrome row (never over the table) and
+  // the seat strip becomes the full-bleed header the far wall hides
+  // behind while zoomed.
+  const exit = page.getByTestId('river-zoom-exit');
+  await expect(exit).toBeVisible();
+  const exitBox = (await exit.boundingBox())!;
+  expect(exitBox.y + exitBox.height).toBeLessThanOrEqual(60);
+  expect(exitBox.width).toBeGreaterThanOrEqual(44);
+  await expect(strip).toHaveAttribute('data-zoom-bar', 'true');
+  const barBox = (await strip.boundingBox())!;
+  expect(barBox.x).toBeLessThanOrEqual(1);
+  expect(barBox.width).toBeGreaterThanOrEqual(410);
   await page.waitForTimeout(1500);
   const zoomedBoxes = await tiles.evaluateAll((els) =>
     els.map((el) => {
@@ -244,9 +255,48 @@ test('phone portrait holds the hand near the camera at ≥ 44 px per tile', asyn
   }
   await page.getByTestId('river-zoom-exit').click();
   await expect(table).toHaveAttribute('data-river-zoom', 'false');
+  await expect(strip).toHaveAttribute('data-zoom-bar', 'false');
 
   const perf = await readPerf(page);
   expect(perf.drawCalls).toBeLessThanOrEqual(BUDGET.drawCalls);
+  expect(errors, 'console / page errors').toEqual([]);
+});
+
+test('phone landscape keeps ≥ 44 px hand tiles above the footer with glass chrome', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 915, height: 412 });
+  const errors: string[] = [];
+  await startSolo(page, errors);
+  await page.waitForTimeout(1800);
+  await expect(page.getByTestId('table-3d')).toHaveAttribute(
+    'data-viewport-class',
+    'phone-landscape',
+  );
+  const tiles = page.getByTestId('own-hand-tile');
+  await expect(tiles).toHaveCount(14);
+  const boxes = await tiles.evaluateAll((els) =>
+    els.map((el) => {
+      const r = el.getBoundingClientRect();
+      return { left: r.left, top: r.top, width: r.width, height: r.height };
+    }),
+  );
+  for (const b of boxes) {
+    expect(b.width).toBeGreaterThanOrEqual(44);
+    expect(b.left).toBeGreaterThanOrEqual(0);
+    expect(b.left + b.width).toBeLessThanOrEqual(915);
+    // One row along the bottom, ending at (or a few px into) the footer.
+    expect(b.top + b.height).toBeLessThanOrEqual(412 - 12 - 44 + 12);
+    expect(b.top + b.height).toBeGreaterThan(300);
+  }
+  expect(new Set(boxes.map((b) => Math.round(b.top / 20))).size).toBe(1);
+  // The root fullscreen offer is present (landscape phone) and the
+  // chrome row keeps the direct Settings control.
+  await expect(page.getByRole('button', { name: 'Enter fullscreen' })).toBeVisible();
+  await expect(page.getByTestId('open-settings')).toBeVisible();
+  const perf = await readPerf(page);
+  expect(perf.drawCalls).toBeLessThanOrEqual(BUDGET.drawCalls);
+  expect(perf.triangles).toBeLessThanOrEqual(BUDGET.triangles);
   expect(errors, 'console / page errors').toEqual([]);
 });
 

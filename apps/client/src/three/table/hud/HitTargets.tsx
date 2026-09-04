@@ -19,6 +19,12 @@ export interface HudRects {
   ownHand: ScreenRect | null;
   wallDraw: ScreenRect | null;
   river: ScreenRect | null;
+  /** Union of the near wall's stacks (rel 0) — HUD anchors avoid it. */
+  nearWall: ScreenRect | null;
+  /** Union of every river's tiles. */
+  discards: ScreenRect | null;
+  /** Screen y of the centre plate's near edge (band floor while rivers are empty). */
+  plateBottom: number | null;
 }
 
 export interface HitTargetsHandle {

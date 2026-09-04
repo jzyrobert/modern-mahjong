@@ -342,9 +342,12 @@ export const STATES = {
   },
   'match-river-zoom': {
     owner: 'table',
-    // Portrait only in practice: tapping the discards eases the camera
-    // into the river block (~26 px tiles); the exit pill brings the
-    // full table back. Other viewports ignore the tap (region inert).
+    // Portrait only: tapping the discards eases the camera into the
+    // river block (~26 px tiles); the ✕ in the chrome row brings the
+    // full table back. The region is inert on the wide viewports (their
+    // rivers already read at 29–40 px), so the recipe pins the phone
+    // viewport rather than producing duplicate mid-hand evidence.
+    viewport: 'phone',
     steps: [
       ...START_SOLO,
       { waitForOwnHand: true },

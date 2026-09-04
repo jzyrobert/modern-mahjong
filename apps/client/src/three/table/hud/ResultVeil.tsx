@@ -70,6 +70,7 @@ export function ResultVeil({ onAction, seat, isHost, onLeave, vpClass }: ResultV
             onLeave={onLeave}
             theme="glass"
             compact={compact}
+            handTileWidth={compact ? undefined : 40}
           />
         </TutorialTarget>
       </div>

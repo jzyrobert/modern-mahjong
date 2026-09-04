@@ -334,9 +334,13 @@ export class TableScene {
     this.dice.name = 'dice';
     scene.add(this.dice);
 
-    // Tiles.
+    // Tiles. River glyphs are minified 3–4× and seen at 30–45° on the
+    // wide presets, so the atlas takes the strongest anisotropy the GPU
+    // offers (mid / high tiers; low keeps the profile's value) — the
+    // shader also biases the mip pick a little sharper.
+    const maxAniso = renderer.capabilities.getMaxAnisotropy();
     this.pool = new TilePool(opts.tileBack, {
-      anisotropy: quality.anisotropy,
+      anisotropy: Math.max(1, Math.min(maxAniso, quality.tier === 'low' ? quality.anisotropy : 16)),
       atlasScale: quality.tier === 'high' ? 1.25 : 1,
     });
     scene.add(this.pool.mesh);
@@ -529,8 +533,9 @@ export class TableScene {
       else if (id === this.hintTileId) hl = 0.12;
       p.highlight = hl;
       p.tint.setScalar(1);
-      // Dead wall reads as a separate, shaded block.
-      if (t.slot?.zone === 'deadWall') p.tint.setScalar(0.74);
+      // Dead wall reads as a separate, shaded block (plus the layout's
+      // step toward the rail).
+      if (t.slot?.zone === 'deadWall') p.tint.setScalar(0.62);
     }
     this.pool.markDirty();
     this.pool.commit();

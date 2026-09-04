@@ -85,8 +85,25 @@ export const DEAD_WALL_STACKS = 7;
 export const WALL_D = 8.8;
 /** Pinwheel shift of each wall toward its owner's right. */
 export const WALL_SHIFT = 0.75;
-/** Own / opponent hand rows sit just outside the wall. */
+/** Opponent hand rows sit just outside the wall. */
 export const HAND_Z = 10.55;
+/**
+ * The user's own row sits half a tile nearer the camera than the
+ * opponents' so, from the low landscape / desktop presets, its top edge
+ * clears the near wall's front face and the two rows read separately.
+ */
+export const OWN_HAND_Z = HAND_Z + 0.5;
+/**
+ * Exposed melds lie flat, tucked toward the table centre: a flat tile
+ * reaches ±TILE_H/2 from this line, so 10.3 keeps the meld off the wall
+ * (outer edge 9.48) and inside the portrait frame (|x| ≤ 11.0).
+ */
+export const MELD_Z = 10.3;
+/**
+ * Dead-wall stacks step this far toward the rail so the block reads as
+ * distinct from the live wall at every viewport (with the darker tint).
+ */
+export const DEAD_WALL_OFFSET = 0.18;
 /** Own hand leans back ~29° — matches the ~70° camera elevation. */
 export const HAND_TILT = 0.5;
 /** Opponents' concealed rows stand nearly upright. */
@@ -217,11 +234,13 @@ export function wallSlotRefs(
 
 /**
  * World position + yaw of a wall stack slot. The dead wall sits in its
- * natural slots — the 68 stacks form a closed ring with no slack, so
- * any gap shift would push a dead stack into the live tail that wraps
- * onto the same wall from the other side (two coplanar top faces
- * z-fighting read as a ghost tile). `TableScene` tints dead tiles
- * darker instead, and the break gap grows naturally as tiles leave.
+ * natural slots along the row — the 68 stacks form a closed ring with
+ * no slack, so any gap shift would push a dead stack into the live tail
+ * that wraps onto the same wall from the other side (two coplanar top
+ * faces z-fighting read as a ghost tile). Instead the dead stacks step
+ * `DEAD_WALL_OFFSET` toward the rail (an L-shaped kink, never an
+ * overlap) and `TableScene` tints them darker; the break gap grows
+ * naturally as tiles leave.
  */
 export function wallSlotPosition(
   ref: WallRef,
@@ -229,7 +248,7 @@ export function wallSlotPosition(
 ): { x: number; y: number; z: number; yaw: number; rel: Rel } {
   const rel = relOf(ref.wallSeat, me);
   const lx = (ref.stack - (STACKS_PER_WALL - 1) / 2) * WALL_PITCH + WALL_SHIFT;
-  const [x, z] = toWorld(rel, lx, WALL_D);
+  const [x, z] = toWorld(rel, lx, WALL_D + (ref.dead ? DEAD_WALL_OFFSET : 0));
   return { x, y: FLAT_Y + ref.level * TILE_D, z, yaw: yawOf(rel), rel };
 }
 
@@ -546,7 +565,7 @@ export function computeLayout(state: GameState, me: Seat, opts: LayoutOptions): 
             rel,
             x: cursor + ms.dx,
             y: FLAT_Y + (ms.stacked ? TILE_D : 0),
-            z: HAND_Z,
+            z: MELD_Z,
             base: ms.faceDown ? 'flatDown' : 'flatUp',
             yaw: yaw + (ms.rotated ? Math.PI / 2 : 0),
             tilt: 0,
@@ -574,7 +593,7 @@ export function computeLayout(state: GameState, me: Seat, opts: LayoutOptions): 
       if (i === drawnIdx) cursor += DRAWN_GAP;
       const lx = cursor + TILE_W / 2;
       cursor += HAND_PITCH;
-      const [x, z] = toWorld(rel, lx, HAND_Z);
+      const [x, z] = toWorld(rel, lx, isMe ? OWN_HAND_Z : HAND_Z);
       put(layout, {
         id: tileId(t),
         zone: isMe ? 'hand' : 'oppHand',
@@ -596,7 +615,7 @@ export function computeLayout(state: GameState, me: Seat, opts: LayoutOptions): 
       let idx = 0;
       for (const ms of m.tiles) {
         const lx = groupLeft + ms.dx;
-        const [x, z] = toWorld(rel, lx, HAND_Z);
+        const [x, z] = toWorld(rel, lx, MELD_Z);
         put(layout, {
           id: tileId(ms.tile),
           zone: 'meld',

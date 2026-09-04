@@ -1,21 +1,28 @@
 import { PerspectiveCamera, Vector3 } from 'three';
 import { describe, expect, test } from 'vitest';
+import { TILE_D, TILE_H } from '../tiles/geometry';
 import {
   HELD_BOTTOM_PX,
   PORTRAIT_BAND_BIAS,
   PORTRAIT_BAND_GAP,
   PORTRAIT_BAND_TOP,
+  PORTRAIT_STRIP_H,
+  PORTRAIT_STRIP_TOP,
   PORTRAIT_X_HALF,
   TABLE_CAMERA,
+  ZOOM_WALL_ANCHOR,
+  ZOOM_WALL_ANCHOR_Y,
   cameraFor,
   classifyViewport,
   heldHandFrameFor,
   heldHandTopPx,
+  portraitCameraAnchored,
   portraitCameraFor,
+  projectPreset,
   riverZoomCameraFor,
   sheetCameraFor,
 } from './cameraPresets';
-import { FELT_HALF, HAND_Z, RAIL_WIDTH, STAND_Y } from './layout';
+import { FELT_HALF, HAND_Z, MELD_Z, OWN_HAND_Z, RAIL_WIDTH, STAND_Y, WALL_D } from './layout';
 
 function ndc(
   preset: { position: number[]; target: number[]; fov: number },
@@ -150,8 +157,16 @@ describe('heldHandFrameFor', () => {
       // Far row below the seat strip, near row above the held hand.
       expect(px(0, 0, -HAND_Z - 0.7).y).toBeGreaterThan(bandTop);
       expect(px(0, 0, HAND_Z + 0.7).y).toBeLessThan(bandBottom);
-      // A river tile is at least 18 CSS px wide on a 412 px phone.
-      if (w === 412) expect(px(1, 0.3, 0).x - px(0, 0.3, 0).x).toBeGreaterThanOrEqual(18);
+      // A river tile is at least 17.5 CSS px wide on a 412 px phone.
+      if (w === 412) expect(px(1, 0.3, 0).x - px(0, 0.3, 0).x).toBeGreaterThanOrEqual(17.5);
+      // The side seats' flat melds (tucked to MELD_Z, reaching a flat
+      // tile's half-height further out) stay ≥ 6 px inside the viewport
+      // at their nearest corner, where perspective scale is largest
+      // (round-3: the left meld was half-clipped at ±11.2).
+      const meldNear = px(-(MELD_Z + TILE_H / 2), TILE_D, 8.0);
+      expect(meldNear.x).toBeGreaterThanOrEqual(6);
+      const handNear = px(-(HAND_Z + TILE_D / 2), 0, 7.5);
+      expect(handNear.x).toBeGreaterThanOrEqual(6);
     }
   });
   test('river zoom frames the river block ≥ 25 px per tile and keeps the hand off the table', () => {
@@ -169,8 +184,18 @@ describe('heldHandFrameFor', () => {
     expect(px(1, 0.3, 0).x - px(0, 0.3, 0).x).toBeGreaterThanOrEqual(25);
     // Every river's furthest row (z ≈ ±7.6 in its owner's frame) is inside.
     expect(px(7.9, 0, 0).x).toBeLessThanOrEqual(w + 1);
-    expect(px(0, 0, -7.9).y).toBeGreaterThan(PORTRAIT_BAND_TOP);
     expect(px(0, 0, 7.9).y).toBeLessThan(heldHandTopPx(w, h) - PORTRAIT_BAND_GAP);
+    // The far wall's near-top edge is pinned to the strip's bottom edge
+    // so the whole far wall row hides behind the zoom header bar, and
+    // the far river's last row clears the strip.
+    const anchor = px(...ZOOM_WALL_ANCHOR);
+    expect(Math.abs(anchor.y - ZOOM_WALL_ANCHOR_Y)).toBeLessThan(1);
+    expect(px(0, 2 * TILE_D, -(WALL_D + TILE_H / 2)).y).toBeGreaterThan(PORTRAIT_STRIP_TOP - 6);
+    expect(px(0, TILE_D, -7.6).y).toBeGreaterThan(PORTRAIT_STRIP_TOP + PORTRAIT_STRIP_H + 2);
+    // The near wall's front edge leaves ≥ 60 px of free felt above the
+    // held hand for the zoom-mode toast slot.
+    const nearWallBottom = px(0, 0, WALL_D + TILE_H / 2).y;
+    expect(heldHandTopPx(w, h) - PORTRAIT_BAND_GAP - nearWallBottom).toBeGreaterThanOrEqual(60);
     // Same elevation as the full view, so the held hand only translates.
     const full = cameraFor(w, h);
     const elev = (p: typeof preset) =>
@@ -194,11 +219,47 @@ describe('heldHandFrameFor', () => {
       const p = new Vector3(x, y, z).project(cam);
       return { x: (p.x * 0.5 + 0.5) * w, y: (-p.y * 0.5 + 0.5) * h };
     };
-    expect(px(1, STAND_Y, HAND_Z).x - px(0, STAND_Y, HAND_Z).x).toBeGreaterThanOrEqual(44);
-    // Hand bottom edge clears the footer (12 pad + 44 row).
-    expect(px(0, 0, HAND_Z + 0.35).y).toBeLessThan(h - 12 - 44 + 6);
-    // Far seat's row below the chrome, side rows inside the viewport.
-    expect(px(0, 0, -HAND_Z - 0.7).y).toBeGreaterThan(60);
+    expect(px(1, STAND_Y, OWN_HAND_Z).x - px(0, STAND_Y, OWN_HAND_Z).x).toBeGreaterThanOrEqual(44);
+    // Hand bottom edge sits at (or a few px into) the footer row's top.
+    expect(px(0, 0, OWN_HAND_Z + TILE_D / 2).y).toBeLessThan(h - 12 - 44 + 10);
+    // Far wall's top edge below the chrome-row toast slot (6 + ~48 px);
+    // side rows inside the viewport.
+    expect(px(0, 2 * TILE_D, -(WALL_D + TILE_H / 2)).y).toBeGreaterThanOrEqual(50);
     expect(px(-PORTRAIT_X_HALF, 0, 0).x).toBeGreaterThan(0);
+    // Free-felt band between a one-row river and the near wall's top
+    // edge is tall enough for the dense claim strip (~58 px).
+    const riverRow1Bottom = px(0, TILE_D, 2.6 + TILE_H / 2).y;
+    const nearWallTop = px(0, 2 * TILE_D, WALL_D - TILE_H / 2).y;
+    expect(nearWallTop - riverRow1Bottom).toBeGreaterThanOrEqual(58);
+  });
+  test('projectPreset matches three.js projection and anchored presets pin their point', () => {
+    for (const [w, h] of [
+      [412, 915],
+      [915, 412],
+      [1440, 900],
+    ] as const) {
+      const preset = cameraFor(w, h);
+      for (const pt of [
+        [0, 0, 0],
+        [7.9, STAND_Y, OWN_HAND_Z],
+        [-8.8, 1.2, -3.3],
+      ] as const) {
+        const v = ndc(preset, w, h, [pt[0], pt[1], pt[2]]);
+        const q = projectPreset(preset, w, h, pt);
+        expect(q.x).toBeCloseTo((v.x * 0.5 + 0.5) * w, 3);
+        expect(q.y).toBeCloseTo((-v.y * 0.5 + 0.5) * h, 3);
+      }
+    }
+    const anchored = portraitCameraAnchored(412, 915, 7.9, [0, 1.24, -8.12], 300);
+    expect(Math.abs(projectPreset(anchored, 412, 915, [0, 1.24, -8.12]).y - 300)).toBeLessThan(
+      0.01,
+    );
+    // Same scale + elevation as the centred portrait preset.
+    const centred = portraitCameraFor(412, 915, 100, 700, 7.9);
+    expect(anchored.position[1]).toBeCloseTo(centred.position[1], 6);
+    expect(anchored.position[2] - anchored.target[2]).toBeCloseTo(
+      centred.position[2] - centred.target[2],
+      6,
+    );
   });
 });

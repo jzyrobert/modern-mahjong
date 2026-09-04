@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { TutorialTarget } from '../../../ui/tutorial/TargetRegistry';
 import { GLASS, glassStyle } from './glass';
 
@@ -10,6 +10,8 @@ interface MenuButtonsProps {
   viewers: number | null;
   compact: boolean;
   style?: CSSProperties | undefined;
+  /** Extra control rendered before the gear (e.g. the river-zoom exit). */
+  leading?: ReactNode;
 }
 
 const GEAR =
@@ -28,6 +30,7 @@ export function MenuButtons({
   viewers,
   compact,
   style,
+  leading,
 }: MenuButtonsProps) {
   const btn: CSSProperties = {
     appearance: 'none',
@@ -46,6 +49,7 @@ export function MenuButtons({
   };
   return (
     <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, ...style }}>
+      {leading}
       {matchCode && !compact ? (
         <span
           style={glassStyle({

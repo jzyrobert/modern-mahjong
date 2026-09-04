@@ -27,6 +27,9 @@ interface ResultPanelProps {
   theme?: ResultPanelTheme;
   /** Glass only: tighter spacing + smaller winning-hand tiles. */
   compact?: boolean;
+  /** Override the winning-hand tile width (height follows at 36/26);
+   *  the 3D desktop veil bumps it to ~40 px inside its 700 px card. */
+  handTileWidth?: number | undefined;
 }
 
 export type ResultPanelTheme = 'paper' | 'glass';
@@ -53,6 +56,7 @@ export function ResultPanel({
   onLeave,
   theme = 'paper',
   compact = false,
+  handTileWidth,
 }: ResultPanelProps) {
   const state = useGame((s) => s.state);
   const lobby = useGame((s) => s.lobby);
@@ -99,7 +103,13 @@ export function ResultPanel({
             >
               {winnerName === 'You' ? 'You win!' : `${winnerName} wins!`}
             </Text>
-            <WinningHand winner={r.winner} winningTile={r.tile} glass compact={compact} />
+            <WinningHand
+              winner={r.winner}
+              winningTile={r.tile}
+              glass
+              compact={compact}
+              tileWidth={handTileWidth}
+            />
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 2 }}>
               <GlassChip onPress={() => setBreakdownOpen(true)} label="View breakdown" />
             </View>
@@ -238,11 +248,13 @@ function WinningHand({
   winningTile,
   glass = false,
   compact = false,
+  tileWidth,
 }: {
   winner: Seat;
   winningTile: MTile;
   glass?: boolean;
   compact?: boolean;
+  tileWidth?: number | undefined;
 }) {
   const state = useGame((s) => s.state);
   if (!state) return null;
@@ -250,8 +262,9 @@ function WinningHand({
   const melds = state.melds[winner];
   // Compact glass (phone): 14 tiles + 13 gaps + the winning tile's
   // frame must fit the 356 px card interior at 412 px, so 22 × 30.
-  const tw = glass && compact ? 22 : 26;
-  const th = glass && compact ? 30 : 36;
+  const tw = tileWidth ?? (glass && compact ? 22 : 26);
+  const th =
+    tileWidth !== undefined ? Math.round(tileWidth * (36 / 26)) : glass && compact ? 30 : 36;
   const gap = glass && compact ? 2 : 3;
   return (
     <View

@@ -19,6 +19,12 @@ interface ClaimBarProps {
    *  Only chrome colours change — the per-kind action buttons, tile
    *  previews and layout are identical. */
   theme?: ClaimBarTheme;
+  /** Portrait orientation only: a single ~56 px strip — no CLAIM?
+   *  sublabel under the live tile, meld previews inline beside each
+   *  button instead of below it, tighter padding. The 3D landscape HUD
+   *  floats it in the free-felt band between the rivers and the near
+   *  wall, which is only ~45–65 px tall. */
+  dense?: boolean;
 }
 
 export type ClaimBarTheme = 'paper' | 'glass';
@@ -139,6 +145,7 @@ export function ClaimBar({
   seat,
   orientation = 'portrait',
   theme = 'paper',
+  dense = false,
 }: ClaimBarProps) {
   const pal = PALETTES[theme];
   const state = useGame((s) => s.state);
@@ -212,7 +219,7 @@ export function ClaimBar({
   const tileH = isDesktop ? 60 : 44;
   const previewW = isDesktop ? 22 : 13;
   const previewH = isDesktop ? 30 : 18;
-  const buttonPadV = 7;
+  const buttonPadV = dense ? 6 : 7;
   const buttonPadH = isDesktop ? 11 : 10;
   const glyphSize = isDesktop ? 15 : 14;
   const labelSize = 10;
@@ -239,9 +246,11 @@ export function ClaimBar({
       >
         <Tile tile={discard} width={tileW} height={tileH} />
       </View>
-      <Text style={{ fontSize: 9, fontWeight: '800', color: pal.label, letterSpacing: 0.4 }}>
-        CLAIM?
-      </Text>
+      {dense ? null : (
+        <Text style={{ fontSize: 9, fontWeight: '800', color: pal.label, letterSpacing: 0.4 }}>
+          CLAIM?
+        </Text>
+      )}
     </View>
   ) : (
     <Text style={{ fontSize: 11, fontWeight: '800', color: pal.label, letterSpacing: 0.5 }}>
@@ -256,6 +265,7 @@ export function ClaimBar({
     labelSize,
     previewW,
     previewH,
+    inline: dense && !isVertical,
   } as const;
   const buttons: ReactNode[] = [];
   if (showPeng && discard) {
@@ -389,7 +399,7 @@ export function ClaimBar({
             flexDirection: 'row',
             alignItems: 'center',
             gap: 10,
-            paddingVertical: 10,
+            paddingVertical: dense ? 6 : 10,
             paddingHorizontal: 12,
           }}
         >
@@ -398,7 +408,7 @@ export function ClaimBar({
             style={{
               flexDirection: 'row',
               flexWrap: 'wrap',
-              alignItems: 'flex-start',
+              alignItems: dense ? 'center' : 'flex-start',
               gap: 8,
               flex: 1,
               minWidth: 0,
@@ -419,6 +429,8 @@ interface ClaimActionSizing {
   labelSize: number;
   previewW: number;
   previewH: number;
+  /** Meld previews sit beside the button (dense strip) instead of below it. */
+  inline?: boolean;
 }
 
 interface ClaimActionProps {
@@ -454,7 +466,14 @@ function ClaimAction({
   const surface = glassKind ? GLASS_BTN[glassKind] : null;
   const fg = ghost ? pal.ghostFg : surface ? surface.fg : meta.fg;
   return (
-    <View style={{ alignItems: 'center', gap: 3, width: fullWidth ? '100%' : undefined }}>
+    <View
+      style={{
+        flexDirection: sizing.inline ? 'row' : 'column',
+        alignItems: 'center',
+        gap: sizing.inline ? 6 : 3,
+        width: fullWidth ? '100%' : undefined,
+      }}
+    >
       <Pressable
         onPress={onPress}
         accessibilityRole="button"

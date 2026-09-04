@@ -1,6 +1,13 @@
 import type { CameraPreset } from '../core/camera';
-import { TILE_H } from '../tiles/geometry';
-import { DRAWN_GAP, HAND_PITCH, HELD_ROW_GAP, HELD_ROW_MAX, type HeldHandFrame } from './layout';
+import { TILE_D, TILE_H } from '../tiles/geometry';
+import {
+  DRAWN_GAP,
+  HAND_PITCH,
+  HELD_ROW_GAP,
+  HELD_ROW_MAX,
+  type HeldHandFrame,
+  WALL_D,
+} from './layout';
 
 /**
  * Camera presets per viewport class. Numbers were tuned against the
@@ -24,24 +31,32 @@ export function classifyViewport(width: number, height: number): ViewportClass {
  * held hand.
  */
 export const TABLE_CAMERA: Record<Exclude<ViewportClass, 'phone-portrait'>, CameraPreset> = {
-  // Anchored on the hand row: 11.8 units from the user's tiles at a
-  // 40° elevation puts a hand tile at ~46 CSS px on a 915 px viewport
-  // (≥ the 44 px touch guideline) with its bottom edge just above the
-  // footer, the far row at y ≈ 87 under the far seat's badge, and a
-  // river tile at ~25 px.
-  'phone-landscape': { position: [0, 8.26, 19.59], target: [0, 0, 3.71], fov: 42 },
+  // Solved numerically (30° camera elevation, 17.7 units from the
+  // target) for a 915×412 viewport: a hand tile is 45 CSS px wide with
+  // its bottom edge at y ≈ 364 (a few px into the footer row, whose
+  // controls sit at the corners), the near wall's backs at y ≈ 238–309
+  // with the hand's top edge meeting their bottom, the far wall's top
+  // edge at y ≈ 61 — below the 56 px chrome row and its toast slot —
+  // and a ~62 px free-felt band between a one-row river and the near
+  // wall, the slot the floating claim strip is anchored to. 2.5°
+  // steeper than the round-3 preset so the far river's glyphs are seen
+  // less obliquely (~29 px wide).
+  'phone-landscape': { position: [0, 9.06, 19.98], target: [0, 0, 4.28], fov: 42 },
   // Cinematic 3/4 view with the full table in frame.
   desktop: { position: [0, 22, 25], target: [0, 0, 1.5], fov: 40 },
 };
 
 // ─── Portrait (computed) ───────────────────────────────────────────
 /**
- * Half-width of the world the portrait camera frames edge to edge:
- * the side seats' rows at |x| = HAND_Z plus a flat meld's half-depth,
- * so every exposed meld stays in frame while the wood rails (out at
- * 13) crop off-screen — the pixels go to the felt instead.
+ * Half-width of the world the portrait camera frames edge to edge at
+ * the *target* depth. The side seats' rows stand at |x| = HAND_Z and
+ * their flat melds (tucked to MELD_Z) reach |x| ≈ 11.0; the near half
+ * of the table projects ~4 % larger than the target plane at this
+ * elevation, so 11.65 keeps a side meld's nearest corner ≥ 8 px inside
+ * the viewport (11.2 clipped the left seat's meld by half a tile —
+ * round-3 critique) while the wood rails still crop off-screen.
  */
-export const PORTRAIT_X_HALF = 11.2;
+export const PORTRAIT_X_HALF = 11.65;
 /**
  * Half-width framed by the portrait *river zoom* (tap the discards):
  * the four rivers' furthest rows (RIVER_Z0 + 3 rows ≈ 7.6) plus a
@@ -50,8 +65,13 @@ export const PORTRAIT_X_HALF = 11.2;
  * until the user taps again.
  */
 export const PORTRAIT_ZOOM_X_HALF = 7.9;
-/** Camera elevation, degrees — steep enough that the square table reads with little keystone. */
-export const PORTRAIT_ELEV_DEG = 72;
+/**
+ * Camera elevation, degrees — steep enough that the square table reads
+ * with little keystone (the near/far scale ratio is ~1.04, so the side
+ * rows stay inside the frame at both ends) and river glyphs are seen
+ * nearly face-on.
+ */
+export const PORTRAIT_ELEV_DEG = 76;
 export const PORTRAIT_FOV = 40;
 /** Where the table centre sits in the band (0 top … 1 bottom). */
 export const PORTRAIT_BAND_BIAS = 0.5;
@@ -60,8 +80,21 @@ export const PORTRAIT_BAND_BIAS = 0.5;
  * dense seat strip + gap (mirrors `Table3DShell`'s layout constants).
  */
 export const PORTRAIT_BAND_TOP = 12 + 44 + 8 + 34 + 8;
+/** Top of the dense seat strip on portrait (safe pad + chrome row + gap). */
+export const PORTRAIT_STRIP_TOP = 12 + 44 + 8;
+/** Height of the dense seat strip, CSS px. */
+export const PORTRAIT_STRIP_H = 34;
 /** Gap kept between the table band and the held hand's top edge. */
 export const PORTRAIT_BAND_GAP = 8;
+/**
+ * River zoom: the far wall's near-top edge is pinned this far below the
+ * strip's top, i.e. at the strip's bottom edge — the whole far wall row
+ * (~25 px tall on screen) then sits behind the zoom header bar the
+ * shell draws across the strip, so no tile is half-visible under HUD.
+ */
+export const ZOOM_WALL_ANCHOR_Y = PORTRAIT_STRIP_TOP + PORTRAIT_STRIP_H;
+/** World point pinned by the river zoom: the far wall's near-top edge. */
+export const ZOOM_WALL_ANCHOR: [number, number, number] = [0, 2 * TILE_D, -(WALL_D - TILE_H / 2)];
 
 /**
  * Screen-space top of the held hand block (two rows), CSS px from the
@@ -109,6 +142,66 @@ export function portraitCameraFor(
   };
 }
 
+/**
+ * Pure world → CSS-px projection of a preset (look-at basis, vertical
+ * fov). Mirrors `PerspectiveCamera` + `Vector3.project` closely enough
+ * to anchor presets on world points without a three.js object; unit
+ * tested against the presets' known landmarks.
+ */
+export function projectPreset(
+  preset: CameraPreset,
+  width: number,
+  height: number,
+  point: readonly [number, number, number],
+): { x: number; y: number; depth: number } {
+  const pos = preset.position;
+  const fwd = norm(sub(preset.target, pos));
+  const right = norm(cross(fwd, [0, 1, 0]));
+  const up = norm(cross(right, fwd));
+  const d: V3 = [point[0] - pos[0], point[1] - pos[1], point[2] - pos[2]];
+  const depth = dot(d, fwd);
+  const tanV = Math.tan((preset.fov * Math.PI) / 360);
+  const aspect = Math.max(1e-6, width) / Math.max(1e-6, height);
+  const ndcX = dot(d, right) / Math.max(1e-6, depth) / (tanV * aspect);
+  const ndcY = dot(d, up) / Math.max(1e-6, depth) / tanV;
+  return { x: (ndcX * 0.5 + 0.5) * width, y: (-ndcY * 0.5 + 0.5) * height, depth };
+}
+
+/**
+ * Portrait camera with the same scale + elevation as `portraitCameraFor`
+ * but panned so `point` projects at screen `y = screenY` (bisection on
+ * the target's z — the pan is monotonic). Used by the river zoom to
+ * tuck the far wall behind the strip instead of centring the table.
+ */
+export function portraitCameraAnchored(
+  width: number,
+  height: number,
+  xHalf: number,
+  point: readonly [number, number, number],
+  screenY: number,
+): CameraPreset {
+  const ppu = Math.max(1, width) / (2 * xHalf);
+  const tanV = Math.tan((PORTRAIT_FOV * Math.PI) / 360);
+  const dist = Math.max(1, height) / 2 / (tanV * ppu);
+  const elev = (PORTRAIT_ELEV_DEG * Math.PI) / 180;
+  const make = (tz: number): CameraPreset => ({
+    position: [0, dist * Math.sin(elev), tz + dist * Math.cos(elev)],
+    target: [0, 0, tz],
+    fov: PORTRAIT_FOV,
+  });
+  // Larger tz pans the camera toward +z, moving the scene *up* on
+  // screen (smaller y).
+  let lo = -40;
+  let hi = 40;
+  for (let i = 0; i < 48; i++) {
+    const mid = (lo + hi) / 2;
+    const y = projectPreset(make(mid), width, height, point).y;
+    if (y > screenY) lo = mid;
+    else hi = mid;
+  }
+  return make((lo + hi) / 2);
+}
+
 /** Straight-on view of the debug tile sheet. */
 export const SHEET_CAMERA: CameraPreset = {
   position: [0, 7.5, 12.5],
@@ -154,18 +247,21 @@ export function cameraFor(width: number, height: number, topInset = 0): CameraPr
 }
 
 /**
- * Portrait river-zoom preset: same elevation and band as `cameraFor`,
- * framing only the river block. Because the held-hand frame is derived
- * from whichever preset is active, the hand stays put on screen while
- * the table eases in underneath it.
+ * Portrait river-zoom preset: same elevation as `cameraFor` at the
+ * river-block scale, panned so the far wall's near-top edge sits at
+ * the strip's bottom edge (`ZOOM_WALL_ANCHOR_Y`) — the far wall hides
+ * behind the zoom header bar and the free felt between the near wall
+ * and the held hand becomes the toast slot. Because the held-hand
+ * frame is derived from whichever preset is active, the hand stays put
+ * on screen while the table eases in underneath it.
  */
 export function riverZoomCameraFor(width: number, height: number, topInset = 0): CameraPreset {
-  return portraitCameraFor(
+  return portraitCameraAnchored(
     width,
     height,
-    PORTRAIT_BAND_TOP + topInset,
-    heldHandTopPx(width, height) - PORTRAIT_BAND_GAP,
     PORTRAIT_ZOOM_X_HALF,
+    ZOOM_WALL_ANCHOR,
+    ZOOM_WALL_ANCHOR_Y + topInset,
   );
 }
 
@@ -187,6 +283,7 @@ const cross = (a: V3, b: V3): V3 => [
   a[2] * b[0] - a[0] * b[2],
   a[0] * b[1] - a[1] * b[0],
 ];
+const dot = (a: V3, b: V3): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const norm = (a: V3): V3 => {
   const l = Math.hypot(a[0], a[1], a[2]) || 1;
   return [a[0] / l, a[1] / l, a[2] / l];

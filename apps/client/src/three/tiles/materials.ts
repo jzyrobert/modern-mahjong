@@ -126,7 +126,9 @@ export function createTileMaterial(
       .replace(
         '#include <color_fragment>',
         `#include <color_fragment>
-        vec4 faceTexel = texture2D(uAtlas, vAtlasUv);
+        // Slight negative LOD bias: minified river glyphs pick the
+        // sharper mip (anisotropic filtering keeps it from shimmering).
+        vec4 faceTexel = texture2D(uAtlas, vAtlasUv, -0.35);
         vec3 backCol = mix(uBackColor2, uBackColor, vBackGrad);
         // Faint inset border on the back so face-down tiles read as
         // separate pieces in a wall / opponent row.
