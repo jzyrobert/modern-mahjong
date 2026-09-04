@@ -5,7 +5,7 @@
  *
  *   node scripts/shot.mjs --state match-my-turn [--state menu ...]
  *        [--all] [--owner table] [--renderer 3d|classic]
- *        [--viewport phone|phone-landscape|tablet|desktop] [--dist dist]
+ *        [--viewport phone|phone-tall|phone-small|phone-landscape|tablet|desktop] [--dist dist]
  *        [--out shots/<label>] [--label round1] [--port 0]
  *        [--seed 5] [--headed]
  *
@@ -234,7 +234,7 @@ async function runStep(page, step, ctx) {
     const hint = page.getByText('Tap anywhere to dismiss', { exact: true });
     await hint.waitFor({ timeout: step.timeout ?? 6000 }).catch(() => {});
     if (await hint.isVisible().catch(() => false)) {
-      const vp = page.viewportSize() ?? { width: 412, height: 915 };
+      const vp = page.viewportSize() ?? { width: 412, height: 700 };
       await page.mouse.click(vp.width / 2, vp.height / 2).catch(() => {});
       await hint.waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {});
     }
@@ -391,20 +391,28 @@ function judgeBudget(perf, budget, renderer, recipe) {
   return { pass: violations.length === 0, violations };
 }
 
+/** Orientation class of a named viewport: portrait phones interchange, so do landscape ones. */
+function orientationClass(name) {
+  const vp = VIEWPORTS[name];
+  if (!vp) return name;
+  if (!vp.mobile) return 'wide';
+  return vp.width > vp.height ? 'phone-landscape' : 'phone-portrait';
+}
+
 async function shootState(browser, name, recipe, opts, ctx) {
   // A recipe may pin its own viewport (`viewport: 'phone-landscape'` or
   // `{ width, height, dpr }`) so orientation-specific states are checked
   // whichever CLI viewport the run uses.
-  const vpName =
-    typeof recipe.viewport === 'string'
-      ? recipe.viewport
-      : recipe.viewport
-        ? 'custom'
-        : opts.viewport;
-  const vp =
-    typeof recipe.viewport === 'string'
-      ? VIEWPORTS[recipe.viewport]
-      : (recipe.viewport ?? VIEWPORTS[opts.viewport]);
+  // A named pin only fixes the *orientation class*: a CLI viewport of the
+  // same class (phone → phone-tall / phone-small) wins, so the portrait
+  // recipes shoot at whichever phone size the run asks for.
+  const pinned =
+    typeof recipe.viewport === 'string' &&
+    orientationClass(recipe.viewport) === orientationClass(opts.viewport)
+      ? opts.viewport
+      : recipe.viewport;
+  const vpName = typeof pinned === 'string' ? pinned : pinned ? 'custom' : opts.viewport;
+  const vp = typeof pinned === 'string' ? VIEWPORTS[pinned] : (pinned ?? VIEWPORTS[opts.viewport]);
   if (!vp) throw new Error(`unknown recipe viewport ${recipe.viewport}`);
   const consoleErrors = [];
   const consoleWarnings = [];

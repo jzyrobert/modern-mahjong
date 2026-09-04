@@ -399,6 +399,146 @@ test('phone landscape keeps ≥ 44 px hand tiles above the footer with glass chr
   expect(errors, 'console / page errors').toEqual([]);
 });
 
+/**
+ * A phone in a browser: 1080×1830 device px of viewport once the address
+ * bar and system bars take their share, ≈ 412×700 CSS px (the 412×915
+ * tall case is the installed / fullscreen one). Round-5 feedback: the
+ * table used to zoom out into a 280 px square with void columns either
+ * side; now the camera pitches down and the HUD under the hand gives
+ * ground so the whole table fills the width above a two-row hand.
+ */
+for (const [w, h] of [
+  [412, 700],
+  [360, 640],
+] as const) {
+  test(`phone in a browser (${w}×${h}) fits the table edge to edge above a two-row hand`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: w, height: h });
+    const errors: string[] = [];
+    await startSolo(page, errors);
+    await page.waitForTimeout(1800);
+    await expect(page.getByTestId('table-3d')).toHaveAttribute(
+      'data-viewport-class',
+      'phone-portrait',
+    );
+    const tiles = page.getByTestId('own-hand-tile');
+    await expect(tiles).toHaveCount(14);
+    const boxes = await tiles.evaluateAll((els) =>
+      els.map((el) => {
+        const r = el.getBoundingClientRect();
+        return { left: r.left, top: r.top, width: r.width, height: r.height };
+      }),
+    );
+    // ≥ 44 px wide (so ≥ 40 px tall), two rows, inside the viewport.
+    for (const b of boxes) {
+      expect(b.width).toBeGreaterThanOrEqual(44);
+      expect(b.height).toBeGreaterThanOrEqual(40);
+      expect(b.left).toBeGreaterThanOrEqual(0);
+      expect(b.left + b.width).toBeLessThanOrEqual(w);
+    }
+    expect(new Set(boxes.map((b) => Math.round(b.top / 20))).size).toBe(2);
+    const handTop = Math.min(...boxes.map((b) => b.top));
+    const handBottom = Math.max(...boxes.map((b) => b.top + b.height));
+    // The strip, the hand, the tray and the footer stack without overlap.
+    const strip = (await page.getByTestId('seat-strip').boundingBox())!;
+    expect(handTop).toBeGreaterThan(strip.y + strip.height);
+    const tray = (await page.getByTestId('action-tray').boundingBox())!;
+    expect(tray.y).toBeGreaterThanOrEqual(handBottom - 1);
+    expect(tray.height).toBeGreaterThanOrEqual(80);
+    const sort = (await page.getByRole('button', { name: 'Sort by Suit' }).boundingBox())!;
+    expect(sort.y).toBeGreaterThanOrEqual(tray.y + tray.height);
+    expect(sort.y + sort.height).toBeLessThanOrEqual(h);
+    // The table band between the strip and the hand is at least 230 px
+    // tall — the camera pitched down rather than shrinking the table
+    // (the tall-phone fallback left a 280 px square in a 470 px band).
+    expect(handTop - (strip.y + strip.height)).toBeGreaterThanOrEqual(230);
+    expect(errors, 'console / page errors').toEqual([]);
+  });
+}
+
+test('phone in a browser: the opening rolls card sits in the band above the hand', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 412, height: 700 });
+  await page.addInitScript(() => {
+    (globalThis as { __MAHJONG_TEST_HOLD_DICE__?: boolean }).__MAHJONG_TEST_HOLD_DICE__ = true;
+  });
+  const errors: string[] = [];
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(m.text());
+  });
+  page.on('pageerror', (e) => errors.push(String(e)));
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Play vs bots' }).click({ timeout: 20_000 });
+  await page.getByRole('button', { name: 'Start match' }).click({ timeout: 30_000 });
+  const glass = page.getByTestId('dice-ceremony-glass');
+  await expect(glass).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId('table-3d')).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId('own-hand-tile').first()).toBeAttached();
+  await page.waitForTimeout(600);
+  const box = (await glass.boundingBox())!;
+  const strip = (await page.getByTestId('seat-strip').boundingBox())!;
+  const handTop = await page.getByTestId('own-hand-tile').evaluateAll((els) => {
+    const tops = els
+      .map((el) => el.getBoundingClientRect())
+      .filter((r) => r.height > 0)
+      .map((r) => r.top);
+    return tops.length ? Math.min(...tops) : Number.POSITIVE_INFINITY;
+  });
+  // Dense card (2×2, 40 px dice, inline totals): under the seat strip
+  // and above the hand's first row — round-5: the 434 px regular card
+  // ran from the chrome to over the hand.
+  expect(box.y).toBeGreaterThanOrEqual(strip.y + strip.height);
+  expect(box.y + box.height).toBeLessThanOrEqual(handTop);
+  expect(box.height).toBeLessThanOrEqual(260);
+  await expect(page.getByTestId('dice-seat')).toHaveCount(4);
+  expect(errors, 'console / page errors').toEqual([]);
+});
+
+test('phone landscape lobby: three columns above a felt band, bot skill controls whole', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 915, height: 412 });
+  const errors: string[] = [];
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(m.text());
+  });
+  page.on('pageerror', (e) => errors.push(String(e)));
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Play vs bots' }).click({ timeout: 20_000 });
+  await expect(page.getByTestId('lobby-3d')).toBeVisible();
+  const panel = page.getByTestId('lobby-merged-panel');
+  await expect(panel).toBeVisible();
+  const panelBox = (await panel.boundingBox())!;
+  // The panel stops ≥ 44 px above the bottom edge (felt / near wall band).
+  expect(panelBox.y + panelBox.height).toBeLessThanOrEqual(412 - 44);
+  // Bot skill lives in its own column beside Rules, every segmented
+  // control fully inside the panel — none clipped at the fold.
+  const bots = page.getByTestId('lobby-merged-bots');
+  await expect(bots).toBeVisible();
+  const botsBox = (await bots.boundingBox())!;
+  const rules = (await page.getByText('Rules', { exact: true }).first().boundingBox())!;
+  expect(botsBox.x).toBeGreaterThan(rules.x + 40);
+  const controls = page.locator('fieldset[aria-label$="bot skill"]');
+  await expect(controls).toHaveCount(3);
+  const boxes = await controls.evaluateAll((els) =>
+    els.map((el) => {
+      const r = el.getBoundingClientRect();
+      return { top: r.top, bottom: r.bottom, left: r.left, right: r.right };
+    }),
+  );
+  for (const b of boxes) {
+    expect(b.top).toBeGreaterThanOrEqual(panelBox.y);
+    expect(b.bottom).toBeLessThanOrEqual(panelBox.y + panelBox.height + 0.5);
+    expect(b.right).toBeLessThanOrEqual(915);
+  }
+  // Nothing overflowed, so no scroll cue fade is shown.
+  await expect(page.getByTestId('lobby-panel-fade')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Start match' })).toBeVisible();
+  expect(errors, 'console / page errors').toEqual([]);
+});
+
 test('landscape river zoom stays through the own turn with the hand rail and draw pill', async ({
   page,
 }) => {

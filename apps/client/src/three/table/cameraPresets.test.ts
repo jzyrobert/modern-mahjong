@@ -10,6 +10,8 @@ import {
   PORTRAIT_BAND_BIAS,
   PORTRAIT_BAND_GAP,
   PORTRAIT_BAND_TOP,
+  PORTRAIT_ELEV_DEG,
+  PORTRAIT_ELEV_MIN_DEG,
   PORTRAIT_FAR_RAIL_GAP,
   PORTRAIT_FAR_RAIL_POINT,
   PORTRAIT_RIVER_SCALE,
@@ -22,10 +24,13 @@ import {
   cameraFor,
   classifyViewport,
   heldHandFrameFor,
+  heldHandTilePx,
   heldHandTopPx,
   landscapeZoomCameraFor,
   portraitCameraAnchored,
   portraitCameraFor,
+  portraitElevationFor,
+  portraitMetrics,
   projectPreset,
   riverZoomCameraFor,
   sheetCameraFor,
@@ -297,7 +302,7 @@ describe('heldHandFrameFor', () => {
     const nearWallTop = px(0, 2 * TILE_D, WALL_D - TILE_H / 2).y;
     expect(nearWallTop - riverRow1Bottom).toBeGreaterThanOrEqual(58);
   });
-  test('landscape river zoom frames the river block between the chrome and the footer at 50°', () => {
+  test('landscape river zoom frames the river block between the chrome and the footer at 62°', () => {
     const w = 915;
     const h = 412;
     const yTop = 8 + 38 + 6;
@@ -362,5 +367,134 @@ describe('heldHandFrameFor', () => {
       centred.position[2] - centred.target[2],
       6,
     );
+  });
+});
+
+describe('short phones (a phone in a browser)', () => {
+  // 1080×1830 device px of browser viewport ≈ 412×700 CSS px; 360×640 is
+  // the budget-phone floor. The tall 412×915 is the installed / fullscreen case.
+  const px = (preset: ReturnType<typeof cameraFor>, w: number, h: number) => {
+    const cam = new PerspectiveCamera(preset.fov, w / h, 0.1, 200);
+    cam.position.set(...preset.position);
+    cam.lookAt(...preset.target);
+    cam.updateMatrixWorld();
+    return (x: number, y: number, z: number) => {
+      const p = new Vector3(x, y, z).project(cam);
+      return { x: (p.x * 0.5 + 0.5) * w, y: (-p.y * 0.5 + 0.5) * h };
+    };
+  };
+  test('HUD metrics taper from the tall to the short values and stay whole px', () => {
+    const tall = portraitMetrics(915);
+    expect(tall).toEqual({
+      trayH: 96,
+      trayGap: 10,
+      heldBottom: HELD_BOTTOM_PX,
+      rowGap: 0.55,
+      tileMax: 68,
+    });
+    const short = portraitMetrics(700);
+    expect(short.trayH).toBe(84);
+    expect(short.trayGap).toBe(8);
+    expect(short.heldBottom).toBe(12 + 44 + 8 + 84 + 8);
+    expect(short.rowGap).toBeCloseTo(0.3, 6);
+    expect(short.tileMax).toBe(46);
+    expect(portraitMetrics(640)).toEqual(short);
+    const mid = portraitMetrics(780);
+    expect(mid.trayH).toBeGreaterThan(84);
+    expect(mid.trayH).toBeLessThan(96);
+    expect(Number.isInteger(mid.trayH)).toBe(true);
+    expect(portraitMetrics(Number.NaN)).toEqual(tall);
+  });
+  test('the camera pitches down instead of shrinking the table: rails flush, no void column', () => {
+    for (const [w, h] of [
+      [412, 700],
+      [360, 640],
+      [412, 780],
+    ] as const) {
+      const preset = cameraFor(w, h);
+      const p = px(preset, w, h);
+      const elev = portraitElevationFor(w, h);
+      expect(elev).toBeGreaterThanOrEqual(PORTRAIT_ELEV_MIN_DEG);
+      expect(elev).toBeLessThan(PORTRAIT_ELEV_DEG);
+      const elevOf = Math.atan2(
+        preset.position[1] - preset.target[1],
+        preset.position[2] - preset.target[2],
+      );
+      expect((elevOf * 180) / Math.PI).toBeCloseTo(elev, 4);
+      // The near rail's corners sit within 2 px of the viewport edges —
+      // the table fills the width edge to edge, neither cropped nor
+      // floating in a void column.
+      const cornerR = p(FELT_HALF + RAIL_WIDTH, 0.55, FELT_HALF + RAIL_WIDTH).x;
+      const cornerL = p(-(FELT_HALF + RAIL_WIDTH), 0.55, FELT_HALF + RAIL_WIDTH).x;
+      expect(cornerR).toBeGreaterThanOrEqual(w - 3);
+      expect(cornerR).toBeLessThanOrEqual(w + 3);
+      expect(cornerL).toBeLessThanOrEqual(3);
+      expect(cornerL).toBeGreaterThanOrEqual(-3);
+      // Far rail below the seat strip's band top, near rail's bottom
+      // above the held hand by the apron, four walls in between.
+      const bandTop = PORTRAIT_BAND_TOP;
+      const handTop = heldHandTopPx(w, h);
+      expect(p(...PORTRAIT_FAR_RAIL_POINT).y).toBeGreaterThanOrEqual(bandTop - 1);
+      const nearRailBottom = p(0, 0, FELT_HALF + RAIL_WIDTH).y;
+      expect(nearRailBottom).toBeLessThanOrEqual(
+        handTop - PORTRAIT_BAND_GAP - PORTRAIT_APRON_MIN + 1,
+      );
+      expect(p(0, 2 * TILE_D, WALL_D + TILE_H / 2).y).toBeLessThan(nearRailBottom);
+      expect(p(0, 2 * TILE_D, -(WALL_D + TILE_H / 2)).y).toBeGreaterThan(bandTop);
+      // The side seats' melds keep their nearest corner inside the frame.
+      expect(p(-(MELD_Z + TILE_H / 2), TILE_D, 8.0).x).toBeGreaterThanOrEqual(2);
+      // Held hand: ≥ 44 px wide (so ≥ 59 px tall) tiles, two rows above the tray.
+      const tile = heldHandTilePx(w, h);
+      expect(tile).toBeGreaterThanOrEqual(44);
+      expect(tile * TILE_H).toBeGreaterThanOrEqual(40);
+      expect(handTop).toBeGreaterThan(bandTop);
+      expect(handTop + (2 * TILE_H + portraitMetrics(h).rowGap) * tile).toBeLessThanOrEqual(
+        h - portraitMetrics(h).heldBottom + 1,
+      );
+    }
+    // A river tile still reads on the reference short phone.
+    const p = px(cameraFor(412, 700), 412, 700);
+    expect((p(1, 0.3, 0).x - p(0, 0.3, 0).x) * PORTRAIT_RIVER_SCALE).toBeGreaterThanOrEqual(18);
+  });
+  test('the tall phone keeps the 70° width-bound view unchanged', () => {
+    expect(portraitElevationFor(412, 915)).toBe(PORTRAIT_ELEV_DEG);
+    expect(portraitElevationFor(430, 932)).toBe(PORTRAIT_ELEV_DEG);
+    expect(heldHandTilePx(412, 915)).toBeCloseTo(heldHandTilePx(412), 6);
+    expect(heldHandTopPx(412, 915)).toBeCloseTo(
+      915 - HELD_BOTTOM_PX - (2 * TILE_H + 0.55) * heldHandTilePx(412),
+      6,
+    );
+  });
+  test('the river zoom widens only until the near wall clears the held hand', () => {
+    for (const [w, h] of [
+      [412, 700],
+      [360, 640],
+    ] as const) {
+      const zoom = riverZoomCameraFor(w, h);
+      const p = px(zoom, w, h);
+      const bandBottom = heldHandTopPx(w, h) - PORTRAIT_BAND_GAP;
+      // Same elevation as the resting view (a dolly, not a tilt).
+      const elevOf = (q: typeof zoom) =>
+        Math.atan2(q.position[1] - q.target[1], q.position[2] - q.target[2]);
+      expect(elevOf(zoom)).toBeCloseTo(elevOf(cameraFor(w, h)), 5);
+      // Far wall behind the header, near wall's outer edge above the hand.
+      expect(Math.abs(p(...ZOOM_WALL_ANCHOR).y - ZOOM_WALL_ANCHOR_Y)).toBeLessThan(1);
+      const nearWallBottom = p(0, 0, WALL_D + TILE_H / 2).y;
+      expect(nearWallBottom).toBeLessThanOrEqual(bandBottom);
+      expect(nearWallBottom).toBeGreaterThan(bandBottom - 12);
+      // Still a zoom: a river tile grows ≥ 1.35× over the resting view.
+      const full = px(cameraFor(w, h), w, h);
+      const tileZoom = p(1, 0.3, 0).x - p(0, 0.3, 0).x;
+      const tileFull = full(1, 0.3, 0).x - full(0, 0.3, 0).x;
+      expect(tileZoom / tileFull).toBeGreaterThanOrEqual(1.35);
+      // The river block fits the width.
+      expect(p(-7.9, 0, 0).x).toBeGreaterThanOrEqual(0);
+      expect(p(7.9, 0, 0).x).toBeLessThanOrEqual(w);
+    }
+    // The tall phone keeps the round-4 zoom frame (7.9 half-width).
+    const tall = riverZoomCameraFor(412, 915);
+    const p = px(tall, 412, 915);
+    expect(p(7.9, 0, 0).x).toBeLessThanOrEqual(413);
+    expect(p(7.9, 0, 0).x).toBeGreaterThan(395);
   });
 });

@@ -30,14 +30,13 @@ import {
   PORTRAIT_BAND_TOP,
   PORTRAIT_FAR_RAIL_POINT,
   PORTRAIT_RIVER_SCALE,
-  PORTRAIT_TRAY_GAP,
-  PORTRAIT_TRAY_H,
   type ViewportClass,
   cameraFor,
   classifyViewport,
   heldHandFrameFor,
   heldHandTopPx,
   landscapeZoomCameraFor,
+  portraitMetrics,
   riverZoomCameraFor,
   sheetCameraFor,
 } from './cameraPresets';
@@ -287,6 +286,9 @@ export function Table3DShell(props: Table3DShellProps) {
   const landscape = vpClass === 'phone-landscape';
   const pad = compact ? 12 : 24;
   const chromeH = landscape ? CHROME_H_LANDSCAPE : CHROME_H;
+  // Portrait HUD metrics under the hand: the tray and its gaps give
+  // ground on short phones so the table keeps its band (`portraitMetrics`).
+  const { trayH, trayGap } = portraitMetrics(height);
   const sortMode: SortMode = props.sortMode ?? 'suit';
   const tileSheet = globalThis.__MAHJONG_DEBUG_TILE_SHEET__ === true;
 
@@ -741,9 +743,13 @@ export function Table3DShell(props: Table3DShellProps) {
   // chrome row (see `toastSlot`), the one void that never holds a tile
   // or a discard-to-be.
   const farRowTop = hudRects.farRowTop;
+  // Zoomed short phones: the near wall's outer edge sits right above the
+  // hand (`riverZoomCameraFor` widens the frame only until it clears),
+  // so the toast is capped to stay off the hand and lands on the wall's
+  // backs instead — the one zoomed surface that carries no glyph.
   const toastTop = portrait
     ? zoomed && nearWallBottom !== null
-      ? nearWallBottom + 10
+      ? Math.min(nearWallBottom + 10, heldHandTopPx(width, height) - TOAST_H - 6)
       : farRowTop !== null && !zoomed
         ? Math.max(stripTop + 34 + 6, farRowTop - 6 - TOAST_H)
         : stripTop + 40
@@ -1042,8 +1048,8 @@ export function Table3DShell(props: Table3DShellProps) {
                 position: 'absolute',
                 left: pad + insets.left,
                 right: pad + insets.right,
-                bottom: pad + insets.bottom + 44 + PORTRAIT_TRAY_GAP,
-                height: PORTRAIT_TRAY_H,
+                bottom: pad + insets.bottom + 44 + trayGap,
+                height: trayH,
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
@@ -1083,7 +1089,7 @@ export function Table3DShell(props: Table3DShellProps) {
                     alignItems: 'center',
                     justifyContent: 'center',
                     gap: 8,
-                    height: PORTRAIT_TRAY_H,
+                    height: trayH,
                   }}
                 >
                   <TurnChip

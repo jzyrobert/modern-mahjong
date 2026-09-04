@@ -122,6 +122,9 @@ function writeDismissedSeed(seed: number): void {
  * on the backdrop to dismiss early. Animations are RN core `Animated`
  * (no reanimated) so it works in Expo Go.
  */
+/** Height of the regular (48 px dice, 2×2, stacked totals) glass card, CSS px. */
+const REGULAR_DICE_CARD_H = 434;
+
 export function DiceCeremony() {
   const seed = useGame((s) => s.state?.seed);
   const rolls = useGame((s) => s.state?.openingRolls);
@@ -140,16 +143,23 @@ export function DiceCeremony() {
   const { width: vw, height: vh } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const wide = glass && vw >= 700;
-  const short = glass && vh < 600;
-  const dieSize = short ? 40 : 48;
   // Phone portrait over the 3D table: the held hand sits high (its top
   // ~ 590 px on a 915 px phone, above the action tray) and the seat strip
   // ends ~ 98 px down, so the card is centred in the band between them
   // instead of the whole viewport — it never covers the tiles, and its
   // top edge clears the strip (round-4: the table moved up under the
   // strip and the centred card's top edge met the badges).
-  const handTop = glass && !short && portraitHeldHandTop ? portraitHeldHandTop(vw, vh) : null;
-  const stripBottom = glass && !short && portraitStripBottom ? portraitStripBottom(vw, vh) : null;
+  const handTop = glass && portraitHeldHandTop ? portraitHeldHandTop(vw, vh) : null;
+  const stripBottom = glass && portraitStripBottom ? portraitStripBottom(vw, vh) : null;
+  // The compact card also serves portrait phones whose band between the
+  // strip and the hand cannot hold the 434 px regular card (a phone in
+  // a browser at 412×700 has ~300 px): 2×2 seats at the dense metrics
+  // come to ~200 px, so the card sits in the band instead of running
+  // under the strip and over the hand's first row (round-5 feedback).
+  const bandShort =
+    handTop !== null && stripBottom !== null && handTop - stripBottom < REGULAR_DICE_CARD_H + 16;
+  const short = glass && (vh < 600 || bandShort);
+  const dieSize = short ? 40 : 48;
   const scrimPadBottom = handTop !== null ? Math.max(20, vh - handTop + 12) : 20;
   const scrimPadTop = stripBottom !== null ? Math.max(20, stripBottom + insets.top + 8) : 20;
   // Key dismissal by `state.seed` rather than a boolean — JSON.parse

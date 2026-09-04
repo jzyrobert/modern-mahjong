@@ -534,8 +534,19 @@ export const BUDGETS = {
   tutorial: { drawCalls: 48, triangles: 160_000, programs: 14, frameMsP95: 8, textures: 14 },
 };
 
+/**
+ * Viewports, in CSS px. `phone` is a phone *in a browser*: 1080×1830
+ * device px of viewport once the address bar and system bars take
+ * their share of a 1080×2400 panel, i.e. ≈ 412×697 CSS px at dpr 2.625
+ * (aspect 1.69). The old 412×915 full-screen size (aspect 2.22) stays
+ * as `phone-tall` for the installed-PWA / fullscreen case, and
+ * `phone-small` is a 360×640 budget phone — the shortest band the
+ * portrait layout must still fit at ≥ 40 px hand tiles.
+ */
 export const VIEWPORTS = {
-  phone: { width: 412, height: 915, dpr: 2, mobile: true },
+  phone: { width: 412, height: 700, dpr: 2.625, mobile: true },
+  'phone-tall': { width: 412, height: 915, dpr: 2, mobile: true },
+  'phone-small': { width: 360, height: 640, dpr: 3, mobile: true },
   'phone-landscape': { width: 915, height: 412, dpr: 2, mobile: true },
   tablet: { width: 834, height: 1194, dpr: 2, mobile: true },
   desktop: { width: 1440, height: 900, dpr: 1, mobile: false },
