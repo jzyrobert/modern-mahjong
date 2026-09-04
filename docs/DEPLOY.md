@@ -73,6 +73,47 @@ A deploy lands on production iff the project's **Production branch** setting mat
 
 Alternative if you'd rather start clean: `wrangler pages project delete modern-mahjong` (run locally with the API token) and let CI recreate it on the next push — the auto-create call uses `--production-branch=main`.
 
+## Preview deploys (any branch, production untouched)
+
+[`.github/workflows/preview.yml`](../.github/workflows/preview.yml) is a
+manual (`workflow_dispatch`) Pages deploy of whatever branch you run it
+from. It reuses the `cloudflare` environment secrets and the production
+Worker (`EXPO_PUBLIC_SERVER_URL`), but passes `--branch=<alias>` instead
+of `main`, so the bundle lands on a **preview alias** and the production
+URL never changes:
+
+```
+https://<alias>.modern-mahjong.pages.dev
+```
+
+- Run it from **Actions → preview → Run workflow**, pick the branch, and
+  optionally type an alias (lower-case, digits, hyphens, ≤ 28 chars —
+  Cloudflare's own sanitisation rule). Empty alias = the branch name
+  sanitised the same way. `main` is refused.
+- Re-running with the same alias replaces that preview; each run also
+  keeps its own hashed `https://<hash>.modern-mahjong.pages.dev` URL.
+- Only preview branches that leave `apps/server` and `packages/protocol`
+  untouched — the preview client speaks to the *production* Worker.
+- Previews are not garbage-collected automatically. Delete stale ones in
+  the Pages dashboard (Deployments → ⋯ → Delete) or with
+  `wrangler pages deployment delete`.
+
+### Preview on a `mahjong.robertj.in` subdomain
+
+Pages custom domains attach only to production, but a preview alias can
+be fronted by a plain DNS record in the `robertj.in` zone (it is on
+Cloudflare, so the CNAME is proxied and TLS is automatic):
+
+1. Deploy the preview with a fixed alias, e.g. `3d`.
+2. DNS → `robertj.in` → add **CNAME** `3d.mahjong` →
+   `3d.modern-mahjong.pages.dev`, proxied.
+3. Pages project → **Custom domains** → add `3d.mahjong.robertj.in`.
+   Cloudflare sees the CNAME points at a preview alias and serves that
+   alias on the custom hostname.
+
+That is a dashboard / DNS-API action on the zone, not something the
+repo's `CLOUDFLARE_API_TOKEN` (Workers + Pages scopes only) can do.
+
 ## Custom domain (optional)
 
 By default you'll get:
