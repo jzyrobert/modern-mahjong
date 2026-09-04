@@ -29,6 +29,7 @@ import { Choreographer } from './choreography';
 import {
   CENTRE_PLATE_RADIUS,
   FELT_HALF,
+  type HeldHandFrame,
   type Layout,
   RAIL_WIDTH,
   type Rel,
@@ -68,6 +69,8 @@ export interface SyncInput {
   hintTileId: number | null;
   needsDraw: boolean;
   shuffling: boolean;
+  /** Phone portrait: the near-camera frame the user's hand is held in. */
+  heldHand?: HeldHandFrame | null | undefined;
 }
 
 export interface TableDebugTile {
@@ -99,11 +102,14 @@ export interface TableSceneOptions {
 }
 
 const RAIL_H = 0.55;
+/** Dealer marker centre in the dealer's seat frame (x right, z toward them). */
+export const MARKER_LOCAL: [number, number] = [4.25, 3.85];
 /** How long the gold cue pulses before settling to a steady glow. */
 const PULSE_MS = 3200;
 const _m = new Matrix4();
 const _obj = new Object3D();
 const _q = new Quaternion();
+const _lift = new Vector3();
 const Y_AXIS = new Vector3(0, 1, 0);
 const X_AXIS = new Vector3(1, 0, 0);
 const Z_AXIS = new Vector3(0, 0, 1);
@@ -353,6 +359,7 @@ export class TableScene {
       manualOrder: input.manualOrder,
       drawnTileId: input.drawnTileId,
       reveal: state.phase === 'resolved',
+      heldHand: input.heldHand ?? null,
     });
     this.lastLayout = layout;
     this.choreo.setLayout(layout, state, me, now, { shuffling: input.shuffling });
@@ -382,9 +389,11 @@ export class TableScene {
     const rel = relOf(state.dealer, me);
     if (rel !== this.markerRel) {
       this.markerRel = rel;
-      // Sits on the plate's rim toward the dealer, clear of the glyph.
-      const [mx, mz] = toWorld(rel, 0.62, CENTRE_PLATE_RADIUS * 0.7);
-      this.marker.position.set(mx, 0.14 + 0.08, mz);
+      // On the felt in the corner pocket at the dealer's front-right —
+      // the one patch the four rivers (x, z ∈ ±3.2 in their frames)
+      // never grow into — facing the dealer, clear of the plate rim.
+      const [mx, mz] = toWorld(rel, MARKER_LOCAL[0], MARKER_LOCAL[1]);
+      this.marker.position.set(mx, 0.08, mz);
       this.marker.quaternion.setFromAxisAngle(Y_AXIS, (rel * Math.PI) / 2);
       this.marker.visible = true;
     }
@@ -457,7 +466,7 @@ export class TableScene {
     }
     // Hover lift eases in/out.
     for (let id = 0; id < 136; id++) {
-      const target = id === this.hoverId ? 0.12 : 0;
+      const target = id === this.hoverId ? 0.14 : 0;
       const cur = this.lift[id]!;
       if (Math.abs(cur - target) > 0.001) {
         this.lift[id] = cur + (target - cur) * Math.min(1, dt * 14);
@@ -480,7 +489,18 @@ export class TableScene {
       p.visible = t.visible && t.scale > 0.001;
       if (!p.visible) continue;
       p.position.copy(t.pos);
-      p.position.y += t.bounceY + this.lift[id]!;
+      p.position.y += t.bounceY;
+      // Hover lift only applies while the tile is in the user's hand: a
+      // tapped tile keeps its hover id through the discard on touch
+      // (no pointerleave fires when the button unmounts), and must not
+      // float once it lands in the river.
+      const lift = t.slot?.zone === 'hand' ? this.lift[id]! : 0;
+      if (lift !== 0) {
+        // Lift along the tile's own up axis so a held (camera-facing)
+        // tile rises on screen the same way a table-standing one does.
+        _lift.set(0, 1, 0).applyQuaternion(t.quat).multiplyScalar(lift);
+        p.position.add(_lift);
+      }
       p.quaternion.copy(t.quat);
       p.scale = t.scale;
       let hl = 0;

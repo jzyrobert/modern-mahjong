@@ -68,13 +68,10 @@ export class PerfMonitor {
 
   /** Call once per rendered frame with the JS time the frame took. */
   recordFrame(frameMs: number, now: number): void {
-    if (this.renders === 0) {
-      this.warmupMs = frameMs;
-    } else {
-      this.times[this.head] = frameMs;
-      this.head = (this.head + 1) % RING;
-      if (this.count < RING) this.count++;
-    }
+    // The very first render is reported separately (`warmupMs`); the
+    // next few are still paying for uploads on a software rasteriser,
+    // so the ring only starts after `WARMUP_FRAMES`.
+    if (this.renders === 0) this.warmupMs = frameMs;
     this.framesThisSecond++;
     this.renders++;
     this.lastRenderAt = now;

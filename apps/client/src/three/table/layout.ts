@@ -47,6 +47,31 @@ export interface TileSlot {
   back: boolean;
   /** Ordinal within its zone (dispense stagger, river order). */
   index: number;
+  /**
+   * Explicit orientation (x, y, z, w) that overrides `base` / `yaw` /
+   * `tilt` — used by the held hand, whose tiles face the camera
+   * rather than a table edge.
+   */
+  quat?: [number, number, number, number];
+}
+
+/**
+ * Near-camera frame the user's hand is laid out in on phone portrait
+ * (see `cameraPresets.heldHandFrameFor`). `origin` is the block's
+ * bottom-centre baseline; `right` / `up` span the plane the rows lie
+ * in; `forward` is the direction the faces look (toward the camera);
+ * `lean` tips each tile's top edge away from the camera.
+ */
+export interface HeldHandFrame {
+  origin: [number, number, number];
+  right: [number, number, number];
+  up: [number, number, number];
+  forward: [number, number, number];
+  lean: number;
+  /** CSS px per world unit at the hand's depth (HUD sizing hint). */
+  pxPerUnit: number;
+  /** Distance between the two rows' centre lines, world units. */
+  rowPitch: number;
 }
 
 export type Layout = (TileSlot | null)[];
@@ -72,6 +97,13 @@ export const OPP_TILT = 0.14;
 export const LIVE_TILES = 122;
 export const DEAD_TILES = 14;
 export const DRAWN_GAP = 0.42;
+/** Held hand (phone portrait): tiles per row and the gap between rows. */
+export const HELD_ROW_MAX = 7;
+export const HELD_ROW_GAP = 0.34;
+/** Depth step between the held rows (the back row sits a little further). */
+export const HELD_ROW_DEPTH = 0.3;
+/** Right edge of the user's flat melds when the hand is held off-table. */
+export const OWN_MELD_RIGHT = 10.7;
 export const MELD_GAP = 0.55;
 export const MELD_GROUP_GAP = 0.3;
 export const MELD_PITCH = TILE_W + 0.03;
@@ -276,6 +308,133 @@ export function orderOwnHand(hand: readonly Tile[], opts: HandOrderOptions): Til
 export interface LayoutOptions extends HandOrderOptions {
   /** Hand end: opponents' concealed tiles lie face up in their row. */
   reveal: boolean;
+  /**
+   * Phone portrait: lay the user's hand out in this near-camera frame
+   * (two standing rows) instead of on the table edge, and put their
+   * exposed melds flat on the felt in front of them.
+   */
+  heldHand?: HeldHandFrame | null | undefined;
+}
+
+/**
+ * Row split for the held hand: one row while it fits, otherwise the
+ * first (lowest-sorted) half on the back row and the rest — drawn tile
+ * last — on the front row. Returns row lengths, back row first.
+ */
+export function heldRowSplit(total: number): number[] {
+  if (total <= 0) return [];
+  if (total <= HELD_ROW_MAX + 1) return [total];
+  const back = Math.ceil(total / 2);
+  return [back, total - back];
+}
+
+type V3 = [number, number, number];
+
+/** Quaternion (x, y, z, w) whose columns are the orthonormal basis. */
+export function quatFromBasis(right: V3, up: V3, forward: V3): [number, number, number, number] {
+  const m00 = right[0];
+  const m01 = up[0];
+  const m02 = forward[0];
+  const m10 = right[1];
+  const m11 = up[1];
+  const m12 = forward[1];
+  const m20 = right[2];
+  const m21 = up[2];
+  const m22 = forward[2];
+  const trace = m00 + m11 + m22;
+  let x: number;
+  let y: number;
+  let z: number;
+  let w: number;
+  if (trace > 0) {
+    const s = 0.5 / Math.sqrt(trace + 1);
+    w = 0.25 / s;
+    x = (m21 - m12) * s;
+    y = (m02 - m20) * s;
+    z = (m10 - m01) * s;
+  } else if (m00 > m11 && m00 > m22) {
+    const s = 2 * Math.sqrt(1 + m00 - m11 - m22);
+    w = (m21 - m12) / s;
+    x = 0.25 * s;
+    y = (m01 + m10) / s;
+    z = (m02 + m20) / s;
+  } else if (m11 > m22) {
+    const s = 2 * Math.sqrt(1 + m11 - m00 - m22);
+    w = (m02 - m20) / s;
+    x = (m01 + m10) / s;
+    y = 0.25 * s;
+    z = (m12 + m21) / s;
+  } else {
+    const s = 2 * Math.sqrt(1 + m22 - m00 - m11);
+    w = (m10 - m01) / s;
+    x = (m02 + m20) / s;
+    y = (m12 + m21) / s;
+    z = 0.25 * s;
+  }
+  return [x, y, z, w];
+}
+
+/**
+ * Slots for the user's held hand. `hand` is already in display order
+ * (drawn tile last); `drawnIdx` gets the extra gap.
+ */
+export function heldHandSlots(
+  hand: readonly Tile[],
+  drawnIdx: number,
+  frame: HeldHandFrame,
+  seat: Seat,
+): TileSlot[] {
+  const rows = heldRowSplit(hand.length);
+  const out: TileSlot[] = [];
+  const { right, up, forward, origin, lean } = frame;
+  // Tile axes: the face tips up toward the sky by `lean`, so the
+  // printed side catches the key light and reads as a 3D object.
+  const c = Math.cos(lean);
+  const sn = Math.sin(lean);
+  const tUp: V3 = [
+    up[0] * c - forward[0] * sn,
+    up[1] * c - forward[1] * sn,
+    up[2] * c - forward[2] * sn,
+  ];
+  const tFwd: V3 = [
+    forward[0] * c + up[0] * sn,
+    forward[1] * c + up[1] * sn,
+    forward[2] * c + up[2] * sn,
+  ];
+  const quat = quatFromBasis(right, tUp, tFwd);
+  let start = 0;
+  rows.forEach((len, r) => {
+    // Row 0 of `rows` is the back (top) row; the last row is the front.
+    const rowFromFront = rows.length - 1 - r;
+    const rowHasDrawn = drawnIdx >= start && drawnIdx < start + len;
+    const width = len * HAND_PITCH - (HAND_PITCH - TILE_W) + (rowHasDrawn ? DRAWN_GAP : 0);
+    let cursor = -width / 2;
+    const v = TILE_H / 2 + rowFromFront * frame.rowPitch;
+    const depth = -rowFromFront * HELD_ROW_DEPTH;
+    for (let i = 0; i < len; i++) {
+      const idx = start + i;
+      if (idx === drawnIdx) cursor += DRAWN_GAP;
+      const u = cursor + TILE_W / 2;
+      cursor += HAND_PITCH;
+      out.push({
+        id: tileId(hand[idx]!),
+        zone: 'hand',
+        seat,
+        rel: 0,
+        x: origin[0] + right[0] * u + tUp[0] * v + forward[0] * depth,
+        y: origin[1] + right[1] * u + tUp[1] * v + forward[1] * depth,
+        z: origin[2] + right[2] * u + tUp[2] * v + forward[2] * depth,
+        base: 'standing',
+        yaw: 0,
+        tilt: 0,
+        back: false,
+        index: idx,
+        quat,
+      });
+    }
+    start += len;
+  });
+  return out;
 }
 
 function emptyLayout(): Layout {
@@ -365,6 +524,38 @@ export function computeLayout(state: GameState, me: Seat, opts: LayoutOptions): 
       isMe && opts.drawnTileId !== null
         ? hand.findIndex((t) => tileId(t) === opts.drawnTileId)
         : -1;
+    if (isMe && opts.heldHand) {
+      // Phone portrait: the concealed hand is held near the camera and
+      // the exposed melds lie flat on the felt, right-aligned in the
+      // row the hand would otherwise occupy.
+      for (const slot of heldHandSlots(hand, drawnIdx, opts.heldHand, seat)) put(layout, slot);
+      const meldsWidth =
+        melds.reduce((acc, m) => acc + m.width, 0) + Math.max(0, melds.length - 1) * MELD_GROUP_GAP;
+      let cursor = OWN_MELD_RIGHT - meldsWidth;
+      melds.forEach((m, mi) => {
+        let idx = 0;
+        for (const ms of m.tiles) {
+          put(layout, {
+            id: tileId(ms.tile),
+            zone: 'meld',
+            seat,
+            rel,
+            x: cursor + ms.dx,
+            y: FLAT_Y + (ms.stacked ? TILE_D : 0),
+            z: HAND_Z,
+            base: ms.faceDown ? 'flatDown' : 'flatUp',
+            yaw: yaw + (ms.rotated ? Math.PI / 2 : 0),
+            tilt: 0,
+            back: ms.faceDown,
+            index: mi * 4 + idx++,
+          });
+        }
+        cursor += m.width + MELD_GROUP_GAP;
+      });
+      // River below still applies.
+      placeRiver(layout, state, seat, rel, yaw);
+      continue;
+    }
     const handWidth =
       hand.length > 0
         ? hand.length * HAND_PITCH - (HAND_PITCH - TILE_W) + (drawnIdx >= 0 ? DRAWN_GAP : 0)
@@ -420,30 +611,34 @@ export function computeLayout(state: GameState, me: Seat, opts: LayoutOptions): 
       cursor += m.width + MELD_GROUP_GAP;
     });
 
-    // River: 6 per row, rows marching toward the owner.
-    state.discards[seat].forEach((t, i) => {
-      const col = i % RIVER_COLS;
-      const row = Math.floor(i / RIVER_COLS);
-      const lx = (col - (RIVER_COLS - 1) / 2) * RIVER_PITCH_X;
-      const lz = RIVER_Z0 + row * RIVER_PITCH_Z;
-      const [x, z] = toWorld(rel, lx, lz);
-      put(layout, {
-        id: tileId(t),
-        zone: 'discard',
-        seat,
-        rel,
-        x,
-        y: FLAT_Y,
-        z,
-        base: 'flatUp',
-        yaw,
-        tilt: 0,
-        back: false,
-        index: i,
-      });
-    });
+    placeRiver(layout, state, seat, rel, yaw);
   }
   return layout;
+}
+
+/** River: 6 per row, rows marching toward the owner. */
+function placeRiver(layout: Layout, state: GameState, seat: Seat, rel: Rel, yaw: number): void {
+  state.discards[seat].forEach((t, i) => {
+    const col = i % RIVER_COLS;
+    const row = Math.floor(i / RIVER_COLS);
+    const lx = (col - (RIVER_COLS - 1) / 2) * RIVER_PITCH_X;
+    const lz = RIVER_Z0 + row * RIVER_PITCH_Z;
+    const [x, z] = toWorld(rel, lx, lz);
+    put(layout, {
+      id: tileId(t),
+      zone: 'discard',
+      seat,
+      rel,
+      x,
+      y: FLAT_Y,
+      z,
+      base: 'flatUp',
+      yaw,
+      tilt: 0,
+      back: false,
+      index: i,
+    });
+  });
 }
 
 /**
@@ -527,7 +722,8 @@ export function tileSheetLayout(): Layout {
   ];
   rows.forEach((cells, r) => {
     cells.forEach((cell, c) => {
-      const x = (c - (cols - 1) / 2) * (TILE_W + 0.28);
+      // Each row centres on the sheet axis (the 7-tile honours row too).
+      const x = (c - (cells.length - 1) / 2) * (TILE_W + 0.28);
       const z = (r - 1.5) * (TILE_H + 1.15);
       put(layout, {
         id: cell * 4,

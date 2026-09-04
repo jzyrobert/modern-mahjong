@@ -4,12 +4,17 @@ import { TILE_D, TILE_H, TILE_W } from '../tiles/geometry';
 import {
   DEAD_GAP,
   FELT_HALF,
+  HAND_PITCH,
   HAND_Z,
+  OWN_MELD_RIGHT,
   STACKS_PER_WALL,
   computeLayout,
   fullWallLayout,
+  heldHandSlots,
+  heldRowSplit,
   layoutMeld,
   orderOwnHand,
+  quatFromBasis,
   relOf,
   tileSheetLayout,
   toWorld,
@@ -362,5 +367,85 @@ describe('fullWallLayout / tileSheetLayout', () => {
     const placed = layout.filter((s) => s !== null);
     expect(placed).toHaveLength(34);
     expect(new Set(placed.map((s) => s!.id >> 2)).size).toBe(34);
+  });
+});
+
+describe('held hand (phone portrait)', () => {
+  const FRAME = {
+    origin: [0, 40, 25] as [number, number, number],
+    right: [1, 0, 0] as [number, number, number],
+    up: [0, 0.3, -0.954] as [number, number, number],
+    forward: [0, 0.954, 0.3] as [number, number, number],
+    lean: 0.2,
+    pxPerUnit: 48,
+    rowPitch: TILE_H + 0.34,
+  };
+  test('heldRowSplit keeps ≤ 8 tiles on one row and halves larger hands', () => {
+    expect(heldRowSplit(0)).toEqual([]);
+    expect(heldRowSplit(8)).toEqual([8]);
+    expect(heldRowSplit(13)).toEqual([7, 6]);
+    expect(heldRowSplit(14)).toEqual([7, 7]);
+    expect(heldRowSplit(11)).toEqual([6, 5]);
+  });
+  test('quatFromBasis round-trips the identity and a 90° yaw', () => {
+    expect(quatFromBasis([1, 0, 0], [0, 1, 0], [0, 0, 1])).toEqual([0, 0, 0, 1]);
+    // Rotating +90° about Y maps +Z (forward) onto +X.
+    const q = quatFromBasis([0, 0, -1], [0, 1, 0], [1, 0, 0]);
+    expect(q[1]).toBeCloseTo(Math.SQRT1_2, 5);
+    expect(q[3]).toBeCloseTo(Math.SQRT1_2, 5);
+  });
+  test('the hand leaves the table into the frame; melds lie flat right-aligned', () => {
+    const s = dealt();
+    const layout = computeLayout(s, 0, { ...OPTS, heldHand: FRAME });
+    const hand = layout.filter((sl) => sl?.zone === 'hand');
+    expect(hand).toHaveLength(s.hands[0].length);
+    for (const sl of hand) {
+      expect(sl!.quat).toBeDefined();
+      expect(sl!.y).toBeGreaterThan(30);
+      expect(Math.abs(sl!.x)).toBeLessThan(5);
+    }
+    // 14 tiles → 7 + 7: two distinct rows, drawn tile (last) on the front row.
+    const ys = new Set(hand.map((sl) => Math.round(sl!.y * 10)));
+    expect(ys.size).toBe(2);
+    // The rest of the table is untouched.
+    const wall = layout.filter((sl) => sl?.zone === 'wall');
+    expect(wall.length).toBe(s.wall.length);
+  });
+  test('front row carries the drawn tile with its gap', () => {
+    const s = dealt();
+    const hand = s.hands[0];
+    const drawn = tileId(hand[hand.length - 1]!);
+    const slots = heldHandSlots(hand, hand.length - 1, FRAME, 0);
+    const front = slots.filter((sl) => sl.index >= 7);
+    expect(front).toHaveLength(7);
+    const drawnSlot = slots.find((sl) => sl.id === drawn)!;
+    const prev = front[front.length - 2]!;
+    // Gap between the last regular tile and the drawn tile exceeds the pitch.
+    expect(drawnSlot.x - prev.x).toBeGreaterThan(HAND_PITCH + 0.3);
+  });
+  test('own melds sit on the felt row at the right when the hand is held', () => {
+    const s = dealt();
+    const withMeld: GameState = {
+      ...s,
+      hands: { ...s.hands, 0: s.hands[0].slice(3) },
+      melds: {
+        ...s.melds,
+        0: [{ kind: 'peng', tiles: s.hands[0].slice(0, 3), from: 1 }],
+      },
+    } as GameState;
+    const layout = computeLayout(withMeld, 0, { ...OPTS, heldHand: FRAME });
+    const melds = layout.filter((sl) => sl?.zone === 'meld' && sl.seat === 0);
+    expect(melds).toHaveLength(3);
+    for (const m of melds) {
+      expect(m!.z).toBeCloseTo(HAND_Z, 5);
+      expect(m!.x).toBeLessThanOrEqual(OWN_MELD_RIGHT + 0.01);
+      expect(m!.x).toBeGreaterThan(5);
+    }
+  });
+  test('tile sheet rows are each centred on the sheet axis', () => {
+    const layout = tileSheetLayout();
+    const honours = layout.filter((sl) => sl && sl.zone === 'sheet' && sl.id >= 27 * 4);
+    const xs = honours.map((sl) => sl!.x);
+    expect(Math.min(...xs) + Math.max(...xs)).toBeCloseTo(0, 5);
   });
 });

@@ -3,7 +3,7 @@ import { nextDealer, sameTile, sortHand, tileId } from '@mahjong/game-logic';
 import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useRecorder } from '../replay/recorder';
-import { useGame } from '../state/game';
+import { nameForSeat, useGame } from '../state/game';
 import { randomSeed } from '../util';
 import { RulePanel } from './RulePanel';
 import { ScoringBreakdownModal } from './ScoringBreakdownModal';
@@ -21,19 +21,151 @@ interface ResultPanelProps {
    *  visually covers the ☰ menu pill (where Leave normally lives), so
    *  exposing it here is the only discoverable exit between hands. */
   onLeave: () => void;
+  /** `paper` (default) is the classic cream card; `glass` is the dark
+   *  translucent surface the Three.js HUD hosts it in (transparent
+   *  body, gold primary CTA, uppercase labels, rules collapsed). */
+  theme?: ResultPanelTheme;
+  /** Glass only: tighter spacing + smaller winning-hand tiles. */
+  compact?: boolean;
 }
+
+export type ResultPanelTheme = 'paper' | 'glass';
+
+const GLASS = {
+  text: 'rgba(255,255,255,0.92)',
+  text2: 'rgba(255,255,255,0.62)',
+  gold: '#d8a85a',
+  goldInk: '#2a2418',
+  border: 'rgba(255,255,255,0.12)',
+  borderGold: 'rgba(216,168,90,0.55)',
+  surface: 'rgba(255,255,255,0.06)',
+} as const;
 
 /**
  * End-of-hand result.
  * Wins show a one-line summary + a "View breakdown" button that opens
  * `ScoringBreakdownModal` with the per-pattern faan list.
  */
-export function ResultPanel({ onAction, mySeat, isHost, onLeave }: ResultPanelProps) {
+export function ResultPanel({
+  onAction,
+  mySeat,
+  isHost,
+  onLeave,
+  theme = 'paper',
+  compact = false,
+}: ResultPanelProps) {
   const state = useGame((s) => s.state);
+  const lobby = useGame((s) => s.lobby);
   const [breakdownOpen, setBreakdownOpen] = useState(false);
   if (!state || !state.lastResult) return null;
   const r = state.lastResult;
   const dealerForNext = nextDealer(state);
+  const glass = theme === 'glass';
+  const startNext = () => onAction({ t: 'startHand', seed: randomSeed(), dealer: dealerForNext });
+
+  if (glass) {
+    const winnerName =
+      r.kind === 'win' ? (r.winner === mySeat ? 'You' : nameForSeat(lobby, r.winner)) : '';
+    const fromName =
+      r.kind === 'win' && !r.selfDraw
+        ? r.from === mySeat
+          ? 'you'
+          : nameForSeat(lobby, r.from)
+        : null;
+    return (
+      <View style={{ padding: compact ? 10 : 14, gap: compact ? 10 : 12 }}>
+        <SaveReplayButton theme="glass" />
+        {r.kind === 'win' ? (
+          <View style={{ gap: 6 }}>
+            <Text
+              style={{
+                fontSize: 11,
+                fontWeight: '800',
+                letterSpacing: 2,
+                textTransform: 'uppercase',
+                color: GLASS.gold,
+              }}
+            >
+              {r.faan} faan · {r.selfDraw ? 'self-draw 自摸' : `ron from ${fromName}`}
+            </Text>
+            <Text
+              style={{
+                fontSize: compact ? 24 : 28,
+                fontWeight: '800',
+                letterSpacing: -0.5,
+                color: GLASS.text,
+                paddingRight: 72,
+              }}
+            >
+              {winnerName === 'You' ? 'You win!' : `${winnerName} wins!`}
+            </Text>
+            <WinningHand winner={r.winner} winningTile={r.tile} glass compact={compact} />
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 2 }}>
+              <GlassChip onPress={() => setBreakdownOpen(true)} label="View breakdown" />
+            </View>
+          </View>
+        ) : (
+          <View style={{ gap: 6 }}>
+            <Text
+              style={{
+                fontSize: 11,
+                fontWeight: '800',
+                letterSpacing: 2,
+                textTransform: 'uppercase',
+                color: GLASS.text2,
+              }}
+            >
+              Wall empty
+            </Text>
+            <Text
+              style={{
+                fontSize: compact ? 24 : 28,
+                fontWeight: '800',
+                letterSpacing: -0.5,
+                color: GLASS.text,
+              }}
+            >
+              Drawn game
+            </Text>
+          </View>
+        )}
+
+        <RulePanel
+          rules={state.rules}
+          isHost={isHost}
+          onAction={onAction}
+          theme="glass"
+          collapsible
+        />
+
+        <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <GlassCta disabled={!isHost} onPress={startNext} label="Start next hand" />
+          <GlassChip onPress={onLeave} label="Leave match" />
+          <Text
+            style={{
+              fontSize: 11,
+              fontWeight: '800',
+              letterSpacing: 1.5,
+              textTransform: 'uppercase',
+              color: GLASS.text2,
+              marginLeft: 'auto',
+            }}
+          >
+            Next dealer · {dealerForNext === mySeat ? 'you' : nameForSeat(lobby, dealerForNext)}
+          </Text>
+        </View>
+
+        {r.kind === 'win' ? (
+          <ScoringBreakdownModal
+            open={breakdownOpen}
+            onClose={() => setBreakdownOpen(false)}
+            result={r}
+            faanMin={state.rules.faanMin}
+          />
+        ) : null}
+      </View>
+    );
+  }
 
   return (
     <View
@@ -70,10 +202,7 @@ export function ResultPanel({ onAction, mySeat, isHost, onLeave }: ResultPanelPr
       <RulePanel rules={state.rules} isHost={isHost} onAction={onAction} />
 
       <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <PrimaryButton
-          disabled={!isHost}
-          onPress={() => onAction({ t: 'startHand', seed: randomSeed(), dealer: dealerForNext })}
-        >
+        <PrimaryButton disabled={!isHost} onPress={startNext}>
           Start next hand
         </PrimaryButton>
         <GhostButton onPress={onLeave}>Leave match</GhostButton>
@@ -104,11 +233,23 @@ export function ResultPanel({ onAction, mySeat, isHost, onLeave }: ResultPanelPr
  * winning tile) so the source of truth is the engine's resolved
  * state rather than re-deriving from `lastResult`.
  */
-function WinningHand({ winner, winningTile }: { winner: Seat; winningTile: MTile }) {
+function WinningHand({
+  winner,
+  winningTile,
+  glass = false,
+  compact = false,
+}: {
+  winner: Seat;
+  winningTile: MTile;
+  glass?: boolean;
+  compact?: boolean;
+}) {
   const state = useGame((s) => s.state);
   if (!state) return null;
   const concealed = sortHand(state.hands[winner]);
   const melds = state.melds[winner];
+  const tw = glass && compact ? 24 : 26;
+  const th = glass && compact ? 33 : 36;
   return (
     <View
       // `testID` so the scoring-intro / yaku-gallery regression
@@ -131,16 +272,17 @@ function WinningHand({ winner, winningTile }: { winner: Seat; winningTile: MTile
                 style={{
                   padding: 2,
                   borderRadius: 4,
-                  backgroundColor: '#fff5d6',
-                  borderColor: '#d4a73a',
+                  backgroundColor: glass ? 'rgba(216,168,90,0.22)' : '#fff5d6',
+                  borderColor: glass ? GLASS.gold : '#d4a73a',
                   borderWidth: 1,
+                  boxShadow: glass ? '0 0 12px rgba(216,168,90,0.55)' : undefined,
                 }}
               >
-                <Tile tile={t} width={26} height={36} />
+                <Tile tile={t} width={tw} height={th} />
               </View>
             );
           }
-          return <Tile key={tileId(t)} tile={t} width={26} height={36} />;
+          return <Tile key={tileId(t)} tile={t} width={tw} height={th} />;
         })}
       </View>
     </View>
@@ -163,7 +305,8 @@ function WinningHand({ winner, winningTile }: { winner: Seat; winningTile: MTile
  *     implies the save is opt-in when it's actually automatic — users
  *     opt out via Settings → Auto-record to regain manual control.
  */
-function SaveReplayButton() {
+function SaveReplayButton({ theme = 'paper' }: { theme?: ResultPanelTheme }) {
+  const glass = theme === 'glass';
   const draftActive = useRecorder((s) => s.draft !== null);
   const savedThisMatch = useRecorder((s) => s.savedThisMatch);
   const saveExplicit = useRecorder((s) => s.saveExplicit);
@@ -191,8 +334,14 @@ function SaveReplayButton() {
         paddingHorizontal: 10,
         paddingVertical: 6,
         borderRadius: 14,
-        backgroundColor: pressed ? COLORS.cream : 'white',
-        borderColor: COLORS.hairline,
+        backgroundColor: glass
+          ? pressed
+            ? 'rgba(216,168,90,0.22)'
+            : GLASS.surface
+          : pressed
+            ? COLORS.cream
+            : 'white',
+        borderColor: glass ? GLASS.borderGold : COLORS.hairline,
         borderWidth: 1,
         flexDirection: 'row',
         alignItems: 'center',
@@ -204,11 +353,71 @@ function SaveReplayButton() {
         style={{
           fontSize: 11,
           fontWeight: '800',
-          color: COLORS.ink2,
-          letterSpacing: 0.4,
+          color: glass ? GLASS.text : COLORS.ink2,
+          letterSpacing: glass ? 1.5 : 0.4,
         }}
       >
         {savedThisMatch ? 'SAVED' : 'SAVE'}
+      </Text>
+    </Pressable>
+  );
+}
+
+/** Gold primary CTA in the glass theme (44 px min height, ink text). */
+function GlassCta({
+  label,
+  onPress,
+  disabled = false,
+}: {
+  label: string;
+  onPress: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <Pressable
+      onPress={disabled ? undefined : onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityState={{ disabled }}
+      style={({ pressed }) => ({
+        minHeight: 44,
+        paddingHorizontal: 18,
+        borderRadius: 12,
+        justifyContent: 'center',
+        backgroundColor: disabled ? 'rgba(216,168,90,0.35)' : pressed ? '#c99a4c' : GLASS.gold,
+        borderWidth: 1,
+        borderColor: 'rgba(255,235,190,0.55)',
+        boxShadow: disabled ? undefined : '0 8px 24px rgba(216,168,90,0.28)',
+        opacity: disabled ? 0.7 : 1,
+        transform: [{ scale: pressed && !disabled ? 0.97 : 1 }],
+      })}
+    >
+      <Text style={{ color: GLASS.goldInk, fontWeight: '800', fontSize: 13, letterSpacing: 0.3 }}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+/** Glass secondary button (translucent fill, gold-tinted hairline). */
+function GlassChip({ label, onPress }: { label: string; onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      style={({ pressed }) => ({
+        minHeight: 44,
+        paddingHorizontal: 16,
+        borderRadius: 12,
+        justifyContent: 'center',
+        backgroundColor: pressed ? 'rgba(216,168,90,0.22)' : GLASS.surface,
+        borderWidth: 1,
+        borderColor: GLASS.borderGold,
+        transform: [{ scale: pressed ? 0.97 : 1 }],
+      })}
+    >
+      <Text style={{ color: GLASS.text, fontWeight: '800', fontSize: 13, letterSpacing: 0.3 }}>
+        {label}
       </Text>
     </Pressable>
   );

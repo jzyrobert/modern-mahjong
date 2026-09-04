@@ -32,6 +32,17 @@ interface ClaimPalette {
   ghostFg: string;
   track: string;
   chiFg: string;
+  /** Chi-option chips (multi-chi). */
+  chipBg: string;
+  chipBgPressed: string;
+  chipBorder: string;
+  /**
+   * Glass only: every non-pass button is a glass secondary (gold-tinted
+   * hairline) except the single *primary* option, which takes the gold
+   * fill — so the claim card reads with the same hierarchy as the rest
+   * of the glass HUD instead of the per-kind hues.
+   */
+  glassButtons: boolean;
 }
 
 const PALETTES: Record<ClaimBarTheme, ClaimPalette> = {
@@ -44,18 +55,37 @@ const PALETTES: Record<ClaimBarTheme, ClaimPalette> = {
     ghostFg: COLORS.ink3,
     track: 'rgba(0,0,0,0.06)',
     chiFg: '#2d7a52',
+    chipBg: 'rgba(88,194,128,0.1)',
+    chipBgPressed: 'rgba(88,194,128,0.2)',
+    chipBorder: 'rgba(88,194,128,0.35)',
+    glassButtons: false,
   },
   glass: {
-    panelBg: 'rgba(14,20,17,0.78)',
+    panelBg: 'rgba(14,20,17,0.8)',
     panelBorder: 'rgba(216,168,90,0.5)',
     label: 'rgba(255,255,255,0.62)',
     divider: 'rgba(255,255,255,0.14)',
-    ghostBorder: 'rgba(255,255,255,0.24)',
-    ghostFg: 'rgba(255,255,255,0.86)',
+    ghostBorder: 'rgba(255,255,255,0.2)',
+    ghostFg: 'rgba(255,255,255,0.78)',
     track: 'rgba(255,255,255,0.08)',
-    chiFg: '#8fe0b0',
+    chiFg: '#d8a85a',
+    chipBg: 'rgba(255,255,255,0.06)',
+    chipBgPressed: 'rgba(216,168,90,0.22)',
+    chipBorder: 'rgba(216,168,90,0.45)',
+    glassButtons: true,
   },
 };
+
+/** Glass-theme button surfaces (see `ClaimPalette.glassButtons`). */
+const GLASS_BTN = {
+  primary: { bg: '#d8a85a', pressed: '#c99a4c', fg: '#2a2418', border: 'rgba(255,235,190,0.55)' },
+  secondary: {
+    bg: 'rgba(255,255,255,0.06)',
+    pressed: 'rgba(216,168,90,0.22)',
+    fg: 'rgba(255,255,255,0.92)',
+    border: 'rgba(216,168,90,0.5)',
+  },
+} as const;
 
 type CallKind = 'chi' | 'peng' | 'gang' | 'hu' | 'pass';
 
@@ -69,12 +99,6 @@ const KIND = {
   gang: { glyph: '槓', en: 'Gang', bg: '#9d6dc7', pressed: '#7e54a8', fg: 'white' },
   hu: { glyph: '糊', en: 'Win', bg: '#dc9f4f', pressed: '#c88e3e', fg: '#3a2c0d' },
   pass: { glyph: '過', en: 'Pass', bg: 'transparent', pressed: COLORS.creamLow, fg: COLORS.ink3 },
-} as const;
-
-const CHI_CHIP = {
-  bg: 'rgba(88,194,128,0.1)',
-  bgPressed: 'rgba(88,194,128,0.2)',
-  border: 'rgba(88,194,128,0.35)',
 } as const;
 
 /**
@@ -161,6 +185,16 @@ export function ClaimBar({
   const showGang = legal.has('gang') && !collapseToWin;
   const showHu = legal.has('hu');
   const showPass = legal.has('pass');
+  // Glass theme: the one option that takes the gold fill.
+  const primaryKind: CallKind | null = showHu
+    ? 'hu'
+    : showGang
+      ? 'gang'
+      : showPeng
+        ? 'peng'
+        : showChi && chiOpts.length === 1
+          ? 'chi'
+          : null;
 
   const isVertical = orientation === 'landscape' || orientation === 'desktop';
   const isDesktop = orientation === 'desktop';
@@ -229,6 +263,7 @@ export function ClaimBar({
       <ClaimAction
         key="peng"
         kind="peng"
+        primary={primaryKind === 'peng'}
         meldTiles={[discard, discard, discard]}
         fullWidth={isVertical}
         sizing={actionSizing}
@@ -245,6 +280,7 @@ export function ClaimBar({
         <ClaimAction
           key="chi"
           kind="chi"
+          primary={primaryKind === 'chi'}
           meldTiles={run}
           fullWidth={isVertical}
           sizing={actionSizing}
@@ -271,6 +307,7 @@ export function ClaimBar({
       <ClaimAction
         key="gang"
         kind="gang"
+        primary={primaryKind === 'gang'}
         meldTiles={[discard, discard, discard, discard]}
         fullWidth={isVertical}
         sizing={actionSizing}
@@ -284,6 +321,7 @@ export function ClaimBar({
       <ClaimAction
         key="hu"
         kind="hu"
+        primary={primaryKind === 'hu'}
         meldTiles={null}
         faan={huFaan}
         amplified
@@ -385,6 +423,8 @@ interface ClaimActionSizing {
 
 interface ClaimActionProps {
   kind: CallKind;
+  /** Glass theme: this option takes the gold fill. */
+  primary?: boolean;
   /** Inline tile previews rendered below the button. `null` skips
    *  rendering — used for Win (no meld) and Pass (no shape). */
   meldTiles: readonly MTile[] | null;
@@ -399,6 +439,7 @@ interface ClaimActionProps {
 
 function ClaimAction({
   kind,
+  primary = false,
   meldTiles,
   faan = null,
   amplified = false,
@@ -409,7 +450,9 @@ function ClaimAction({
   onPress,
 }: ClaimActionProps) {
   const meta = KIND[kind];
-  const fg = ghost ? pal.ghostFg : meta.fg;
+  const glassKind = pal.glassButtons && !ghost ? (primary ? 'primary' : 'secondary') : null;
+  const surface = glassKind ? GLASS_BTN[glassKind] : null;
+  const fg = ghost ? pal.ghostFg : surface ? surface.fg : meta.fg;
   return (
     <View style={{ alignItems: 'center', gap: 3, width: fullWidth ? '100%' : undefined }}>
       <Pressable
@@ -425,14 +468,24 @@ function ClaimAction({
           paddingHorizontal: sizing.padH,
           borderRadius: 9,
           width: fullWidth ? '100%' : undefined,
-          backgroundColor: pressed ? meta.pressed : meta.bg,
-          borderWidth: ghost ? 1.5 : 0,
-          borderColor: ghost ? pal.ghostBorder : 'transparent',
-          boxShadow: amplified
-            ? '0px 2px 8px rgba(220,159,79,0.55)'
-            : ghost
-              ? 'none'
-              : `0px 2px 4px ${shadowFor(kind)}`,
+          backgroundColor: surface
+            ? pressed
+              ? surface.pressed
+              : surface.bg
+            : pressed
+              ? meta.pressed
+              : meta.bg,
+          borderWidth: ghost ? 1.5 : surface ? 1 : 0,
+          borderColor: ghost ? pal.ghostBorder : surface ? surface.border : 'transparent',
+          boxShadow: surface
+            ? glassKind === 'primary'
+              ? '0px 8px 24px rgba(216,168,90,0.28)'
+              : 'none'
+            : amplified
+              ? '0px 2px 8px rgba(220,159,79,0.55)'
+              : ghost
+                ? 'none'
+                : `0px 2px 4px ${shadowFor(kind)}`,
         })}
       >
         <Text
@@ -561,9 +614,9 @@ function ChiChipGroup({ discard, options, fullWidth, sizing, pal, onPick }: ChiC
               paddingVertical: 5,
               paddingHorizontal: 8,
               borderRadius: 8,
-              backgroundColor: pressed ? CHI_CHIP.bgPressed : CHI_CHIP.bg,
+              backgroundColor: pressed ? pal.chipBgPressed : pal.chipBg,
               borderWidth: 1,
-              borderColor: CHI_CHIP.border,
+              borderColor: pal.chipBorder,
               width: fullWidth ? '100%' : undefined,
             })}
           >

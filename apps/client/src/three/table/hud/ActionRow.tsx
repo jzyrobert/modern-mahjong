@@ -66,44 +66,117 @@ export function SortSegment({ mode, onChange, compact }: SortSegmentProps) {
   );
 }
 
-interface ActionRowProps {
+export interface ActionCtasProps {
   seat: Seat;
   canTsumo: boolean;
   tsumoFaan: number | null;
   concealedGangTile: MTile | null;
   promotedGangTile: MTile | null;
   readyWaits: readonly MTile[];
-  sortMode: SortMode;
-  onSortModeChange: (m: SortMode) => void;
   onAction: (a: Action) => void;
   compact: boolean;
-  /** Rendered at the left of the bottom row (the user's seat badge on portrait). */
+}
+
+export function hasActionCtas(p: ActionCtasProps): boolean {
+  return (
+    p.canTsumo ||
+    p.concealedGangTile !== null ||
+    p.promotedGangTile !== null ||
+    p.readyWaits.length > 0
+  );
+}
+
+/**
+ * Declare-win / declare-gang / promote-gang CTAs (gold primaries) plus
+ * the ready-hand badge, wrapped in the `TutorialTarget` ids lessons
+ * anchor to. Rendered inline in the action row on desktop and in the
+ * slot above the hand on phones (where the bottom row is full).
+ */
+export function ActionCtas(p: ActionCtasProps) {
+  const { seat, canTsumo, tsumoFaan, concealedGangTile, promotedGangTile, readyWaits, compact } = p;
+  if (!hasActionCtas(p)) return null;
+  const hasCta = canTsumo || concealedGangTile !== null || promotedGangTile !== null;
+  return (
+    <div
+      className="mj-hud-fade"
+      style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: compact ? 8 : 10,
+        pointerEvents: 'none',
+      }}
+    >
+      {readyWaits.length > 0 ? (
+        <TutorialTarget id="ready-hand-badge">
+          <div style={{ pointerEvents: 'auto' }}>
+            <ReadyHandBadge waits={readyWaits} />
+          </div>
+        </TutorialTarget>
+      ) : null}
+      {hasCta ? (
+        <TutorialTarget id="tsumo-button">
+          <div style={{ display: 'inline-flex', gap: 8, pointerEvents: 'auto' }}>
+            {canTsumo ? (
+              <GlassButton
+                kind="primary"
+                minHeight={compact ? 40 : 44}
+                onClick={() => p.onAction({ t: 'declareWin', seat, selfDraw: true })}
+              >
+                {tsumoFaan !== null
+                  ? `Declare win (tsumo, ${tsumoFaan} faan)`
+                  : 'Declare win (tsumo)'}
+              </GlassButton>
+            ) : null}
+            {concealedGangTile ? (
+              <GlassButton
+                kind="primary"
+                minHeight={compact ? 40 : 44}
+                onClick={() =>
+                  p.onAction({ t: 'declareGangConcealed', seat, tile: concealedGangTile })
+                }
+              >
+                Declare gang
+              </GlassButton>
+            ) : null}
+            {promotedGangTile ? (
+              <TutorialTarget id="promote-gang">
+                <GlassButton
+                  kind="primary"
+                  minHeight={compact ? 40 : 44}
+                  onClick={() =>
+                    p.onAction({ t: 'declareGangPromoted', seat, tile: promotedGangTile })
+                  }
+                >
+                  Promote gang
+                </GlassButton>
+              </TutorialTarget>
+            ) : null}
+          </div>
+        </TutorialTarget>
+      ) : null}
+    </div>
+  );
+}
+
+interface ActionRowProps extends ActionCtasProps {
+  sortMode: SortMode;
+  onSortModeChange: (m: SortMode) => void;
+  /** Rendered at the left of the bottom row (the user's seat badge on phones). */
   leading?: ReactNode;
+  /** Phones render the CTAs above the hand instead — skip them here. */
+  ctasExternal?: boolean;
   style?: CSSProperties | undefined;
 }
 
 /**
- * Bottom action row over the hand: sort picker, declare-win /
- * declare-gang / promote-gang CTAs (gold primaries), the ready-hand
- * badge. (The turn state lives in the status pill.) Everything is wrapped in the
- * `TutorialTarget` ids the lessons anchor to.
+ * Bottom action row over the hand: sort picker and (on desktop) the
+ * declare-win / gang CTAs + ready-hand badge. The turn state lives in
+ * the status pill.
  */
-export function ActionRow({
-  seat,
-  canTsumo,
-  tsumoFaan,
-  concealedGangTile,
-  promotedGangTile,
-  readyWaits,
-  sortMode,
-  onSortModeChange,
-  onAction,
-  compact,
-  leading,
-  style,
-}: ActionRowProps) {
-  const hasCta = canTsumo || concealedGangTile !== null || promotedGangTile !== null;
-  const hasTop = hasCta || readyWaits.length > 0;
+export function ActionRow(props: ActionRowProps) {
+  const { sortMode, onSortModeChange, compact, leading, ctasExternal, style } = props;
   return (
     <div
       style={{
@@ -116,67 +189,7 @@ export function ActionRow({
         ...style,
       }}
     >
-      {hasTop ? (
-        <div
-          className="mj-hud-fade"
-          style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: compact ? 8 : 10,
-          }}
-        >
-          {readyWaits.length > 0 ? (
-            <TutorialTarget id="ready-hand-badge">
-              <div style={{ pointerEvents: 'auto' }}>
-                <ReadyHandBadge waits={readyWaits} />
-              </div>
-            </TutorialTarget>
-          ) : null}
-          {hasCta ? (
-            <TutorialTarget id="tsumo-button">
-              <div style={{ display: 'inline-flex', gap: 8, pointerEvents: 'auto' }}>
-                {canTsumo ? (
-                  <GlassButton
-                    kind="primary"
-                    minHeight={compact ? 40 : 44}
-                    onClick={() => onAction({ t: 'declareWin', seat, selfDraw: true })}
-                  >
-                    {tsumoFaan !== null
-                      ? `Declare win (tsumo, ${tsumoFaan} faan)`
-                      : 'Declare win (tsumo)'}
-                  </GlassButton>
-                ) : null}
-                {concealedGangTile ? (
-                  <GlassButton
-                    kind="primary"
-                    minHeight={compact ? 40 : 44}
-                    onClick={() =>
-                      onAction({ t: 'declareGangConcealed', seat, tile: concealedGangTile })
-                    }
-                  >
-                    Declare gang
-                  </GlassButton>
-                ) : null}
-                {promotedGangTile ? (
-                  <TutorialTarget id="promote-gang">
-                    <GlassButton
-                      kind="primary"
-                      minHeight={compact ? 40 : 44}
-                      onClick={() =>
-                        onAction({ t: 'declareGangPromoted', seat, tile: promotedGangTile })
-                      }
-                    >
-                      Promote gang
-                    </GlassButton>
-                  </TutorialTarget>
-                ) : null}
-              </div>
-            </TutorialTarget>
-          ) : null}
-        </div>
-      ) : null}
+      {ctasExternal ? null : <ActionCtas {...props} />}
       <div
         style={{
           display: 'flex',

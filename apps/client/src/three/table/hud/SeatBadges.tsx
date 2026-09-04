@@ -24,6 +24,12 @@ interface SeatBadgeProps {
   model: SeatBadgeModel;
   lobby: LobbyState | null;
   compact: boolean;
+  /**
+   * Portrait seat strip: three badges share a 388 px row, so the name
+   * clamps tighter and the dealer reads from the red wind glyph plus a
+   * dot on the disc instead of the 莊 chip.
+   */
+  dense?: boolean | undefined;
   style?: CSSProperties | undefined;
 }
 
@@ -33,7 +39,7 @@ interface SeatBadgeProps {
  * gold ring. Content logic mirrors `PlayerBadge`; positions are set by
  * the shell (projected from each seat's world anchor).
  */
-export function SeatBadge({ model, lobby, compact, style }: SeatBadgeProps) {
+export function SeatBadge({ model, lobby, compact, dense = false, style }: SeatBadgeProps) {
   const { name, botLabel } = oppIdentity(lobby, model.seat);
   const displayName = model.isYou ? nameForSeat(lobby, model.seat) : name;
   const initials = computeInitials(displayName);
@@ -53,9 +59,11 @@ export function SeatBadge({ model, lobby, compact, style }: SeatBadgeProps) {
         position: 'relative',
         display: 'inline-flex',
         alignItems: 'center',
-        gap: compact ? 8 : 10,
-        padding: compact ? '5px 10px 5px 5px' : '6px 12px 6px 6px',
+        gap: dense ? 6 : compact ? 8 : 10,
+        padding: dense ? '4px 9px 4px 4px' : compact ? '5px 10px 5px 5px' : '6px 12px 6px 6px',
         borderRadius: 999,
+        minWidth: 0,
+        maxWidth: dense ? 132 : undefined,
         border: model.isActive
           ? '1px solid rgba(216,168,90,0.95)'
           : cue
@@ -83,8 +91,9 @@ export function SeatBadge({ model, lobby, compact, style }: SeatBadgeProps) {
       ) : null}
       <span
         style={{
-          width: compact ? 26 : 30,
-          height: compact ? 26 : 30,
+          position: 'relative',
+          width: dense ? 24 : compact ? 26 : 30,
+          height: dense ? 24 : compact ? 26 : 30,
           borderRadius: 999,
           background: colour,
           color: 'white',
@@ -98,6 +107,21 @@ export function SeatBadge({ model, lobby, compact, style }: SeatBadgeProps) {
         }}
       >
         {initials}
+        {dense && model.isDealer ? (
+          <span
+            aria-label="Dealer"
+            style={{
+              position: 'absolute',
+              right: -3,
+              bottom: -3,
+              width: 10,
+              height: 10,
+              borderRadius: 5,
+              background: GLASS.red,
+              border: '2px solid rgba(14,20,17,0.9)',
+            }}
+          />
+        ) : null}
       </span>
       <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.15, minWidth: 0 }}>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
@@ -106,7 +130,7 @@ export function SeatBadge({ model, lobby, compact, style }: SeatBadgeProps) {
               fontWeight: 800,
               fontSize: compact ? 11 : 12,
               color: GLASS.text,
-              maxWidth: compact ? 70 : 110,
+              maxWidth: dense ? 56 : compact ? 96 : 110,
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
@@ -143,7 +167,7 @@ export function SeatBadge({ model, lobby, compact, style }: SeatBadgeProps) {
           {sub}
         </span>
       </span>
-      {model.isDealer ? (
+      {model.isDealer && !dense ? (
         <span
           aria-label="Dealer"
           style={{

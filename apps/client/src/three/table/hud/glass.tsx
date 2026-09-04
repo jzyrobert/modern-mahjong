@@ -154,7 +154,7 @@ export const HUD_CSS = `
 .mj-glass-btn:hover:not(:disabled){transform:translateY(-1px);filter:brightness(1.05)}
 .mj-glass-btn:active:not(:disabled){transform:scale(0.97)}
 .mj-hit:focus-visible{outline:2px solid #d8a85a;outline-offset:2px}
-.mj-hud-fade{animation:mjFade 240ms ease-out}
+.mj-hud-fade{animation:mjFade 180ms ease-out}
 @keyframes mjFade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 .mj-pulse{animation:mjPulse 1.6s ease-in-out infinite}
 @keyframes mjPulse{0%,100%{opacity:.55}50%{opacity:1}}

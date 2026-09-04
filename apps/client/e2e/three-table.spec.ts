@@ -186,6 +186,45 @@ test('tapping a hand tile discards it and the wall cue draws', async ({ page }) 
   expect(errors, 'console / page errors').toEqual([]);
 });
 
+test('phone portrait holds the hand near the camera at ≥ 44 px per tile', async ({ page }) => {
+  await page.setViewportSize({ width: 412, height: 915 });
+  const errors: string[] = [];
+  await startSolo(page, errors);
+  await page.waitForTimeout(1800);
+  await expect(page.getByTestId('table-3d')).toHaveAttribute(
+    'data-viewport-class',
+    'phone-portrait',
+  );
+  // Every own-hand hit-target is at least 44 CSS px wide and the 14
+  // tiles occupy two rows (the held hand splits 7 + 7).
+  const tiles = page.getByTestId('own-hand-tile');
+  await expect(tiles).toHaveCount(14);
+  const boxes = await tiles.evaluateAll((els) =>
+    els.map((el) => {
+      const r = el.getBoundingClientRect();
+      return { left: r.left, top: r.top, width: r.width, height: r.height };
+    }),
+  );
+  for (const b of boxes) {
+    expect(b.width).toBeGreaterThanOrEqual(44);
+    expect(b.height).toBeGreaterThanOrEqual(44);
+    expect(b.left).toBeGreaterThanOrEqual(0);
+    expect(b.left + b.width).toBeLessThanOrEqual(412);
+  }
+  const rows = new Set(boxes.map((b) => Math.round(b.top / 20)));
+  expect(rows.size).toBe(2);
+  // Seat strip under the chrome carries the three opponents.
+  const strip = page.getByTestId('seat-strip');
+  await expect(strip).toBeVisible();
+  const stripBox = (await strip.boundingBox())!;
+  expect(stripBox.y).toBeLessThan(120);
+  // The hand sits below the table band: the strip and the hand never overlap.
+  expect(Math.min(...boxes.map((b) => b.top))).toBeGreaterThan(stripBox.y + stripBox.height);
+  const perf = await readPerf(page);
+  expect(perf.drawCalls).toBeLessThanOrEqual(BUDGET.drawCalls);
+  expect(errors, 'console / page errors').toEqual([]);
+});
+
 test('debug tile sheet renders every face with no errors', async ({ page }) => {
   await page.addInitScript(() => {
     (globalThis as { __MAHJONG_DEBUG_TILE_SHEET__?: boolean }).__MAHJONG_DEBUG_TILE_SHEET__ = true;

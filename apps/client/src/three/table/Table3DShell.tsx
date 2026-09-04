@@ -17,15 +17,21 @@ import { layoutFor } from '../../ui/match/seatPlacement';
 import { TutorialTarget } from '../../ui/tutorial/TargetRegistry';
 import { type SceneContext, type SceneHandle, SceneHost } from '../core/SceneHost';
 import { type TableDebugSnapshot, TableScene } from './TableScene';
-import { type ViewportClass, cameraFor, classifyViewport, sheetCameraFor } from './cameraPresets';
-import { ActionRow } from './hud/ActionRow';
+import {
+  type ViewportClass,
+  cameraFor,
+  classifyViewport,
+  heldHandFrameFor,
+  sheetCameraFor,
+} from './cameraPresets';
+import { ActionCtas, ActionRow, hasActionCtas } from './hud/ActionRow';
 import { HitTargets, type HitTargetsHandle, type HudRects } from './hud/HitTargets';
 import { MenuButtons } from './hud/MenuButtons';
 import { ResultVeil } from './hud/ResultVeil';
 import { SeatBadge, type SeatBadgeModel } from './hud/SeatBadges';
 import { StatusPill } from './hud/StatusPill';
 import { HUD_CSS } from './hud/glass';
-import { HAND_Z, type Rel, toWorld } from './layout';
+import { HAND_Z, type HeldHandFrame, type Rel, toWorld } from './layout';
 import { type ScreenRect, padRect, rectsClose, unionRects } from './picking';
 
 /**
@@ -40,6 +46,17 @@ import { type ScreenRect, padRect, rectsClose, unionRects } from './picking';
  * classic shells take) and is projected into the scene by `sync()`;
  * motion lives in the loop, never in React state. Anything tappable in
  * 3D is mirrored by a projected DOM hit-target (`hud/HitTargets`).
+ *
+ * Three viewport classes, three compositions:
+ *   - phone portrait — the whole table fills the width under a chrome
+ *     row + seat strip; the user's hand is *held* near the camera in
+ *     two rows (`heldHandFrameFor`) so tiles stay ≥ 44 CSS px; claims
+ *     and CTAs float in the band between the near rail and the hand.
+ *   - phone landscape — low wide camera, hand across the bottom, chrome
+ *     in the top-left (the root `FullscreenPrompt` owns the top-right),
+ *     side badges in the top corners, claims above the hand.
+ *   - desktop — cinematic 3/4 view, badges projected beside each seat,
+ *     claim column at the right, CTAs inline in the action row.
  */
 export interface Table3DShellProps {
   state: GameState;
@@ -98,6 +115,15 @@ const VOID_BG =
 const EMPTY_RECTS: HudRects = { ownHand: null, wallDraw: null, river: null };
 const POSITIONS: Position[] = ['bottom', 'right', 'top', 'left'];
 const REL_OF_POSITION: Record<Position, Rel> = { bottom: 0, right: 1, top: 2, left: 3 };
+/** Height of the top chrome row (pill / menu buttons), CSS px. */
+const CHROME_H = 44;
+
+/** Held-hand frame for a viewport, or null outside phone portrait. */
+function heldFrameFor(width: number, height: number): HeldHandFrame | null {
+  return classifyViewport(width, height) === 'phone-portrait'
+    ? heldHandFrameFor(cameraFor(width, height), width, height)
+    : null;
+}
 
 export function Table3DShell(props: Table3DShellProps) {
   const felt = useGame((s) => s.settings.felt);
@@ -111,6 +137,7 @@ export function Table3DShell(props: Table3DShellProps) {
   const vpClass: ViewportClass = classifyViewport(width, height);
   const compact = vpClass !== 'desktop';
   const portrait = vpClass === 'phone-portrait';
+  const landscape = vpClass === 'phone-landscape';
   const pad = compact ? 12 : 24;
   const sortMode: SortMode = props.sortMode ?? 'suit';
   const tileSheet = globalThis.__MAHJONG_DEBUG_TILE_SHEET__ === true;
@@ -123,6 +150,7 @@ export function Table3DShell(props: Table3DShellProps) {
   const lastRects = useRef<HudRects>(EMPTY_RECTS);
   const lastRectPush = useRef(0);
   const settleFrames = useRef(0);
+  const heldRef = useRef<HeldHandFrame | null>(null);
   const [hudRects, setHudRects] = useState<HudRects>(EMPTY_RECTS);
 
   // The 3D layer animates its own draw; drop the classic overlay's
@@ -161,6 +189,7 @@ export function Table3DShell(props: Table3DShellProps) {
         hintTileId: p.hintTileId,
         needsDraw: p.needsDraw,
         shuffling: sh,
+        heldHand: heldRef.current,
       },
       performance.now(),
     );
@@ -216,41 +245,40 @@ export function Table3DShell(props: Table3DShellProps) {
         river: clampRect(river),
       };
 
-      // Seat badges follow their seat's hand row. On portrait the side
-      // rows are off-screen and the user's badge lives in the action
-      // row, so only the far seat's badge is projected there.
-      for (const pos of POSITIONS) {
-        if (compact && pos !== 'top') continue;
-        if (pos === 'top' && !portrait && compact) continue;
-        const el = badgeEls.current[pos];
-        if (!el) continue;
-        const rel = REL_OF_POSITION[pos];
-        const [ax, az] = toWorld(
-          rel,
-          pos === 'bottom' ? -8.6 : 0,
-          HAND_Z + (pos === 'bottom' ? 0 : 1.1),
-        );
-        const q = scene.projectPoint(ax, 0.9, az);
-        const bw = el.offsetWidth;
-        const bh = el.offsetHeight;
-        let left: number;
-        let top: number;
-        if (pos === 'top') {
-          left = q.x - bw / 2;
-          top = q.y - bh - 10;
-        } else if (pos === 'left') {
-          left = q.x - bw - 12;
-          top = q.y - bh / 2;
-        } else if (pos === 'right') {
-          left = q.x + 12;
-          top = q.y - bh / 2;
-        } else {
-          left = q.x - bw - 14;
-          top = q.y - bh / 2;
+      // Desktop: seat badges follow their seat's hand row. Phones pin
+      // them to the chrome instead (see `badgeFixedStyle`).
+      if (!compact) {
+        for (const pos of POSITIONS) {
+          const el = badgeEls.current[pos];
+          if (!el) continue;
+          const rel = REL_OF_POSITION[pos];
+          const [ax, az] = toWorld(
+            rel,
+            pos === 'bottom' ? -8.6 : 0,
+            HAND_Z + (pos === 'bottom' ? 0 : 1.1),
+          );
+          const q = scene.projectPoint(ax, 0.9, az);
+          const bw = el.offsetWidth;
+          const bh = el.offsetHeight;
+          let left: number;
+          let top: number;
+          if (pos === 'top') {
+            left = q.x - bw / 2;
+            top = q.y - bh - 10;
+          } else if (pos === 'left') {
+            left = q.x - bw - 12;
+            top = q.y - bh / 2;
+          } else if (pos === 'right') {
+            left = q.x + 12;
+            top = q.y - bh / 2;
+          } else {
+            left = q.x - bw - 14;
+            top = q.y - bh / 2;
+          }
+          left = Math.min(Math.max(pad, left), w - bw - pad);
+          top = Math.min(Math.max(pad + 52, top), h - bh - pad);
+          el.style.transform = `translate(${left.toFixed(1)}px, ${top.toFixed(1)}px)`;
         }
-        left = Math.min(Math.max(pad, left), w - bw - pad);
-        top = Math.min(Math.max(pad + 52, top), h - bh - pad);
-        el.style.transform = `translate(${left.toFixed(1)}px, ${top.toFixed(1)}px)`;
       }
 
       const changed =
@@ -272,7 +300,7 @@ export function Table3DShell(props: Table3DShellProps) {
         }
       }
     },
-    [portrait, compact, pad, hudRects.ownHand],
+    [compact, pad, hudRects.ownHand],
   );
   const reprojectRef = useRef(reproject);
   reprojectRef.current = reproject;
@@ -280,7 +308,6 @@ export function Table3DShell(props: Table3DShellProps) {
   const build = useCallback(
     (ctx: SceneContext): SceneHandle => {
       ctxRef.current = ctx;
-      const { props: p } = inputRef.current;
       const scene = new TableScene(ctx, {
         felt: useGame.getState().settings.felt,
         tileBack: useGame.getState().settings.tileBack,
@@ -295,22 +322,8 @@ export function Table3DShell(props: Table3DShellProps) {
       );
       ctx.rig.halfLife = ctx.reducedMotion ? 0.04 : 0.24;
       ctx.rig.parallaxStrength = 0.45;
-      if (!tileSheet) {
-        scene.sync(
-          {
-            state: p.state,
-            me: p.seat,
-            sortMode: inputRef.current.sortMode,
-            manualOrder: inputRef.current.manualOrder,
-            drawnTileId: p.drawnTileId,
-            latestDiscardId: p.latestDiscardId,
-            hintTileId: p.hintTileId,
-            needsDraw: p.needsDraw,
-            shuffling: inputRef.current.shuffling,
-          },
-          performance.now(),
-        );
-      }
+      heldRef.current = tileSheet ? null : heldFrameFor(ctx.size.width, ctx.size.height);
+      if (!tileSheet) syncScene();
       settleFrames.current = 0;
       return {
         update: (dt, now) => {
@@ -320,6 +333,13 @@ export function Table3DShell(props: Table3DShellProps) {
         },
         resize: (w, h) => {
           ctx.rig.setPreset(tileSheet ? sheetCameraFor(w, h) : cameraFor(w, h));
+          if (!tileSheet) {
+            // The held-hand frame is viewport-derived; re-lay the hand
+            // out so it slides between the table edge and the held
+            // position on rotation.
+            heldRef.current = heldFrameFor(w, h);
+            syncScene();
+          }
           settleFrames.current = 0;
           reprojectRef.current(true, performance.now());
         },
@@ -331,7 +351,7 @@ export function Table3DShell(props: Table3DShellProps) {
         },
       };
     },
-    [tileSheet],
+    [tileSheet, syncScene],
   );
 
   // Project state changes into the scene. The deps are the inputs
@@ -391,6 +411,7 @@ export function Table3DShell(props: Table3DShellProps) {
     turnCountdown: state.turn === pl.seat ? props.turnCountdown : null,
     isYou: pl.seat === seat,
   }));
+  const badgeAt = (pos: Position) => badges.find((b) => b.position === pos);
   // biome-ignore lint/correctness/useExhaustiveDependencies: the scene layout is read imperatively; sort mode / manual order / drawn tile drive its order
   const ownHand = useMemo(() => {
     const scene = sceneRef.current;
@@ -410,35 +431,62 @@ export function Table3DShell(props: Table3DShellProps) {
   }, [state, seat, sortMode, manualOrder, props.drawnTileId]);
   const nextDrawTile = state.wall.length > 0 ? state.wall[state.wall.length - 1]! : null;
   const canDiscard = props.myTurn && state.hasDrawn;
-  const claimOrientation = portrait ? 'portrait' : compact ? 'landscape' : 'desktop';
+
+  const ctaProps = {
+    seat,
+    canTsumo: props.canTsumo,
+    tsumoFaan: props.tsumoFaan,
+    concealedGangTile: props.concealedGangTile,
+    promotedGangTile: props.promotedGangTile,
+    readyWaits: props.readyWaits,
+    onAction: props.onAction,
+    compact,
+  };
+  const showCtas = hasActionCtas(ctaProps);
+  // Phones float claims + CTAs in the band just above the hand's
+  // projected top edge (portrait: between the near rail and the held
+  // hand; landscape: over the near felt).
+  const handTop = hudRects.ownHand?.top ?? null;
+  const aboveHandBottom =
+    handTop !== null ? Math.max(pad + insets.bottom + 60, height - handTop + 10) : height * 0.32;
+
+  const chromeTop = pad + insets.top;
+  const stripTop = chromeTop + CHROME_H + 8;
+  // Toasts: portrait puts them in the band between the near rail and
+  // the held hand (above the claim slot) so they never cover the far
+  // seat's melds; landscape/desktop use the top centre under the chrome.
+  const toastTop = portrait
+    ? Math.max(stripTop + 48, height - aboveHandBottom - 150)
+    : landscape
+      ? chromeTop + 52
+      : 160;
 
   const badgeFixedStyle = (pos: Position): React.CSSProperties => {
-    const projected: React.CSSProperties = {
-      position: 'absolute',
-      left: 0,
-      top: 0,
-      willChange: 'transform',
-    };
-    if (!compact || (pos === 'top' && portrait)) return projected;
+    if (!compact) return { position: 'absolute', left: 0, top: 0, willChange: 'transform' };
     // Landscape: the far row hugs the top edge, so its badge pins to
-    // the top centre; on both phone classes the side hands sit
-    // off-screen and their badges pin to the table's mid-height.
+    // the top centre; the side hands sit off-screen and their badges
+    // tuck into the top corners under the chrome (the right one clears
+    // the root fullscreen prompt).
     if (pos === 'top') {
-      return {
-        position: 'absolute',
-        left: '50%',
-        top: pad + insets.top,
-        transform: 'translateX(-50%)',
-      };
+      return { position: 'absolute', left: '50%', top: chromeTop, transform: 'translateX(-50%)' };
     }
-    // Landscape tucks them into the top corners under the chrome so the
-    // claim column and toasts have the flanks to themselves.
-    const sideTop = portrait ? '46%' : pad + insets.top + 58;
-    if (pos === 'left') return { position: 'absolute', left: pad + insets.left, top: sideTop };
-    return { position: 'absolute', right: pad + insets.right, top: sideTop };
+    if (pos === 'left')
+      return { position: 'absolute', left: pad + insets.left, top: chromeTop + 58 };
+    return { position: 'absolute', right: pad + insets.right, top: chromeTop + 76 };
   };
   const resolved = state.lastResult !== null && state.lastResult !== undefined;
-  const youBadge = badges.find((b) => b.position === 'bottom');
+  const youBadge = badgeAt('bottom');
+
+  const menuButtons = (
+    <MenuButtons
+      onOpenSettings={() => props.setSettingsOpen(true)}
+      onOpenMenu={() => props.setMenuOpen(true)}
+      menuOpen={props.menuOpen}
+      matchCode={props.matchCode}
+      viewers={lobby?.viewers ?? null}
+      compact={compact}
+    />
+  );
 
   return (
     <div
@@ -479,18 +527,20 @@ export function Table3DShell(props: Table3DShellProps) {
             rects={hudRects}
           />
 
-          {/* Top chrome. */}
+          {/* Top chrome. Landscape keeps everything in the left cluster
+              because the root FullscreenPrompt owns the top-right. */}
           <div
             style={{
               position: 'absolute',
               left: pad + insets.left,
               right: pad + insets.right,
-              top: pad + insets.top,
+              top: chromeTop,
               display: 'flex',
               alignItems: 'flex-start',
-              justifyContent: 'space-between',
+              justifyContent: landscape ? 'flex-start' : 'space-between',
               gap: 8,
               pointerEvents: 'none',
+              zIndex: 5,
             }}
           >
             <StatusPill
@@ -503,34 +553,86 @@ export function Table3DShell(props: Table3DShellProps) {
               onPress={() => props.setPlayersOpen(true)}
               compact={compact}
             />
-            <MenuButtons
-              onOpenSettings={() => props.setSettingsOpen(true)}
-              onOpenMenu={() => props.setMenuOpen(true)}
-              menuOpen={props.menuOpen}
-              matchCode={props.matchCode}
-              viewers={lobby?.viewers ?? null}
-              compact={compact}
-            />
+            {menuButtons}
           </div>
 
-          {/* Seat badges (the user's rides in the action row on phones). */}
-          {resolved
-            ? null
-            : badges
-                .filter((b) => !(compact && b.position === 'bottom'))
-                .map((b) => (
-                  <div
-                    key={b.seat}
-                    ref={(el) => {
-                      badgeEls.current[b.position] = el;
-                    }}
-                    style={{ ...badgeFixedStyle(b.position), pointerEvents: 'none', zIndex: 2 }}
-                  >
-                    <SeatBadge model={b} lobby={lobby} compact={compact} />
-                  </div>
-                ))}
+          {/* Seat badges. Portrait: a strip under the chrome (left seat,
+              far seat, right seat); the user's badge rides in the action
+              row. Landscape: pinned corners. Desktop: projected. */}
+          {resolved ? null : portrait ? (
+            <div
+              data-testid="seat-strip"
+              style={{
+                position: 'absolute',
+                left: pad + insets.left,
+                right: pad + insets.right,
+                top: stripTop,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 6,
+                pointerEvents: 'none',
+                zIndex: 2,
+              }}
+            >
+              {(['left', 'top', 'right'] as Position[]).map((pos) => {
+                const b = badgeAt(pos);
+                return b ? (
+                  <SeatBadge key={b.seat} model={b} lobby={lobby} compact dense />
+                ) : (
+                  <span key={pos} />
+                );
+              })}
+            </div>
+          ) : (
+            badges
+              .filter((b) => !(compact && b.position === 'bottom'))
+              .map((b) => (
+                <div
+                  key={b.seat}
+                  ref={(el) => {
+                    badgeEls.current[b.position] = el;
+                  }}
+                  style={{ ...badgeFixedStyle(b.position), pointerEvents: 'none', zIndex: 2 }}
+                >
+                  <SeatBadge model={b} lobby={lobby} compact={compact} />
+                </div>
+              ))
+          )}
 
-          {/* Bottom action row over the hand. */}
+          {/* Phones: claims + CTAs float just above the hand. */}
+          {compact && (props.hasClaimOption || showCtas) ? (
+            <div
+              style={{
+                position: 'absolute',
+                left: pad + insets.left,
+                right: pad + insets.right,
+                bottom: aboveHandBottom,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 8,
+                pointerEvents: 'none',
+                zIndex: 4,
+              }}
+            >
+              {showCtas ? <ActionCtas {...ctaProps} /> : null}
+              {props.hasClaimOption ? (
+                <TutorialTarget id="claim-bar" style={{ maxWidth: '100%' }}>
+                  <div className="mj-hud-fade" style={{ pointerEvents: 'auto', maxWidth: '100%' }}>
+                    <ClaimBar
+                      onAction={props.onAction}
+                      seat={seat}
+                      orientation="portrait"
+                      theme="glass"
+                    />
+                  </div>
+                </TutorialTarget>
+              ) : null}
+            </div>
+          ) : null}
+
+          {/* Bottom action row. */}
           <div
             style={{
               position: 'absolute',
@@ -545,29 +647,11 @@ export function Table3DShell(props: Table3DShellProps) {
               zIndex: 3,
             }}
           >
-            {props.hasClaimOption && portrait ? (
-              <TutorialTarget id="claim-bar" style={{ alignSelf: 'center', maxWidth: '100%' }}>
-                <div className="mj-hud-fade" style={{ pointerEvents: 'auto', maxWidth: '100%' }}>
-                  <ClaimBar
-                    onAction={props.onAction}
-                    seat={seat}
-                    orientation="portrait"
-                    theme="glass"
-                  />
-                </div>
-              </TutorialTarget>
-            ) : null}
             <ActionRow
-              seat={seat}
-              canTsumo={props.canTsumo}
-              tsumoFaan={props.tsumoFaan}
-              concealedGangTile={props.concealedGangTile}
-              promotedGangTile={props.promotedGangTile}
-              readyWaits={props.readyWaits}
+              {...ctaProps}
               sortMode={sortMode}
               onSortModeChange={props.onSortModeChange ?? (() => {})}
-              onAction={props.onAction}
-              compact={compact}
+              ctasExternal={compact}
               leading={
                 compact && youBadge ? (
                   <SeatBadge model={youBadge} lobby={lobby} compact={compact} />
@@ -576,18 +660,18 @@ export function Table3DShell(props: Table3DShellProps) {
             />
           </div>
 
-          {/* Claim column on wide viewports — bottom-aligned on desktop so
-              it sits beside the hand, clear of the right seat's badge. */}
-          {props.hasClaimOption && !portrait ? (
+          {/* Desktop claim column — bottom-aligned beside the hand, clear
+              of the right seat's badge. */}
+          {props.hasClaimOption && !compact ? (
             <div
               style={{
                 position: 'absolute',
                 right: pad + insets.right,
-                top: pad + insets.top + (compact ? 112 : 60),
-                bottom: pad + insets.bottom + (compact ? 8 : 70),
-                width: compact ? 200 : 260,
+                top: pad + insets.top + 60,
+                bottom: pad + insets.bottom + 70,
+                width: 260,
                 display: 'flex',
-                alignItems: compact ? 'center' : 'flex-end',
+                alignItems: 'flex-end',
                 justifyContent: 'flex-end',
                 pointerEvents: 'none',
                 zIndex: 4,
@@ -606,7 +690,7 @@ export function Table3DShell(props: Table3DShellProps) {
                   <ClaimBar
                     onAction={props.onAction}
                     seat={seat}
-                    orientation={claimOrientation}
+                    orientation="desktop"
                     theme="glass"
                   />
                 </div>
@@ -615,8 +699,8 @@ export function Table3DShell(props: Table3DShellProps) {
           ) : null}
 
           <ChatBubbles seatToPosition={seatToPosition} />
-          <ClaimMissedToast />
-          <ClaimAnnouncementToast />
+          <ClaimMissedToast theme="glass" top={toastTop} />
+          <ClaimAnnouncementToast theme="glass" top={toastTop} />
 
           {state.lastResult ? (
             <ResultVeil
@@ -624,7 +708,7 @@ export function Table3DShell(props: Table3DShellProps) {
               seat={seat}
               isHost={props.isHost}
               onLeave={props.onLeave}
-              compact={compact}
+              vpClass={vpClass}
             />
           ) : null}
 

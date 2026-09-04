@@ -217,12 +217,11 @@ export function drawPlate(ctx: CanvasRenderingContext2D, size: number, info: Pla
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(WIND_GLYPH[info.prevailingWind], r, r * 0.84);
+  // Wall count only — a caption under it would render at ~3 CSS px
+  // on a phone; the status pill carries the "N left" wording.
   ctx.fillStyle = 'rgba(216,168,90,0.95)';
-  ctx.font = `800 ${size * 0.105}px ${SANS}`;
-  ctx.fillText(`${info.wallCount}`, r, r * 1.26);
-  ctx.fillStyle = 'rgba(239,230,210,0.6)';
-  ctx.font = `700 ${size * 0.046}px ${SANS}`;
-  ctx.fillText('L E F T', r, r * 1.42);
+  ctx.font = `800 ${size * 0.12}px ${SANS}`;
+  ctx.fillText(`${info.wallCount}`, r, r * 1.3);
 }
 
 export function buildPlateTexture(size = 512): {

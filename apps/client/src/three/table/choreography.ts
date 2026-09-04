@@ -65,6 +65,7 @@ const Y_AXIS = new Vector3(0, 1, 0);
 
 /** Quaternion for a slot: world yaw · base orientation. */
 export function slotQuaternion(slot: TileSlot, out = new Quaternion()): Quaternion {
+  if (slot.quat) return out.set(slot.quat[0], slot.quat[1], slot.quat[2], slot.quat[3]);
   _qYaw.setFromAxisAngle(Y_AXIS, slot.yaw);
   switch (slot.base) {
     case 'flatUp':

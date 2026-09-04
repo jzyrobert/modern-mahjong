@@ -5,6 +5,7 @@ import {
   type SettingsPreview3DProps,
 } from './settings/SettingsPreview3D';
 import { Table3DShell as Shell, type Table3DShellProps } from './table/Table3DShell';
+import { type Lobby3DViewProps, LobbyGlass } from './table/hud/LobbyGlass';
 import { Tutorial3D as Tutorial } from './tutorial/Tutorial3D';
 
 /**
@@ -16,3 +17,4 @@ export const Table3DShell: ComponentType<Table3DShellProps> | null = Shell;
 export const Menu3DBackdrop: ComponentType<Record<string, never>> | null = MenuBackdrop;
 export const SettingsPreview3D: ComponentType<SettingsPreview3DProps> | null = SettingsPreview;
 export const Tutorial3D: ComponentType<Record<string, never>> | null = Tutorial;
+export const Lobby3DView: ComponentType<Lobby3DViewProps> | null = LobbyGlass;

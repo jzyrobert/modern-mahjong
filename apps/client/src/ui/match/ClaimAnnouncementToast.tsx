@@ -29,7 +29,38 @@ const KIND_LABEL: Record<ClaimMeldKind, { en: string; zh: string }> = {
  * re-flowing the layout (any open `ClaimBar` / `ClaimMissedToast` is
  * still in flight when this fires).
  */
-export function ClaimAnnouncementToast() {
+export type ClaimToastTheme = 'paper' | 'glass';
+
+interface ClaimAnnouncementToastProps {
+  /** `glass` is the dark translucent card the Three.js HUD uses. */
+  theme?: ClaimToastTheme;
+  /** Distance from the shell's top edge, px (default 56). */
+  top?: number;
+}
+
+const THEMES = {
+  paper: {
+    bg: COLORS.paperHi,
+    border: COLORS.gold,
+    borderWidth: 2,
+    glyph: COLORS.red,
+    label: COLORS.ink3,
+    text: COLORS.ink,
+    shadow: '0px 6px 16px rgba(0,0,0,0.28)',
+  },
+  glass: {
+    bg: 'rgba(14,20,17,0.84)',
+    border: 'rgba(255,255,255,0.14)',
+    borderWidth: 1,
+    glyph: '#e57a63',
+    label: 'rgba(255,255,255,0.62)',
+    text: 'rgba(255,255,255,0.92)',
+    shadow: '0px 12px 40px rgba(0,0,0,0.35)',
+  },
+} as const;
+
+export function ClaimAnnouncementToast({ theme = 'paper', top = 56 }: ClaimAnnouncementToastProps) {
+  const pal = THEMES[theme];
   const announcement = useGame((s) => s.claimAnnouncement);
   const lobby = useGame((s) => s.lobby);
   const youSeat = useGame((s) => s.you);
@@ -84,7 +115,7 @@ export function ClaimAnnouncementToast() {
       pointerEvents="none"
       style={{
         position: 'absolute',
-        top: 56,
+        top,
         left: 0,
         right: 0,
         alignItems: 'center',
@@ -94,16 +125,16 @@ export function ClaimAnnouncementToast() {
       <Animated.View
         style={{
           opacity,
-          backgroundColor: COLORS.paperHi,
-          borderColor: COLORS.gold,
-          borderWidth: 2,
-          borderRadius: 14,
+          backgroundColor: pal.bg,
+          borderColor: pal.border,
+          borderWidth: pal.borderWidth,
+          borderRadius: theme === 'glass' ? 16 : 14,
           paddingVertical: 10,
           paddingHorizontal: 16,
           flexDirection: 'row',
           alignItems: 'center',
           gap: 10,
-          boxShadow: '0px 6px 16px rgba(0,0,0,0.28)',
+          boxShadow: pal.shadow,
         }}
       >
         <Text
@@ -111,7 +142,7 @@ export function ClaimAnnouncementToast() {
             fontFamily: 'Noto Serif TC',
             fontSize: 22,
             fontWeight: '800',
-            color: COLORS.red,
+            color: pal.glyph,
             lineHeight: 26,
           }}
         >
@@ -122,13 +153,13 @@ export function ClaimAnnouncementToast() {
             style={{
               fontSize: 11,
               fontWeight: '900',
-              color: COLORS.ink3,
-              letterSpacing: 0.6,
+              color: pal.label,
+              letterSpacing: theme === 'glass' ? 2 : 0.6,
             }}
           >
             {label.en}
           </Text>
-          <Text style={{ fontSize: 13, fontWeight: '800', color: COLORS.ink }}>
+          <Text style={{ fontSize: 13, fontWeight: '800', color: pal.text }}>
             {seatName} called
           </Text>
         </View>
