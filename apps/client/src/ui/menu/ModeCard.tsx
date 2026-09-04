@@ -117,7 +117,8 @@ export function CardHeader({
 /**
  * Column layout for the desktop lobby — cards flow into `columns`
  * independent vertical stacks (masonry-ish) so a tall Tutorial card
- * doesn't stretch its row neighbours.
+ * doesn't stretch its row neighbours' content. Columns stretch to the
+ * tallest, so a `flex: 1` last card lets every column end on one line.
  */
 export function Columns({
   columns,
@@ -134,7 +135,7 @@ export function Columns({
 }) {
   return (
     <View style={{ maxWidth, width: '100%', alignSelf: 'center', paddingHorizontal }}>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap }}>
+      <View style={{ flexDirection: 'row', alignItems: 'stretch', gap }}>
         {columns.map((col, i) => (
           <View key={`col-${i}-${col.length}`} style={{ flex: 1, minWidth: 0, gap }}>
             {col}

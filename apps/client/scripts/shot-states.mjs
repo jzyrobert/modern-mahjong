@@ -72,6 +72,8 @@ const MENU_SETTLED = [
   { waitForFunction: MENU_INTRO_SETTLED },
   // One drift step + the canvas fade-in (400 ms) after the intro.
   { waitMs: 450 },
+];
+
 /** Scroll every scrolled container back to the top (the sheet's ScrollView). */
 const SCROLL_TO_TOP = `
 (() => {

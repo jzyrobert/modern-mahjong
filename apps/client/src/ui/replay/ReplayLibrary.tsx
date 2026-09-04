@@ -1,4 +1,5 @@
 import { SEATS, type Seat } from '@mahjong/game-logic';
+import type { Tile as MTile } from '@mahjong/game-logic';
 import { useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { Platform, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
@@ -7,6 +8,7 @@ import { deleteRecord, listHeaders } from '../../replay/storage';
 import type { ReplayHeader } from '../../replay/types';
 import { winnerOf } from '../../replay/winner';
 import { useGame } from '../../state/game';
+import { Tile } from '../Tile';
 import { type Position, SEAT_COLOR } from '../match/seatColor';
 import { GlassCard } from '../menu/GlassCard';
 import { LobbyBackdrop } from '../menu/LobbyBackdrop';
@@ -38,6 +40,8 @@ export function ReplayLibrary() {
   const [importOpen, setImportOpen] = useState(false);
   const autoRecord = useGame((s) => s.settings.autoRecordReplays);
   const setSettings = useGame((s) => s.setSettings);
+  const { width, height } = useWindowDimensions();
+  const fillEmpty = width <= HERO_PHONE_BREAKPOINT;
 
   const refresh = useCallback(() => setHeaders(listHeaders()), []);
   const onOpenReplay = (id: string) => {
@@ -46,18 +50,24 @@ export function ReplayLibrary() {
 
   const groups = useMemo(() => groupByDate(headers), [headers]);
   const summary = useMemo(() => summarise(headers), [headers]);
+  const empty = headers.length === 0;
 
   return (
     <View style={{ flex: 1, backgroundColor: MENU.void0 }}>
-      <LobbyBackdrop scene={false} />
+      {/* Empty shelf: no scattered backs (the shelf illustration is the
+          focal object) and the warm glow aims at the centred card. */}
+      <LobbyBackdrop scene={false} backs={!empty} glow={empty ? EMPTY_GLOW : undefined} />
       <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }} edges={['top', 'bottom']}>
         <ScrollView
           style={{ flex: 1 }}
           contentContainerStyle={{
-            paddingBottom: 60,
+            paddingBottom: empty ? 28 : 60,
             maxWidth: 960,
             width: '100%',
             alignSelf: 'center',
+            // Lets the empty state centre itself in whatever is left
+            // under the header + ribbon instead of leaving a void.
+            flexGrow: 1,
           }}
           showsVerticalScrollIndicator={false}
         >
@@ -73,10 +83,23 @@ export function ReplayLibrary() {
               onToggle={() => setSettings({ autoRecordReplays: !autoRecord })}
             />
           </Reveal>
-          {headers.length === 0 ? (
-            <Reveal index={1} style={{ paddingHorizontal: 20 }}>
-              <EmptyState onImport={() => setImportOpen(true)} />
-            </Reveal>
+          {empty ? (
+            <View
+              style={{
+                flex: 1,
+                justifyContent: 'center',
+                paddingHorizontal: 20,
+                // Wide: a focal card at the optical centre (a little above
+                // the geometric middle) of the space under the ribbon.
+                // Phones: the card *is* the shelf — it fills the rest of
+                // the viewport so nothing reads as leftover void.
+                paddingBottom: fillEmpty ? 0 : Math.round(height * 0.1),
+              }}
+            >
+              <Reveal index={1} style={fillEmpty ? { flex: 1 } : undefined}>
+                <EmptyState onImport={() => setImportOpen(true)} fill={fillEmpty} />
+              </Reveal>
+            </View>
           ) : (
             groups.map((g, gi) =>
               g.headers.length === 0 ? null : (
@@ -112,8 +135,11 @@ export function ReplayLibrary() {
 // ─── Hero ──────────────────────────────────────────────────────────
 
 const HERO_PHONE_BREAKPOINT = 480;
-/** Extra top padding under the root fullscreen chip (≈ 60 px tall). */
-const CHIP_CLEARANCE = 40;
+/** Width of the top-right strip the root FULLSCREEN / DISMISS chip
+ *  occupies on landscape phones (`FullscreenPrompt`, ≈ 220 px). */
+const CHIP_STRIP_W = 232;
+/** Glow centre behind the centred empty-state card. */
+const EMPTY_GLOW = { x: 0.5, y: 0.55 };
 
 function Hero({
   count,
@@ -130,10 +156,10 @@ function Hero({
   const phone = width <= HERO_PHONE_BREAKPOINT;
   // Landscape phones (web) show the root FULLSCREEN / DISMISS chip in
   // the top-right corner (`FullscreenPrompt`: landscape && height <
-  // 600). Start the header below it so the chip never sits on the
-  // Import button.
-  const chipClearance =
-    Platform.OS === 'web' && width > height && height < 600 ? CHIP_CLEARANCE : 0;
+  // 600). Leave that strip free instead of pushing the whole header
+  // down — the Import button slides left of it and the row keeps its
+  // normal top padding.
+  const chipStrip = Platform.OS === 'web' && width > height && height < 600 ? CHIP_STRIP_W : 0;
   const title = (
     <View style={{ flex: 1, minWidth: 0, gap: 6 }}>
       <Text style={[TYPE.label, { color: MENU.gold }]}>Library</Text>
@@ -183,7 +209,8 @@ function Hero({
         alignItems: 'center',
         gap: 18,
         paddingHorizontal: 20,
-        paddingTop: 24 + chipClearance,
+        paddingRight: 20 + chipStrip,
+        paddingTop: chipStrip ? 12 : 24,
         paddingBottom: 18,
       }}
     >
@@ -252,20 +279,30 @@ function AutoRecordRibbon({ enabled, onToggle }: { enabled: boolean; onToggle: (
 
 // ─── Empty state ───────────────────────────────────────────────────
 
-function EmptyState({ onImport }: { onImport: () => void }) {
+function EmptyState({ onImport, fill = false }: { onImport: () => void; fill?: boolean }) {
+  const { width, height } = useWindowDimensions();
+  // Landscape phones are wide but short — keep the compact card there.
+  const wide = width > 720 && height >= 600;
   return (
-    <GlassCard hover={false} style={{ padding: 24, alignItems: 'center', gap: 12, marginTop: 8 }}>
-      <View style={{ flexDirection: 'row', gap: 6, marginBottom: 4 }}>
-        {(['東', '南', '西'] as const).map((w, i) => (
-          <View
-            key={w}
-            style={{ opacity: 0.55 + i * 0.2, transform: [{ rotate: `${(i - 1) * 8}deg` }] }}
-          >
-            <WindEmblem wind={w} size={34} />
-          </View>
-        ))}
-      </View>
-      <Text style={{ fontSize: 16, fontWeight: '800', color: MENU.text }}>
+    <GlassCard
+      hover={false}
+      style={{
+        paddingHorizontal: wide ? 32 : 20,
+        paddingTop: wide ? 26 : 18,
+        paddingBottom: wide ? 26 : 20,
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: fill ? 14 : 12,
+        marginTop: 8,
+        // A focal object, not a full-width band, on wide viewports.
+        maxWidth: wide ? 620 : undefined,
+        width: '100%',
+        alignSelf: 'center',
+        ...(fill ? { flex: 1 } : {}),
+      }}
+    >
+      <ShelfIllustration tileWidth={wide ? 44 : fill ? 40 : 34} />
+      <Text style={{ fontSize: wide ? 18 : 16, fontWeight: '800', color: MENU.text }}>
         Nothing on the shelf yet
       </Text>
       <Text style={[TYPE.body, { textAlign: 'center', maxWidth: 420 }]}>
@@ -276,6 +313,68 @@ function EmptyState({ onImport }: { onImport: () => void }) {
         Paste a replay
       </GlassButton>
     </GlassCard>
+  );
+}
+
+// Placeholder for face-down tiles — only the back skin paints.
+const SHELF_BACK: MTile = { kind: 'suit', suit: 'man', rank: 1, copy: 0 };
+const SHELF_WINDS = ['東', '南', '西'] as const;
+
+/**
+ * The "empty shelf": a shallow arc of seven tiles resting on a soft
+ * shadow pool — dim face-down backs at the ends, the three wind
+ * emblems face-up in the middle. Pure decoration.
+ */
+function ShelfIllustration({ tileWidth }: { tileWidth: number }) {
+  const tileHeight = Math.round(tileWidth * 1.32);
+  const slots = [-3, -2, -1, 0, 1, 2, 3];
+  return (
+    <View
+      style={{
+        alignItems: 'center',
+        justifyContent: 'flex-end',
+        height: tileHeight + 26,
+        width: '100%',
+        marginBottom: 2,
+      }}
+    >
+      <View
+        style={{
+          position: 'absolute',
+          bottom: 4,
+          width: tileWidth * 6.2,
+          height: tileHeight * 0.4,
+          borderRadius: 999,
+          backgroundColor: 'rgba(0,0,0,0.34)',
+          boxShadow: '0px 6px 30px 18px rgba(0,0,0,0.34)',
+        }}
+      />
+      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 5 }}>
+        {slots.map((u) => {
+          const wind = SHELF_WINDS[u + 1];
+          const lift = u * u * 2.2;
+          if (wind) {
+            return (
+              <View key={u} style={{ marginBottom: lift, transform: [{ rotate: `${u * 5}deg` }] }}>
+                <WindEmblem wind={wind} size={tileWidth} />
+              </View>
+            );
+          }
+          const outer = Math.abs(u) === 3;
+          return (
+            <View key={u} style={{ marginBottom: lift, opacity: outer ? 0.5 : 0.72 }}>
+              <Tile
+                tile={SHELF_BACK}
+                faceDown
+                width={tileWidth}
+                height={tileHeight}
+                rotate={u * 5}
+              />
+            </View>
+          );
+        })}
+      </View>
+    </View>
   );
 }
 

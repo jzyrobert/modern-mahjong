@@ -8,25 +8,35 @@ import {
   ShadowMaterial,
   Vector3,
 } from 'three';
+import { PCFShadowMap } from 'three';
 import type { TileBackSkin } from '../../state/game';
+import {
+  type OccluderRect,
+  getOccluders,
+  occluderFactor,
+  occluderVersion,
+  subscribeOccluders,
+} from '../../ui/menu/menuOccluders';
 import type { SceneContext, SceneHandle } from '../core/SceneHost';
 import { buildLights } from '../core/lights';
 import { clamp01, easeOutCubic, lerp } from '../core/tween';
 import { TilePool } from '../tiles/TilePool';
 import { BACK_CELL } from '../tiles/faceAtlas';
+import { TILE_H } from '../tiles/geometry';
 import { createDice } from './dice';
 import {
   DRIFT_COUNT,
+  DRIFT_LIMIT,
   type DriftTile,
   HERO_COUNT,
-  HERO_ELEVATION,
-  HERO_HAND_CELLS,
   MENU_TILE_COUNT,
   type MenuLayout,
   type Slot,
   driftField,
   fanSlots,
   frameWidthAt,
+  heroCells,
+  inKeepOut,
   menuLayout,
   placeOutsideKeepOut,
   seededRandom,
@@ -72,6 +82,12 @@ declare global {
    *  `'settled'`; `undefined` when no menu scene is mounted. */
   // eslint-disable-next-line no-var
   var __MAHJONG_MENU_INTRO__: 'running' | 'settled' | undefined;
+  /** Drift-field diagnostics for the verifier / specs: how many DOM
+   *  occluders the scene sees and each visible tile's fade factor. */
+  // eslint-disable-next-line no-var
+  var __MAHJONG_MENU_DEBUG__:
+    | { occluders: number; reseeded: boolean; visible: number; fades: number[] }
+    | undefined;
 }
 
 interface Tween {
@@ -96,6 +112,9 @@ interface DriftState extends DriftTile {
 const _obj = new Object3D();
 const _euler = new Euler();
 const _q = new Quaternion();
+const _vWorld = new Vector3();
+const _vCam = new Vector3();
+const _vNdc = new Vector3();
 
 function tweenProgress(t: Tween, now: number): number {
   if (t.duration <= 0) return 1;
@@ -109,6 +128,10 @@ function slotQuat(s: Slot, out: Quaternion): Quaternion {
 export function buildMenuScene(ctx: SceneContext, opts: MenuSceneOptions): SceneHandle {
   const { scene, renderer, rig, quality, loop, reducedMotion } = ctx;
   const snap = reducedMotion;
+  // three ≥ 0.18x retired PCFSoftShadowMap (SceneHost's default) and
+  // logs a deprecation warning on the first shadow pass; pick the
+  // supported filter up front so the console stays clean.
+  renderer.shadowMap.type = PCFShadowMap;
 
   let layout: MenuLayout = menuLayout(ctx.size.width / Math.max(1, ctx.size.height));
   rig.snap(layout.camera);
@@ -172,7 +195,7 @@ export function buildMenuScene(ctx: SceneContext, opts: MenuSceneOptions): Scene
     });
     const p = pool.pose(i);
     p.visible = true;
-    p.faceCell = HERO_HAND_CELLS[i] ?? 0;
+    p.faceCell = heroCells(layout.fan.rows)[i] ?? 0;
     p.tint.setScalar(1);
   }
 
@@ -193,6 +216,164 @@ export function buildMenuScene(ctx: SceneContext, opts: MenuSceneOptions): Scene
     const shade = lerp(0.92, 0.5, d.depth);
     p.tint.setScalar(shade);
   });
+
+  // ── DOM occluders (cards, footer, title) ───────────────────────────
+  // Lobby surfaces register their window rects (`useMenuOccluder`); a
+  // drift tile shrinks to nothing while it straddles a glass edge or
+  // crosses solid copy (`occluderFactor`). Rects change on scroll /
+  // resize, so a change wakes the loop for one pass.
+  let occluders: OccluderRect[] = getOccluders();
+  let occluderSeen = occluderVersion();
+  let reseeded = false;
+  const unsubscribeOccluders = subscribeOccluders(() => loop.requestRender());
+
+  /** Root-owned chrome the DOM never registers: the FULLSCREEN /
+   *  DISMISS chip in the top-right corner of landscape phones. */
+  const chromeOccluders = (): OccluderRect[] =>
+    layout.cls === 'landscape-phone'
+      ? [{ x: ctx.size.width - 236, y: 0, w: 236, h: 104, kind: 'solid' }]
+      : [];
+  const refreshOccluders = () => {
+    occluderSeen = occluderVersion();
+    occluders = [...getOccluders(), ...chromeOccluders()];
+  };
+  refreshOccluders();
+
+  /** World position of a drift tile at normalised (ux, uy) — the same
+   *  mapping `writeDrift` uses (field plane `depth` behind the hero,
+   *  centred on the tilted optical axis, spanning the off-centre
+   *  frustum). `parX` / `parY` are the pointer-parallax offsets. */
+  const driftWorldPos = (
+    d: { depth: number },
+    ux: number,
+    uy: number,
+    parX: number,
+    parY: number,
+    out: Vector3,
+  ): Vector3 => {
+    const cam = layout.camera;
+    const cosE = Math.cos(layout.elevation);
+    const tanE = Math.tan(layout.elevation);
+    const depth = layout.drift.near + d.depth * (layout.drift.far - layout.drift.near);
+    const dist = layout.distance + depth / cosE;
+    const halfW = (frameWidthAt(dist, cam.fov, layout.aspect) / 2) * 1.08;
+    const halfH = halfW / layout.aspect / cosE;
+    const yc = cam.target[1] - depth * tanE;
+    const vc = layout.viewCenter;
+    return out.set(
+      (ux + 1 - 2 * vc.x) * halfW + parX,
+      yc + (2 * vc.y - 1 - uy) * halfH + parY,
+      -depth,
+    );
+  };
+
+  /** Exact screen position (CSS px) + projected radius of a world point
+   *  through the live camera (view offset included). */
+  const projectPoint = (world: Vector3, out: { x: number; y: number; r: number }) => {
+    const camera = rig.camera;
+    _vCam.copy(world).applyMatrix4(camera.matrixWorldInverse);
+    const depth = Math.max(0.01, -_vCam.z);
+    _vNdc.copy(world).project(camera);
+    out.x = ((_vNdc.x + 1) / 2) * ctx.size.width;
+    out.y = ((1 - _vNdc.y) / 2) * ctx.size.height;
+    const pxPerUnit = ctx.size.height / (2 * depth * Math.tan((camera.fov * Math.PI) / 360));
+    out.r = TILE_H * 0.72 * pxPerUnit;
+  };
+
+  /**
+   * Bias the seed field toward the open void: once the DOM rects are
+   * known, every tile that would start faded (behind an edge or inside
+   * copy) tries a handful of deterministic alternatives and keeps the
+   * most visible one. About half of the visible tiles are steered to
+   * spots clear of *every* rect (glass included) so the backdrop
+   * around the hero reads populated, the rest may sit deep behind a
+   * card where the blur reads as depth. With reduced motion the field
+   * never moves, so this decides how full the backdrop looks; in
+   * motion mode it just makes the first settled frame read better.
+   */
+  const reseedForOccluders = () => {
+    if (reseeded || occluders.length === 0) return;
+    reseeded = true;
+    const rnd = seededRandom(97);
+    const proj = { x: 0, y: 0, r: 0 };
+    // The rack's own screen footprint: a seed behind it is hidden by
+    // the hero tiles themselves, so the seeding avoids it too.
+    let rx0 = Number.POSITIVE_INFINITY;
+    let ry0 = Number.POSITIVE_INFINITY;
+    let rx1 = Number.NEGATIVE_INFINITY;
+    let ry1 = Number.NEGATIVE_INFINITY;
+    for (const h of hero) {
+      projectPoint(h.toPos, proj);
+      const pad = proj.r * 1.1;
+      rx0 = Math.min(rx0, proj.x - pad);
+      ry0 = Math.min(ry0, proj.y - pad);
+      rx1 = Math.max(rx1, proj.x + pad);
+      ry1 = Math.max(ry1, proj.y + pad);
+    }
+    const rack: OccluderRect = { x: rx0, y: ry0, w: rx1 - rx0, h: ry1 - ry0, kind: 'solid' };
+    const solid: OccluderRect[] = [
+      ...occluders.map((r) => ({ ...r, kind: 'solid' as const })),
+      rack,
+    ];
+    const any: OccluderRect[] = [...occluders, rack];
+    const factorAt = (d: DriftState, ux: number, uy: number, rects: OccluderRect[]) => {
+      if (inKeepOut(ux, uy, layout.keepOut)) return 0;
+      projectPoint(driftWorldPos(d, ux, uy, 0, 0, _vWorld), proj);
+      return occluderFactor(proj.x, proj.y, proj.r, rects);
+    };
+    let openLeft = Math.ceil(layout.driftVisible / 2);
+    // Nearest (largest, brightest) tiles pick first so the open void
+    // gets the ones that actually read; far tiles can sit behind glass.
+    const order = drift
+      .map((d, j) => ({ d, j }))
+      .filter((x) => x.j < layout.driftVisible)
+      .sort((a, b) => a.d.depth - b.d.depth)
+      .map((x) => x.d)
+      .concat(drift.slice(layout.driftVisible));
+    for (const d of order) {
+      const curOpen = factorAt(d, d.ux, d.uy, solid);
+      if (curOpen >= 0.9) {
+        openLeft--;
+        continue;
+      }
+      let bestAny = factorAt(d, d.ux, d.uy, any);
+      let bestOpen = curOpen;
+      let anyX = d.ux;
+      let anyY = d.uy;
+      let openX = d.ux;
+      let openY = d.uy;
+      // Portrait has very little open void, so try plenty of spots —
+      // this runs once per mount (26 tiles × 40 probes × a few rects).
+      for (let k = 0; k < 40; k++) {
+        const ux = rnd() * 2 - 1;
+        const uy = rnd() * 2 * DRIFT_LIMIT - DRIFT_LIMIT;
+        const fOpen = factorAt(d, ux, uy, solid);
+        if (fOpen > bestOpen) {
+          bestOpen = fOpen;
+          openX = ux;
+          openY = uy;
+        }
+        if (openLeft > 0 && fOpen >= 0.9) break;
+        const fAny = factorAt(d, ux, uy, any);
+        if (fAny > bestAny) {
+          bestAny = fAny;
+          anyX = ux;
+          anyY = uy;
+        }
+      }
+      if (openLeft > 0 && bestOpen >= 0.9) {
+        openLeft--;
+        d.ux = openX;
+        d.uy = openY;
+      } else if (bestOpen >= 0.9 && bestOpen >= bestAny) {
+        d.ux = openX;
+        d.uy = openY;
+      } else {
+        d.ux = anyX;
+        d.uy = anyY;
+      }
+    }
+  };
 
   // ── Dice ───────────────────────────────────────────────────────────
   const dice = createDice(2);
@@ -241,11 +422,16 @@ export function buildMenuScene(ctx: SceneContext, opts: MenuSceneOptions): Scene
     return live;
   };
 
+  const _proj = { x: 0, y: 0, r: 0 };
+  const debugFades: number[] = [];
   const writeDrift = (now: number, dt: number): boolean => {
     let live = false;
-    const cam = layout.camera;
-    const cosE = Math.cos(HERO_ELEVATION);
-    const tanE = Math.tan(HERO_ELEVATION);
+    if (!reseeded || occluderVersion() !== occluderSeen) {
+      refreshOccluders();
+      // Projection needs the camera's matrices for this frame.
+      rig.camera.updateMatrixWorld();
+      reseedForOccluders();
+    }
     for (let j = 0; j < drift.length; j++) {
       const d = drift[j]!;
       if (dt > 0) {
@@ -254,35 +440,37 @@ export function buildMenuScene(ctx: SceneContext, opts: MenuSceneOptions): Scene
         d.ax += d.wx * dt;
         d.ay += d.wy * dt;
       }
-      const depth = layout.drift.near + d.depth * (layout.drift.far - layout.drift.near);
       // The field is a vertical plane `depth` behind the hero. The
-      // camera looks down by HERO_ELEVATION, so its optical axis meets
-      // that plane `depth · tan(e)` below the target and the frustum's
-      // vertical extent on the plane stretches by 1 / cos(e). Centring
-      // the field on that point keeps screen position ≈ (ux, uy) at
-      // every depth — far tiles don't bunch toward the top, and the
-      // title keep-out (`layout.keepOut`) means what it says.
-      const dist = layout.distance + depth / cosE;
-      const halfW = (frameWidthAt(dist, cam.fov, layout.aspect) / 2) * 1.08;
-      const halfH = halfW / layout.aspect / cosE;
-      const yc = cam.target[1] - depth * tanE;
+      // camera looks down by `layout.elevation`, so its optical axis
+      // meets that plane below the target and the frustum's vertical
+      // extent on the plane stretches by 1 / cos(e). Centring the field
+      // on that point keeps screen position ≈ (ux, uy) at every depth —
+      // far tiles don't bunch toward the top, and the title keep-out
+      // (`layout.keepOut`) means what it says. Mapping the normalised
+      // field onto the (off-centre) frustum covers the whole viewport,
+      // not just the region around the hero.
       const par = parallaxOn ? 0.35 + d.depth * 1.1 : 0;
       const e = tweenProgress(d.scaleTween, now);
       if (e < 1) live = true;
       const p = pool.pose(HERO_COUNT + j);
       p.visible = j < layout.driftVisible;
-      // Map the normalised field onto the (off-centre) frustum so the
-      // tiles cover the whole viewport, not just the region around
-      // the hero.
-      const vc = layout.viewCenter;
-      p.position.set(
-        (d.ux + 1 - 2 * vc.x) * halfW + pointerSmooth.x * par,
-        yc + (2 * vc.y - 1 - d.uy) * halfH + pointerSmooth.y * par * 0.5,
-        -depth,
-      );
+      driftWorldPos(d, d.ux, d.uy, pointerSmooth.x * par, pointerSmooth.y * par * 0.5, p.position);
       p.quaternion.setFromEuler(_euler.set(d.ax, d.ay, d.rz, 'XYZ'));
-      p.scale = 0.001 + 0.999 * e;
+      // Shrink to nothing while straddling a glass edge / crossing copy.
+      let fade = 1;
+      if (occluders.length > 0) {
+        projectPoint(p.position, _proj);
+        fade = occluderFactor(_proj.x, _proj.y, _proj.r, occluders);
+      }
+      p.scale = 0.001 + 0.999 * e * fade;
+      debugFades[j] = fade;
     }
+    globalThis.__MAHJONG_MENU_DEBUG__ = {
+      occluders: occluders.length,
+      reseeded,
+      visible: layout.driftVisible,
+      fades: debugFades.slice(0, layout.driftVisible),
+    };
     return live;
   };
 
@@ -325,6 +513,7 @@ export function buildMenuScene(ctx: SceneContext, opts: MenuSceneOptions): Scene
   const applyLayout = (width: number, height: number, now: number) => {
     const aspect = width / Math.max(1, height);
     layout = menuLayout(aspect);
+    refreshOccluders();
     rig.setPreset(layout.camera);
     (scene.fog as FogExp2).density = layout.fogDensity;
     applyViewOffset(width, height);
@@ -334,10 +523,12 @@ export function buildMenuScene(ctx: SceneContext, opts: MenuSceneOptions): Scene
       d.uy = moved.uy;
     }
     const next = fanSlots(HERO_COUNT, layout.fan);
+    const cells = heroCells(layout.fan.rows);
     for (let i = 0; i < HERO_COUNT; i++) {
       const h = hero[i]!;
       const s = next[i]!;
       const p = pool.pose(i);
+      p.faceCell = cells[i] ?? 0;
       h.fromPos.copy(p.position);
       h.fromQuat.copy(p.quaternion);
       h.toPos.set(s.x, s.y, s.z);
@@ -377,7 +568,10 @@ export function buildMenuScene(ctx: SceneContext, opts: MenuSceneOptions): Scene
       }
 
       // Drift field: full rate during intro / pointer motion, else a
-      // throttled cadence so the loop idles between steps.
+      // throttled cadence so the loop idles between steps. The occluder
+      // fade projects through the camera, whose matrices the rig has
+      // just moved — refresh them first.
+      if (occluders.length > 0) rig.camera.updateMatrixWorld();
       if (driftLive || live || pointerHot || firstFrame) {
         driftLive = writeDrift(now, reducedMotion ? 0 : dt);
         driftAccum = 0;
@@ -389,6 +583,11 @@ export function buildMenuScene(ctx: SceneContext, opts: MenuSceneOptions): Scene
           driftAccum = 0;
           live = true;
         }
+      } else if (occluderVersion() !== occluderSeen) {
+        // Frozen field, but a card moved (scroll / late measurement):
+        // one pass so the fade tracks the DOM, then idle again.
+        writeDrift(now, 0);
+        live = true;
       }
 
       if (live) {
@@ -406,6 +605,8 @@ export function buildMenuScene(ctx: SceneContext, opts: MenuSceneOptions): Scene
     },
     dispose() {
       globalThis.__MAHJONG_MENU_INTRO__ = undefined;
+      globalThis.__MAHJONG_MENU_DEBUG__ = undefined;
+      unsubscribeOccluders();
       if (parallaxOn) window.removeEventListener('pointermove', onPointer);
       lights.dispose();
       pool.dispose();

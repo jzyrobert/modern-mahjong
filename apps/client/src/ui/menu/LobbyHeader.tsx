@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { Platform, Pressable, Text, TextInput, View } from 'react-native';
 import { MENU, TYPE, glass, heading } from './theme';
+import { useMenuOccluder } from './useMenuOccluder';
 
 /**
  * Lobby chrome shared by the phone + desktop layouts: the title block
@@ -22,8 +23,18 @@ const MARK_SIZE = { lg: 34, md: 24, sm: 18 } as const;
 export function TitleBlock({ size = 'lg', align = 'center', tagline = true }: TitleBlockProps) {
   const h = HEADING_SIZE[size];
   const center = align === 'center';
+  // Solid occluder: the 3D drift field fades out under the heading.
+  const occluder = useMenuOccluder('solid');
   return (
-    <View style={{ alignItems: center ? 'center' : 'flex-start', gap: size === 'lg' ? 10 : 6 }}>
+    <View
+      ref={occluder.ref}
+      onLayout={occluder.onLayout}
+      style={{
+        alignSelf: center ? 'center' : 'flex-start',
+        alignItems: center ? 'center' : 'flex-start',
+        gap: size === 'lg' ? 10 : 6,
+      }}
+    >
       <Text style={[TYPE.label, { color: MENU.gold }]}>Hong Kong Mahjong</Text>
       <View
         style={{

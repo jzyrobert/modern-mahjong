@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest';
+import { TILE_D, TILE_H } from '../tiles/geometry';
 import {
   DRIFT_COUNT,
   DRIFT_LIMIT,
@@ -10,14 +11,20 @@ import {
   driftField,
   driftKeepOut,
   driftVisible,
+  eulerXYZBasis,
   fanSlots,
   fanWidth,
   fitDistance,
   fogDensityFor,
   frameWidthAt,
+  heroCells,
+  heroElevation,
+  heroVisibility,
   inKeepOut,
   menuLayout,
   placeOutsideKeepOut,
+  rayBoxDistance,
+  restingCentre,
   seededRandom,
   wrapDriftY,
   wrapUnit,
@@ -81,6 +88,95 @@ describe('menu layout', () => {
     expect(slots[6]!.z).toBeGreaterThan(slots[0]!.z);
   });
 
+  test('restingCentre puts the tile bottom edge exactly on the plane', () => {
+    // Flat face-up: half the thickness high, centre half a tile back.
+    expect(restingCentre(0).y).toBeCloseTo(TILE_D / 2, 9);
+    expect(restingCentre(0).z).toBeCloseTo(-TILE_H / 2, 9);
+    // Upright: half the height high, centre half the thickness back.
+    expect(restingCentre(Math.PI / 2).y).toBeCloseTo(TILE_H / 2, 9);
+    expect(restingCentre(Math.PI / 2).z).toBeCloseTo(TILE_D / 2, 9);
+    // Lowest corner of a leaning tile sits at y = 0.
+    for (const lean of [0.3, 0.5, 0.8]) {
+      const c = restingCentre(lean);
+      const low = c.y - (TILE_H / 2) * Math.sin(lean) - (TILE_D / 2) * Math.cos(lean);
+      expect(low).toBeCloseTo(0, 9);
+    }
+    expect(restingCentre(0.5, -2).z).toBeCloseTo(restingCentre(0.5).z - 2, 9);
+  });
+
+  test('heroCells: two rows keep every set intact and are a permutation of the hand', () => {
+    expect(heroCells(1)).toEqual(HERO_HAND_CELLS);
+    const two = heroCells(2);
+    expect([...two].sort((a, b) => a - b)).toEqual([...HERO_HAND_CELLS].sort((a, b) => a - b));
+    // Back row 萬萬萬 筒筒筒 中, front row 索索索 東東東 中.
+    expect(two.slice(0, 7)).toEqual([0, 1, 2, 12, 13, 14, 31]);
+    expect(two.slice(7)).toEqual([24, 25, 26, 27, 27, 27, 31]);
+  });
+
+  test('eulerXYZBasis matches three.js Euler XYZ (R = Rx·Ry·Rz)', () => {
+    const [ex, ey, ez] = eulerXYZBasis(-Math.PI / 2, 0, 0);
+    // Rotating −90° about X sends +Z to +Y and +Y to −Z.
+    expect(ez[1]).toBeCloseTo(1, 9);
+    expect(ey[2]).toBeCloseTo(-1, 9);
+    expect(ex[0]).toBeCloseTo(1, 9);
+    // A yaw of 90° sends +X to −Z (right-handed about +Y).
+    const [ex2] = eulerXYZBasis(0, Math.PI / 2, 0);
+    expect(ex2[2]).toBeCloseTo(-1, 9);
+    // Orthonormal for a general rotation.
+    const [a, b, c] = eulerXYZBasis(-1.1, 0.3, 0.2);
+    const dot = (p: number[], q: number[]) => p[0]! * q[0]! + p[1]! * q[1]! + p[2]! * q[2]!;
+    expect(dot(a, b)).toBeCloseTo(0, 9);
+    expect(dot(b, c)).toBeCloseTo(0, 9);
+    expect(dot(a, a)).toBeCloseTo(1, 9);
+  });
+
+  test('rayBoxDistance hits an axis-aligned box and misses beside it', () => {
+    const axes: [[number, number, number], [number, number, number], [number, number, number]] = [
+      [1, 0, 0],
+      [0, 1, 0],
+      [0, 0, 1],
+    ];
+    const d = rayBoxDistance([0, 0, 10], [0, 0, -1], [0, 0, 0], axes, [1, 1, 1]);
+    expect(d).toBeCloseTo(9, 9);
+    expect(rayBoxDistance([5, 0, 10], [0, 0, -1], [0, 0, 0], axes, [1, 1, 1])).toBe(
+      Number.POSITIVE_INFINITY,
+    );
+    // Behind the origin → miss.
+    expect(rayBoxDistance([0, 0, 10], [0, 0, 1], [0, 0, 0], axes, [1, 1, 1])).toBe(
+      Number.POSITIVE_INFINITY,
+    );
+  });
+
+  test.each([
+    ['phone', 412 / 915],
+    ['phone-landscape', 915 / 412],
+    ['tablet', 834 / 1194],
+    ['desktop', 1440 / 900],
+  ])('every hero glyph is unoccluded and squarely lit on %s', (_n, aspect) => {
+    const l = menuLayout(aspect);
+    expect(l.elevation).toBe(heroElevation(l.cls));
+    const vis = heroVisibility(l, 0.74);
+    expect(vis).toHaveLength(HERO_COUNT);
+    for (const v of vis) {
+      // No sample of the central 74 % of any face is hidden behind
+      // another tile (the round-2 portrait rack failed this).
+      expect(v.occluded).toBe(0);
+      // Face normal · view direction ≥ 0.75 → glyphs read as glyphs,
+      // not slivers.
+      expect(v.facing).toBeGreaterThan(0.75);
+    }
+  });
+
+  test('phone classes use the two-tier rack with the steeper camera', () => {
+    for (const a of [412 / 915, 915 / 412]) {
+      const l = menuLayout(a);
+      expect(l.fan.rows).toBe(2);
+      expect(l.fan.yaw).toBe(0);
+      expect(l.elevation).toBeGreaterThan(menuLayout(1440 / 900).elevation);
+    }
+    expect(menuLayout(1440 / 900).fan.rows).toBe(1);
+  });
+
   test('two-row fan puts the back row further from the camera', () => {
     const p = { spacing: 1, lean: 0.46, yaw: 0, zStep: 0, curve: 0, rows: 2, rowGap: 1.2 };
     const slots = fanSlots(14, p);
@@ -111,13 +207,16 @@ describe('menu layout', () => {
       expect(l.fogDensity).toBeGreaterThan(0);
       expect(l.drift.far).toBeGreaterThan(l.drift.near);
       // Dice rest on the plane, inside the framed width, and never
-      // inside the rack's footprint (right of it on wide viewports,
-      // in front of its right half — closer to the camera — on phones).
+      // inside the rack's footprint: right of it on wide + portrait
+      // viewports (portrait tucks them into the row gap, whose frustum
+      // is a little wider than the hero plane's), in front of its right
+      // half — closer to the camera — on landscape phones.
       for (const die of l.dice) {
         expect(die.y).toBeGreaterThan(0);
-        expect(Math.abs(die.x) + 0.3).toBeLessThan(l.frameWidth / 2);
-        if (l.viewCenter.x === 0.5 && l.aspect > 0.85) expect(die.x).toBeGreaterThan(width / 2);
-        else expect(die.z).toBeGreaterThan(1);
+        const halfAtDie = (l.frameWidth / 2) * (1 + Math.max(0, -die.z) / l.distance);
+        expect(Math.abs(die.x) + 0.27).toBeLessThan(halfAtDie);
+        if (l.cls === 'landscape-phone') expect(die.z).toBeGreaterThan(1);
+        else expect(die.x).toBeGreaterThan(width / 2);
       }
       expect(l.keepOut).toEqual(driftKeepOut(classifyAspect(aspect)));
     },

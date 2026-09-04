@@ -34,6 +34,7 @@ import {
 import { replaySubtitleFor, summariseReplays } from './replaySubtitle';
 import { HOVER_TRANSITION, MENU, TYPE, glass } from './theme';
 import { useLanHost } from './useLanHost';
+import { useMenuOccluder } from './useMenuOccluder';
 
 /**
  * Phone-class lobby. Portrait: sticky glass app bar (identity pill +
@@ -399,8 +400,11 @@ export function MobileLobby({ isLandscape }: MobileLobbyProps) {
 // ─── App bar (portrait) ─────────────────────────────────────────────
 
 function AppBar({ name, onChangeName }: { name: string; onChangeName: (v: string) => void }) {
+  const occluder = useMenuOccluder('glass');
   return (
     <View
+      ref={occluder.ref}
+      onLayout={occluder.onLayout}
       style={{
         flexDirection: 'row',
         alignItems: 'center',
@@ -432,8 +436,11 @@ interface SecondaryRowProps {
 /** Tappable quiet-glass row (Tutorial / LAN collapsed, Replays). */
 function SecondaryRow({ icon, title, subtitle, onPress, testID }: SecondaryRowProps) {
   const [hovered, setHovered] = useState(false);
+  const occluder = useMenuOccluder('glass');
   return (
     <Pressable
+      ref={occluder.ref}
+      onLayout={occluder.onLayout}
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={title}

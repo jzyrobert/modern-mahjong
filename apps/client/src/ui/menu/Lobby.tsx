@@ -21,6 +21,7 @@ import { Reveal } from './Reveal';
 import { BotIcon, BoxIcon, GlobeIcon, PlayIcon, TutorialIcon, WifiIcon } from './icons';
 import { MENU, TYPE } from './theme';
 import { useLanHost } from './useLanHost';
+import { useMenuOccluder } from './useMenuOccluder';
 
 /**
  * Top-level menu screen (route `/`). Phone-class viewports (either
@@ -60,10 +61,12 @@ function DesktopLobby() {
   }, []);
 
   const columns = width >= 960 ? 3 : 2;
-  // Reserve the upper 40 % for the hero: the title block sits at the
+  // Reserve the upper ~38 % for the hero: the title block sits at the
   // top of this band and the fan renders in the space below it (its
-  // anchor is `heroAnchor` → y ≈ 0.33 on wide viewports).
-  const heroMinHeight = Math.max(300, Math.round(height * 0.4));
+  // anchor is `heroAnchor` → y ≈ 0.33 on wide viewports). Together
+  // with the single-line footer this keeps a 1440 × 900 lobby fold-free.
+  const heroMinHeight = Math.max(300, Math.round(height * 0.38));
+  const inlineFooter = width >= 1280;
 
   const onlineCard = (
     <ModeCard
@@ -135,6 +138,7 @@ function DesktopLobby() {
       title="Tutorial"
       subtitle={lessonProgressLabel(completedCount, LESSON_ORDER.length)}
       icon={<TutorialIcon color={MENU.text} />}
+      style={GROW}
       testID="mode-tutorial"
     >
       <LessonProgress done={completedCount} total={LESSON_ORDER.length} />
@@ -148,6 +152,7 @@ function DesktopLobby() {
       title="LAN / offline"
       subtitle="Same-Wi-Fi matches"
       icon={<WifiIcon color={MENU.text} />}
+      style={columns === 3 ? GROW : undefined}
       testID="mode-lan"
     >
       <Text style={TYPE.body}>
@@ -180,6 +185,7 @@ function DesktopLobby() {
       title="Replays"
       subtitle="Watch saved matches with the scrubber"
       icon={<PlayIcon color={MENU.text} />}
+      style={GROW}
       testID="mode-replays"
     >
       <Text style={TYPE.body}>
@@ -192,11 +198,11 @@ function DesktopLobby() {
   );
 
   // Independent column stacks — a tall Tutorial card doesn't stretch
-  // its neighbours. The first card of every column shares stagger slot
-  // 0 so the Online / Practice / Tutorial titles line up during the
-  // entrance (the lobby-layout spec measures them mid-animation). The
-  // taller LAN card goes under the shorter Practice card so the three
-  // columns end within a few px of each other at 1440 × 900.
+  // its neighbours' *content*. The first card of every column shares
+  // stagger slot 0 so the Online / Practice / Tutorial titles line up
+  // during the entrance (the lobby-layout spec measures them
+  // mid-animation). The last card of every column grows (`GROW`) so
+  // the three columns share one bottom line instead of ending ragged.
   const stacks: ReactNode[][] =
     columns === 3
       ? [
@@ -204,7 +210,7 @@ function DesktopLobby() {
             <Reveal key="online" index={0}>
               {onlineCard}
             </Reveal>,
-            <Reveal key="replays" index={1}>
+            <Reveal key="replays" index={1} style={GROW}>
               {replaysCard}
             </Reveal>,
           ],
@@ -212,12 +218,12 @@ function DesktopLobby() {
             <Reveal key="practice" index={0}>
               {practiceCard}
             </Reveal>,
-            <Reveal key="lan" index={1}>
+            <Reveal key="lan" index={1} style={GROW}>
               {lanCard}
             </Reveal>,
           ],
           [
-            <Reveal key="tutorial" index={0}>
+            <Reveal key="tutorial" index={0} style={GROW}>
               {tutorialCard}
             </Reveal>,
           ],
@@ -227,7 +233,7 @@ function DesktopLobby() {
             <Reveal key="online" index={0}>
               {onlineCard}
             </Reveal>,
-            <Reveal key="tutorial" index={1}>
+            <Reveal key="tutorial" index={1} style={GROW}>
               {tutorialCard}
             </Reveal>,
           ],
@@ -238,7 +244,7 @@ function DesktopLobby() {
             <Reveal key="lan" index={1}>
               {lanCard}
             </Reveal>,
-            <Reveal key="replays" index={2}>
+            <Reveal key="replays" index={2} style={GROW}>
               {replaysCard}
             </Reveal>,
           ],
@@ -250,7 +256,7 @@ function DesktopLobby() {
       <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }} edges={['top', 'bottom']}>
         <ScrollView
           style={{ flex: 1, backgroundColor: 'transparent' }}
-          contentContainerStyle={{ paddingBottom: 40 }}
+          contentContainerStyle={{ paddingBottom: 24 }}
         >
           <View
             style={{
@@ -293,7 +299,7 @@ function DesktopLobby() {
               <LobbyPreview lobby={lobby} matchCode={null} />
             </View>
           ) : null}
-          <Footer />
+          <Footer inline={inlineFooter} />
         </ScrollView>
         <JoinLanModal
           open={joinLanOpen}
@@ -315,25 +321,43 @@ function DesktopLobby() {
   );
 }
 
-/** Credit lines under the cards — sound licence + the CC0 asset policy. */
+/** Grow-to-fill style for the last card of a desktop column. */
+const GROW = { flex: 1 } as const;
+
+const CREDIT_SOUND = 'Sound by みんなの創作支援サイトＴスタ';
+const CREDIT_ASSETS = 'Procedural tiles & felt · CC0 assets only · open source';
+
+/** Credit lines under the cards — sound licence + the CC0 asset policy.
+ *  Registers as a `solid` occluder so no drift tile crosses the copy. */
 export function Footer({
   compact = false,
   align = 'center',
-}: { compact?: boolean; align?: 'center' | 'left' | 'right' }) {
+  inline = false,
+}: { compact?: boolean; align?: 'center' | 'left' | 'right'; inline?: boolean }) {
   const items = align === 'center' ? 'center' : align === 'left' ? 'flex-start' : 'flex-end';
+  const occluder = useMenuOccluder('solid');
   return (
     <View
+      ref={occluder.ref}
+      onLayout={occluder.onLayout}
       style={{
+        alignSelf: items,
         alignItems: items,
         gap: 4,
-        marginTop: compact ? 18 : 28,
+        marginTop: compact ? 18 : 24,
         paddingHorizontal: compact ? 12 : 24,
       }}
     >
-      <Text style={[TYPE.small, { textAlign: align }]}>Sound by みんなの創作支援サイトＴスタ</Text>
-      <Text style={[TYPE.small, { textAlign: align }]}>
-        Procedural tiles &amp; felt · CC0 assets only · open source
-      </Text>
+      {inline ? (
+        <Text style={[TYPE.small, { textAlign: align }]}>
+          {CREDIT_SOUND} · {CREDIT_ASSETS}
+        </Text>
+      ) : (
+        <>
+          <Text style={[TYPE.small, { textAlign: align }]}>{CREDIT_SOUND}</Text>
+          <Text style={[TYPE.small, { textAlign: align }]}>{CREDIT_ASSETS}</Text>
+        </>
+      )}
     </View>
   );
 }

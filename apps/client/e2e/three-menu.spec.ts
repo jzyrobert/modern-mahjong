@@ -27,6 +27,9 @@ function collectErrors(page: import('@playwright/test').Page): () => string[] {
   const errors: string[] = [];
   page.on('console', (m) => {
     if (m.type() === 'error') errors.push(m.text());
+    // three's shadow-map deprecation notice is a warning, not an error,
+    // but the menu scene picks a supported filter so it must never fire.
+    if (m.type() === 'warning' && /PCFSoftShadowMap/.test(m.text())) errors.push(m.text());
   });
   page.on('pageerror', (e) => errors.push(String(e)));
   return () => errors;
@@ -104,6 +107,17 @@ test.describe('three: menu backdrop', () => {
       { timeout: 6000 },
     );
 
+    // The lobby's glass cards, title and footer register as occluders
+    // and the drift field has been re-seeded around them, so no tile
+    // straddles a card edge or crosses the credits.
+    const debug = await page.evaluate(
+      () =>
+        (globalThis as { __MAHJONG_MENU_DEBUG__?: { occluders: number; reseeded: boolean } })
+          .__MAHJONG_MENU_DEBUG__,
+    );
+    expect(debug?.occluders ?? 0).toBeGreaterThanOrEqual(6);
+    expect(debug?.reseeded).toBe(true);
+
     // Tutorial row expands into the lesson rail with the testIDs the
     // verifier's `startTutorial` step uses.
     await page.getByRole('button', { name: 'Tutorial' }).click();
@@ -135,6 +149,10 @@ test.describe('three: menu backdrop', () => {
     expect(tutorial.x).toBeGreaterThanOrEqual(915 * 0.31);
     // The Replays row never ellipsises its landscape copy.
     await expect(page.getByText('No replays yet', { exact: true })).toBeVisible();
+    // Footer credits sit bottom-right, clear of the card row.
+    const credit = await page.getByText(/^Sound by/).boundingBox();
+    if (!credit) throw new Error('missing footer credit');
+    expect(credit.y).toBeGreaterThan(tutorial.y + tutorial.height);
 
     // Tutorial opens the glass sheet with the lesson rail.
     await page.getByRole('button', { name: 'Tutorial' }).click();

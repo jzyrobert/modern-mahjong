@@ -1,6 +1,7 @@
 import { type ReactNode, useState } from 'react';
 import { View, type ViewStyle } from 'react-native';
 import { HOVER_TRANSITION, glass } from './theme';
+import { useMenuOccluder } from './useMenuOccluder';
 
 interface GlassCardProps {
   children: ReactNode;
@@ -16,7 +17,9 @@ interface GlassCardProps {
  * Glass panel container with the hover lift from the visual language
  * (translateY −2 px + brightness 1.05 over 160 ms). Pointer-enter /
  * leave are React Native pointer events, forwarded to the DOM by
- * RN-web and inert on native.
+ * RN-web and inert on native. Every card registers its window rect as
+ * a `glass` occluder so the 3D drift field never straddles its edge
+ * (`menuOccluders.ts`).
  */
 export function GlassCard({
   children,
@@ -28,8 +31,11 @@ export function GlassCard({
 }: GlassCardProps) {
   const [hovered, setHovered] = useState(false);
   const lifted = hover && hovered;
+  const occluder = useMenuOccluder('glass');
   return (
     <View
+      ref={occluder.ref}
+      onLayout={occluder.onLayout}
       testID={testID}
       onPointerEnter={hover ? () => setHovered(true) : undefined}
       onPointerLeave={hover ? () => setHovered(false) : undefined}

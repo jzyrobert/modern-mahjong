@@ -103,7 +103,7 @@ export function LessonCard({
       })}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Text style={[TYPE.label, { fontSize: 10, letterSpacing: 1.6, color: MENU.text4 }]}>
+        <Text style={[TYPE.label, { fontSize: 10, letterSpacing: 1.6, color: MENU.goldMuted }]}>
           {String(item.index).padStart(2, '0')}
         </Text>
         <TickBadge done={item.done} size={18} />
@@ -159,7 +159,7 @@ export function LessonChip({ item, onPress }: LessonPressableProps) {
       >
         {item.title}
       </Text>
-      <Text style={{ fontSize: 10, fontWeight: '700', color: MENU.text4, letterSpacing: 1 }}>
+      <Text style={{ fontSize: 10, fontWeight: '700', color: MENU.goldMuted, letterSpacing: 1 }}>
         {String(item.index).padStart(2, '0')}
       </Text>
     </Pressable>

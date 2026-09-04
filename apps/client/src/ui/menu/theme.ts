@@ -16,7 +16,7 @@ export const MENU = {
   /** Quietest text that still carries meaning (hints, credits, meta) —
    *  ≥ 4.5:1 on the glass + void grounds. */
   text3: 'rgba(255,255,255,0.56)',
-  /** Decorative only: lesson numerals, chevrons, icon tints. */
+  /** Decorative only: chevrons, icon tints. */
   text4: 'rgba(255,255,255,0.42)',
   hairline: 'rgba(255,255,255,0.12)',
   hairlineSoft: 'rgba(255,255,255,0.07)',
@@ -25,6 +25,8 @@ export const MENU = {
   gold: '#d8a85a',
   goldHi: '#e7bc72',
   goldInk: '#2a2418',
+  /** Gold for small meta text (lesson numerals) — ≥ 4.5:1 on glass. */
+  goldMuted: 'rgba(216,168,90,0.78)',
   goldTint: 'rgba(216,168,90,0.14)',
   goldEdge: 'rgba(216,168,90,0.38)',
   red: '#b14d3a',

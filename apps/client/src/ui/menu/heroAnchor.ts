@@ -72,15 +72,18 @@ export function domFan(
   count = width / Math.max(1, height) < 0.85 || width / Math.max(1, height) > 1.95 ? 7 : 9,
 ): DomFanSlot[] {
   const a = heroAnchor(width / Math.max(1, height));
-  const tileW = a.cls === 'wide' ? 56 : 44;
+  const tileW = a.cls === 'wide' ? 52 : 44;
   const tileH = Math.round(tileW * TILE_ASPECT);
   // Landscape phones pack tighter so seven 44 px tiles fit the title
   // column (≈ 245 px) without reaching the card stack at x ≈ 0.32.
   const spacing = tileW * (a.cls === 'wide' ? 0.94 : a.cls === 'landscape-phone' ? 0.76 : 0.8);
   const rotStep = a.cls === 'portrait' ? 4.5 : 3;
-  const bow = a.cls === 'wide' ? 1.1 : 1.5;
+  const bow = a.cls === 'wide' ? 1.0 : 1.5;
   const cx = width * a.x;
-  const cy = height * a.y;
+  // Wide viewports lift the DOM fan above the shared anchor so its
+  // bowed ends keep ≥ 20 px of air above the card row (which starts at
+  // 38 % of the height — `DesktopLobby.heroMinHeight`).
+  const cy = height * a.y - (a.cls === 'wide' ? 26 : 0);
   const mid = (count - 1) / 2;
   const out: DomFanSlot[] = [];
   for (let i = 0; i < count; i++) {

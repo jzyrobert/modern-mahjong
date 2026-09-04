@@ -36,8 +36,12 @@ export interface Slot {
 export interface FanParams {
   /** Centre-to-centre spacing along the arc, in tile widths. */
   spacing: number;
-  /** Back-lean from vertical, radians. 0 = standing upright. */
+  /** Angle of the face from the horizontal, radians: 0 = lying flat
+   *  face-up, π/2 = standing upright. Applies to the front row. */
   lean: number;
+  /** Lean for the rows behind the front one (steeper so their faces
+   *  clear the front row's top edge from the camera). Defaults to `lean`. */
+  backLean?: number;
   /** Yaw per tile away from centre (ends turn inward), radians. */
   yaw: number;
   /** Depth pulled toward the camera per tile of distance from centre
@@ -47,13 +51,17 @@ export interface FanParams {
   curve: number;
   /** Rows the hand is split into (2 = a two-tier rack for short viewports). */
   rows: number;
-  /** Depth between rows (back rows further from the camera). */
+  /** Depth between the rows' resting edges (back rows further from the
+   *  camera). */
   rowGap: number;
 }
 
 export interface MenuLayout {
   aspect: number;
+  cls: ViewportClass;
   fan: FanParams;
+  /** Radians the camera looks down at the hero. */
+  elevation: number;
   camera: CameraPreset;
   /** Camera distance to the fan centre. */
   distance: number;
@@ -109,8 +117,10 @@ export function driftKeepOut(cls: ViewportClass): DriftKeepOut {
   // Screen fraction ≈ viewCenter + (u + 1 − 2·viewCenter) · 0.54 (see
   // `writeDrift`), so with the anchors from `heroAnchor`:
   // Portrait (vc 0.5 / 0.3): app bar + left-aligned title block span
-  // the full width down to y ≈ 0.31 → band to y1 −0.3 (≈ 0.35).
-  if (cls === 'portrait') return { x0: -DRIFT_LIMIT, x1: DRIFT_LIMIT, y1: -0.3 };
+  // the full width down to y ≈ 0.16 → band to y1 −0.62 (≈ 0.18). The
+  // hero band below it stays open so the field has somewhere visible
+  // to live (the card stack covers everything from y ≈ 0.37).
+  if (cls === 'portrait') return { x0: -DRIFT_LIMIT, x1: DRIFT_LIMIT, y1: -0.62 };
   // Landscape phone (vc 0.16 / 0.58): identity pill + title column,
   // x < 0.36, down to y ≈ 0.31 → x1 −0.3, y1 −0.25 (≈ 0.36).
   if (cls === 'landscape-phone') return { x0: -DRIFT_LIMIT, x1: -0.3, y1: -0.25 };
@@ -146,8 +156,15 @@ export function wrapDriftY(uy: number, ux: number, k: DriftKeepOut, limit = DRIF
   return uy;
 }
 
-export const HERO_ELEVATION = 0.44; // radians the camera looks down from
+/** Default camera elevation (wide viewports). Two-tier racks look down
+ *  more steeply so the back row's face clears the front row — see
+ *  `heroElevation`. Kept exported for callers that predate `layout.elevation`. */
+export const HERO_ELEVATION = 0.44;
 export const HERO_BASE_Y = 0;
+
+export function heroElevation(cls: ViewportClass): number {
+  return cls === 'wide' ? HERO_ELEVATION : 0.64;
+}
 
 /** Camera distance so that `worldWidth` fills the viewport width. */
 export function fitDistance(worldWidth: number, fovDeg: number, aspect: number): number {
@@ -169,36 +186,56 @@ export function fanWidth(count: number, spacing: number): number {
   return (count - 1) * spacing * TILE_W + TILE_W;
 }
 
-/** Slots for a fanned hand resting on the y=0 plane, centred on x=0. */
+/** Centre of a tile whose near (bottom) edge rests on the y=0 plane at
+ *  `zEdge`, leaning back by `lean` (face angle from the horizontal). The
+ *  tile extends `TILE_H` along (0, sin, −cos) and `TILE_D` along its face
+ *  normal (0, cos, sin). */
+export function restingCentre(lean: number, zEdge = 0): { y: number; z: number } {
+  return {
+    y: (TILE_H / 2) * Math.sin(lean) + (TILE_D / 2) * Math.cos(lean),
+    z: zEdge - (TILE_H / 2) * Math.cos(lean) + (TILE_D / 2) * Math.sin(lean),
+  };
+}
+
+/** Slots for a fanned hand resting on the y=0 plane, centred on x=0.
+ *  Row 0 is the back row; the last row is the front (nearest the camera). */
 export function fanSlots(count: number, p: FanParams): Slot[] {
   const out: Slot[] = [];
   const rows = Math.max(1, p.rows);
   const perRow = Math.ceil(count / rows);
-  // A tile leaning back by `lean` touches the plane along its bottom
-  // edge; its centre sits this high.
-  const y = (TILE_H / 2) * Math.cos(p.lean) + (TILE_D / 2) * Math.sin(p.lean);
   for (let i = 0; i < count; i++) {
     const row = Math.floor(i / perRow);
     const inRow = Math.min(perRow, count - row * perRow);
     const mid = (inRow - 1) / 2;
     const u = i - row * perRow - mid;
     const x = u * p.spacing * TILE_W;
-    // Back rows sit further from the camera; the front row is the
+    const front = row === rows - 1;
+    const lean = front ? p.lean : (p.backLean ?? p.lean);
+    // Back rows rest further from the camera; the front row is the
     // last one so it reads as the near edge of a rack.
-    const rowZ = -(rows - 1 - row) * p.rowGap;
-    const z = -p.curve * x * x - Math.abs(u) * p.zStep + rowZ;
+    const rest = restingCentre(lean, -(rows - 1 - row) * p.rowGap);
+    const z = rest.z - p.curve * x * x - Math.abs(u) * p.zStep;
     out.push({
       x,
-      y: HERO_BASE_Y + y,
+      y: HERO_BASE_Y + rest.y,
       z,
       // Face (+Z in object space) must point up-and-toward the camera:
       // rotate −(90° − lean) about X.
-      rx: -(Math.PI / 2 - p.lean),
+      rx: -(Math.PI / 2 - lean),
       ry: -u * p.yaw,
       rz: 0,
     });
   }
   return out;
+}
+
+/** Atlas cells per slot for a `rows`-row rack. A single row reads the
+ *  hand left to right; two rows keep every set intact and end each row
+ *  on a red 中 so the rack is symmetric: back 萬萬萬 筒筒筒 中 / front
+ *  索索索 東東東 中. */
+export function heroCells(rows: number): readonly number[] {
+  if (rows >= 2) return [0, 1, 2, 12, 13, 14, 31, 24, 25, 26, 27, 27, 27, 31];
+  return HERO_HAND_CELLS;
 }
 
 /** Viewport classes + the on-screen hero anchor are shared with the
@@ -212,15 +249,33 @@ export function menuLayout(aspect: number): MenuLayout {
   let fan: FanParams;
   let fov: number;
   let margin: number;
+  // Phones get a two-tier rack of 7 + 7 with no overlap: fourteen
+  // overlapping tiles in one row put the end glyphs behind their
+  // neighbours at phone widths. The back row leans steeper and rests
+  // `rowGap` behind the front row so, from the raised phone camera
+  // (`heroElevation`), every face clears the front row's top edge —
+  // `heroVisibility` + the layout test pin that.
+  const rack: FanParams = {
+    spacing: 1.02,
+    lean: 0.5,
+    backLean: 0.6,
+    yaw: 0,
+    zStep: 0,
+    curve: 0.004,
+    rows: 2,
+    rowGap: 2.0,
+  };
   if (cls === 'portrait') {
-    fan = { spacing: 0.6, lean: 0.5, yaw: 0.075, zStep: 0.16, curve: 0.0, rows: 1, rowGap: 0 };
+    // Margin leaves room for the dice past the rack's right end
+    // (`diceSlots`) while keeping the tiles ≥ 44 CSS px wide at 412 px.
+    fan = rack;
     fov = 44;
-    margin = 1.4;
+    margin = 2.1;
   } else if (cls === 'landscape-phone') {
-    // Two-tier rack under the title column. The margin pulls the
-    // camera back until the rack spans ≈ 25 % of the width so it
-    // clears the card stack (x ≥ 0.32) even with parallax applied.
-    fan = { spacing: 1.02, lean: 0.46, yaw: 0.03, zStep: 0.0, curve: 0.004, rows: 2, rowGap: 1.15 };
+    // The margin pulls the camera back until the rack spans ≈ 25 % of
+    // the width so it clears the card stack (x ≥ 0.32) even with
+    // parallax applied.
+    fan = rack;
     fov = 30;
     margin = 21;
   } else {
@@ -232,17 +287,20 @@ export function menuLayout(aspect: number): MenuLayout {
   const perRow = Math.ceil(HERO_COUNT / fan.rows);
   const width = fanWidth(perRow, fan.spacing);
   const distance = fitDistance(width + margin, fov, aspect);
-  const target: [number, number, number] = [0, HERO_BASE_Y + 0.5, 0];
+  const elevation = heroElevation(cls);
+  const target: [number, number, number] = [0, HERO_BASE_Y + 0.5, fan.rows > 1 ? -0.6 : 0];
   const position: [number, number, number] = [
     0,
-    target[1] + distance * Math.sin(HERO_ELEVATION),
-    distance * Math.cos(HERO_ELEVATION),
+    target[1] + distance * Math.sin(elevation),
+    target[2] + distance * Math.cos(elevation),
   ];
   const frameWidth = frameWidthAt(distance, fov, aspect);
   const frameHeight = frameWidth / aspect;
   return {
     aspect,
+    cls,
     fan,
+    elevation,
     camera: { position, target, fov },
     distance,
     frameWidth,
@@ -262,10 +320,12 @@ export function menuLayout(aspect: number): MenuLayout {
 
 /**
  * Where the two dice rest. Wide viewports have room to the right of
- * the fan; phones don't (the fan spans most of the width on portrait
- * and the card stack starts at x ≈ 0.32 on landscape), so there the
- * dice are tossed in front of the hand's right half — closer to the
- * camera than the front row and always inside the frame.
+ * the fan. Portrait doesn't (the rack spans most of the width and the
+ * first card starts right under it), so the dice sit just past the
+ * rack's right end in the strip of felt between the two rows — inside
+ * the frame, in the hero band, never behind a card. Landscape phones
+ * toss them in front of the rack's right half (the card stack starts
+ * at x ≈ 0.32, the rack ends well before it).
  */
 export function diceSlots(cls: ViewportClass, fanWidthUnits: number): [Slot, Slot] {
   if (cls === 'wide') {
@@ -278,8 +338,8 @@ export function diceSlots(cls: ViewportClass, fanWidthUnits: number): [Slot, Slo
   const right = fanWidthUnits / 2;
   if (cls === 'portrait') {
     return [
-      { x: right - 1.35, y: 0.26, z: 1.85, rx: 0, ry: 0.5, rz: 0 },
-      { x: right - 0.65, y: 0.26, z: 1.35, rx: 0, ry: -0.35, rz: 0 },
+      { x: right + 0.48, y: 0.26, z: -1.0, rx: 0, ry: 0.5, rz: 0 },
+      { x: right + 0.66, y: 0.26, z: -1.8, rx: 0, ry: -0.35, rz: 0 },
     ];
   }
   return [
@@ -354,4 +414,127 @@ export function wrapUnit(v: number, limit = 1.15): number {
   if (v > limit) return -limit + (v - limit);
   if (v < -limit) return limit - (-limit - v);
   return v;
+}
+
+// ─── Hero legibility maths ───────────────────────────────────────────
+
+export type Vec3 = [number, number, number];
+
+/** Object axes (columns of R = Rx·Ry·Rz — three.js Euler 'XYZ'). */
+export function eulerXYZBasis(rx: number, ry: number, rz: number): [Vec3, Vec3, Vec3] {
+  const cx = Math.cos(rx);
+  const sx = Math.sin(rx);
+  const cy = Math.cos(ry);
+  const sy = Math.sin(ry);
+  const cz = Math.cos(rz);
+  const sz = Math.sin(rz);
+  // R = Rx · Ry · Rz, written out column by column.
+  const ex: Vec3 = [cy * cz, cx * sz + sx * sy * cz, sx * sz - cx * sy * cz];
+  const ey: Vec3 = [-cy * sz, cx * cz - sx * sy * sz, sx * cz + cx * sy * sz];
+  const ez: Vec3 = [sy, -sx * cy, cx * cy];
+  return [ex, ey, ez];
+}
+
+function sub(a: Vec3, b: Vec3): Vec3 {
+  return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+}
+function dot(a: Vec3, b: Vec3): number {
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+function len(a: Vec3): number {
+  return Math.hypot(a[0], a[1], a[2]);
+}
+function madd(p: Vec3, d: Vec3, t: number): Vec3 {
+  return [p[0] + d[0] * t, p[1] + d[1] * t, p[2] + d[2] * t];
+}
+
+/** Ray / oriented-box distance (slab test in the box's frame); +∞ on a miss. */
+export function rayBoxDistance(
+  origin: Vec3,
+  dir: Vec3,
+  centre: Vec3,
+  axes: [Vec3, Vec3, Vec3],
+  half: Vec3,
+): number {
+  const rel = sub(origin, centre);
+  let tMin = Number.NEGATIVE_INFINITY;
+  let tMax = Number.POSITIVE_INFINITY;
+  for (let i = 0; i < 3; i++) {
+    const a = axes[i]!;
+    const o = dot(rel, a);
+    const d = dot(dir, a);
+    const h = half[i]!;
+    if (Math.abs(d) < 1e-9) {
+      if (Math.abs(o) > h) return Number.POSITIVE_INFINITY;
+      continue;
+    }
+    let t1 = (-h - o) / d;
+    let t2 = (h - o) / d;
+    if (t1 > t2) [t1, t2] = [t2, t1];
+    tMin = Math.max(tMin, t1);
+    tMax = Math.min(tMax, t2);
+    if (tMin > tMax) return Number.POSITIVE_INFINITY;
+  }
+  if (tMax < 0) return Number.POSITIVE_INFINITY;
+  return Math.max(tMin, 0);
+}
+
+export interface SlotVisibility {
+  /** Face normal · direction to the camera (1 = square-on). */
+  facing: number;
+  /** Glyph sample points (corners + centre) hidden behind another tile. */
+  occluded: number;
+  /** Samples tested. */
+  samples: number;
+}
+
+/**
+ * For every hero slot, how squarely the camera sees its face and
+ * whether the glyph region (the central `glyphFrac` of the face) is
+ * hidden behind any other tile in the rack. Pure geometry — the view
+ * offset only shifts the frustum, so this is exact for the rendered
+ * frame. Used by the layout test to guarantee legible glyphs on every
+ * viewport class.
+ */
+export function heroVisibility(layout: MenuLayout, glyphFrac = 0.72): SlotVisibility[] {
+  const slots = fanSlots(HERO_COUNT, layout.fan);
+  const cam = layout.camera.position;
+  const boxes = slots.map((s) => ({
+    centre: [s.x, s.y, s.z] as Vec3,
+    axes: eulerXYZBasis(s.rx, s.ry, s.rz),
+    half: [TILE_W / 2, TILE_H / 2, TILE_D / 2] as Vec3,
+  }));
+  return slots.map((s, i) => {
+    const b = boxes[i]!;
+    const [ex, ey, ez] = b.axes;
+    const faceCentre = madd(b.centre, ez, TILE_D / 2 + 1e-4);
+    const toCam = sub(cam, faceCentre);
+    const facing = dot(ez, toCam) / len(toCam);
+    const gw = (TILE_W / 2) * glyphFrac;
+    const gh = (TILE_H / 2) * glyphFrac;
+    const samples: Vec3[] = [
+      faceCentre,
+      madd(madd(faceCentre, ex, -gw), ey, -gh),
+      madd(madd(faceCentre, ex, gw), ey, -gh),
+      madd(madd(faceCentre, ex, -gw), ey, gh),
+      madd(madd(faceCentre, ex, gw), ey, gh),
+      madd(faceCentre, ey, gh),
+      madd(faceCentre, ey, -gh),
+    ];
+    let occluded = 0;
+    for (const p of samples) {
+      const d = sub(p, cam);
+      const dist = len(d);
+      const dir: Vec3 = [d[0] / dist, d[1] / dist, d[2] / dist];
+      for (let j = 0; j < boxes.length; j++) {
+        if (j === i) continue;
+        const o = boxes[j]!;
+        if (rayBoxDistance(cam, dir, o.centre, o.axes, o.half) < dist - 1e-3) {
+          occluded++;
+          break;
+        }
+      }
+    }
+    return { facing, occluded, samples: samples.length };
+  });
 }
