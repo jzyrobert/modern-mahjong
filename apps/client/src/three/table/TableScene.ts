@@ -71,6 +71,8 @@ export interface SyncInput {
   shuffling: boolean;
   /** Phone portrait: the near-camera frame the user's hand is held in. */
   heldHand?: HeldHandFrame | null | undefined;
+  /** River tile scale (portrait draws discards 1.1×). */
+  riverScale?: number | undefined;
 }
 
 export interface TableDebugTile {
@@ -386,6 +388,7 @@ export class TableScene {
       drawnTileId: input.drawnTileId,
       reveal: state.phase === 'resolved',
       heldHand: input.heldHand ?? null,
+      riverScale: input.riverScale ?? 1,
     });
     this.lastLayout = layout;
     this.choreo.setLayout(layout, state, me, now, { shuffling: input.shuffling });
@@ -522,7 +525,7 @@ export class TableScene {
         p.position.add(_lift);
       }
       p.quaternion.copy(t.quat);
-      p.scale = t.scale;
+      p.scale = t.scale * (t.slot?.scale ?? 1);
       let hl = 0;
       if (this.needsDraw && id === this.nextDrawId) {
         // Primary cue: strong gold pulse plus a small lift off the stack.
@@ -533,9 +536,9 @@ export class TableScene {
       else if (id === this.hintTileId) hl = 0.12;
       p.highlight = hl;
       p.tint.setScalar(1);
-      // Dead wall reads as a separate, shaded block (plus the layout's
-      // step toward the rail).
-      if (t.slot?.zone === 'deadWall') p.tint.setScalar(0.62);
+      // Dead wall reads as a separate block: a clearly darker, slightly
+      // warmer back (no positional step — see `wallSlotPosition`).
+      if (t.slot?.zone === 'deadWall') p.tint.setRGB(0.56, 0.5, 0.46);
     }
     this.pool.markDirty();
     this.pool.commit();

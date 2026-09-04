@@ -282,6 +282,19 @@ export const STATES = {
   },
 
   // ── In-game ──────────────────────────────────────────────────────────
+  'match-dice': {
+    owner: 'table',
+    // The opening-rolls modal as every match opens with it: START_SOLO
+    // minus the dismiss tap, so the shot shows the glass dice panel over
+    // the freshly dealt table.
+    steps: [
+      { initScript: 'globalThis.__MAHJONG_TEST_HOLD_DICE__ = true;' },
+      ...START_SOLO.filter((s) => !s.dismissDice),
+      { waitForText: 'Tap anywhere to dismiss', timeout: 20000 },
+      { waitFor: '[data-testid="table-3d-scene"]', timeout: 20000 },
+      { waitMs: 1400 },
+    ],
+  },
   'match-dealt': {
     owner: 'table',
     steps: [...START_SOLO, { waitForOwnHand: true }, { waitMs: 1500 }],
@@ -331,13 +344,15 @@ export const STATES = {
   },
   'match-lobby': {
     owner: 'table',
-    noScene: true,
+    // The glass waiting room sits over the waiting table (walls built,
+    // `LobbyTableBackdrop`) — the in-game budget applies.
     steps: [
       { goto: '/' },
       { waitForText: 'Modern Mahjong' },
-      { click: 'role=button[name="Play vs bots"]' },
+      { click: 'role=button[name="Play vs bots"]', timeout: 20000 },
       { waitForText: 'Lobby' },
-      { waitMs: 600 },
+      { waitFor: '[data-testid="lobby-table-3d"]', timeout: 20000 },
+      { waitMs: 1500 },
     ],
   },
   'match-river-zoom': {

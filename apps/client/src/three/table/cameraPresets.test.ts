@@ -6,6 +6,7 @@ import {
   PORTRAIT_BAND_BIAS,
   PORTRAIT_BAND_GAP,
   PORTRAIT_BAND_TOP,
+  PORTRAIT_RIVER_SCALE,
   PORTRAIT_STRIP_H,
   PORTRAIT_STRIP_TOP,
   PORTRAIT_X_HALF,
@@ -157,8 +158,12 @@ describe('heldHandFrameFor', () => {
       // Far row below the seat strip, near row above the held hand.
       expect(px(0, 0, -HAND_Z - 0.7).y).toBeGreaterThan(bandTop);
       expect(px(0, 0, HAND_Z + 0.7).y).toBeLessThan(bandBottom);
-      // A river tile is at least 17.5 CSS px wide on a 412 px phone.
-      if (w === 412) expect(px(1, 0.3, 0).x - px(0, 0.3, 0).x).toBeGreaterThanOrEqual(17.5);
+      // A river tile (drawn at PORTRAIT_RIVER_SCALE) is at least 18 CSS px
+      // wide on a 412 px phone.
+      if (w === 412)
+        expect((px(1, 0.3, 0).x - px(0, 0.3, 0).x) * PORTRAIT_RIVER_SCALE).toBeGreaterThanOrEqual(
+          18,
+        );
       // The side seats' flat melds (tucked to MELD_Z, reaching a flat
       // tile's half-height further out) stay ≥ 6 px inside the viewport
       // at their nearest corner, where perspective scale is largest
@@ -181,7 +186,7 @@ describe('heldHandFrameFor', () => {
       const p = new Vector3(x, y, z).project(cam);
       return { x: (p.x * 0.5 + 0.5) * w, y: (-p.y * 0.5 + 0.5) * h };
     };
-    expect(px(1, 0.3, 0).x - px(0, 0.3, 0).x).toBeGreaterThanOrEqual(25);
+    expect((px(1, 0.3, 0).x - px(0, 0.3, 0).x) * PORTRAIT_RIVER_SCALE).toBeGreaterThanOrEqual(26);
     // Every river's furthest row (z ≈ ±7.6 in its owner's frame) is inside.
     expect(px(7.9, 0, 0).x).toBeLessThanOrEqual(w + 1);
     expect(px(0, 0, 7.9).y).toBeLessThan(heldHandTopPx(w, h) - PORTRAIT_BAND_GAP);

@@ -80,6 +80,34 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
+test('the opening rolls wear the glass language and the lobby keeps a scene', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(m.text());
+  });
+  page.on('pageerror', (e) => errors.push(String(e)));
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Play vs bots' }).click({ timeout: 20_000 });
+  // Pre-game lobby: glass waiting room over the waiting table (walls
+  // built, same TableScene the match mounts).
+  await expect(page.getByTestId('lobby-3d')).toBeVisible();
+  await expect(page.getByTestId('lobby-3d-backdrop')).toBeAttached();
+  // Generous: the lobby scene builds the face atlas on the CPU and a
+  // loaded CI shard renders it at a frame or two per second.
+  await expect(page.getByTestId('lobby-table-3d')).toBeVisible({ timeout: 30_000 });
+  await page.getByRole('button', { name: 'Start match' }).click({ timeout: 30_000 });
+  // Every match opens with the dice modal; under the 3D renderer it is
+  // the dark-glass panel (micro-label, ivory dice), never the paper card.
+  const glass = page.getByTestId('dice-ceremony-glass');
+  await expect(glass).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId('dice-ceremony-paper')).toHaveCount(0);
+  await expect(glass.getByText('Opening rolls')).toBeVisible();
+  await expect(glass.getByText('Tap anywhere to dismiss', { exact: true })).toBeVisible();
+  await dismissDice(page);
+  await expect(page.getByTestId('own-hand-tile').first()).toBeVisible({ timeout: 20_000 });
+  expect(errors, 'console / page errors').toEqual([]);
+});
+
 test('3D table mounts within budget with the classic hit-targets', async ({ page }) => {
   const errors: string[] = [];
   await startSolo(page, errors);
@@ -98,6 +126,14 @@ test('3D table mounts within budget with the classic hit-targets', async ({ page
   await expect(page.getByTestId('open-settings')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Open menu' })).toBeVisible();
   await expect(page.getByText(/\d+ left/i)).toBeVisible();
+  // Desktop footer: the sort control is pinned to the right so the
+  // claim strip can take the centre slot under the hand.
+  const vp = page.viewportSize()!;
+  if (vp.width >= 768 && vp.height >= 600) {
+    const sort = (await page.getByRole('button', { name: 'Sort by Suit' }).boundingBox())!;
+    expect(sort.x).toBeGreaterThan(vp.width * 0.6);
+    expect(sort.y + sort.height).toBeGreaterThan(box!.y + box!.height);
+  }
 
   const perf = await readPerf(page);
   expect(perf.drawCalls).toBeLessThanOrEqual(BUDGET.drawCalls);
@@ -290,6 +326,22 @@ test('phone landscape keeps ≥ 44 px hand tiles above the footer with glass chr
     expect(b.top + b.height).toBeGreaterThan(300);
   }
   expect(new Set(boxes.map((b) => Math.round(b.top / 20))).size).toBe(1);
+  // The dense footer pills sit in the rail gap *below* the hand, never
+  // over the end tiles, and the 40 px chrome row clears the far wall.
+  const sortBox = (await page.getByRole('button', { name: 'Sort by Suit' }).boundingBox())!;
+  // The user's badge is the lowest seat badge on screen.
+  const badgeTop = await page.evaluate(() =>
+    Math.max(
+      ...Array.from(document.querySelectorAll('[aria-label*=" seat, "]')).map(
+        (el) => el.getBoundingClientRect().top,
+      ),
+    ),
+  );
+  const footerTop = Math.min(sortBox.y, badgeTop);
+  for (const b of boxes) expect(b.top + b.height).toBeLessThanOrEqual(footerTop + 0.5);
+  const menuBox = (await page.getByRole('button', { name: 'Open menu' }).boundingBox())!;
+  expect(menuBox.height).toBeLessThanOrEqual(40);
+  expect(menuBox.y + menuBox.height).toBeLessThanOrEqual(52);
   // The root fullscreen offer is present (landscape phone) and the
   // chrome row keeps the direct Settings control.
   await expect(page.getByRole('button', { name: 'Enter fullscreen' })).toBeVisible();

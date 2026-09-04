@@ -76,7 +76,7 @@ export function SeatBadge({
         padding: dense ? '4px 9px 4px 4px' : compact ? '5px 10px 5px 5px' : '6px 12px 6px 6px',
         borderRadius: 999,
         minWidth: 0,
-        maxWidth: dense ? 132 : fluid ? '100%' : undefined,
+        maxWidth: fluid ? '100%' : dense ? 132 : undefined,
         border: model.isActive
           ? '1px solid rgba(216,168,90,0.95)'
           : cue

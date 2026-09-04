@@ -56,7 +56,7 @@ export const TABLE_CAMERA: Record<Exclude<ViewportClass, 'phone-portrait'>, Came
  * the viewport (11.2 clipped the left seat's meld by half a tile —
  * round-3 critique) while the wood rails still crop off-screen.
  */
-export const PORTRAIT_X_HALF = 11.65;
+export const PORTRAIT_X_HALF = 11.9;
 /**
  * Half-width framed by the portrait *river zoom* (tap the discards):
  * the four rivers' furthest rows (RIVER_Z0 + 3 rows ≈ 7.6) plus a
@@ -66,13 +66,26 @@ export const PORTRAIT_X_HALF = 11.65;
  */
 export const PORTRAIT_ZOOM_X_HALF = 7.9;
 /**
- * Camera elevation, degrees — steep enough that the square table reads
- * with little keystone (the near/far scale ratio is ~1.04, so the side
- * rows stay inside the frame at both ends) and river glyphs are seen
- * nearly face-on.
+ * Camera elevation, degrees. 70° (round-2: down from 76°) shows the
+ * walls' front faces, the rail bevels and the side rows' tops-vs-sides
+ * so the table reads as an object rather than a flat plan, while the
+ * keystone stays mild (near/far scale ratio ≈ 1.06) so the side rows
+ * fit at both ends and river glyphs stay near face-on. The frame is
+ * width-bound: the side seats' rows (|x| ≈ 11.6 at their near end) must
+ * fit, which fixes the scale at ≈ 17 CSS px per unit on a 412 px phone
+ * regardless of elevation — so the band above and below the table is
+ * structural (toast slot above, claim slot below), not slack.
  */
-export const PORTRAIT_ELEV_DEG = 76;
-export const PORTRAIT_FOV = 40;
+export const PORTRAIT_ELEV_DEG = 70;
+export const PORTRAIT_FOV = 44;
+/**
+ * Portrait discards render 10 % larger than the other table tiles: the
+ * full-table view is width-bound at ~17 CSS px per tile, and the river
+ * is the one zone the player reads at a glance. Six columns × 1.1 still
+ * fit inside the walls (7.9 < 8.1 units) and three rows stay clear of
+ * the near wall.
+ */
+export const PORTRAIT_RIVER_SCALE = 1.1;
 /** Where the table centre sits in the band (0 top … 1 bottom). */
 export const PORTRAIT_BAND_BIAS = 0.5;
 /**

@@ -18,8 +18,10 @@ const GLASS_PROMPT = {
   border: 'rgba(216,168,90,0.55)',
   fg: 'rgba(255,255,255,0.92)',
   gold: '#d8a85a',
-  dismissBg: 'rgba(14,20,17,0.62)',
-  dismissFg: 'rgba(255,255,255,0.62)',
+  dismissBg: 'rgba(14,20,17,0.78)',
+  // ≥ 0.62-alpha secondary text at full pill opacity — the earlier
+  // 0.85 wrapper opacity pulled the label under 4.5:1 on dark glass.
+  dismissFg: 'rgba(255,255,255,0.72)',
 } as const;
 
 /**
@@ -165,7 +167,7 @@ export function FullscreenPrompt() {
           alignSelf: 'flex-end',
           paddingHorizontal: glass ? 9 : 6,
           paddingVertical: glass ? 3 : 2,
-          opacity: pressed ? 0.55 : 0.85,
+          opacity: pressed ? 0.55 : glass ? 1 : 0.85,
           backgroundColor: glass ? GLASS_PROMPT.dismissBg : 'rgba(0,0,0,0.35)',
           borderWidth: glass ? 1 : 0,
           borderColor: glass ? 'rgba(255,255,255,0.12)' : 'transparent',
@@ -174,7 +176,7 @@ export function FullscreenPrompt() {
       >
         <Text
           style={{
-            fontSize: glass ? 9 : 8,
+            fontSize: glass ? 10 : 8,
             fontWeight: '800',
             color: glass ? GLASS_PROMPT.dismissFg : COLORS.paper,
             letterSpacing: glass ? 1.2 : 0.5,
