@@ -27,6 +27,8 @@ export interface HudRects {
   plateBottom: number | null;
   /** Screen y of the far rail's top edge (portrait toasts overlap it). */
   farRailTop: number | null;
+  /** Screen y of the far seat's rack top edge (portrait toasts stop above it). */
+  farRowTop: number | null;
   /** Screen y of the near rail's bottom edge (portrait floor shadow). */
   nearRailBottom: number | null;
 }
@@ -54,6 +56,12 @@ interface HitTargetsProps {
    */
   onRiverTap?: (() => void) | undefined;
   riverZoomed?: boolean | undefined;
+  /**
+   * Skip the projected draw target (and its tutorial anchor): the
+   * landscape river zoom hosts the draw control in its hand rail under
+   * the same `wall-draw-next` id.
+   */
+  wallHidden?: boolean | undefined;
 }
 
 export function tileName(t: MTile): string {
@@ -122,6 +130,7 @@ export const HitTargets = forwardRef<HitTargetsHandle, HitTargetsProps>(function
     rects,
     onRiverTap,
     riverZoomed = false,
+    wallHidden = false,
   },
   ref,
 ) {
@@ -177,7 +186,7 @@ export const HitTargets = forwardRef<HitTargetsHandle, HitTargetsProps>(function
           )}
         </TutorialTarget>
       ) : null}
-      {needsDraw && nextDrawTile ? (
+      {needsDraw && nextDrawTile && !wallHidden ? (
         <TutorialTarget id="wall-draw" style={rectStyle(rects.wallDraw)}>
           <div style={{ width: '100%', height: '100%' }} />
         </TutorialTarget>
@@ -241,7 +250,7 @@ export const HitTargets = forwardRef<HitTargetsHandle, HitTargetsProps>(function
         );
       })}
 
-      {needsDraw && nextDrawTile ? (
+      {needsDraw && nextDrawTile && !wallHidden ? (
         <button
           type="button"
           ref={wallEl}

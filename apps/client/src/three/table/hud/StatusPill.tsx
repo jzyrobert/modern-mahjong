@@ -12,6 +12,12 @@ interface StatusPillProps {
   turnCountdown: number | null;
   onPress: () => void;
   compact: boolean;
+  /**
+   * Render the turn chip (default). Phone portrait passes false: the
+   * turn state lives in the action tray under the hand (`TurnChip`),
+   * so the chrome pill carries only the wind disc and the wall count.
+   */
+  showTurn?: boolean | undefined;
   style?: CSSProperties | undefined;
 }
 
@@ -30,6 +36,7 @@ export function StatusPill({
   turnCountdown,
   onPress,
   compact,
+  showTurn = true,
   style,
 }: StatusPillProps) {
   const low = wallCount <= WALL_LOW_THRESHOLD;
@@ -105,7 +112,7 @@ export function StatusPill({
       >
         {wallCount} left
       </span>
-      {isMyTurn ? (
+      {isMyTurn && showTurn ? (
         <TutorialTarget id="turn-countdown">
           <span
             style={{

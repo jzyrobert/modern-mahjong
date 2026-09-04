@@ -378,6 +378,45 @@ export const STATES = {
     owner: 'table',
     steps: [...START_SOLO, { waitForOwnHand: true }, { playTurns: 6 }, { waitMs: 600 }],
   },
+  'match-late-hand': {
+    owner: 'table',
+    // Twelve of the user's turns in: every river holds two rows
+    // (pinwheel, no corner collisions), the walls are drawn down to the
+    // break, and on desktop / landscape the footer claim strip and the
+    // chrome-row toasts must still sit clear of the user's own river.
+    // The bots pass every claim window (the tutorial's force-pass seam)
+    // so nobody melds or wins before the twelfth turn on any seed.
+    steps: [
+      {
+        initScript:
+          'globalThis.__MAHJONG_TEST_BOT_SCRIPTS__ = { 1: {}, 2: {}, 3: {} }; globalThis.__MAHJONG_TUTORIAL_FORCE_PASS__ = true;',
+      },
+      ...START_SOLO,
+      { waitForOwnHand: true },
+      { playTurns: 12 },
+      { waitMs: 600 },
+    ],
+  },
+  'match-discard-flight': {
+    owner: 'table',
+    // Motion still: the user's first discard caught mid-arc. Flights are
+    // stretched 8× through the test seam (dispense untouched), bots are
+    // paced out of the frame, and the shot lands ~0.25 of the way along
+    // the 520 ms arc (≈ 130 ms at real speed): tile in the air with its
+    // spin, the gold latest-discard pulse already on it, its shadow on
+    // the felt, and the gap it left in the hand row closing behind it.
+    steps: [
+      {
+        initScript:
+          'globalThis.__MAHJONG_TEST_MOTION_SLOWMO__ = 8; globalThis.__MAHJONG_TEST_BOT_PACE_MS__ = 8000;',
+      },
+      ...START_SOLO,
+      { waitForOwnHand: true },
+      { waitMs: 1500 },
+      { clickTestId: 'own-hand-tile', nth: 3 },
+      { waitMs: 900 },
+    ],
+  },
   'match-claim': {
     owner: 'table',
     steps: [
@@ -421,11 +460,12 @@ export const STATES = {
   },
   'match-river-zoom': {
     owner: 'table',
-    // Portrait only: tapping the discards eases the camera into the
+    // Phone portrait: tapping the discards eases the camera into the
     // river block (~26 px tiles); the ✕ in the chrome row brings the
-    // full table back. The region is inert on the wide viewports (their
-    // rivers already read at 29–40 px), so the recipe pins the phone
-    // viewport rather than producing duplicate mid-hand evidence.
+    // full table back. The region is inert on desktop (its rivers already
+    // read at 38–40 px), so the recipe pins the phone viewport rather
+    // than producing duplicate mid-hand evidence; the landscape variant
+    // is `match-river-zoom-landscape`.
     viewport: 'phone',
     steps: [
       ...START_SOLO,
@@ -436,6 +476,28 @@ export const STATES = {
       {
         evaluate: `document.querySelector('[data-testid="shared-discards-region"]')?.click()`,
       },
+      { waitMs: 1400 },
+    ],
+  },
+  'match-river-zoom-landscape': {
+    owner: 'table',
+    // Phone landscape: the same tap lifts the camera to 50° over the
+    // river block, framed between the zoom header (glass across the
+    // chrome row, the far wall behind it) and the footer (~28 px tiles,
+    // ~21 px tall vs ~8 from the resting 31° camera). The zoom stays
+    // through the player's own turn: the footer's hand rail shows the
+    // hand as face thumbnails (tap → the table returns) and carries the
+    // gold Draw pill while the player has to draw; the side seats' rows
+    // leave the frame's edges. Shot at the user's draw cue, six turns in.
+    viewport: 'phone-landscape',
+    steps: [
+      ...START_SOLO,
+      { waitForOwnHand: true },
+      { playTurns: 6 },
+      { waitForDrawCue: true },
+      { waitMs: 400 },
+      { evaluate: `document.querySelector('[data-testid="shared-discards-region"]')?.click()` },
+      { waitFor: '[data-testid="hand-rail"]', timeout: 10000 },
       { waitMs: 1400 },
     ],
   },

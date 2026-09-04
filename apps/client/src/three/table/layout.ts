@@ -53,7 +53,7 @@ export interface TileSlot {
    * rather than a table edge.
    */
   quat?: [number, number, number, number];
-  /** Uniform size multiplier (portrait rivers render 1.1×). Default 1. */
+  /** Uniform size multiplier (portrait rivers 1.36×, portrait side melds 1.15×). Default 1. */
   scale?: number;
 }
 
@@ -96,11 +96,14 @@ export const HAND_Z = 10.55;
  */
 export const OWN_HAND_Z = HAND_Z + 0.5;
 /**
- * Exposed melds lie flat, tucked toward the table centre: a flat tile
- * reaches ±TILE_H/2 from this line, so 10.3 keeps the meld off the wall
- * (outer edge 9.48) and inside the portrait frame (|x| ≤ 11.0).
+ * Exposed melds lie flat in the rack line: a flat tile reaches ±TILE_H/2
+ * from this centre line, so 10.5 keeps the meld's inner edge (9.82) a
+ * clear third of a tile off the wall's outer edge (9.48) — round-3: at
+ * 10.3 the side seats' melds sat within 2 px of the wall and read as
+ * wedged under it — while the outer edge (11.18) stays on the felt and
+ * inside the portrait frame (see `PORTRAIT_X_HALF`).
  */
-export const MELD_Z = 10.3;
+export const MELD_Z = 10.5;
 /**
  * Dead-wall stacks step this far toward the rail so the block reads as
  * distinct from the live wall at every viewport (with the darker tint).
@@ -116,7 +119,13 @@ export const DEAD_TILES = 14;
 export const DRAWN_GAP = 0.42;
 /** Held hand (phone portrait): tiles per row and the gap between rows. */
 export const HELD_ROW_MAX = 7;
-export const HELD_ROW_GAP = 0.34;
+/**
+ * Gap between the two held rows, tile widths. 0.55 (round-4: up from
+ * 0.34) spends part of the slack recovered from the far-rail band on
+ * the hand block itself, so the rows read as two distinct rows rather
+ * than one stacked slab.
+ */
+export const HELD_ROW_GAP = 0.55;
 /** Depth step between the held rows (the back row sits a little further). */
 export const HELD_ROW_DEPTH = 0.3;
 /** Right edge of the user's flat melds when the hand is held off-table. */
@@ -124,16 +133,33 @@ export const OWN_MELD_RIGHT = 10.7;
 export const MELD_GAP = 0.55;
 export const MELD_GROUP_GAP = 0.3;
 export const MELD_PITCH = TILE_W + 0.03;
+/** Centre plate radius (mirrored below as `CENTRE_PLATE_RADIUS`; the river constants need it first). */
+const CENTRE_PLATE_RADIUS_LOCAL = 1.9;
 export const RIVER_COLS = 6;
 export const RIVER_PITCH_X = TILE_W + 0.06;
 export const RIVER_PITCH_Z = TILE_H + 0.1;
-export const RIVER_Z0 = 2.6;
+/**
+ * Near edge of the first river row (owner's frame), every scale: a fifth
+ * of a tile off the centre plate (radius 1.9). The first row's centre
+ * line follows from the scale (`riverMetrics`): 2.78 at 1×, 3.02 at the
+ * portrait 1.36×. Round-4: the edge used to sit at 2.32 whatever the
+ * scale, which capped the portrait rivers at 1.3× before the third row
+ * reached the wall's inner edge (8.12) — pulling the block 0.22 toward
+ * the plate buys the extra size the far river's 萬 numerals needed.
+ */
+export const RIVER_NEAR_EDGE = CENTRE_PLATE_RADIUS_LOCAL + 0.2;
+/** Centre line of the first river row at scale 1 (kept for callers that size by it). */
+export const RIVER_Z0 = RIVER_NEAR_EDGE + TILE_H / 2;
+/** Clearance kept between neighbouring seats' rivers at the corners. */
+export const RIVER_CORNER_GAP = 0.15;
+/** Rows the river fills before overflowing along the last row. */
+export const RIVER_ROWS = 3;
 /** Felt half-size and rail dimensions, shared with `TableScene`. */
 export const FELT_HALF = 11.9;
 export const RAIL_WIDTH = 1.1;
 /** Height of the wood rail above the felt. */
 export const RAIL_H = 0.55;
-export const CENTRE_PLATE_RADIUS = 1.9;
+export const CENTRE_PLATE_RADIUS = CENTRE_PLATE_RADIUS_LOCAL;
 
 export const FLAT_Y = TILE_D / 2;
 export const STAND_Y = TILE_H / 2;
@@ -157,6 +183,20 @@ export function toWorld(rel: Rel, x: number, z: number): [number, number] {
       return [-x, -z];
     default:
       return [-z, x];
+  }
+}
+
+/** Inverse of `toWorld`: world (x, z) into the seat-local frame of `rel`. */
+export function toLocal(rel: Rel, x: number, z: number): [number, number] {
+  switch (rel) {
+    case 0:
+      return [x, z];
+    case 1:
+      return [-z, x];
+    case 2:
+      return [-x, -z];
+    default:
+      return [z, -x];
   }
 }
 
@@ -348,7 +388,7 @@ export interface LayoutOptions extends HandOrderOptions {
   heldHand?: HeldHandFrame | null | undefined;
   /**
    * Uniform scale for river tiles (pitch + size) — phone portrait draws
-   * discards 1.1× so their glyphs read at the width-bound table scale.
+   * discards 1.36× so their glyphs read at the width-bound table scale.
    */
   riverScale?: number | undefined;
   /**
@@ -360,7 +400,105 @@ export interface LayoutOptions extends HandOrderOptions {
    * header's bottom edge clean. `undefined` keeps every stack.
    */
   hideSideWallsBeyondZ?: number | undefined;
+  /**
+   * Show the user's own concealed hand backs-out (the pre-game waiting
+   * table deals every filled seat a rack, the user's included).
+   */
+  concealOwn?: boolean | undefined;
+  /**
+   * Extra outward offset (world units, away from the table centre) for
+   * the *side* seats' rows (rel 1 / 3): their concealed rack and their
+   * flat melds move together so the row stays one line. The low phone-
+   * landscape camera (31°) otherwise looks over the side wall's top
+   * edge onto the inner half of a flat meld at `MELD_Z` — the wall
+   * (two tiles high) hides it and the meld reads as sliding under the
+   * wall (round-4 #1). `SIDE_SEAT_OUT_LOW` clears it; portrait and
+   * desktop keep 0.
+   */
+  sideSeatOut?: number | undefined;
+  /**
+   * Lay the *right* seat's (rel 1) exposed melds at the near end of its
+   * row — before its concealed rack instead of after it — so both side
+   * seats' melds sit at the corners nearest the camera. From the low
+   * phone-landscape preset the far end of a side row projects ~1.4×
+   * smaller than the near end, and the right seat's melds (to its own
+   * right = the far end) read as ~12 CSS px sideways glyphs (round-4 #1).
+   * The left seat's melds are already at the near end. The group's
+   * internal order (claimed-tile rotation) is unchanged.
+   */
+  sideMeldsNear?: boolean | undefined;
+  /**
+   * Uniform scale for the *side* seats' (rel 1 / 3) exposed melds. The
+   * side melds are the smallest readable thing on the table: their
+   * glyphs run sideways and, on the width-bound portrait camera, a flat
+   * tile is ~19 CSS px across. 1.15 lifts that to ~22 px while the
+   * meld's outer edge (10.5 + 0.78) stays inside the portrait frame and
+   * its inner edge (9.72) a quarter-tile off the wall (round-4 #3).
+   * Default 1.
+   */
+  sideMeldScale?: number | undefined;
+  /**
+   * Stand the *far* seat's (rel 2) exposed melds on the far rail, faces
+   * toward the camera, instead of laying them flat in the rack line. The
+   * low phone-landscape camera (31°) looks at the far side of the table
+   * over the far wall: a flat meld at `MELD_Z` is hidden behind the
+   * two-high stacks until the wall is drawn down, and even a flat tile
+   * on a raised shelf there foreshortens to ~5 CSS px tall. Standing on
+   * the rail (0.53 up, 1.9 further out) the tiles clear the wall's
+   * silhouette and present their faces at ~21 px (round-4 #2). The rack
+   * stays centred on the felt; the melds run from its right end.
+   */
+  farMeldsOnRail?: boolean | undefined;
+  /**
+   * Phone-landscape river zoom: drop the *side* seats' rows (rel 1 / 3 —
+   * racks and melds) altogether. The 50° zoom frames the river block
+   * between the chrome row and the footer; the side seats' melds fall on
+   * the frame's left / right edges where perspective crops them to
+   * ~60 % slivers (round-4 #5). The walls' near halves stay (they frame
+   * the block); the far seat's row sits behind the header glass.
+   */
+  hideSideSeats?: boolean | undefined;
+  /**
+   * Waiting table (pre-game lobby): lay the wall tiles out as four
+   * even, centred runs of whole stacks instead of the engine's break-
+   * relative ring. The lobby state deals a rack per filled seat, so the
+   * real ring would show a ragged run of missing stacks and a lone odd
+   * tile beside one rack (round-4 #4); an odd remaining tile is hidden.
+   */
+  waitingWalls?: boolean | undefined;
 }
+
+/**
+ * Side-seat outward shift for the low phone-landscape camera. At 31°
+ * elevation a ray from the camera to a flat meld's inner edge (MELD_Z −
+ * TILE_H/2 = 9.82) crosses the side wall's outer edge (9.48) at y ≈
+ * 0.91 — under the two-tile stack top (1.24), so the wall occludes it.
+ * Shifted 0.65 the inner edge moves to 10.47 and the same ray crosses
+ * at y ≈ 1.42, clear of the stacks; the meld's outer edge (11.83)
+ * stays on the felt (11.9). The rack (10.55 → 11.2, base to 11.51)
+ * follows so rack and melds remain one row.
+ */
+export const SIDE_SEAT_OUT_LOW = 0.65;
+
+/**
+ * Side-seat outward shift for the desktop preset (44°, camera on the
+ * table's centre line). Seen from the inside, a side wall's two-high top
+ * face overhangs the felt beyond its outer edge by ≈ 0.62 · 9.5 / 22 ≈
+ * 0.27 units, so a flat meld whose inner edge sits at 9.82 (`MELD_Z`)
+ * shows no felt between itself and the wall's ivory side and reads as
+ * tucked under it (round-4 #2). 0.45 puts the meld's inner edge at 10.27
+ * — a fifth of a tile of visible felt past the overhang — while the rack
+ * (10.55 → 11.0, base to ≈ 11.3) stays inside the rail (11.9).
+ */
+export const SIDE_SEAT_OUT_DESKTOP = 0.45;
+
+/**
+ * Side-seat meld scale on the width-bound portrait table (see
+ * `LayoutOptions.sideMeldScale`): 1.15 keeps the scaled tile's inner
+ * edge (10.5 − 0.78 = 9.72) a quarter-tile off the wall's outer edge
+ * (9.48) and its outer edge (11.28) inside the ±11.6 frame.
+ */
+export const SIDE_MELD_SCALE_PORTRAIT = 1.15;
 
 /**
  * Row split for the held hand: one row while it fits, otherwise the
@@ -501,12 +639,220 @@ function put(layout: Layout, slot: TileSlot): void {
 export function computeLayout(state: GameState, me: Seat, opts: LayoutOptions): Layout {
   const layout = emptyLayout();
 
-  // Walls. The engine pops live tiles from the end of `wall` and
-  // shifts gang replacements from the front of `deadWall`; physically
-  // the remaining tiles never move, so map them onto the *full* set of
-  // slots offset by how many have already gone (the gap next to the
-  // break grows as the hand progresses, the dead wall shrinks from its
-  // far end).
+  if (opts.waitingWalls) placeWaitingWalls(layout, state, me);
+  else placeWalls(layout, state, me, opts);
+
+  for (const seat of [0, 1, 2, 3] as Seat[]) {
+    const rel = relOf(seat, me);
+    const yaw = yawOf(rel);
+    const isMe = seat === me;
+    const isSide = !isMe && (rel === 1 || rel === 3);
+    if (isSide && opts.hideSideSeats === true) {
+      // Zoomed landscape: the side seats' rivers still show; their rows do not.
+      placeRiver(layout, state, seat, rel, yaw, opts.riverScale ?? 1);
+      continue;
+    }
+    const sideOut = isSide ? (opts.sideSeatOut ?? 0) : 0;
+    const handZ = (isMe ? OWN_HAND_Z : HAND_Z) + sideOut;
+    const meldZ = MELD_Z + sideOut;
+
+    // Hand + melds share one row centred on the seat.
+    const hand = isMe ? orderOwnHand(state.hands[seat], opts) : state.hands[seat];
+    const melds = state.melds[seat].map((m) => layoutMeld(m, seat));
+    const drawnIdx =
+      isMe && opts.drawnTileId !== null
+        ? hand.findIndex((t) => tileId(t) === opts.drawnTileId)
+        : -1;
+    if (isMe && opts.heldHand) {
+      // Phone portrait: the concealed hand is held near the camera and
+      // the exposed melds lie flat on the felt, right-aligned in the
+      // row the hand would otherwise occupy.
+      for (const slot of heldHandSlots(hand, drawnIdx, opts.heldHand, seat)) put(layout, slot);
+      const meldsWidth =
+        melds.reduce((acc, m) => acc + m.width, 0) + Math.max(0, melds.length - 1) * MELD_GROUP_GAP;
+      let cursor = OWN_MELD_RIGHT - meldsWidth;
+      melds.forEach((m, mi) => {
+        let idx = 0;
+        for (const ms of m.tiles) {
+          put(layout, {
+            id: tileId(ms.tile),
+            zone: 'meld',
+            seat,
+            rel,
+            x: cursor + ms.dx,
+            y: FLAT_Y + (ms.stacked ? TILE_D : 0),
+            z: MELD_Z,
+            base: ms.faceDown ? 'flatDown' : 'flatUp',
+            yaw: yaw + (ms.rotated ? Math.PI / 2 : 0),
+            tilt: 0,
+            back: ms.faceDown,
+            index: mi * 4 + idx++,
+          });
+        }
+        cursor += m.width + MELD_GROUP_GAP;
+      });
+      // River below still applies.
+      placeRiver(layout, state, seat, rel, yaw, opts.riverScale ?? 1);
+      continue;
+    }
+    const handWidth =
+      hand.length > 0
+        ? hand.length * HAND_PITCH - (HAND_PITCH - TILE_W) + (drawnIdx >= 0 ? DRAWN_GAP : 0)
+        : 0;
+    const meldScale = !isMe && (rel === 1 || rel === 3) ? (opts.sideMeldScale ?? 1) : 1;
+    const railMelds = !isMe && rel === 2 && opts.farMeldsOnRail === true && melds.length > 0;
+    const meldsWidth = railMelds
+      ? 0
+      : (melds.reduce((acc, m) => acc + m.width, 0) +
+          Math.max(0, melds.length - 1) * MELD_GROUP_GAP) *
+        meldScale;
+    const total =
+      handWidth + (melds.length > 0 && hand.length > 0 && !railMelds ? MELD_GAP : 0) + meldsWidth;
+    // Right seat: melds first (the near end), then the rack.
+    const meldsFirst = opts.sideMeldsNear === true && rel === 1 && melds.length > 0 && !railMelds;
+    let cursor = -total / 2;
+    if (meldsFirst) {
+      cursor = placeMelds(layout, melds, seat, rel, yaw, meldZ, cursor, meldScale);
+      if (hand.length > 0) cursor += MELD_GAP;
+    }
+
+    const revealOpp = !isMe && opts.reveal;
+    hand.forEach((t, i) => {
+      if (i === drawnIdx) cursor += DRAWN_GAP;
+      const lx = cursor + TILE_W / 2;
+      cursor += HAND_PITCH;
+      const [x, z] = toWorld(rel, lx, handZ);
+      put(layout, {
+        id: tileId(t),
+        zone: isMe ? 'hand' : 'oppHand',
+        seat,
+        rel,
+        x,
+        y: revealOpp ? FLAT_Y : STAND_Y,
+        z,
+        base: revealOpp ? 'flatUp' : 'standing',
+        yaw,
+        tilt: revealOpp ? 0 : isMe ? HAND_TILT : OPP_TILT,
+        back: (!isMe || opts.concealOwn === true) && !revealOpp,
+        index: i,
+      });
+    });
+    if (railMelds) {
+      placeRailMelds(layout, melds, seat, rel, yaw, handWidth / 2 + MELD_GAP);
+    } else if (!meldsFirst) {
+      if (hand.length > 0 && melds.length > 0) cursor += MELD_GAP - (HAND_PITCH - TILE_W);
+      placeMelds(layout, melds, seat, rel, yaw, meldZ, cursor, meldScale);
+    }
+
+    placeRiver(layout, state, seat, rel, yaw, opts.riverScale ?? 1);
+  }
+  return layout;
+}
+
+/**
+ * Lays a seat's meld groups left→right from `left` (owner's frame) on the
+ * rack line `meldZ`; returns the cursor after the last group (the trailing
+ * group gap excluded).
+ */
+function placeMelds(
+  layout: Layout,
+  melds: readonly { tiles: MeldSlotInfo[]; width: number }[],
+  seat: Seat,
+  rel: Rel,
+  yaw: number,
+  meldZ: number,
+  left: number,
+  scale = 1,
+): number {
+  let cursor = left;
+  melds.forEach((m, mi) => {
+    const groupLeft = cursor;
+    let idx = 0;
+    for (const ms of m.tiles) {
+      const lx = groupLeft + ms.dx * scale;
+      const [x, z] = toWorld(rel, lx, meldZ);
+      put(layout, {
+        id: tileId(ms.tile),
+        zone: 'meld',
+        seat,
+        rel,
+        x,
+        y: (FLAT_Y + (ms.stacked ? TILE_D : 0)) * scale,
+        z,
+        base: ms.faceDown ? 'flatDown' : 'flatUp',
+        yaw: yaw + (ms.rotated ? Math.PI / 2 : 0),
+        tilt: 0,
+        back: ms.faceDown,
+        index: mi * 4 + idx++,
+        ...(scale !== 1 ? { scale } : {}),
+      });
+    }
+    cursor += (m.width + MELD_GROUP_GAP) * scale;
+  });
+  return melds.length > 0 ? cursor - MELD_GROUP_GAP * scale : cursor;
+}
+
+/** Top of the wood rail (its box is centred `RAIL_H / 2 − 0.02` up). */
+export const RAIL_TOP = RAIL_H - 0.02;
+/** Centre line (owner's frame) of melds stood on the far rail — see `LayoutOptions.farMeldsOnRail`. */
+export const RAIL_MELD_Z = FELT_HALF + RAIL_WIDTH / 2;
+/** Backward lean of rail-standing melds: the face tips up toward the low camera. */
+export const RAIL_MELD_TILT = 0.2;
+
+/**
+ * The far seat's melds stood on the far rail (`LayoutOptions.
+ * farMeldsOnRail`), faces toward the table centre, running from `left`
+ * (the rack's right end) toward the owner's right at `MELD_PITCH`. A
+ * claimed tile is not turned (a 90° yaw would stand it edge-on); a
+ * gang's fourth tile stands beside the third. Concealed gangs show
+ * their backs.
+ */
+function placeRailMelds(
+  layout: Layout,
+  melds: readonly { tiles: MeldSlotInfo[]; width: number }[],
+  seat: Seat,
+  rel: Rel,
+  yaw: number,
+  left: number,
+): void {
+  let cursor = left;
+  melds.forEach((m, mi) => {
+    let idx = 0;
+    for (const ms of m.tiles) {
+      const lx = cursor + TILE_W / 2;
+      cursor += MELD_PITCH;
+      const [x, z] = toWorld(rel, lx, RAIL_MELD_Z);
+      put(layout, {
+        id: tileId(ms.tile),
+        zone: 'meld',
+        seat,
+        rel,
+        x,
+        y: RAIL_TOP + STAND_Y,
+        z,
+        base: 'standing',
+        // Standing tiles face their owner; a half turn faces the centre,
+        // and the lean then tips the top edge toward the rail (away from
+        // the camera) so the face looks up at it.
+        yaw: yaw + Math.PI,
+        tilt: RAIL_MELD_TILT,
+        back: ms.faceDown,
+        index: mi * 4 + idx++,
+      });
+    }
+    cursor += MELD_GROUP_GAP;
+  });
+}
+
+/**
+ * Walls as the engine sees them: it pops live tiles from the end of
+ * `wall` and shifts gang replacements from the front of `deadWall`;
+ * physically the remaining tiles never move, so map them onto the *full*
+ * set of slots offset by how many have already gone (the gap next to the
+ * break grows as the hand progresses, the dead wall shrinks from its far
+ * end).
+ */
+function placeWalls(layout: Layout, state: GameState, me: Seat, opts: LayoutOptions): void {
   const refs = wallSlotRefs(
     state.dealer,
     state.openingRolls?.breakPosition,
@@ -559,112 +905,154 @@ export function computeLayout(state: GameState, me: Seat, opts: LayoutOptions): 
       index: i,
     });
   });
-
-  for (const seat of [0, 1, 2, 3] as Seat[]) {
-    const rel = relOf(seat, me);
-    const yaw = yawOf(rel);
-    const isMe = seat === me;
-
-    // Hand + melds share one row centred on the seat.
-    const hand = isMe ? orderOwnHand(state.hands[seat], opts) : state.hands[seat];
-    const melds = state.melds[seat].map((m) => layoutMeld(m, seat));
-    const drawnIdx =
-      isMe && opts.drawnTileId !== null
-        ? hand.findIndex((t) => tileId(t) === opts.drawnTileId)
-        : -1;
-    if (isMe && opts.heldHand) {
-      // Phone portrait: the concealed hand is held near the camera and
-      // the exposed melds lie flat on the felt, right-aligned in the
-      // row the hand would otherwise occupy.
-      for (const slot of heldHandSlots(hand, drawnIdx, opts.heldHand, seat)) put(layout, slot);
-      const meldsWidth =
-        melds.reduce((acc, m) => acc + m.width, 0) + Math.max(0, melds.length - 1) * MELD_GROUP_GAP;
-      let cursor = OWN_MELD_RIGHT - meldsWidth;
-      melds.forEach((m, mi) => {
-        let idx = 0;
-        for (const ms of m.tiles) {
-          put(layout, {
-            id: tileId(ms.tile),
-            zone: 'meld',
-            seat,
-            rel,
-            x: cursor + ms.dx,
-            y: FLAT_Y + (ms.stacked ? TILE_D : 0),
-            z: MELD_Z,
-            base: ms.faceDown ? 'flatDown' : 'flatUp',
-            yaw: yaw + (ms.rotated ? Math.PI / 2 : 0),
-            tilt: 0,
-            back: ms.faceDown,
-            index: mi * 4 + idx++,
-          });
-        }
-        cursor += m.width + MELD_GROUP_GAP;
-      });
-      // River below still applies.
-      placeRiver(layout, state, seat, rel, yaw, opts.riverScale ?? 1);
-      continue;
-    }
-    const handWidth =
-      hand.length > 0
-        ? hand.length * HAND_PITCH - (HAND_PITCH - TILE_W) + (drawnIdx >= 0 ? DRAWN_GAP : 0)
-        : 0;
-    const meldsWidth =
-      melds.reduce((acc, m) => acc + m.width, 0) + Math.max(0, melds.length - 1) * MELD_GROUP_GAP;
-    const total = handWidth + (melds.length > 0 && hand.length > 0 ? MELD_GAP : 0) + meldsWidth;
-    let cursor = -total / 2;
-
-    const revealOpp = !isMe && opts.reveal;
-    hand.forEach((t, i) => {
-      if (i === drawnIdx) cursor += DRAWN_GAP;
-      const lx = cursor + TILE_W / 2;
-      cursor += HAND_PITCH;
-      const [x, z] = toWorld(rel, lx, isMe ? OWN_HAND_Z : HAND_Z);
-      put(layout, {
-        id: tileId(t),
-        zone: isMe ? 'hand' : 'oppHand',
-        seat,
-        rel,
-        x,
-        y: revealOpp ? FLAT_Y : STAND_Y,
-        z,
-        base: revealOpp ? 'flatUp' : 'standing',
-        yaw,
-        tilt: revealOpp ? 0 : isMe ? HAND_TILT : OPP_TILT,
-        back: !isMe && !revealOpp,
-        index: i,
-      });
-    });
-    if (hand.length > 0 && melds.length > 0) cursor += MELD_GAP - (HAND_PITCH - TILE_W);
-    melds.forEach((m, mi) => {
-      const groupLeft = cursor;
-      let idx = 0;
-      for (const ms of m.tiles) {
-        const lx = groupLeft + ms.dx;
-        const [x, z] = toWorld(rel, lx, MELD_Z);
-        put(layout, {
-          id: tileId(ms.tile),
-          zone: 'meld',
-          seat,
-          rel,
-          x,
-          y: FLAT_Y + (ms.stacked ? TILE_D : 0),
-          z,
-          base: ms.faceDown ? 'flatDown' : 'flatUp',
-          yaw: yaw + (ms.rotated ? Math.PI / 2 : 0),
-          tilt: 0,
-          back: ms.faceDown,
-          index: mi * 4 + idx++,
-        });
-      }
-      cursor += m.width + MELD_GROUP_GAP;
-    });
-
-    placeRiver(layout, state, seat, rel, yaw, opts.riverScale ?? 1);
-  }
-  return layout;
 }
 
-/** River: 6 per row, rows marching toward the owner. */
+/**
+ * Waiting-table walls (`LayoutOptions.waitingWalls`): every tile still in
+ * `wall` + `deadWall` lies in one of four centred runs of whole stacks,
+ * the runs as even as the count allows (the extra stacks go to the seats
+ * nearest the viewer). A leftover single tile stays hidden. Keeps the
+ * pinwheel shift so the runs sit like the real walls will.
+ */
+function placeWaitingWalls(layout: Layout, state: GameState, me: Seat): void {
+  const tiles = [...state.deadWall, ...state.wall];
+  const stacks = Math.floor(tiles.length / 2);
+  const base = Math.floor(stacks / 4);
+  let extra = stacks - base * 4;
+  let k = 0;
+  for (let i = 0; i < 4; i++) {
+    // Viewer's wall first (rel 0), then round the table, so the extra
+    // stacks land on the near / side walls a portrait camera shows.
+    const wallSeat = ((me + i) % 4) as Seat;
+    const n = Math.min(STACKS_PER_WALL, base + (extra > 0 ? 1 : 0));
+    if (extra > 0) extra--;
+    const first = Math.floor((STACKS_PER_WALL - n) / 2);
+    for (let j = 0; j < n; j++) {
+      for (const level of [0, 1] as const) {
+        const tile = tiles[k];
+        if (!tile) return;
+        const p = wallSlotPosition({ wallSeat, stack: first + j, level, dead: false }, me);
+        put(layout, {
+          id: tileId(tile),
+          zone: 'wall',
+          seat: wallSeat,
+          rel: p.rel,
+          x: p.x,
+          y: p.y,
+          z: p.z,
+          base: 'flatDown',
+          yaw: p.yaw,
+          tilt: 0,
+          back: true,
+          index: k,
+        });
+        k++;
+      }
+    }
+  }
+}
+
+/** Centre line of the first river row for a tile scale (near edge fixed). */
+export function riverZ0(scale: number): number {
+  return RIVER_NEAR_EDGE + (TILE_H / 2) * scale;
+}
+
+/**
+ * River metrics for a tile scale, in the owner's frame. The four rivers
+ * are laid out as a pinwheel: each row is shifted toward its owner's
+ * right by `shift`, chosen so the row's *left* end never reaches past
+ * the near edge of the neighbouring seat's first row (rotated 90°, that
+ * neighbour's river occupies the strip |lx| ≤ its half-width beside
+ * ours). Centred rows collided at the corners once both rivers held
+ * six tiles — round-3: the right seat's rotated 六萬 sat on the user's
+ * fifth discard.
+ */
+export function riverMetrics(scale: number): {
+  pitchX: number;
+  pitchZ: number;
+  /** Half-width of a full row (edge to edge). */
+  halfWidth: number;
+  /** Rightward pinwheel shift of every row. */
+  shift: number;
+  /** Near edge (toward the table centre) of the first row. */
+  nearEdge: number;
+  /** Far edge of the last regular row. */
+  farEdge: number;
+  /** Right edge of a full row (the far end of the owner's pinwheel arm). */
+  rightEdge: number;
+} {
+  const pitchX = RIVER_PITCH_X * scale;
+  const pitchZ = RIVER_PITCH_Z * scale;
+  const halfWidth = (RIVER_COLS * pitchX - (pitchX - TILE_W * scale)) / 2;
+  const nearEdge = RIVER_NEAR_EDGE;
+  const z0 = riverZ0(scale);
+  const shift = Math.max(0, halfWidth - nearEdge + RIVER_CORNER_GAP);
+  const farEdge = z0 + (RIVER_ROWS - 1) * pitchZ + (TILE_H / 2) * scale;
+  return { pitchX, pitchZ, halfWidth, shift, nearEdge, farEdge, rightEdge: shift + halfWidth };
+}
+
+/**
+ * Dealer chip centre in the dealer's seat frame (x right, z toward
+ * them): the near-*left* corner pocket, just beyond the right end of
+ * the left neighbour's pinwheel arm (which runs along our left side at
+ * z ≤ `rightEdge`) and left of our own river (which starts at
+ * lx ≥ shift − halfWidth). Depends on the river scale, so the phone
+ * portrait table (1.25×) parks it a little further out than the wide
+ * presets; both stay well inside the wall's inner edge.
+ */
+export function dealerChipLocal(riverScale: number, chipRadius: number): [number, number] {
+  const m = riverMetrics(riverScale);
+  return [-5.2, m.rightEdge + chipRadius + 0.2];
+}
+
+/**
+ * How far the dealer chip steps toward the table centre when wall stacks
+ * still stand in its pocket (`dealerChipBlocked`). At the portrait river
+ * scale the chip's near edge (7.94) sits 0.18 off the wall's inner edge
+ * (8.12) and the two-high stacks' top face, seen from 70°, overhangs the
+ * felt by ≈ 0.22 — the chip's lower fifth hid behind the stacks and read
+ * as wedged into the wall (round-4 #3). 0.7 leaves ≈ 0.5 units of felt
+ * between the chip and the overhang; the pinwheel arm it sits beyond is
+ * unaffected (the step is along z, away from the wall).
+ */
+export const CHIP_POCKET_NUDGE = 0.7;
+/** Reach (world units) within which a wall stack counts as occupying the chip's pocket. */
+export const CHIP_POCKET_REACH = 1.2;
+
+/**
+ * Is a wall / dead-wall stack standing in the dealer chip's corner
+ * pocket? `[lx, lz]` is the chip centre in the dealer's frame
+ * (`dealerChipLocal`); a stack on the dealer's own wall whose centre is
+ * within `CHIP_POCKET_REACH` of the chip's near edge along the wall and
+ * whose inner edge is within reach across it blocks the pocket. The deal
+ * empties the pocket on some break positions and not others, so the
+ * chip either parks in the pocket or steps `CHIP_POCKET_NUDGE` in; the
+ * caller keeps the decision for the hand (stacks only ever leave).
+ */
+export function dealerChipBlocked(
+  layout: Layout,
+  dealerRel: Rel,
+  [lx, lz]: readonly [number, number],
+  chipRadius: number,
+): boolean {
+  for (const slot of layout) {
+    if (!slot || (slot.zone !== 'wall' && slot.zone !== 'deadWall') || slot.rel !== dealerRel)
+      continue;
+    const [sx, sz] = toLocal(dealerRel, slot.x, slot.z);
+    if (Math.abs(sx - lx) > TILE_W / 2 + chipRadius + CHIP_POCKET_REACH * 0.5) continue;
+    // Stack inner edge (toward the centre) vs the chip's near edge.
+    if (sz - TILE_H / 2 - (lz + chipRadius) < CHIP_POCKET_REACH) return true;
+  }
+  return false;
+}
+
+/**
+ * River: 6 per row, rows marching toward the owner, every row shifted
+ * right into the pinwheel (`riverMetrics`). Past `RIVER_ROWS` rows the
+ * extra tiles continue along the last row's right end (the near wall
+ * in that corner is long gone by then) instead of starting a fourth
+ * row on the wall.
+ */
 function placeRiver(
   layout: Layout,
   state: GameState,
@@ -673,11 +1061,15 @@ function placeRiver(
   yaw: number,
   scale: number,
 ): void {
+  const m = riverMetrics(scale);
+  const z0 = riverZ0(scale);
+  const regular = RIVER_COLS * RIVER_ROWS;
   state.discards[seat].forEach((t, i) => {
-    const col = i % RIVER_COLS;
-    const row = Math.floor(i / RIVER_COLS);
-    const lx = (col - (RIVER_COLS - 1) / 2) * RIVER_PITCH_X * scale;
-    const lz = RIVER_Z0 + (row * RIVER_PITCH_Z + (scale - 1) * (TILE_H / 2)) * scale;
+    const overflow = i >= regular;
+    const col = overflow ? RIVER_COLS + (i - regular) : i % RIVER_COLS;
+    const row = overflow ? RIVER_ROWS - 1 : Math.floor(i / RIVER_COLS);
+    const lx = (col - (RIVER_COLS - 1) / 2) * m.pitchX + m.shift;
+    const lz = z0 + row * m.pitchZ;
     const [x, z] = toWorld(rel, lx, lz);
     put(layout, {
       id: tileId(t),

@@ -36,6 +36,15 @@ export interface PerfSnapshot {
   height: number;
   /** Monotonic sample counter — tests wait for it to advance. */
   sample: number;
+  /**
+   * High-water marks of `drawCalls` / `triangles` over every frame
+   * rendered since the monitor started (or was `reset()` for a new
+   * host). `drawCalls` / `triangles` describe the *last* frame, which on
+   * a render-on-demand scene may be a lighter one (no shadow pass); the
+   * peaks are the numbers a per-frame budget should be judged against.
+   */
+  peakDrawCalls: number;
+  peakTriangles: number;
 }
 
 declare global {
@@ -62,6 +71,8 @@ export class PerfMonitor {
   private renders = 0;
   private sample = 0;
   private warmupMs = 0;
+  private peakCalls = 0;
+  private peakTris = 0;
   quality: QualityTier = 'mid';
 
   constructor(private readonly renderer: WebGLRenderer) {}
@@ -72,6 +83,10 @@ export class PerfMonitor {
     // next few are still paying for uploads on a software rasteriser,
     // so the ring only starts after `WARMUP_FRAMES`.
     if (this.renders === 0) this.warmupMs = frameMs;
+    // `renderer.info.render` holds the frame just rendered (autoReset).
+    const info = this.renderer.info.render;
+    this.peakCalls = Math.max(this.peakCalls, info.calls);
+    this.peakTris = Math.max(this.peakTris, info.triangles);
     this.framesThisSecond++;
     this.renders++;
     this.lastRenderAt = now;
@@ -117,6 +132,8 @@ export class PerfMonitor {
       width: size.x,
       height: size.y,
       sample: ++this.sample,
+      peakDrawCalls: this.peakCalls,
+      peakTriangles: this.peakTris,
     };
     this.framesThisSecond = 0;
     globalThis.__MAHJONG_PERF__ = snap;
@@ -137,6 +154,8 @@ export class PerfMonitor {
     this.renders = 0;
     this.sample = 0;
     this.warmupMs = 0;
+    this.peakCalls = 0;
+    this.peakTris = 0;
   }
 
   dispose(): void {

@@ -1,13 +1,14 @@
 import type { GameState, Seat, Wind } from '@mahjong/game-logic';
 import {
   BoxGeometry,
-  type BufferGeometry,
+  BufferGeometry,
   CircleGeometry,
   CylinderGeometry,
   Float32BufferAttribute,
   InstancedMesh,
   Matrix4,
   Mesh,
+  MeshBasicMaterial,
   MeshPhysicalMaterial,
   MeshStandardMaterial,
   Object3D,
@@ -27,21 +28,26 @@ import type { QualityProfile } from '../core/quality';
 import { publishRiverInterior } from '../core/sceneRects';
 import { getSpotlightTiles, spotlightPulse, spotlightVersion } from '../core/spotlight';
 import { TilePool } from '../tiles/TilePool';
-import { TILE_D, TILE_H } from '../tiles/geometry';
-import { feltColors, setTileBackFinish } from '../tiles/materials';
+import { TILE_D, TILE_H, TILE_W } from '../tiles/geometry';
+import { feltColors, setTileBackFinish, setTileBackGradient } from '../tiles/materials';
 import { Choreographer, slotPose } from './choreography';
 import {
   CENTRE_PLATE_RADIUS,
+  CHIP_POCKET_NUDGE,
   FELT_HALF,
   type HeldHandFrame,
   type Layout,
+  OWN_HAND_Z,
   RAIL_H,
   RAIL_WIDTH,
   type Rel,
   WALL_D,
   computeLayout,
+  dealerChipBlocked,
+  dealerChipLocal,
   relOf,
   tileSheetLayout,
+  toLocal,
   toWorld,
 } from './layout';
 import { type ScreenRect, projectTileRect } from './picking';
@@ -77,7 +83,7 @@ export interface SyncInput {
   shuffling: boolean;
   /** Phone portrait: the near-camera frame the user's hand is held in. */
   heldHand?: HeldHandFrame | null | undefined;
-  /** River tile scale (portrait draws discards 1.1×). */
+  /** River tile scale (portrait draws discards 1.36×). */
   riverScale?: number | undefined;
   /**
    * The table between hands (pre-game lobby): walls built, no dealer
@@ -85,6 +91,13 @@ export interface SyncInput {
    * hidden, and the layout is applied without a dispense.
    */
   waiting?: boolean | undefined;
+  /**
+   * Apply the layout without motion (default: `waiting`). The lobby
+   * snaps its first layout and lets later seat changes animate.
+   */
+  snap?: boolean | undefined;
+  /** Show the user's own hand backs-out (the waiting table's racks). */
+  concealOwn?: boolean | undefined;
   /** Portrait river zoom — see `LayoutOptions.hideSideWallsBeyondZ`. */
   hideSideWallsBeyondZ?: number | undefined;
   /**
@@ -93,6 +106,16 @@ export interface SyncInput {
    * there, so the wall steps back a shade and the hand reads in front.
    */
   nearWallDim?: number | undefined;
+  /** Side seats' outward shift — see `LayoutOptions.sideSeatOut`. */
+  sideSeatOut?: number | undefined;
+  /** Right seat's melds at the near end — see `LayoutOptions.sideMeldsNear`. */
+  sideMeldsNear?: boolean | undefined;
+  /** Side seats' meld scale — see `LayoutOptions.sideMeldScale`. */
+  sideMeldScale?: number | undefined;
+  /** Far seat's melds stood on the rail — see `LayoutOptions.farMeldsOnRail`. */
+  farMeldsOnRail?: boolean | undefined;
+  /** Landscape river zoom: drop the side seats' rows — see `LayoutOptions.hideSideSeats`. */
+  hideSideSeats?: boolean | undefined;
 }
 
 export interface TableDebugTile {
@@ -133,16 +156,26 @@ export const TABLE_POOL_KEY = 'table';
  */
 export const TABLE_BACK_FINISH = { clearcoat: 0.12, roughness: 0.72 } as const;
 /**
- * Dealer chip centre in the dealer's seat frame (x right, z toward
- * them): the near-right corner pocket inside the walls. Every river
- * grows within |x| ≤ 3.2 of its owner's axis and toward its owner, so
- * the pocket x, z ∈ [3.2, 8.1] in the dealer's frame is the one patch
- * no river ever reaches. 5.2 (not deeper into the corner) keeps the
- * chip's near edge above the near wall's inner top edge from the low
- * phone-landscape camera, so the glyph is never half-occluded.
+ * Back gradient range on the table (`materials.setTileBackGradient`):
+ * 0.55 keeps a wall stack's light end a readable blue instead of washing
+ * to near-white against the ivory bevel under the key + env, so the live
+ * and dead-wall segments read as one set at two shades (round-4 #5).
+ * Note the "step" the critic saw at the desktop near wall's right end is
+ * the pinwheel corner, not a jog: the right wall's near-end stack stands
+ * directly behind the near wall's last stack (verified from the debug
+ * poses — every stack at z 8.8, y 0.31 / 0.93) and its ivory side shows
+ * above that stack's top face.
  */
-export const MARKER_LOCAL: [number, number] = [5.2, 5.2];
-export const CHIP_RADIUS = 0.62;
+export const TABLE_BACK_GRADIENT = 0.55;
+/**
+ * Dealer chip: a red lacquer disc parked in the dealer's near-left
+ * corner pocket — the patch the pinwheel rivers never reach (see
+ * `layout.dealerChipLocal`). At the wide presets' river scale it sits at
+ * z ≈ 5.6, which keeps its near edge above the near wall's inner top
+ * edge from the low phone-landscape camera, so the glyph is never
+ * half-occluded.
+ */
+export const CHIP_RADIUS = 0.56;
 export const CHIP_H = 0.22;
 /**
  * Dice offsets in *world* space on the plate's far rim (the camera
@@ -156,6 +189,11 @@ const DICE_WORLD: [number, number][] = [
 const DICE_SCALE = 0.8;
 /** How long the gold cue pulses before settling to a steady glow. */
 const PULSE_MS = 3200;
+/**
+ * Candidate offsets (world units) of the dead-wall hairline from the
+ * stacks' outer edge, tried nearest first — see `syncDeadMarker`.
+ */
+const DEAD_HAIRLINE_OFFSETS = [0.14, 0.26, 0.38, 0.5, 0.62, 0.74] as const;
 const _m = new Matrix4();
 const _obj = new Object3D();
 const _q = new Quaternion();
@@ -189,14 +227,29 @@ export class TableScene {
   private plateInfo: { wind: Wind | null; count: number | null } = { wind: null, count: -1 };
   private marker: Mesh;
   private markerRel: Rel | null = null;
+  private markerScale = 1;
+  /** Hand the chip's pocket decision was made for + whether it stepped in (see `dealerChipBlocked`). */
+  private markerHandKey = '';
+  private markerNudged = false;
   private dice: InstancedMesh;
   private diceValues: [number, number] | null = null;
+  /** Gold hairline on the felt along the dead-wall stacks (`syncDeadMarker`). */
+  private deadMarker: Mesh;
+  private deadMarkerKey = '';
   private textures: Texture[] = [];
   private geometries: BufferGeometry[] = [];
   private disposed = false;
 
   private tileSheet: boolean;
   private latestDiscardId: number | null = null;
+  /**
+   * The tile that most recently landed in a river, derived from the
+   * layout diff. The engine-side `latestDiscardId` only lives for the
+   * claim window (gone the instant the next seat draws), so this keeps
+   * the gold cue on the newest discard through its flight and for
+   * `PULSE_MS` after it lands — the still a player reads the table by.
+   */
+  private cueDiscardId: number | null = null;
   private drawnTileId: number | null = null;
   private hintTileId: number | null = null;
   private nextDrawId: number | null = null;
@@ -211,6 +264,10 @@ export class TableScene {
    *  only while the camera moves. */
   private readonly interiorCam = new Matrix4();
   private interiorPublished = false;
+  /** Camera matrix at the last frame — a moving camera re-renders the shadow pass too. */
+  private readonly frameCam = new Matrix4();
+  /** Goal-camera key the dead-wall hairline was last solved for. */
+  private deadMarkerCamKey = '';
   private lift = new Float32Array(136);
   private pulseT = 0;
   /** Pulses run for a few seconds after each cue, then hold steady so a still table idles. */
@@ -219,6 +276,7 @@ export class TableScene {
   private lastNow = 0;
   private nearWallDim = 1;
   private lastLayout: Layout | null = null;
+  private lastWaiting = false;
   /** Stable disposer for `SceneContext.onDestroy` while parked. */
   readonly destroyHook = (): void => this.dispose();
 
@@ -377,6 +435,22 @@ export class TableScene {
     this.dice.name = 'dice';
     scene.add(this.dice);
 
+    // Dead-wall marker: a gold hairline on the felt along the outer edge
+    // of the dead stacks, rebuilt (two quads at most) when the segment
+    // changes. Together with the darker back shade it marks the segment
+    // without a second tile colour or a positional kink.
+    const deadMat = new MeshBasicMaterial({
+      color: 0xd8a85a,
+      transparent: true,
+      opacity: 0.85,
+      depthWrite: false,
+    });
+    this.deadMarker = new Mesh(new BufferGeometry(), deadMat);
+    this.deadMarker.visible = false;
+    this.deadMarker.name = 'dead-wall-marker';
+    this.deadMarker.renderOrder = 1;
+    scene.add(this.deadMarker);
+
     // Tiles. River glyphs are minified 3–4× and seen at 30–45° on the
     // wide presets, so the atlas takes the strongest anisotropy the GPU
     // offers (mid / high tiers; low keeps the profile's value) — the
@@ -387,6 +461,7 @@ export class TableScene {
       atlasScale: quality.tier === 'high' ? 1.25 : 1,
     });
     setTileBackFinish(this.pool.material, TABLE_BACK_FINISH);
+    setTileBackGradient(this.pool.material, TABLE_BACK_GRADIENT);
     scene.add(this.pool.mesh);
 
     if (this.tileSheet) {
@@ -411,6 +486,7 @@ export class TableScene {
     this.choreo.reducedMotion = opts.reducedMotion;
     this.lastLayout = null;
     this.latestDiscardId = null;
+    this.cueDiscardId = null;
     this.drawnTileId = null;
     this.hintTileId = null;
     this.nextDrawId = null;
@@ -424,6 +500,13 @@ export class TableScene {
     this.plateInfo = { wind: null, count: -1 };
     this.marker.visible = false;
     this.markerRel = null;
+    this.markerScale = 1;
+    this.markerHandKey = '';
+    this.markerNudged = false;
+    this.deadMarker.visible = false;
+    this.deadMarkerKey = '';
+    this.deadMarkerCamKey = '';
+    this.lastWaiting = false;
     this.dice.visible = false;
     this.diceValues = null;
     this.pool.hideAll();
@@ -452,12 +535,26 @@ export class TableScene {
   setSkins(felt: FeltSkin, tileBack: TileBackSkin): void {
     this.feltMat.color.copy(feltColors(felt).top);
     this.pool.setBackSkin(tileBack);
-    this.ctx.loop.requestRender();
+    this.requestFullFrame();
   }
 
   setHover(id: number | null): void {
     if (this.hoverId === id) return;
     this.hoverId = id;
+    this.requestFullFrame();
+  }
+
+  /**
+   * Every frame the table renders is a *full* frame — shadow pass
+   * included — so the perf sampler's numbers describe one consistent
+   * frame (round-4 #7: a hover-only or camera-only re-render skipped the
+   * shadow pass and reported 8 calls / 42k triangles against the 12 /
+   * 83k of every other still). The pass costs a fraction of a
+   * millisecond on the reference phone and only runs when something
+   * re-renders anyway.
+   */
+  private requestFullFrame(): void {
+    this.ctx.renderer.shadowMap.needsUpdate = true;
     this.ctx.loop.requestRender();
   }
 
@@ -473,10 +570,35 @@ export class TableScene {
       heldHand: input.heldHand ?? null,
       riverScale: input.riverScale ?? 1,
       hideSideWallsBeyondZ: input.hideSideWallsBeyondZ,
+      concealOwn: input.concealOwn,
+      sideSeatOut: input.sideSeatOut,
+      sideMeldsNear: input.sideMeldsNear,
+      sideMeldScale: input.sideMeldScale,
+      farMeldsOnRail: input.farMeldsOnRail,
+      hideSideSeats: input.hideSideSeats,
+      waitingWalls: input.waiting,
     });
+    const prevLayout = this.lastLayout;
     this.lastLayout = layout;
     const waiting = input.waiting === true;
-    this.choreo.setLayout(layout, state, me, now, { shuffling: input.shuffling, snap: waiting });
+    this.lastWaiting = waiting;
+    this.choreo.setLayout(layout, state, me, now, {
+      shuffling: input.shuffling,
+      snap: input.snap ?? waiting,
+    });
+    // Newest discard: a tile whose zone just became `discard`. A claimed
+    // (or otherwise moved) cue tile drops the cue.
+    if (prevLayout) {
+      for (let id = 0; id < 136; id++) {
+        if (layout[id]?.zone === 'discard' && prevLayout[id]?.zone !== 'discard') {
+          this.cueDiscardId = id;
+          this.pulseUntil = now + PULSE_MS;
+        }
+      }
+    }
+    if (this.cueDiscardId !== null && layout[this.cueDiscardId]?.zone !== 'discard') {
+      this.cueDiscardId = null;
+    }
     if (input.latestDiscardId !== this.latestDiscardId || input.needsDraw !== this.needsDraw) {
       this.pulseUntil = now + PULSE_MS;
     }
@@ -499,18 +621,41 @@ export class TableScene {
       else this.pool.showFace(id);
     }
 
+    this.syncDeadMarker(layout, waiting);
+
     // Centre plate + marker + dice. No dealer exists before the opening
     // roll, so the waiting table shows neither chip nor dice.
     this.updatePlate(state.prevailingWind, waiting ? null : state.wall.length);
     const rel = relOf(state.dealer, me);
+    const riverScale = input.riverScale ?? 1;
+    // The pocket decision holds for the hand (stacks only ever leave the
+    // wall, so a chip that parked in the pocket never needs to step in
+    // later, and one that stepped in never slides back out mid-hand).
+    const handKey = `${state.dealer}:${state.openingRolls?.breakPosition ?? '-'}:${state.prevailingWind}`;
+    if (handKey !== this.markerHandKey) {
+      this.markerHandKey = handKey;
+      this.markerNudged = false;
+      this.markerRel = null;
+    }
+    const chipLocal = dealerChipLocal(riverScale, CHIP_RADIUS);
+    const nudged =
+      this.markerNudged || (!waiting && dealerChipBlocked(layout, rel, chipLocal, CHIP_RADIUS));
     if (waiting) {
       this.marker.visible = false;
       this.markerRel = null;
-    } else if (rel !== this.markerRel) {
+    } else if (
+      rel !== this.markerRel ||
+      riverScale !== this.markerScale ||
+      nudged !== this.markerNudged
+    ) {
       this.markerRel = rel;
-      // Parked in the dealer's near-right corner pocket, glyph facing
-      // the dealer.
-      const [mx, mz] = toWorld(rel, MARKER_LOCAL[0], MARKER_LOCAL[1]);
+      this.markerScale = riverScale;
+      this.markerNudged = nudged;
+      // Parked in the dealer's near-left corner pocket, glyph facing
+      // the dealer — a step toward the centre when wall stacks still
+      // stand in that pocket (`dealerChipBlocked`).
+      const [lx, lz] = chipLocal;
+      const [mx, mz] = toWorld(rel, lx, lz - (nudged ? CHIP_POCKET_NUDGE : 0));
       this.marker.position.set(mx, CHIP_H / 2, mz);
       this.marker.quaternion.setFromAxisAngle(Y_AXIS, (rel * Math.PI) / 2);
       this.marker.visible = true;
@@ -531,6 +676,168 @@ export class TableScene {
     }
     this.ctx.renderer.shadowMap.needsUpdate = true;
     this.ctx.loop.requestRender();
+  }
+
+  /**
+   * Rebuild the dead-wall hairline for the current layout: one quad per
+   * wall side the dead stacks occupy (the segment wraps a corner at most
+   * once), laid on the felt just outside the stacks' *outer* (rail-side)
+   * edge — the same rule on every preset. A side is drawn only when the
+   * camera can see that strip of felt: the ray from the goal camera to
+   * the hairline's probe points must clear the wall's own stacks and,
+   * for the near wall, the user's hand row standing in front of it. The
+   * strip's offset from the stacks is searched outward from
+   * `DEAD_HAIRLINE_OFFSETS[0]`: seen from the table's centre line a side
+   * wall's two-high top face overhangs the felt beyond its outer edge by
+   * ~0.22 units at 70° (portrait) and ~0.27 at 44° (desktop), so the
+   * fixed 0.14 strip was hidden on every side segment even where the
+   * felt beside the stacks was plainly visible (round-4 #4: the near half
+   * of one dead wall had the line, the left half did not). A candidate
+   * offset is also rejected when the strip would run under a rack or a
+   * meld of that side (the side seats' melds start 0.24 off the wall on
+   * portrait). From the low wide presets nothing clears the far wall's
+   * overhang and, on landscape, the hand covers the near seam, so the
+   * darker back shade alone marks those segments. Hidden on the waiting
+   * table (no break yet).
+   */
+  private syncDeadMarker(layout: Layout, waiting: boolean): void {
+    const byRel = new Map<Rel, { min: number; max: number }>();
+    const wallExtent = new Map<Rel, { min: number; max: number }>();
+    /** Footprints (along a0..a1 × across d0..d1, seat frame) of racks + melds per side. */
+    const rowFootprints = new Map<Rel, { a0: number; a1: number; d0: number; d1: number }[]>();
+    const alongOf = (slot: { rel: Rel; x: number; z: number }) =>
+      slot.rel === 0 ? slot.x : slot.rel === 1 ? -slot.z : slot.rel === 2 ? -slot.x : slot.z;
+    if (!waiting) {
+      for (const slot of layout) {
+        if (!slot) continue;
+        if (slot.zone === 'meld' || slot.zone === 'oppHand' || slot.zone === 'hand') {
+          if (slot.quat !== undefined) continue; // held hand: off the table
+          const [a, d] = toLocal(slot.rel, slot.x, slot.z);
+          const half = (TILE_H / 2) * (slot.scale ?? 1);
+          // A standing rack tile's footprint is its thickness (plus lean),
+          // not its height: the side racks stand 0.41 either side of
+          // `HAND_Z`, which leaves the felt out to 10.14 for the strip.
+          const depth = slot.base === 'standing' ? TILE_D / 2 + 0.1 : half;
+          const list = rowFootprints.get(slot.rel) ?? [];
+          list.push({ a0: a - half, a1: a + half, d0: d - depth, d1: d + depth });
+          rowFootprints.set(slot.rel, list);
+          continue;
+        }
+        if (slot.zone !== 'deadWall' && slot.zone !== 'wall') continue;
+        // Along-the-wall coordinate in the wall seat's frame.
+        const along = alongOf(slot);
+        const ext = wallExtent.get(slot.rel);
+        if (!ext) wallExtent.set(slot.rel, { min: along, max: along });
+        else {
+          ext.min = Math.min(ext.min, along);
+          ext.max = Math.max(ext.max, along);
+        }
+        if (slot.zone !== 'deadWall') continue;
+        const e = byRel.get(slot.rel);
+        if (!e) byRel.set(slot.rel, { min: along, max: along });
+        else {
+          e.min = Math.min(e.min, along);
+          e.max = Math.max(e.max, along);
+        }
+      }
+    }
+    const cam = this.ctx.rig.goalCamera();
+    const eye = cam.position;
+    const camKey = `${eye.x.toFixed(1)}:${eye.y.toFixed(1)}:${eye.z.toFixed(1)}`;
+    const key = `${camKey}|${[...byRel.entries()]
+      .map(([rel, e]) => `${rel}:${e.min.toFixed(2)}:${e.max.toFixed(2)}`)
+      .sort()
+      .join('|')}|${[...rowFootprints.entries()]
+      .map(([rel, f]) => `${rel}:${f.length}`)
+      .sort()
+      .join(',')}`;
+    if (key === this.deadMarkerKey) return;
+    this.deadMarkerKey = key;
+    this.deadMarkerCamKey = camKey;
+    const pos: number[] = [];
+    const idx: number[] = [];
+    const half = TILE_W / 2 + 0.02;
+    const w = 0.09;
+    const y = 0.012;
+    const ownHandVisible = layout.some((sl) => sl?.zone === 'hand' && sl.quat === undefined);
+    // One dead wall, one treatment: the line is drawn along every segment
+    // the dead wall wraps onto or along none of them (round-4 #4 docked a
+    // dead wall marked on its near half only), so the search below must
+    // find a visible strip for each side before anything is emitted.
+    let complete = true;
+    for (const [rel, e] of byRel) {
+      // Occluders: this wall's stacks (the whole row, live stacks too) and,
+      // in front of the near wall, the user's standing hand row.
+      const ext = wallExtent.get(rel) ?? e;
+      const boxes: Box[] = [
+        seatBox(
+          rel,
+          ext.min - half,
+          ext.max + half,
+          WALL_D - TILE_H / 2,
+          WALL_D + TILE_H / 2,
+          0,
+          2 * TILE_D,
+        ),
+      ];
+      if (rel === 0 && ownHandVisible)
+        boxes.push(seatBox(0, -9, 9, OWN_HAND_Z - 0.75, OWN_HAND_Z + 0.75, 0, TILE_H * 1.05));
+      const a0 = e.min - half;
+      const a1 = e.max + half;
+      const rows = rowFootprints.get(rel) ?? [];
+      let zOut: number | null = null;
+      for (const off of DEAD_HAIRLINE_OFFSETS) {
+        const z0 = WALL_D + TILE_H / 2 + off;
+        // Never under a rack or a meld standing along this segment.
+        if (rows.some((f) => f.a1 > a0 && f.a0 < a1 && f.d1 > z0 - 0.03 && f.d0 < z0 + w + 0.03))
+          break;
+        const [mx, mz] = toWorld(rel, (e.min + e.max) / 2, z0 + w / 2);
+        const [ax, az] = toWorld(rel, a0 + 0.2, z0 + w / 2);
+        const [bx, bz] = toWorld(rel, a1 - 0.2, z0 + w / 2);
+        const seen = [
+          [mx, y, mz],
+          [ax, y, az],
+          [bx, y, bz],
+        ].every((pt) => !boxes.some((b) => segmentHitsBox(eye, pt as V3, b)));
+        if (seen) {
+          zOut = z0;
+          break;
+        }
+      }
+      if (zOut === null) {
+        complete = false;
+        break;
+      }
+      const corners: [number, number][] = [
+        toWorld(rel, a0, zOut),
+        toWorld(rel, a1, zOut),
+        toWorld(rel, a1, zOut + w),
+        toWorld(rel, a0, zOut + w),
+      ];
+      const base = pos.length / 3;
+      for (const [cx, cz] of corners) pos.push(cx, y, cz);
+      idx.push(base, base + 2, base + 1, base, base + 3, base + 2);
+    }
+    if (pos.length === 0 || !complete) {
+      this.deadMarker.visible = false;
+      return;
+    }
+    const geo = new BufferGeometry();
+    geo.setAttribute('position', new Float32BufferAttribute(pos, 3));
+    geo.setIndex(idx);
+    geo.computeVertexNormals();
+    this.deadMarker.geometry.dispose();
+    this.deadMarker.geometry = geo;
+    this.deadMarker.visible = true;
+  }
+
+  /** The dead-wall hairline depends on the camera: re-solve when the goal moves. */
+  private refreshDeadMarkerForCamera(): void {
+    if (!this.lastLayout || this.tileSheet) return;
+    const eye = this.ctx.rig.goalCamera().position;
+    const camKey = `${eye.x.toFixed(1)}:${eye.y.toFixed(1)}:${eye.z.toFixed(1)}`;
+    if (camKey === this.deadMarkerCamKey) return;
+    this.syncDeadMarker(this.lastLayout, this.lastWaiting);
   }
 
   private updatePlate(wind: Wind, count: number | null): void {
@@ -568,7 +875,9 @@ export class TableScene {
     const pulsing =
       !this.choreo.reducedMotion &&
       now < this.pulseUntil &&
-      (this.latestDiscardId !== null || (this.needsDraw && this.nextDrawId !== null));
+      (this.latestDiscardId !== null ||
+        this.cueDiscardId !== null ||
+        (this.needsDraw && this.nextDrawId !== null));
     if (pulsing) {
       this.pulseT += dt;
       live = true;
@@ -596,7 +905,16 @@ export class TableScene {
     if (spotlightVersion() !== this.spotSeq || (spotIds.length > 0 && !this.choreo.reducedMotion))
       live = true;
     this.writePoses(now);
-    if (live) this.ctx.renderer.shadowMap.needsUpdate = true;
+    // A camera move (rig ease, parallax) re-renders without any tile
+    // moving; render it as a full frame too (see `requestFullFrame`).
+    const cam = this.ctx.rig.camera;
+    cam.updateMatrixWorld();
+    const camMoved = !cam.matrixWorld.equals(this.frameCam);
+    if (camMoved) {
+      this.frameCam.copy(cam.matrixWorld);
+      this.refreshDeadMarkerForCamera();
+    }
+    if (live || camMoved) this.ctx.renderer.shadowMap.needsUpdate = true;
     this.publishInterior();
     return live;
   }
@@ -647,6 +965,7 @@ export class TableScene {
       for (const id of spotIds) this.spotMask[id] = 1;
     }
     const spotLevel = spotIds.length > 0 ? spotlightPulse(now, this.choreo.reducedMotion) : 0;
+    const cueId = this.latestDiscardId ?? this.cueDiscardId;
     const tiles = this.choreo.tiles;
     for (let id = 0; id < 136; id++) {
       const t = tiles[id]!;
@@ -673,18 +992,18 @@ export class TableScene {
         // Primary cue: strong gold pulse plus a small lift off the stack.
         hl = 0.7 + 0.3 * pulse;
         p.position.y += 0.06 + 0.06 * pulse;
-      } else if (id === this.latestDiscardId) hl = 0.4 + 0.45 * pulse;
+      } else if (id === cueId) hl = 0.5 + 0.45 * pulse;
       else if (id === this.drawnTileId) hl = 0.22;
       else if (id === this.hintTileId) hl = 0.12;
       if (spotLevel > 0 && this.spotMask[id] === 1) hl = Math.max(hl, spotLevel);
       p.highlight = hl;
       p.tint.setScalar(1);
       const zone = t.slot?.zone;
-      // Dead wall reads as a separate block: its backs take the warm
-      // ivory-tan variant (`uDeadBack*` in the tile material) instead of
-      // the skin gradient — a real second back colour rather than a
-      // multiply on blue, which only ever reached khaki-grey. No
-      // positional step (see `wallSlotPosition`).
+      // Dead wall reads as a shaded segment of the same set: its backs
+      // take the skin's darker shade (`uDeadBack*`, derived from the skin
+      // in `materials.deadBackColors`) and a gold hairline runs along
+      // the felt beside the stacks (`syncDeadMarker`). No positional
+      // step (see `wallSlotPosition`).
       p.backVariant = zone === 'deadWall' ? 1 : 0;
       if ((zone === 'wall' || zone === 'deadWall') && t.slot?.rel === 0 && this.nearWallDim !== 1)
         p.tint.setScalar(this.nearWallDim);
@@ -776,6 +1095,7 @@ export class TableScene {
       this.plate,
       this.plateTopMesh,
       this.marker,
+      this.deadMarker,
       this.dice,
       this.pool.mesh,
     );
@@ -788,6 +1108,8 @@ export class TableScene {
     (this.plate.material as MeshPhysicalMaterial).dispose();
     (this.plateTopMesh.material as MeshPhysicalMaterial).dispose();
     (this.marker.material as MeshPhysicalMaterial).dispose();
+    this.deadMarker.geometry.dispose();
+    (this.deadMarker.material as MeshBasicMaterial).dispose();
     (this.dice.material as MeshPhysicalMaterial).dispose();
     this.dice.dispose();
     this.ctx.renderer.shadowMap.autoUpdate = true;
@@ -863,4 +1185,53 @@ function remapDieUv(geo: BufferGeometry): void {
     }
   }
   geo.setAttribute('uv', new Float32BufferAttribute(arr, 2));
+}
+
+type V3 = [number, number, number];
+interface Box {
+  min: V3;
+  max: V3;
+}
+
+/**
+ * World AABB of a slab authored in a seat's frame: `a0..a1` along the
+ * wall (the seat's x), `d0..d1` across it (the seat's z, toward the
+ * seat), `y0..y1` up.
+ */
+function seatBox(
+  rel: Rel,
+  a0: number,
+  a1: number,
+  d0: number,
+  d1: number,
+  y0: number,
+  y1: number,
+): Box {
+  const [x0, z0] = toWorld(rel, a0, d0);
+  const [x1, z1] = toWorld(rel, a1, d1);
+  return {
+    min: [Math.min(x0, x1), y0, Math.min(z0, z1)],
+    max: [Math.max(x0, x1), y1, Math.max(z0, z1)],
+  };
+}
+
+/** Does the segment from `eye` to `pt` pass through `box`? (slab test) */
+function segmentHitsBox(eye: Vector3, pt: V3, box: Box): boolean {
+  const o = [eye.x, eye.y, eye.z];
+  let tMin = 0;
+  let tMax = 1;
+  for (let i = 0; i < 3; i++) {
+    const d = pt[i]! - o[i]!;
+    if (Math.abs(d) < 1e-9) {
+      if (o[i]! < box.min[i]! || o[i]! > box.max[i]!) return false;
+      continue;
+    }
+    let t0 = (box.min[i]! - o[i]!) / d;
+    let t1 = (box.max[i]! - o[i]!) / d;
+    if (t0 > t1) [t0, t1] = [t1, t0];
+    tMin = Math.max(tMin, t0);
+    tMax = Math.min(tMax, t1);
+    if (tMin > tMax) return false;
+  }
+  return true;
 }

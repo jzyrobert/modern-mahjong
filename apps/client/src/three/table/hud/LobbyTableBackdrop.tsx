@@ -1,10 +1,16 @@
 import { type GameState, buildWall, emptyState } from '@mahjong/game-logic';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useGame } from '../../../state/game';
 import { type SceneContext, type SceneHandle, SceneHost } from '../../core/SceneHost';
 import type { CameraPreset } from '../../core/camera';
-import { TABLE_POOL_KEY, acquireTableScene, releaseTableScene } from '../TableScene';
-import { DEAD_TILES } from '../layout';
+import {
+  TABLE_POOL_KEY,
+  type TableScene,
+  acquireTableScene,
+  releaseTableScene,
+} from '../TableScene';
+import { portraitCameraAnchored, projectPreset } from '../cameraPresets';
+import { FELT_HALF, RAIL_H, RAIL_WIDTH } from '../layout';
 
 /**
  * The waiting room's scene: the match table itself, walls built and
@@ -24,30 +30,100 @@ export interface LobbyTableBackdropProps {
   side?: boolean | undefined;
 }
 
-/** Full walls, no hands: the table between hands. Pure + deterministic. */
+/**
+ * The table between hands: all 136 tiles in four full 17-stack walls and
+ * nothing else — the real pre-deal state. Round-4 #4: dealing a rack per
+ * filled seat left every wall a 10–11-stack run fronted by a 13-tile
+ * rack (each rack overhung its wall by a tile) and showed dealt hands
+ * before the opening roll. Pure + deterministic.
+ */
 export function waitingTableState(): GameState {
-  const tiles = buildWall();
-  const state = emptyState();
-  return { ...state, deadWall: tiles.slice(0, DEAD_TILES), wall: tiles.slice(DEAD_TILES) };
+  return { ...emptyState(), wall: buildWall() };
+}
+
+/** Portrait lobby camera elevation: whole stacks, not slabs (round-4 #4). */
+export const LOBBY_PORTRAIT_ELEV_DEG = 58;
+/** Portrait lobby: margin the near rail's corners keep from the viewport sides, CSS px. */
+const LOBBY_PORTRAIT_SIDE_PX = 8;
+/** Wide lobby with a side column: the rail's outermost corner stays this far inside the right edge (the 24 px desktop safe area + a rounding margin). */
+export const LOBBY_SIDE_SAFE_PX = 28;
+
+/**
+ * Portrait lobby camera: the whole table, rails included, fitted to the
+ * width (the near rail's corners — the widest projected points from a
+ * 58° camera — sit `LOBBY_PORTRAIT_SIDE_PX` inside the viewport) and
+ * panned so the near rail's outer edge lands 10 px above the bottom. The
+ * near wall then shows as a row of whole stacks (~15 CSS px a back) with
+ * felt above it in the band under the Start / Leave row, instead of the
+ * 45° view's 50 px slabs cropped by the rail (round-4 #4).
+ */
+export function lobbyPortraitCameraFor(width: number, height: number): CameraPreset {
+  const corner: [number, number, number] = [FELT_HALF + RAIL_WIDTH, RAIL_H, FELT_HALF + RAIL_WIDTH];
+  const anchor: [number, number, number] = [0, 0, FELT_HALF + RAIL_WIDTH];
+  const anchorY = height - 10;
+  const make = (xHalf: number) =>
+    portraitCameraAnchored(width, height, xHalf, anchor, anchorY, LOBBY_PORTRAIT_ELEV_DEG);
+  // A wider frame (larger xHalf) pulls the corner inward — monotonic.
+  let lo = 11;
+  let hi = 24;
+  for (let i = 0; i < 40; i++) {
+    const mid = (lo + hi) / 2;
+    if (projectPreset(make(mid), width, height, corner).x > width - LOBBY_PORTRAIT_SIDE_PX)
+      lo = mid;
+    else hi = mid;
+  }
+  return make(hi);
 }
 
 /**
- * Low three-quarter view. `shiftX` pans the table toward +x on screen
- * (both camera and target move by −shiftX so perspective is unchanged).
- * The dealer chip and dice are hidden in the waiting state (`waiting`
- * on `SyncInput`), so nothing crisp straddles the glass edge on phones.
+ * Low three-quarter view. Portrait: `lobbyPortraitCameraFor` — the whole
+ * table fitted to the width, near rail at the bottom edge, so the band
+ * under the Start / Leave row shows whole wall stacks and felt (round-2
+ * #8 left a flat void there; round-4 #4 found 50 px slabs). Wide: the
+ * whole table in frame; with a
+ * side column (`side`) the table is panned right until its near-right
+ * rail corner — the widest point of the low perspective — sits 24 px
+ * inside the viewport, so the right and near rails frame it while the
+ * left third tucks behind the glass column (round-3: the table used to
+ * slide off the right edge while 110 px of void sat left of the
+ * column). The dealer chip and dice are hidden in the waiting state
+ * (`waiting` on `SyncInput`), so nothing crisp straddles the glass edge
+ * on phones.
  */
 export function lobbyCameraFor(width: number, height: number, side: boolean): CameraPreset {
   const aspect = width / Math.max(1, height);
-  const shift = side ? -7.5 : 0;
-  if (aspect < 0.9) {
-    // Portrait: the table fills the width and is panned so its *near*
-    // rail and near wall fill the band under the Start / Leave row
-    // (round-2 #8: a flat void sat there while the far half hid behind
-    // the panels).
-    return { position: [0, 21, 21], target: [0, 0, -1], fov: 46 };
+  if (aspect < 0.9) return lobbyPortraitCameraFor(width, height);
+  const fov = 40;
+  if (!side) {
+    return { position: [0, 14.5, 27], target: [0, 0, 1.5], fov };
   }
-  return { position: [shift, 14.5, 27], target: [shift, 0, 1.5], fov: 40 };
+  // 30° elevation from 37.5 units — far enough that the near rail (the
+  // widest projected edge) spans ~1180 px at 1440×900 and fits right of
+  // the column — panned along x: camera and target move together so
+  // the perspective is unchanged.
+  const dist = 37.5;
+  const elev = Math.PI / 6;
+  const make = (shift: number): CameraPreset => ({
+    position: [-shift, dist * Math.sin(elev), 1.5 + dist * Math.cos(elev)],
+    target: [-shift, 0, 1.5],
+    fov,
+  });
+  // The rail's near-right corner, bottom edge included: the 30° camera
+  // looks down on it, so its base (y ≈ 0) projects a few px further out
+  // than its top, and a top-only limit left the base ~15 px from the
+  // edge against the 24 px desktop safe area (round-4 #7).
+  const corner: [number, number, number] = [FELT_HALF + RAIL_WIDTH, 0, FELT_HALF + RAIL_WIDTH];
+  const limit = width - LOBBY_SIDE_SAFE_PX;
+  // Larger shift → table further right on screen (monotonic): bisect
+  // for the largest shift that keeps the near-right corner inside.
+  let lo = 0;
+  let hi = 14;
+  for (let i = 0; i < 40; i++) {
+    const mid = (lo + hi) / 2;
+    if (projectPreset(make(mid), width, height, corner).x <= limit) lo = mid;
+    else hi = mid;
+  }
+  return make(lo);
 }
 
 export function LobbyTableBackdrop({ side = false }: LobbyTableBackdropProps) {
@@ -79,11 +155,36 @@ export function LobbyTableBackdrop({ side = false }: LobbyTableBackdropProps) {
     };
   }, []);
   const state = useMemo(() => waitingTableState(), []);
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const sceneRef = useRef<TableScene | null>(null);
   const initialCamera = useMemo(() => {
     const w = typeof window !== 'undefined' ? window.innerWidth : 1440;
     const h = typeof window !== 'undefined' ? window.innerHeight : 900;
     return lobbyCameraFor(w, h, side);
   }, [side]);
+
+  // Project the waiting state. `snap` lays the tiles out without motion
+  // (the first frame of a fresh or rebuilt scene).
+  const project = useCallback((scene: TableScene, snap: boolean, st = stateRef.current) => {
+    scene.sync(
+      {
+        state: st,
+        me: 0,
+        sortMode: 'suit',
+        manualOrder: [],
+        drawnTileId: null,
+        latestDiscardId: null,
+        hintTileId: null,
+        needsDraw: false,
+        shuffling: false,
+        heldHand: null,
+        waiting: true,
+        snap,
+      },
+      performance.now(),
+    );
+  }, []);
 
   const build = useCallback(
     (ctx: SceneContext): SceneHandle => {
@@ -92,36 +193,27 @@ export function LobbyTableBackdrop({ side = false }: LobbyTableBackdropProps) {
         tileBack: useGame.getState().settings.tileBack,
         reducedMotion: ctx.reducedMotion,
       });
+      sceneRef.current = scene;
       ctx.rig.snap(lobbyCameraFor(ctx.size.width, ctx.size.height, side));
       ctx.rig.halfLife = ctx.reducedMotion ? 0.04 : 0.22;
       ctx.rig.parallaxStrength = 0.25;
-      const sync = () =>
-        scene.sync(
-          {
-            state,
-            me: 0,
-            sortMode: 'suit',
-            manualOrder: [],
-            drawnTileId: null,
-            latestDiscardId: null,
-            hintTileId: null,
-            needsDraw: false,
-            shuffling: false,
-            heldHand: null,
-            waiting: true,
-          },
-          performance.now(),
-        );
-      sync();
+      project(scene, true);
       return {
         update: (dt, now) => scene.update(dt, now),
         resize: (w, h) => ctx.rig.setPreset(lobbyCameraFor(w, h, side)),
         setQuality: (q) => scene.setQuality(q),
-        dispose: () => releaseTableScene(ctx, scene),
+        dispose: () => {
+          if (sceneRef.current === scene) sceneRef.current = null;
+          releaseTableScene(ctx, scene);
+        },
       };
     },
-    [state, side],
+    [side, project],
   );
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (scene) project(scene, false, state);
+  }, [state, project]);
 
   if (failed || !mount) return null;
   return (

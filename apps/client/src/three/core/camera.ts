@@ -33,6 +33,7 @@ export class CameraRig {
   }
 
   snap(p: CameraPreset): void {
+    if (!presetIsFinite(p)) return;
     this.goal = p;
     this.pos.x.value = p.position[0];
     this.pos.y.value = p.position[1];
@@ -45,6 +46,7 @@ export class CameraRig {
   }
 
   setPreset(p: CameraPreset): void {
+    if (!presetIsFinite(p)) return;
     this.goal = p;
   }
 
@@ -127,4 +129,15 @@ export class CameraRig {
 
 function spring(v: number): SpringState {
   return { value: v, velocity: 0 };
+}
+
+/**
+ * A preset with a NaN / Infinity component (a solve fed a 0×0 host
+ * before layout) would poison the springs for good — refuse it and keep
+ * the last good goal.
+ */
+function presetIsFinite(p: CameraPreset): boolean {
+  return (
+    p.position.every(Number.isFinite) && p.target.every(Number.isFinite) && Number.isFinite(p.fov)
+  );
 }

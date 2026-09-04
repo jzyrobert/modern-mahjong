@@ -209,10 +209,36 @@ test.describe('3D coach-marks: landscape dice step', () => {
       )
       .toBe('clear');
     const layout = await page.evaluate(() => globalThis.__MAHJONG_TEST_TUTORIAL_LAYOUT__);
-    // The modal overlaps the hand on this viewport, so the bottom side is
-    // the trimmed, open one (straight scrim edge, no stroke).
-    expect(layout?.open?.bottom).toBe(true);
-    expect(layout?.feather?.bottom).toBe(3);
+    // When the modal reaches into the hand row the bottom side is the
+    // trimmed, open one (straight scrim edge, no stroke). The compact
+    // landscape card (round 3) stops ≥ 12 px above the settled tiles, in
+    // which case the ring closes normally — either way it never cuts a
+    // tile. The deal may still be flying tiles in, so wait for the hand
+    // row's top edge to settle before measuring it.
+    const modal = (await page.getByTestId('dice-ceremony-glass').boundingBox()) as Box;
+    // Hidden hit-targets (a tile still in flight has no rect yet) report
+    // an empty box at the origin — skip them.
+    const readHandTop = () =>
+      page.getByTestId('own-hand-tile').evaluateAll((els) => {
+        const tops = els
+          .map((el) => el.getBoundingClientRect())
+          .filter((r) => r.height > 0)
+          .map((r) => r.top);
+        return tops.length ? Math.min(...tops) : Number.POSITIVE_INFINITY;
+      });
+    let handTop = await readHandTop();
+    for (let i = 0; i < 12; i++) {
+      await page.waitForTimeout(400);
+      const next = await readHandTop();
+      const settled = Math.abs(next - handTop) < 1;
+      handTop = next;
+      if (settled) break;
+    }
+    if (layout?.open?.bottom) {
+      expect(layout?.feather?.bottom).toBe(3);
+    } else {
+      expect(modal.y + modal.height).toBeLessThanOrEqual(handTop - 12);
+    }
     expect(pageErrors, pageErrors.join('\n')).toEqual([]);
   });
 });

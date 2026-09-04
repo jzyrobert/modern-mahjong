@@ -228,8 +228,12 @@ async function runStep(page, step, ctx) {
     // Tap the viewport rather than the hint element: the ceremony
     // auto-dismisses after a beat and a detached element makes
     // `locator.click` retry until it times out.
+    // `isVisible` does not wait, so give the modal a moment to mount
+    // (a software rasteriser can take seconds to paint the first frame
+    // of the match) before deciding it is not there.
     const hint = page.getByText('Tap anywhere to dismiss', { exact: true });
-    if (await hint.isVisible({ timeout: step.timeout ?? 4000 }).catch(() => false)) {
+    await hint.waitFor({ timeout: step.timeout ?? 6000 }).catch(() => {});
+    if (await hint.isVisible().catch(() => false)) {
       const vp = page.viewportSize() ?? { width: 412, height: 915 };
       await page.mouse.click(vp.width / 2, vp.height / 2).catch(() => {});
       await hint.waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {});
@@ -253,17 +257,10 @@ async function runStep(page, step, ctx) {
           .catch(() => false)
       )
         return;
-      if (
-        await page
-          .getByText('CLAIM?', { exact: true })
-          .isVisible()
-          .catch(() => false)
-      ) {
-        await page
-          .getByText('Pass', { exact: true })
-          .first()
-          .click({ timeout: 2000 })
-          .catch(() => {});
+      // An incidental claim window (any shell, any strip density): pass.
+      const pass = page.getByRole('button', { name: 'Pass' }).first();
+      if (await pass.isVisible().catch(() => false)) {
+        await pass.click({ timeout: 2000 }).catch(() => {});
       }
       await page.waitForTimeout(250);
     }

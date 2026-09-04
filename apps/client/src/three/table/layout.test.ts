@@ -2,6 +2,8 @@ import { type GameState, type Seat, emptyState, startHand, tileId } from '@mahjo
 import { describe, expect, test } from 'vitest';
 import { TILE_D, TILE_H, TILE_W } from '../tiles/geometry';
 import {
+  CHIP_POCKET_NUDGE,
+  CHIP_POCKET_REACH,
   DEAD_WALL_OFFSET,
   FELT_HALF,
   HAND_PITCH,
@@ -9,8 +11,21 @@ import {
   MELD_Z,
   OWN_HAND_Z,
   OWN_MELD_RIGHT,
+  RAIL_MELD_Z,
+  RAIL_TOP,
+  RAIL_WIDTH,
+  RIVER_COLS,
+  RIVER_NEAR_EDGE,
+  RIVER_ROWS,
+  SIDE_MELD_SCALE_PORTRAIT,
+  SIDE_SEAT_OUT_DESKTOP,
+  SIDE_SEAT_OUT_LOW,
   STACKS_PER_WALL,
+  STAND_Y,
+  WALL_D,
   computeLayout,
+  dealerChipBlocked,
+  dealerChipLocal,
   fullWallLayout,
   heldHandSlots,
   heldRowSplit,
@@ -18,7 +33,9 @@ import {
   orderOwnHand,
   quatFromBasis,
   relOf,
+  riverMetrics,
   tileSheetLayout,
+  toLocal,
   toWorld,
   wallSlotPosition,
   wallSlotRefs,
@@ -297,6 +314,85 @@ describe('computeLayout', () => {
     expect(seventh.z).toBeGreaterThan(first.z);
     expect(seventh.x).toBeCloseTo(first.x);
   });
+  /** Flat-tile footprint: the long axis runs along the owner's z (world z for rel 0 / 2, world x for the side seats). */
+  function footprint(s: { x: number; z: number; rel: number; scale?: number }) {
+    const k = s.scale ?? 1;
+    const side = s.rel === 1 || s.rel === 3;
+    const hx = ((side ? TILE_H : TILE_W) / 2) * k;
+    const hz = ((side ? TILE_W : TILE_H) / 2) * k;
+    return { x0: s.x - hx, x1: s.x + hx, z0: s.z - hz, z1: s.z + hz };
+  }
+  /** Four full rivers (18 each) so every corner of the pinwheel is loaded. */
+  function fullRivers(scale: number) {
+    const st = dealt();
+    const pool = [...st.wall, ...st.deadWall];
+    const discards = { ...st.discards };
+    for (const seat of [0, 1, 2, 3] as Seat[])
+      discards[seat] = pool.splice(0, RIVER_COLS * RIVER_ROWS);
+    const state: GameState = { ...st, wall: pool, deadWall: [], discards };
+    const layout = computeLayout(state, 0, { ...OPTS, riverScale: scale });
+    return layout.filter((s) => s?.zone === 'discard').map((s) => s!);
+  }
+  test('the four rivers form a pinwheel that never collides at the corners', () => {
+    for (const scale of [1, 1.1, 1.28, 1.36]) {
+      const river = fullRivers(scale);
+      expect(river).toHaveLength(4 * RIVER_COLS * RIVER_ROWS);
+      for (let i = 0; i < river.length; i++) {
+        for (let j = i + 1; j < river.length; j++) {
+          const a = footprint(river[i]!);
+          const b = footprint(river[j]!);
+          const overlap =
+            a.x0 < b.x1 - 1e-6 && b.x0 < a.x1 - 1e-6 && a.z0 < b.z1 - 1e-6 && b.z0 < a.z1 - 1e-6;
+          expect(overlap, `tiles ${river[i]!.id} / ${river[j]!.id} overlap at scale ${scale}`).toBe(
+            false,
+          );
+        }
+      }
+      // Every river stays inside the walls' inner faces and off the plate
+      // (the first row's near edge is pinned a fifth of a tile off it).
+      const m = riverMetrics(scale);
+      expect(m.farEdge).toBeLessThan(WALL_D - TILE_H / 2);
+      expect(m.nearEdge).toBeGreaterThan(1.9);
+      expect(m.nearEdge).toBeCloseTo(RIVER_NEAR_EDGE, 6);
+      // A 19th discard (col 6 of the last row) stays inside the wall too.
+      expect(m.shift + 3.5 * m.pitchX + (TILE_W / 2) * scale).toBeLessThan(WALL_D - TILE_H / 2);
+      for (const s of river) {
+        expect(Math.max(Math.abs(s.x), Math.abs(s.z))).toBeLessThan(WALL_D - TILE_H / 2);
+      }
+    }
+  });
+  test('a 19th discard extends the last row instead of starting a fourth on the wall', () => {
+    const st = dealt();
+    const pool = [...st.wall];
+    const state: GameState = {
+      ...st,
+      wall: pool.slice(20),
+      discards: { ...st.discards, 0: pool.slice(0, 20) },
+    };
+    const river = computeLayout(state, 0, OPTS).filter((s) => s?.zone === 'discard');
+    const rows = new Set(river.map((s) => s!.z.toFixed(3)));
+    expect(rows.size).toBe(RIVER_ROWS);
+    const last = river.find((s) => s!.index === 19)!;
+    const lastRegular = river.find((s) => s!.index === RIVER_COLS * RIVER_ROWS - 1)!;
+    expect(last.z).toBeCloseTo(lastRegular.z, 6);
+    expect(last.x).toBeGreaterThan(lastRegular.x + 1.5);
+  });
+  test('the dealer chip pocket clears every river and the wall', () => {
+    for (const scale of [1, 1.28]) {
+      const [cx, cz] = dealerChipLocal(scale, 0.62);
+      const r = 0.62;
+      for (const s of fullRivers(scale)) {
+        const f = footprint(s);
+        const hit = cx + r > f.x0 && cx - r < f.x1 && cz + r > f.z0 && cz - r < f.z1;
+        expect(hit, `chip overlaps discard ${s.id} at scale ${scale}`).toBe(false);
+      }
+      expect(cz + r).toBeLessThan(WALL_D - TILE_H / 2);
+      expect(Math.abs(cx) + r).toBeLessThan(WALL_D - TILE_H / 2);
+    }
+    // Wide presets keep the chip's near edge above the near wall's top
+    // from a 30° camera: edge z ≤ 6.35 (see TableScene CHIP_RADIUS note).
+    expect(dealerChipLocal(1, 0.62)[1] + 0.62).toBeLessThan(6.35);
+  });
   test('the drawn tile is offset from the rest of the hand', () => {
     const st = dealt();
     const hand = st.hands[0];
@@ -490,5 +586,342 @@ describe('held hand (phone portrait)', () => {
     const honours = layout.filter((sl) => sl && sl.zone === 'sheet' && sl.id >= 27 * 4);
     const xs = honours.map((sl) => sl!.x);
     expect(Math.min(...xs) + Math.max(...xs)).toBeCloseTo(0, 5);
+  });
+});
+
+/** Seed 5 with a peng laid out for `seat`, claimed from the next seat. */
+function withMeldFor(seat: Seat): GameState {
+  const s = dealt();
+  return {
+    ...s,
+    hands: { ...s.hands, [seat]: s.hands[seat].slice(3) },
+    melds: {
+      ...s.melds,
+      [seat]: [{ kind: 'peng', tiles: s.hands[seat].slice(0, 3), from: (seat + 1) % 4 }],
+    },
+  } as GameState;
+}
+
+describe('low-camera side seats (phone landscape)', () => {
+  test('sideSeatOut moves the side racks and their melds out together; far and own rows stay', () => {
+    for (const seat of [1, 3] as Seat[]) {
+      const st = withMeldFor(seat);
+      const base = computeLayout(st, 0, OPTS);
+      const out = computeLayout(st, 0, { ...OPTS, sideSeatOut: SIDE_SEAT_OUT_LOW });
+      const rel = relOf(seat, 0);
+      const sign = rel === 1 ? 1 : -1;
+      for (const zone of ['oppHand', 'meld'] as const) {
+        const a = base.filter((sl) => sl?.zone === zone && sl.seat === seat);
+        const b = out.filter((sl) => sl?.zone === zone && sl.seat === seat);
+        expect(a.length).toBeGreaterThan(0);
+        expect(b).toHaveLength(a.length);
+        for (const sl of b) {
+          const src = a.find((x) => x!.id === sl!.id)!;
+          expect(sl!.x - src.x).toBeCloseTo(sign * SIDE_SEAT_OUT_LOW, 6);
+          expect(sl!.z).toBeCloseTo(src.z, 6);
+        }
+        // Still on the felt, clear of the rail.
+        for (const sl of b) expect(Math.abs(sl!.x) + TILE_H / 2).toBeLessThan(FELT_HALF);
+      }
+      // The far seat and the user's row are untouched.
+      for (const other of [0, 2] as Seat[]) {
+        const a = base.filter((sl) => sl && sl.seat === other && sl.zone !== 'wall');
+        const b = out.filter((sl) => sl && sl.seat === other && sl.zone !== 'wall');
+        expect(b.map((sl) => [sl!.x, sl!.z])).toEqual(a.map((sl) => [sl!.x, sl!.z]));
+      }
+    }
+  });
+  test('sideMeldsNear puts the right seat’s melds at the near (+z) end, left seat unchanged', () => {
+    const st = withMeldFor(1);
+    const base = computeLayout(st, 0, OPTS);
+    const near = computeLayout(st, 0, { ...OPTS, sideMeldsNear: true });
+    const meldZ = (l: typeof base) =>
+      l.filter((sl) => sl?.zone === 'meld' && sl.seat === 1).map((sl) => sl!.z);
+    const rackZ = (l: typeof base) =>
+      l.filter((sl) => sl?.zone === 'oppHand' && sl.seat === 1).map((sl) => sl!.z);
+    // Default: melds beyond the rack's far end (−z). Near: beyond its near end (+z).
+    expect(Math.max(...meldZ(base))).toBeLessThan(Math.min(...rackZ(base)));
+    expect(Math.min(...meldZ(near))).toBeGreaterThan(Math.max(...rackZ(near)));
+    // The row keeps its overall footprint (a rotated claimed tile is
+    // TILE_H long along the row) and the meld's internal order.
+    const extent = (l: typeof base) => {
+      const row = l.filter(
+        (sl) => (sl?.zone === 'meld' || sl?.zone === 'oppHand') && sl.seat === 1,
+      );
+      const edges = row.flatMap((sl) => {
+        const half = Math.abs(Math.cos(sl!.yaw - Math.PI / 2)) > 0.5 ? TILE_W / 2 : TILE_H / 2;
+        return [sl!.z - half, sl!.z + half];
+      });
+      return Math.max(...edges) - Math.min(...edges);
+    };
+    expect(extent(near)).toBeCloseTo(extent(base), 6);
+    const order = (l: typeof base) =>
+      l
+        .filter((sl) => sl?.zone === 'meld' && sl.seat === 1)
+        .sort((a, b) => a!.index - b!.index)
+        .map((sl) => sl!.z);
+    const dNear = order(near);
+    const dBase = order(base);
+    for (let i = 1; i < dNear.length; i++) {
+      expect(Math.sign(dNear[i]! - dNear[i - 1]!)).toBe(Math.sign(dBase[i]! - dBase[i - 1]!));
+    }
+    // The left seat's melds are already at the near end and do not move.
+    const st3 = withMeldFor(3);
+    const a = computeLayout(st3, 0, OPTS).filter((sl) => sl?.zone === 'meld');
+    const b = computeLayout(st3, 0, { ...OPTS, sideMeldsNear: true }).filter(
+      (sl) => sl?.zone === 'meld',
+    );
+    expect(b.map((sl) => [sl!.x, sl!.z])).toEqual(a.map((sl) => [sl!.x, sl!.z]));
+  });
+});
+
+describe('side-seat meld scale + far melds on the rail', () => {
+  test('sideMeldScale grows the side seats’ melds about the rack line and keeps them off the wall', () => {
+    for (const seat of [1, 3] as Seat[]) {
+      const st = withMeldFor(seat);
+      const base = computeLayout(st, 0, OPTS).filter((sl) => sl?.zone === 'meld');
+      const big = computeLayout(st, 0, { ...OPTS, sideMeldScale: SIDE_MELD_SCALE_PORTRAIT }).filter(
+        (sl) => sl?.zone === 'meld',
+      );
+      expect(big).toHaveLength(base.length);
+      for (const sl of big) {
+        expect(sl!.scale).toBeCloseTo(SIDE_MELD_SCALE_PORTRAIT, 6);
+        // Still centred on the rack line; inner edge clear of the wall's
+        // outer edge, outer edge inside the portrait frame.
+        expect(Math.abs(sl!.x)).toBeCloseTo(MELD_Z, 6);
+        const halfAcross = (TILE_H / 2) * SIDE_MELD_SCALE_PORTRAIT;
+        expect(Math.abs(sl!.x) - halfAcross).toBeGreaterThan(WALL_D + TILE_H / 2 + 0.2);
+        expect(Math.abs(sl!.x) + halfAcross).toBeLessThan(11.6);
+      }
+      // The pitch along the row scales too (no overlap inside the group).
+      const zs = big.map((sl) => sl!.z).sort((a, b) => a - b);
+      for (let i = 1; i < zs.length; i++)
+        expect(zs[i]! - zs[i - 1]!).toBeGreaterThanOrEqual(
+          TILE_W * SIDE_MELD_SCALE_PORTRAIT - 1e-6,
+        );
+      // Far and own seats are untouched.
+      const other = computeLayout(st, 0, { ...OPTS, sideMeldScale: SIDE_MELD_SCALE_PORTRAIT })
+        .filter((sl) => sl && sl.seat !== seat && sl.zone !== 'wall')
+        .map((sl) => sl!.scale ?? 1);
+      expect(other.every((k) => k === 1)).toBe(true);
+    }
+  });
+  test('farMeldsOnRail stands the far seat’s melds on the rail facing the centre; rack stays centred', () => {
+    const st = withMeldFor(2);
+    const base = computeLayout(st, 0, OPTS);
+    const rail = computeLayout(st, 0, { ...OPTS, farMeldsOnRail: true });
+    const melds = rail.filter((sl) => sl?.zone === 'meld' && sl.seat === 2);
+    expect(melds.length).toBeGreaterThan(0);
+    for (const sl of melds) {
+      expect(sl!.base).toBe('standing');
+      expect(sl!.z).toBeCloseTo(-RAIL_MELD_Z, 6);
+      expect(sl!.y).toBeCloseTo(RAIL_TOP + STAND_Y, 6);
+      // On the rail's top, within its width.
+      expect(Math.abs(sl!.z) - TILE_D / 2).toBeGreaterThan(FELT_HALF);
+      expect(Math.abs(sl!.z) + TILE_D / 2).toBeLessThan(FELT_HALF + RAIL_WIDTH);
+      // Half a turn from the rack's yaw (π for the far seat): the face
+      // looks toward the centre.
+      expect(Math.cos(sl!.yaw - Math.PI - Math.PI)).toBeCloseTo(1, 6);
+      expect(sl!.tilt).toBeGreaterThan(0);
+    }
+    // The rack is centred on its own (melds no longer share the row) and
+    // the melds run from its right end (the owner's right = world −x).
+    const rack = rail.filter((sl) => sl?.zone === 'oppHand' && sl.seat === 2).map((sl) => sl!.x);
+    expect((Math.min(...rack) + Math.max(...rack)) / 2).toBeCloseTo(0, 6);
+    expect(Math.max(...melds.map((sl) => sl!.x))).toBeLessThan(Math.min(...rack) - TILE_W / 2);
+    // Other seats' melds keep their flat pose.
+    for (const seat of [1, 3] as Seat[]) {
+      const a = computeLayout(withMeldFor(seat), 0, OPTS).filter((sl) => sl?.zone === 'meld');
+      const b = computeLayout(withMeldFor(seat), 0, { ...OPTS, farMeldsOnRail: true }).filter(
+        (sl) => sl?.zone === 'meld',
+      );
+      expect(b.map((sl) => [sl!.x, sl!.y, sl!.z, sl!.base])).toEqual(
+        a.map((sl) => [sl!.x, sl!.y, sl!.z, sl!.base]),
+      );
+    }
+    // Without the option the far melds lie flat in the rack line.
+    for (const sl of base.filter((x) => x?.zone === 'meld' && x.seat === 2)) {
+      expect(sl!.base).toBe('flatUp');
+      expect(sl!.z).toBeCloseTo(-MELD_Z, 6);
+    }
+  });
+  test('sideMeldsNear also applies with the portrait meld scale', () => {
+    const st = withMeldFor(1);
+    const near = computeLayout(st, 0, {
+      ...OPTS,
+      sideMeldsNear: true,
+      sideMeldScale: SIDE_MELD_SCALE_PORTRAIT,
+    });
+    const meldZ = near.filter((sl) => sl?.zone === 'meld' && sl.seat === 1).map((sl) => sl!.z);
+    const rackZ = near.filter((sl) => sl?.zone === 'oppHand' && sl.seat === 1).map((sl) => sl!.z);
+    expect(Math.min(...meldZ)).toBeGreaterThan(Math.max(...rackZ));
+    // Inside the felt at the near end.
+    expect(Math.max(...meldZ) + (TILE_W / 2) * SIDE_MELD_SCALE_PORTRAIT).toBeLessThan(FELT_HALF);
+  });
+});
+
+describe('waiting-table walls', () => {
+  test('whole stacks only, four centred runs as even as the count allows, odd tile hidden', () => {
+    const s = dealt();
+    // 3 racks of 13 → 97 tiles left: 48 stacks (12 per wall) and one hidden tile.
+    const st: GameState = {
+      ...s,
+      hands: { 0: s.hands[0].slice(0, 13), 1: s.hands[1], 2: s.hands[2], 3: [] },
+      wall: [...s.wall, ...s.hands[3], s.hands[0][13]!],
+    } as GameState;
+    const layout = computeLayout(st, 0, { ...OPTS, waitingWalls: true });
+    const walls = layout.filter((sl) => sl?.zone === 'wall' || sl?.zone === 'deadWall');
+    expect(walls).toHaveLength(96);
+    expect(layout.filter((sl) => sl?.zone === 'deadWall')).toHaveLength(0);
+    for (const seat of [0, 1, 2, 3] as Seat[]) {
+      const mine = walls.filter((sl) => sl!.seat === seat);
+      expect(mine).toHaveLength(24);
+      // Every position holds exactly two tiles (a full stack).
+      const byPos = new Map<string, number>();
+      for (const sl of mine) {
+        const k = `${sl!.x.toFixed(3)}:${sl!.z.toFixed(3)}`;
+        byPos.set(k, (byPos.get(k) ?? 0) + 1);
+      }
+      expect([...byPos.values()].every((n) => n === 2)).toBe(true);
+      // Centred on the wall's shifted midline: the run's centre is within
+      // half a pitch of the 17-stack row's centre.
+      const rel = relOf(seat, 0);
+      const along = mine.map((sl) =>
+        rel === 0 ? sl!.x : rel === 1 ? -sl!.z : rel === 2 ? -sl!.x : sl!.z,
+      );
+      const mid = (Math.min(...along) + Math.max(...along)) / 2;
+      const rowMid = wallSlotPosition({ wallSeat: seat, stack: 8, level: 0, dead: false }, 0);
+      const rowMidAlong =
+        rel === 0 ? rowMid.x : rel === 1 ? -rowMid.z : rel === 2 ? -rowMid.x : rowMid.z;
+      expect(Math.abs(mid - rowMidAlong)).toBeLessThanOrEqual(0.6);
+    }
+    // Racks are laid out as usual.
+    expect(layout.filter((sl) => sl?.zone === 'oppHand')).toHaveLength(26);
+    expect(layout.filter((sl) => sl?.zone === 'hand')).toHaveLength(13);
+  });
+  test('full walls with no racks stay 17 stacks a side', () => {
+    const full = dealt();
+    const ring: GameState = {
+      ...full,
+      hands: { 0: [], 1: [], 2: [], 3: [] },
+      wall: [...full.wall, ...full.hands[0], ...full.hands[1], ...full.hands[2], ...full.hands[3]],
+    } as GameState;
+    const layout = computeLayout(ring, 0, { ...OPTS, waitingWalls: true });
+    const walls = layout.filter((sl) => sl?.zone === 'wall');
+    expect(walls).toHaveLength(136);
+    for (const seat of [0, 1, 2, 3] as Seat[]) {
+      expect(walls.filter((sl) => sl!.seat === seat)).toHaveLength(2 * STACKS_PER_WALL);
+    }
+  });
+});
+
+describe('tile sheet', () => {
+  test('tile sheet rows are each centred on the sheet axis (dup guard)', () => {
+    const layout = tileSheetLayout();
+    const honours = layout.filter((sl) => sl && sl.zone === 'sheet' && sl.id >= 27 * 4);
+    const xs = honours.map((sl) => sl!.x);
+    expect(Math.min(...xs) + Math.max(...xs)).toBeCloseTo(0, 5);
+  });
+});
+
+describe('toLocal', () => {
+  test('inverts toWorld for every seat rotation', () => {
+    for (const rel of [0, 1, 2, 3] as const) {
+      for (const [x, z] of [
+        [3.2, -7.5],
+        [-1, 4],
+        [0, 0],
+        [8.8, 8.8],
+      ] as const) {
+        const [wx, wz] = toWorld(rel, x, z);
+        const [lx, lz] = toLocal(rel, wx, wz);
+        expect(lx).toBeCloseTo(x, 9);
+        expect(lz).toBeCloseTo(z, 9);
+      }
+    }
+  });
+});
+
+describe('landscape zoom: hideSideSeats', () => {
+  test('drops the side seats’ racks and melds, keeps their rivers, the far row and the own hand', () => {
+    const st = {
+      ...withMeldFor(1),
+      discards: {
+        ...withMeldFor(1).discards,
+        1: dealt().wall.slice(0, 4),
+        3: dealt().wall.slice(4, 6),
+      },
+    } as GameState;
+    const full = computeLayout(st, 0, { ...OPTS, sideMeldsNear: true });
+    const zoom = computeLayout(st, 0, { ...OPTS, sideMeldsNear: true, hideSideSeats: true });
+    const zones = (layout: ReturnType<typeof computeLayout>, rel: number, zone: string) =>
+      layout.filter((sl) => sl && sl.rel === rel && sl.zone === zone).length;
+    expect(zones(full, 1, 'oppHand')).toBe(10);
+    expect(zones(full, 1, 'meld')).toBe(3);
+    expect(zones(zoom, 1, 'oppHand')).toBe(0);
+    expect(zones(zoom, 1, 'meld')).toBe(0);
+    expect(zones(zoom, 3, 'oppHand')).toBe(0);
+    expect(zones(zoom, 1, 'discard')).toBe(4);
+    expect(zones(zoom, 3, 'discard')).toBe(2);
+    expect(zones(zoom, 2, 'oppHand')).toBe(13);
+    expect(zones(zoom, 0, 'hand')).toBe(14);
+    // Every slot the zoom keeps is where the full layout had it.
+    for (const sl of zoom) if (sl) expect(full[sl.id]).toMatchObject({ x: sl.x, z: sl.z });
+  });
+});
+
+describe('desktop side-seat offset', () => {
+  test('SIDE_SEAT_OUT_DESKTOP clears the wall’s top-face overhang and keeps the rack inside the rail', () => {
+    const st = withMeldFor(1);
+    const out = computeLayout(st, 0, {
+      ...OPTS,
+      sideMeldsNear: true,
+      sideSeatOut: SIDE_SEAT_OUT_DESKTOP,
+    });
+    const melds = out.filter((sl) => sl && sl.rel === 1 && sl.zone === 'meld');
+    const racks = out.filter((sl) => sl && sl.rel === 1 && sl.zone === 'oppHand');
+    expect(melds.length).toBe(3);
+    // Flat meld's inner edge (x − TILE_H/2 in world, rel 1) ≥ 0.4 past the wall's outer edge + a 0.27 overhang.
+    for (const sl of melds)
+      expect(sl!.x - TILE_H / 2).toBeGreaterThanOrEqual(WALL_D + TILE_H / 2 + 0.27 + 0.4);
+    for (const sl of racks) expect(sl!.x).toBeCloseTo(HAND_Z + SIDE_SEAT_OUT_DESKTOP, 6);
+    for (const sl of racks) expect(sl!.x + 0.35).toBeLessThan(FELT_HALF);
+  });
+});
+
+describe('dealer chip pocket', () => {
+  const chipR = 0.56;
+  test('the wide presets’ chip never counts a full wall as blocking', () => {
+    for (const dealer of [0, 1, 2, 3] as const) {
+      const st = dealt(5, dealer);
+      const full = fullWallLayout(st, 0);
+      const rel = relOf(dealer, 0);
+      expect(dealerChipBlocked(full, rel, dealerChipLocal(1, chipR), chipR)).toBe(false);
+    }
+  });
+  test('the portrait-scale chip is blocked by a full wall and free once the pocket’s stacks are gone', () => {
+    const st = dealt(5, 0);
+    const full = fullWallLayout(st, 0);
+    const local = dealerChipLocal(1.36, chipR);
+    // Near edge within reach of the near wall's inner edge (8.12).
+    expect(WALL_D - TILE_H / 2 - (local[1] + chipR)).toBeLessThan(CHIP_POCKET_REACH);
+    expect(dealerChipBlocked(full, 0, local, chipR)).toBe(true);
+    // Strip the near wall's stacks along the pocket: no longer blocked.
+    const open = full.map((sl) =>
+      sl &&
+      sl.rel === 0 &&
+      (sl.zone === 'wall' || sl.zone === 'deadWall') &&
+      Math.abs(sl.x - local[0]) < 2.5
+        ? null
+        : sl,
+    );
+    expect(dealerChipBlocked(open, 0, local, chipR)).toBe(false);
+    // A stack on another wall at the same along-coordinate does not count.
+    const other = full.map((sl) => (sl && sl.rel === 0 ? null : sl));
+    expect(dealerChipBlocked(other, 0, local, chipR)).toBe(false);
+    // Stepping in by the nudge leaves ≥ 0.45 of felt to the wall's overhang.
+    expect(WALL_D - TILE_H / 2 - 0.22 - (local[1] - CHIP_POCKET_NUDGE + chipR)).toBeGreaterThan(
+      0.45,
+    );
   });
 });

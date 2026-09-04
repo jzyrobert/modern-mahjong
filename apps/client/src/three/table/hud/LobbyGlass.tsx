@@ -33,7 +33,10 @@ export interface Lobby3DViewProps {
   onUnseatBot: (seat: Seat) => void;
 }
 
+/** Same lamp-lit void as the match shell (`Table3DShell.VOID_BG`). */
 const VOID_BG =
+  'radial-gradient(ellipse 70% 45% at 50% 0%, rgba(216,168,90,0.15) 0%, rgba(216,168,90,0.06) 55%, rgba(216,168,90,0) 100%), ' +
+  'radial-gradient(ellipse 95% 70% at 50% 45%, rgba(216,168,90,0.1) 0%, rgba(216,168,90,0.065) 50%, rgba(216,168,90,0) 90%), ' +
   'radial-gradient(ellipse 70% 40% at 50% 28%, rgba(58,74,58,0.3), rgba(58,74,58,0) 70%), linear-gradient(180deg, #0b120f 0%, #16241d 100%)';
 
 const BOT_KIND_OPTIONS: ReadonlyArray<{ kind: BotKind; label: string; hint: string }> = [
@@ -101,8 +104,8 @@ export function LobbyGlass(props: Lobby3DViewProps) {
     (p) => p.seat !== null && p.seat !== seat && (p.isBot || !p.connected),
   );
 
-  const seatsCard = (
-    <GlassPanel style={{ padding: compact ? 14 : 18, display: 'grid', gap: 12 }}>
+  const seatsBody = (
+    <>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
           <span
@@ -198,12 +201,17 @@ export function LobbyGlass(props: Lobby3DViewProps) {
           );
         })}
       </div>
+    </>
+  );
+  const seatsCard = (
+    <GlassPanel style={{ padding: compact ? 14 : 18, display: 'grid', gap: 12 }}>
+      {seatsBody}
     </GlassPanel>
   );
 
-  const botsCard =
+  const botsBody =
     isHost && seat !== null && editable.length > 0 ? (
-      <GlassPanel style={{ padding: compact ? 14 : 18, display: 'grid', gap: 12 }}>
+      <>
         <div>
           <div style={labelStyle}>Bot skill</div>
           <div style={{ fontSize: 12, color: GLASS.text2, marginTop: 4 }}>
@@ -293,8 +301,13 @@ export function LobbyGlass(props: Lobby3DViewProps) {
             </div>
           );
         })}
-      </GlassPanel>
+      </>
     ) : null;
+  const botsCard = botsBody ? (
+    <GlassPanel style={{ padding: compact ? 14 : 18, display: 'grid', gap: 12 }}>
+      {botsBody}
+    </GlassPanel>
+  ) : null;
 
   const inviteCard = isLanHost ? (
     <GlassPanel style={{ padding: compact ? 14 : 18, display: 'grid', gap: 10 }}>
@@ -330,11 +343,8 @@ export function LobbyGlass(props: Lobby3DViewProps) {
     </GlassPanel>
   ) : null;
 
-  const rulesCard = (
-    <div style={glassStyle({ padding: compact ? 6 : 8 })}>
-      <RulePanel rules={rules} isHost={isHost} onAction={onAction} theme="glass" />
-    </div>
-  );
+  const rulesBody = <RulePanel rules={rules} isHost={isHost} onAction={onAction} theme="glass" />;
+  const rulesCard = <div style={glassStyle({ padding: compact ? 6 : 8 })}>{rulesBody}</div>;
 
   const actions = (
     <div style={{ display: 'grid', gap: 8 }}>
@@ -360,9 +370,16 @@ export function LobbyGlass(props: Lobby3DViewProps) {
   );
 
   const column: CSSProperties = { display: 'grid', gap: 12, alignContent: 'start', minWidth: 0 };
-  // Wide viewports: one 560 px content column on the left, the waiting
-  // table panned into the right half behind it (`LobbyTableBackdrop`).
+  // Wide viewports: one 560 px content column at a 48 px inset on the
+  // left, the whole waiting table framed in the free area right of it
+  // (`LobbyTableBackdrop`, `lobbyCameraFor`).
   const sideScene = !compact && width >= 1100;
+  // Two-column viewports without a side scene (phone landscape, small
+  // desktops): Seats, Rules and the Bot skill rows share one glass panel
+  // split by hairlines instead of three panels with gutters — round-4 #4
+  // found the 12 px slot between Seats and Rules showing a slice of plate
+  // and wall, and round-4 #7 the one above Bot skill showing the rail.
+  const merged = twoCol && !sideScene;
 
   return (
     <div
@@ -397,7 +414,7 @@ export function LobbyGlass(props: Lobby3DViewProps) {
         <div
           style={{
             maxWidth: sideScene ? 560 : twoCol ? 1040 : 720,
-            margin: sideScene ? `0 0 0 ${Math.max(0, width * 0.06)}px` : '0 auto',
+            margin: sideScene ? '0 0 0 24px' : '0 auto',
             minHeight: compact ? undefined : '100%',
             display: 'grid',
             alignContent: compact ? 'start' : 'center',
@@ -469,27 +486,56 @@ export function LobbyGlass(props: Lobby3DViewProps) {
               </button>
             ) : null}
           </header>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: twoCol && !sideScene ? '1fr 1fr' : '1fr',
-              gap: 12,
-            }}
-          >
+          {merged ? (
             <div style={column}>
               {inviteCard}
-              {seatsCard}
-              {botsCard}
-              {sideScene ? rulesCard : null}
-              {sideScene ? actions : null}
+              <GlassPanel
+                testID="lobby-merged-panel"
+                style={{
+                  padding: compact ? 14 : 18,
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: 0,
+                }}
+              >
+                <div style={{ ...column, paddingRight: compact ? 14 : 18 }}>{seatsBody}</div>
+                <div
+                  style={{
+                    ...column,
+                    paddingLeft: compact ? 14 : 18,
+                    borderLeft: '1px solid rgba(255,255,255,0.1)',
+                  }}
+                >
+                  {rulesBody}
+                  {actions}
+                </div>
+                {botsBody ? (
+                  <div
+                    data-testid="lobby-merged-bots"
+                    style={{
+                      ...column,
+                      gridColumn: '1 / -1',
+                      marginTop: compact ? 14 : 18,
+                      paddingTop: compact ? 14 : 18,
+                      borderTop: '1px solid rgba(255,255,255,0.1)',
+                    }}
+                  >
+                    {botsBody}
+                  </div>
+                ) : null}
+              </GlassPanel>
             </div>
-            {sideScene ? null : (
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12 }}>
               <div style={column}>
+                {inviteCard}
+                {seatsCard}
+                {botsCard}
                 {rulesCard}
                 {actions}
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

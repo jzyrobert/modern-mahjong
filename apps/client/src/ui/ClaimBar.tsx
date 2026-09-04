@@ -27,7 +27,7 @@ interface ClaimBarProps {
   dense?: boolean;
   /**
    * Glass-strip scale (portrait orientation only). `footer` is the
-   * phone-landscape footer variant: a 41 px strip that replaces the
+   * phone-landscape footer variant: a 37 px strip that replaces the
    * sort control in the row under the hand, so a claim never lies on
    * the near wall's tile backs. `large` is the desktop footer strip:
    * 44 px buttons, 22 px meld previews, 18 px glyphs, for a primary CTA
@@ -231,12 +231,12 @@ export function ClaimBar({
   const tileH = large || isDesktop ? 60 : footer ? 35 : 44;
   const previewW = large || isDesktop ? 22 : footer ? 12 : 13;
   const previewH = large || isDesktop ? 30 : footer ? 16 : 18;
-  const buttonPadV = large ? 12 : footer ? 5 : dense ? 6 : 7;
+  const buttonPadV = large ? 12 : footer ? 4 : dense ? 6 : 7;
   const buttonPadH = large ? 14 : isDesktop ? 11 : 10;
   const glyphSize = large ? 18 : isDesktop ? 15 : footer ? 13 : 14;
   const labelSize = large ? 12 : 10;
-  /** Vertical padding of the dense strip: 41 px footer (incl. border), 74 px large. */
-  const stripPadV = footer ? 2 : dense ? 6 : 10;
+  /** Vertical padding of the dense strip: 37 px footer (incl. border), 74 px large. */
+  const stripPadV = footer ? 1 : dense ? 6 : 10;
   // Glass: the HUD's 0 12px 40px shadow so the strip floats above the
   // felt (and, on landscape, the near wall's backs) instead of reading
   // as painted on them.

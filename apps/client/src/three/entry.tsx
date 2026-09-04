@@ -31,3 +31,17 @@ export interface TutorialSceneRects {
   getRiverInterior(): ScreenBounds | null;
 }
 export const tutorialSceneRects: TutorialSceneRects | null = null;
+
+/**
+ * Screen y (CSS px) of the top of the held hand on the phone-portrait 3D
+ * table, or null when the viewport is not phone portrait. Root overlays
+ * (the opening-rolls card) keep clear of the hand with it. Null on
+ * native (no 3D table).
+ */
+export const portraitHeldHandTop: ((width: number, height: number) => number | null) | null = null;
+/**
+ * Screen y (CSS px) of the bottom of the seat strip on the phone-portrait
+ * 3D table (chrome row + strip, before the device's top inset), or null
+ * off portrait. Root overlays centre between it and `portraitHeldHandTop`.
+ */
+export const portraitStripBottom: ((width: number, height: number) => number | null) | null = null;
