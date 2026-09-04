@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useGame } from '../../state/game';
 import { useActiveTutorialStep } from '../../state/tutorial';
+import { resolveRenderer } from '../renderer';
 import { clearSpotlightTiles, setSpotlightTiles, tilesForTarget } from './targets';
 
 /**
@@ -12,20 +13,23 @@ import { clearSpotlightTiles, setSpotlightTiles, tilesForTarget } from './target
  *
  * The DOM coach-marks (`ui/tutorial/TutorialOverlay`) keep working
  * without this component — it is purely the "glow the actual tiles"
- * layer. Nothing mounts it yet; the table subsystem opts in.
+ * layer. `TutorialOverlay` mounts it (through `three/entry`) while a
+ * step is active; it publishes nothing under the classic renderer,
+ * where there is no scene to glow.
  */
 export function Tutorial3D() {
   const active = useActiveTutorialStep();
   const targetId = active?.step.targetId;
   const state = useGame((s) => s.state);
   const you = useGame((s) => s.you);
+  const is3d = resolveRenderer(useGame((s) => s.settings.renderer)) === '3d';
   // Lessons always seat the user at 0; spectators / pre-join fall back
   // to the same seat so the mapping still resolves.
   const seat = typeof you === 'number' ? you : 0;
 
   useEffect(() => {
-    setSpotlightTiles(tilesForTarget(targetId, state, seat));
-  }, [targetId, state, seat]);
+    setSpotlightTiles(is3d ? tilesForTarget(targetId, state, seat) : []);
+  }, [targetId, state, seat, is3d]);
 
   useEffect(() => () => clearSpotlightTiles(), []);
 

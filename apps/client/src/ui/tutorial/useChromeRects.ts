@@ -79,8 +79,23 @@ export function useChromeRects({
     };
     scanRef.current = scan;
     scan();
+    // The first scan can run while the previous route's DOM is still
+    // mounted (a lesson launched from the lobby: the overlay appears a
+    // frame before the lobby unmounts), so the card would dodge lobby
+    // chrome and then jump once the 400 ms rescan sees the table. Rescan
+    // on the next two frames and shortly after so stale rects last a
+    // frame, not a click's worth of time.
+    let raf = requestAnimationFrame(() => {
+      scan();
+      raf = requestAnimationFrame(scan);
+    });
+    const soon = setTimeout(scan, 120);
     const id = setInterval(scan, RESCAN_MS);
-    return () => clearInterval(id);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(soon);
+      clearInterval(id);
+    };
   }, [active, targetId, viewport]);
 
   useEffect(() => {

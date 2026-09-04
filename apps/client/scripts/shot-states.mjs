@@ -257,6 +257,65 @@ export const STATES = {
       { waitMs: 900 },
     ],
   },
+  'tutorial-basics-4': {
+    // `watch-bots` step: the shared discard pool is the target. The user's
+    // first discard lands, then the bots start filling the pool — on the
+    // 3D table the ring follows the projected river rect and every
+    // discarded tile carries the gold spotlight. Bots are paced to 1.8 s
+    // so the third discard (which completes the step and swaps the card)
+    // lands well after the shot, perf wait included — a shot taken during
+    // that swap catches the next card mid fade-in on SwiftShader.
+    owner: 'tutorial',
+    steps: [
+      { initScript: 'globalThis.__MAHJONG_TEST_BOT_PACE_MS__ = 1800;' },
+      { goto: '/' },
+      { waitForText: 'Modern Mahjong' },
+      { startTutorial: 'basics' },
+      { waitMs: 800 },
+      { clickTutorialNext: true },
+      { waitMs: 400 },
+      { clickTutorialNext: true },
+      { waitMs: 400 },
+      { clickTutorialNext: true },
+      { waitForOwnHand: true },
+      { waitMs: 600 },
+      { clickTestId: 'own-hand-tile', nth: 0 },
+      { waitMs: 3000 },
+    ],
+  },
+  'tutorial-drawn-game-2': {
+    // `watch` step of `drawn-game`: the wall-draw cue is the target while
+    // the bots drain the last tiles. The 3D table registers the DOM cue
+    // only on the user's own draw, so this checks the world-space half —
+    // the next wall tile glows gold — and the card's fallback.
+    owner: 'tutorial',
+    steps: [
+      { initScript: 'globalThis.__MAHJONG_TEST_BOT_PACE_MS__ = 1500;' },
+      { goto: '/' },
+      { waitForText: 'Modern Mahjong' },
+      { startTutorial: 'drawn-game' },
+      { waitMs: 800 },
+      { clickTutorialNext: true },
+      { waitForOwnHand: true },
+      { waitMs: 600 },
+      { clickTestId: 'own-hand-tile', nth: 0 },
+      // The wall holds two tiles; the first bot draws one at once, so
+      // shoot before its paced discard hands the last tile on.
+      { waitMs: 350 },
+    ],
+  },
+  'tutorial-scoring-0': {
+    // Intro caption of `scoring-intro` (no target): the centred card must
+    // stay horizontally centred and clear of the hand row / toggles.
+    owner: 'tutorial',
+    steps: [
+      { goto: '/' },
+      { waitForText: 'Modern Mahjong' },
+      { startTutorial: 'scoring-intro' },
+      { waitForOwnHand: true },
+      { waitMs: 1200 },
+    ],
+  },
   'tutorial-scoring-1': {
     // First staged example of `scoring-intro`: the result panel is the
     // target, so the card side-docks (desktop / landscape) or overlaps

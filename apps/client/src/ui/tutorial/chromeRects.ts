@@ -13,7 +13,11 @@ import type { TargetFocus } from './types';
  * `isChromeCandidate` is the pure half (unit-tested); `collectChromeRects`
  * is the DOM walk. Both return rects in overlay coordinates.
  */
-export const CHROME_MAX_HEIGHT = 64;
+/** Tallest element that still counts as a control. The 3D table's
+ *  projected hand tiles run to ~80 CSS px on a landscape phone and must
+ *  count (the ring is trimmed to them, the centred card keeps clear);
+ *  regions (discard pool, result panel) are hundreds of px. */
+export const CHROME_MAX_HEIGHT = 88;
 export const CHROME_MAX_WIDTH_RATIO = 0.95;
 export const CHROME_MIN_SIZE = 8;
 

@@ -9,6 +9,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  type TextStyle,
   View,
   type ViewStyle,
   useWindowDimensions,
@@ -23,6 +24,7 @@ import {
   useActiveTutorialStep,
   useTutorial,
 } from '../../state/tutorial';
+import { Tutorial3D } from '../../three/entry';
 import { COLORS } from '../colors';
 import { HaloRing, PulseRing, SCRIM_ALPHA, SCRIM_RGB, SpotlightScrim } from './SpotlightScrim';
 import {
@@ -34,14 +36,18 @@ import {
 import { OVERLAY_ATTR, isChromeCandidate } from './chromeRects';
 import { focusFor } from './focus';
 import {
+  CENTRE_CHROME_GAP,
   type CaptionPlacement,
   HALO_RADIUS,
   type HaloRect,
+  type SideMask,
+  centredRoom,
   encloseStraddlers,
   featherFor,
   haloFor,
   placeCaption,
   safeInset,
+  trimStraddlers,
 } from './placement';
 import type { Lesson, LessonStep } from './types';
 import { useChromeRects } from './useChromeRects';
@@ -216,6 +222,19 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
   const [measured, setMeasured] = useState<{ key: string; height: number } | null>(null);
   const cardHeight = measured?.key === measureKey ? measured.height : null;
   const cardRef = useRef<View | null>(null);
+  // Body (ScrollView) height, same keying — `cardHeight - bodyHeight` is
+  // the card's real chrome, which sizes the body cap below.
+  const [bodyMeasured, setBodyMeasured] = useState<{ key: string; height: number } | null>(null);
+  const bodyHeight = bodyMeasured?.key === measureKey ? bodyMeasured.height : null;
+  /** The card's measured chrome (everything but the body) per step +
+   *  viewport (see below). */
+  const chromeRef = useRef<{ key: string; chrome: number }>({ key: '', chrome: 0 });
+
+  // A centred (no-target) card keeps clear of the user's hand row: the
+  // registered `own-hand` rect is a keep-out for its placement, and when
+  // the card is too tall to fit above it the body scrolls instead of
+  // the card sitting on the tiles (landscape phone, 3D table).
+  const handRect = useTutorialTargetRect(targetId === 'own-hand' ? null : 'own-hand');
 
   // Web: measure synchronously before paint. RNW's `onLayout` goes
   // through ResizeObserver + setTimeout, i.e. it waits for a frame — on a
@@ -232,15 +251,23 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
   }, [cardHeight, measureKey]);
 
   // The ring grows to enclose any small control it would otherwise
-  // bisect (the wall counter under the dice modal); the card is placed
-  // against the same enlarged halo so the two never disagree.
-  const halo = encloseStraddlers(haloFor(haloRect, window), avoid, window);
+  // bisect (the wall counter under the dice modal) and is cut back from
+  // any large one it would otherwise cross (the hand row under the
+  // landscape dice modal — that side then opens: straight scrim edge,
+  // no stroke); the card is placed against the same adjusted halo so
+  // the two never disagree.
+  const shapeHalo = (rect: TargetRect | null) =>
+    trimStraddlers(encloseStraddlers(haloFor(rect, window), avoid, window), avoid);
+  const { halo, open } = shapeHalo(haloRect);
   const feather = halo ? featherFor(halo, avoid) : undefined;
+  const cardHalo = shapeHalo(cardRect).halo;
+  const keepOut = cardHalo === null ? toHalo(handRect) : null;
+  const avoidForCard = keepOut ? [...avoid, keepOut] : avoid;
   const placement = placeCaption({
     viewport: { width: window.width, height: window.height },
-    halo: encloseStraddlers(haloFor(cardRect, window), avoid, window),
+    halo: cardHalo,
     cardHeight,
-    avoid,
+    avoid: avoidForCard,
     keepClear,
   });
   const solid = placement.overlapsChrome;
@@ -250,6 +277,7 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
     placement,
     halo,
     feather,
+    open,
     avoid,
     cardHeight,
     solid,
@@ -294,12 +322,40 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
   const lessonLabel =
     lessonIndex >= 0 ? `Lesson ${lessonIndex + 1}/${LESSON_ORDER.length}` : 'Tutorial';
   const compact = placement.width < 260;
+  // Below this width the header stacks (lesson + step labels on one
+  // row, dots beneath) — a single row would wrap the labels.
+  const stackedHeader = placement.width < 380;
   // Hard CTA-visibility guarantee: cap the body copy so the whole card
   // fits between the safe insets even for a narrow side dock (landscape
   // phone beside the result panel). `CHROME` approximates everything in
   // the card that is not body text; overflow scrolls inside the card.
-  const chrome = compact ? 196 : 236;
-  const bodyMaxHeight = Math.max(64, window.height - safeInset(window.width) * 2 - chrome);
+  const chrome = compact ? 220 : 236;
+  let bodyMaxHeight = Math.max(64, window.height - safeInset(window.width) * 2 - chrome);
+  if (cardHeight !== null && bodyHeight !== null) {
+    // Real chrome (everything but the body), taken once per step from the
+    // first pair of measurements — before any cap has moved the body, so
+    // the two agree. Later pairs can be a render apart (the body reports
+    // its new height before the card does) and would inflate the chrome
+    // by exactly the amount the body just shrank.
+    if (chromeRef.current.key !== measureKey)
+      chromeRef.current = { key: measureKey, chrome: cardHeight - bodyHeight };
+    const chromeReal = chromeRef.current.chrome;
+    // Centred card: room between the chrome above it and the hand row.
+    // The cap depends only on those rects — never on the card's own
+    // height or dock — so it follows the 3D camera easing in without
+    // ping-ponging.
+    // (Docked cards are deliberately not capped this way: their dock
+    // kind depends on the card height, and a cap keyed to the dock
+    // oscillated between an above dock and a side dock every frame.)
+    if (keepOut) {
+      const room = centredRoom(keepOut, avoidForCard, window, placement.width);
+      bodyMaxHeight = Math.min(bodyMaxHeight, room - chromeReal);
+    }
+  }
+  // Snap a capped body to whole lines so the scroll edge falls between
+  // lines instead of slicing one in half; never below three lines.
+  const lineHeight = compact ? 17 : 21;
+  bodyMaxHeight = Math.max(lineHeight * 3, Math.floor(bodyMaxHeight / lineHeight) * lineHeight);
   const ctaLabel = step.ctaLabel ?? 'Got it';
   const canRestart = stepIndex > 0 && lesson.id !== '_stub';
 
@@ -336,12 +392,16 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
       }}
       pointerEvents="box-none"
     >
+      {/* World-space accent on the 3D table: the targeted tiles take the
+          gold highlight while this step is active (no-op under classic). */}
+      {Tutorial3D ? <Tutorial3D /> : null}
       <SpotlightScrim
         width={overlaySize.w}
         height={overlaySize.h}
         halo={halo}
         radius={HALO_RADIUS}
         feather={feather}
+        open={open}
       />
       {tapPanels.map((panel) => (
         <View
@@ -364,8 +424,9 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
             radius={HALO_RADIUS}
             reducedMotion={reducedMotion}
             feather={feather}
+            open={open}
           />
-          <HaloRing halo={halo} radius={HALO_RADIUS} feather={feather} />
+          <HaloRing halo={halo} radius={HALO_RADIUS} feather={feather} open={open} />
         </>
       ) : null}
 
@@ -420,28 +481,13 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
             solid ? null : webOnly({ backdropFilter: 'blur(16px) saturate(140%)' }),
           ]}
         >
-          <View
-            style={{
-              flexDirection: compact ? 'column' : 'row',
-              alignItems: compact ? 'flex-start' : 'center',
-              justifyContent: 'space-between',
-              gap: 8,
-            }}
-          >
-            <Text
-              style={{
-                fontSize: 11,
-                fontWeight: '700',
-                letterSpacing: 2,
-                textTransform: 'uppercase',
-                color: COLORS.gold,
-                fontFamily: BODY_FONT,
-              }}
-            >
-              {lessonLabel}
-            </Text>
-            <StepDots ids={lesson.steps.map((st) => st.id)} index={stepIndex} />
-          </View>
+          <CardHeader
+            lessonLabel={lessonLabel}
+            ids={lesson.steps.map((st) => st.id)}
+            index={stepIndex}
+            compact={compact}
+            stacked={stackedHeader}
+          />
           <Text
             accessibilityRole="header"
             accessibilityLabel={`Tutorial step: ${step.caption.title}`}
@@ -460,6 +506,14 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
             style={{ maxHeight: bodyMaxHeight, flexGrow: 0 }}
             showsVerticalScrollIndicator
             nestedScrollEnabled
+            onLayout={(e) => {
+              const { height } = e.nativeEvent.layout;
+              setBodyMeasured((prev) =>
+                prev?.key === measureKey && prev.height === height
+                  ? prev
+                  : { key: measureKey, height },
+              );
+            }}
           >
             <Text
               style={{
@@ -528,6 +582,8 @@ export interface TutorialLayoutSnapshot {
   placement: CaptionPlacement;
   halo: HaloRect | null;
   feather: ReturnType<typeof featherFor> | undefined;
+  /** Sides the ring was trimmed to (open edge, no stroke). */
+  open: SideMask;
   avoid: readonly HaloRect[];
   cardHeight: number | null;
   solid: boolean;
@@ -567,12 +623,107 @@ function otherTargetRects(
   return out;
 }
 
-function StepDots({ ids, index }: { ids: string[]; index: number }) {
+const MICRO_LABEL: TextStyle = {
+  fontSize: 11,
+  fontWeight: '700',
+  letterSpacing: 2,
+  textTransform: 'uppercase',
+  fontFamily: BODY_FONT,
+};
+
+/**
+ * Card header: the `LESSON N/14` label, the step dots and a `STEP n OF m`
+ * micro-label. The lesson label counts lessons in the curriculum while
+ * the dots count steps inside this lesson — without the step label a
+ * first-time user reads the dots as lesson progress.
+ *
+ * Wide cards keep everything on one row (label left, dots + step label
+ * right); narrower ones stack: both labels on the first row, dots
+ * beneath, so nothing wraps mid-label. `compact` shortens the step label
+ * to `STEP n/m`.
+ */
+function CardHeader({
+  lessonLabel,
+  ids,
+  index,
+  compact,
+  stacked,
+}: {
+  lessonLabel: string;
+  ids: string[];
+  index: number;
+  compact: boolean;
+  stacked: boolean;
+}) {
   const count = ids.length;
-  if (count <= 1) return null;
+  const lesson = (
+    <Text numberOfLines={1} style={[MICRO_LABEL, { color: COLORS.gold }]}>
+      {lessonLabel}
+    </Text>
+  );
+  if (count <= 1) return lesson;
+  const stepLabel = (
+    <Text
+      testID="tutorial-step-label"
+      numberOfLines={1}
+      accessibilityLabel={`Step ${index + 1} of ${count}`}
+      style={[MICRO_LABEL, { color: TEXT_SECONDARY }]}
+    >
+      {compact ? `Step ${index + 1}/${count}` : `Step ${index + 1} of ${count}`}
+    </Text>
+  );
+  if (!stacked) {
+    return (
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 8,
+        }}
+      >
+        {lesson}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 1 }}>
+          <StepDots ids={ids} index={index} />
+          {stepLabel}
+        </View>
+      </View>
+    );
+  }
+  if (compact) {
+    // Side dock on a landscape phone (~200 px): one item per row — two
+    // labels side by side would both truncate.
+    return (
+      <View style={{ gap: 5, alignItems: 'flex-start' }}>
+        {lesson}
+        <StepDots ids={ids} index={index} />
+        {stepLabel}
+      </View>
+    );
+  }
+  return (
+    <View style={{ gap: 6 }}>
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 8,
+        }}
+      >
+        {lesson}
+        {stepLabel}
+      </View>
+      <StepDots ids={ids} index={index} />
+    </View>
+  );
+}
+
+function StepDots({ ids, index }: { ids: string[]; index: number }) {
   return (
     <View
-      accessibilityLabel={`Step ${index + 1} of ${count}`}
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
       style={{ flexDirection: 'row', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}
     >
       {ids.map((id, i) => {

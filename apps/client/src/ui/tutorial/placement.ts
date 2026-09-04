@@ -160,6 +160,16 @@ export function intersectionArea(a: HaloRect, b: HaloRect): number {
   return w > 0 && h > 0 ? w * h : 0;
 }
 
+/** `inner` lies wholly inside `outer` (1 px tolerance). */
+export function containedIn(inner: HaloRect, outer: HaloRect): boolean {
+  return (
+    inner.left >= outer.left - 1 &&
+    inner.top >= outer.top - 1 &&
+    inner.left + inner.width <= outer.left + outer.width + 1 &&
+    inner.top + inner.height <= outer.top + outer.height + 1
+  );
+}
+
 /** Chrome that mostly sits inside the halo is part of the spotlit
  *  region (tiles, the panel's own buttons) — never shift away from it. */
 function outsideHalo(avoid: readonly HaloRect[], halo: HaloRect): HaloRect[] {
@@ -186,6 +196,14 @@ export function placeCaption({
   if (!halo) return placeCentred(viewport, fullWidth, h, avoid ?? []);
 
   const chrome = avoid && avoid.length > 0 ? outsideHalo(avoid, halo) : [];
+  // Chrome that lies inside `keepClear` is the spotlit target's own
+  // dimmed remainder (the result panel's rules chips under a score
+  // spotlight). A vertical dock that lands on it paints solid and
+  // covers it whole, so it never pushes the card away from the halo —
+  // otherwise the card floats 90 px off the ring with the notch aimed
+  // at dimmed chips instead of the spotlit header.
+  const shiftChrome =
+    keepClear === null ? chrome : chrome.filter((r) => !containedIn(r, keepClear));
   const haloBottom = halo.top + halo.height;
   const haloRight = halo.left + halo.width;
   const haloCx = halo.left + halo.width / 2;
@@ -236,30 +254,6 @@ export function placeCaption({
     }
   };
 
-  /** True when the strip between the card and the halo lies (≥ 80 %)
-   *  inside `keepClear`. */
-  const gapOverKeepClear = (kind: DockKind, card: HaloRect, gap: number): boolean => {
-    if (keepClear === null || gap <= 0) return false;
-    let strip: HaloRect;
-    switch (kind) {
-      case 'above':
-        strip = { left: card.left, top: card.top + card.height, width: card.width, height: gap };
-        break;
-      case 'below':
-        strip = { left: card.left, top: haloBottom, width: card.width, height: gap };
-        break;
-      case 'right':
-        strip = { left: haloRight, top: card.top, width: gap, height: card.height };
-        break;
-      case 'left':
-        strip = { left: card.left + card.width, top: card.top, width: gap, height: card.height };
-        break;
-      default:
-        return false;
-    }
-    return intersectionArea(strip, keepClear) >= strip.width * strip.height * 0.8;
-  };
-
   // Tint decision looks at *everything* the card ends up over — chrome
   // it could not dodge and the spotlit target itself (the portrait
   // fallback deliberately overlaps the result panel's bottom, whose
@@ -280,10 +274,10 @@ export function placeCaption({
       (keepClear !== null && intersectionArea(card, keepClear) > 0) ||
       (avoid ?? []).some((r) => intersectionArea(card, r) > 0);
     const gap = gapFor(kind, card);
-    // A long gap normally drops the notch (it would point across
-    // unrelated chrome) — unless the gap is the dimmed remainder of the
-    // very target being spotlit, where the pointer still reads true.
-    const keepNotch = gap <= NOTCH_MAX_GAP || gapOverKeepClear(kind, card, gap);
+    // A long gap drops the notch: a pointer across a band of anything
+    // (even the dimmed remainder of the spotlit target) reads as aimed
+    // at whatever sits in that band, not at the ring.
+    const keepNotch = gap <= NOTCH_MAX_GAP;
     return {
       kind,
       left,
@@ -302,10 +296,13 @@ export function placeCaption({
    * covered area. Candidates compare lexicographically: no bisect first,
    * then least covered, then closest to the ideal dock.
    */
-  const score = (card: HaloRect): { partial: number; total: number } => {
+  const score = (
+    card: HaloRect,
+    list: readonly HaloRect[] = chrome,
+  ): { partial: number; total: number } => {
     let partial = 0;
     let total = 0;
-    for (const r of chrome) {
+    for (const r of list) {
       const a = intersectionArea(card, r);
       if (a <= 0) continue;
       total += a;
@@ -319,8 +316,13 @@ export function placeCaption({
     return { partial, total };
   };
 
-  const scoreAt = (kind: DockKind, left: number, top: number, width: number) =>
-    score(footprint(kind, { left, top, width, height: h }));
+  const scoreAt = (
+    kind: DockKind,
+    left: number,
+    top: number,
+    width: number,
+    list: readonly HaloRect[] = chrome,
+  ) => score(footprint(kind, { left, top, width, height: h }), list);
 
   /** Best `top` for a card of `width` at `left`: the ideal dock, or a
    *  spot aligned just past a chrome edge (within the safe area and
@@ -332,6 +334,7 @@ export function placeCaption({
     width: number,
     ideal: number,
     direction: 'up' | 'down' | 'both',
+    chrome: readonly HaloRect[] = shiftChrome,
   ): number => {
     if (chrome.length === 0) return ideal;
     // Notch band above / below the card, per dock kind.
@@ -351,7 +354,7 @@ export function placeCaption({
       if (direction === 'down' && t < ideal) continue;
       const dist = Math.abs(t - ideal);
       if (dist > MAX_CHROME_SHIFT) continue;
-      const { partial, total } = scoreAt(kind, left, t, width);
+      const { partial, total } = scoreAt(kind, left, t, width, chrome);
       const key: [number, number, number] = [partial, total, dist];
       if (
         bestKey === null ||
@@ -434,7 +437,7 @@ export function placeCaption({
     // Slide along the strip away from whichever chrome the card cuts
     // (the top status row, the ☰ pill), bounded like the vertical docks.
     const idealTop = clamp(sideIdealTop(halo, h, H), safe, maxTop);
-    let top = bestTop(kind, left, width, idealTop, 'both');
+    let top = bestTop(kind, left, width, idealTop, 'both', chrome);
     // A control straddling the card's inner edge (a chip at the end of
     // the row the halo sits in, even one the target itself half covers)
     // cannot be dodged vertically: pull the edge past it while the card
@@ -460,7 +463,7 @@ export function placeCaption({
         }
       }
     }
-    if (nudged) top = bestTop(kind, left, width, idealTop, 'both');
+    if (nudged) top = bestTop(kind, left, width, idealTop, 'both', chrome);
     return finish(
       kind,
       left,
@@ -506,7 +509,10 @@ export function placeCaption({
         { left: chosen.left, top: chosen.top, width: chosen.width, height: h },
         keepClear,
       ) > 0;
-    if ((chosen.gap ?? 0) > NOTCH_MAX_GAP || onTarget) {
+    // …and when the vertical dock still bisects a control it could not
+    // clear (the 3D river card landing on the hand row under it).
+    const bisects = scoreAt(chosen.kind, chosen.left, chosen.top, chosen.width).partial > 0;
+    if ((chosen.gap ?? 0) > NOTCH_MAX_GAP || onTarget || bisects) {
       const alt = side(SIDE_REDOCK_MIN_WIDTH);
       if (
         alt &&
@@ -549,6 +555,14 @@ export function sideIdealTop(halo: HaloRect, cardHeight: number, viewportHeight:
 /** How far a centred (no-target) card may move off dead centre to
  *  clear chrome underneath it. */
 export const MAX_CENTRE_SHIFT = 140;
+/** Air between a centred card and the chrome it slid off (the hand
+ *  row on a landscape phone) — wider than `CHROME_GAP` because there is
+ *  no ring here to give the card a visual anchor. */
+export const CENTRE_CHROME_GAP = 12;
+/** A centred card may drift this far sideways and still read as
+ *  centred; beyond it, covering a small control whole (solid card) beats
+ *  sliding clear of it. */
+export const CENTRE_DRIFT_MAX = 32;
 
 /**
  * No-target card: dead centre unless that lands on chrome. Then the
@@ -581,13 +595,26 @@ function placeCentred(
   });
   if (chrome.length === 0) return finish(idealLeft, idealTop);
 
-  const score = (left: number, top: number): [number, number] => {
+  // `near`: chrome the card clears by less than `CENTRE_CHROME_GAP` — a
+  // card kissing the hand row is legal but reads as cramped, so a spot
+  // with real air wins over a closer one that merely does not touch.
+  const score = (left: number, top: number): [number, number, number] => {
     let partial = 0;
     let total = 0;
+    let near = 0;
     const card = { left, top, width, height: h };
+    const padded = {
+      left: left - CENTRE_CHROME_GAP,
+      top: top - CENTRE_CHROME_GAP,
+      width: width + CENTRE_CHROME_GAP * 2,
+      height: h + CENTRE_CHROME_GAP * 2,
+    };
     for (const r of chrome) {
       const a = intersectionArea(card, r);
-      if (a <= 0) continue;
+      if (a <= 0) {
+        if (intersectionArea(padded, r) > 0) near += 1;
+        continue;
+      }
       total += a;
       const contained =
         r.left >= left - 1 &&
@@ -596,39 +623,86 @@ function placeCentred(
         r.top + r.height <= top + h + 1;
       if (!contained) partial += a;
     }
-    return [partial, total];
+    return [partial, total, near];
   };
   const tops = new Set<number>([idealTop]);
   const lefts = new Set<number>([idealLeft]);
   for (const r of chrome) {
-    tops.add(Math.round(r.top - CHROME_GAP - h));
-    tops.add(Math.round(r.top + r.height + CHROME_GAP));
-    lefts.add(Math.round(r.left - CHROME_GAP - width));
-    lefts.add(Math.round(r.left + r.width + CHROME_GAP));
+    // Clear of the control on either side …
+    tops.add(Math.round(r.top - CENTRE_CHROME_GAP - h));
+    tops.add(Math.round(r.top + r.height + CENTRE_CHROME_GAP));
+    lefts.add(Math.round(r.left - CENTRE_CHROME_GAP - width));
+    lefts.add(Math.round(r.left + r.width + CENTRE_CHROME_GAP));
+    // … or flush over it, covering it whole (the card paints solid).
+    tops.add(Math.round(r.top));
+    tops.add(Math.round(r.top + r.height - h));
+    lefts.add(Math.round(r.left));
+    lefts.add(Math.round(r.left + r.width - width));
   }
   const usable = (set: Set<number>, ideal: number, lo: number, hi: number) =>
     [...set].filter((v) => v >= lo && v <= hi && Math.abs(v - ideal) <= MAX_CENTRE_SHIFT);
   const topList = usable(tops, idealTop, safe, maxTop);
   const leftList = usable(lefts, idealLeft, safe, maxLeft);
+  // Rank: nothing bisected, then *still horizontally centred* (within
+  // `CENTRE_DRIFT_MAX` — a card slid 70 px sideways next to the perfectly
+  // centred cards of the other lessons reads as misaligned, whereas a
+  // vertical shift or a solid card over a small toggle does not), then
+  // least covered, then closest to dead centre.
   let best: [number, number] = [idealLeft, idealTop];
-  let bestKey: [number, number, number] | null = null;
+  let bestKey: number[] | null = null;
   for (const t of topList) {
     for (const l of leftList) {
-      const [partial, total] = score(l, t);
+      const [partial, total, near] = score(l, t);
+      const drifted = Math.abs(l - idealLeft) > CENTRE_DRIFT_MAX ? 1 : 0;
       const dist = Math.hypot(l - idealLeft, t - idealTop);
-      const key: [number, number, number] = [partial, total, dist];
-      if (
-        bestKey === null ||
-        key[0] < bestKey[0] ||
-        (key[0] === bestKey[0] &&
-          (key[1] < bestKey[1] || (key[1] === bestKey[1] && key[2] < bestKey[2])))
-      ) {
+      const key = [partial, drifted, total, near, dist];
+      if (bestKey === null || lexLess(key, bestKey)) {
         best = [l, t];
         bestKey = key;
       }
     }
   }
   return finish(best[0], best[1]);
+}
+
+function lexLess(a: readonly number[], b: readonly number[]): boolean {
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i] ?? 0;
+    const y = b[i] ?? 0;
+    if (x !== y) return x < y;
+  }
+  return false;
+}
+
+/**
+ * Vertical room a centred (no-target) card has between the chrome above
+ * it (the top HUD row, a seat strip) and a keep-out below it (the hand
+ * row): the overlay caps the card's scrolling body to `room − chrome` so
+ * the card sits centred in that band instead of sliding sideways to
+ * dodge whatever it can no longer fit between. Only chrome overlapping
+ * the centred card's column and lying in the upper half of the viewport
+ * bounds the top; everything is measured from the viewport, never from
+ * the card's own height or position, so the cap cannot feed back into
+ * the placement it constrains.
+ */
+export function centredRoom(
+  keepOut: HaloRect,
+  avoid: readonly HaloRect[],
+  viewport: { width: number; height: number },
+  cardWidth: number,
+): number {
+  const safe = safeInset(viewport.width);
+  const left = (viewport.width - cardWidth) / 2;
+  const right = left + cardWidth;
+  let topBound = safe;
+  for (const r of avoid) {
+    if (r === keepOut || r.width <= 0 || r.height <= 0) continue;
+    if (r.left >= right || r.left + r.width <= left) continue;
+    const rBottom = r.top + r.height;
+    if (rBottom <= viewport.height / 2 && rBottom + CENTRE_CHROME_GAP > topBound)
+      topBound = rBottom + CENTRE_CHROME_GAP;
+  }
+  return Math.max(0, keepOut.top - CENTRE_CHROME_GAP - topBound);
 }
 
 /** Largest overhang (px outside the halo) of a control straddling a
@@ -664,6 +738,14 @@ export function encloseStraddlers(
     for (const r of avoid) {
       const rRight = r.left + r.width;
       const rBottom = r.top + r.height;
+      // Only a control that is *mostly* inside the ring (its centre lies
+      // within it) is a label the ring happens to bisect. One whose
+      // centre is outside — a seat badge sitting above the result panel,
+      // a chip at the end of a neighbouring row — is a neighbour the ring
+      // would wrongly pull in and light up.
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      if (cx <= left || cx >= right || cy <= top || cy >= bottom) continue;
       // Must actually cross into the ring on the other axis too.
       const spansY = r.top < bottom && rBottom > top;
       const spansX = r.left < right && rRight > left;
@@ -695,6 +777,159 @@ export function encloseStraddlers(
     return halo;
   }
   return { left, top, width: right - left, height: bottom - top };
+}
+
+/** Which halo sides open onto a trimmed edge (see `trimStraddlers`). */
+export interface SideMask {
+  top: boolean;
+  right: boolean;
+  bottom: boolean;
+  left: boolean;
+}
+
+export const NO_OPEN_SIDES: SideMask = { top: false, right: false, bottom: false, left: false };
+/** Share of a halo edge that crossing neighbours must cover before the
+ *  edge is trimmed to them — a lone chip is enclosed or cut around,
+ *  a row of tiles is a region the ring must not enter. */
+export const TRIM_MIN_SPAN = 0.4;
+/** At least this share of the halo must survive a trim; otherwise the
+ *  neighbour covers most of the target and the ring stays whole. */
+export const TRIM_MIN_KEEP = 0.5;
+
+/**
+ * Pull a halo edge back to the near side of a *large* neighbour it
+ * would otherwise bisect — the own-hand row under the dice modal on a
+ * landscape phone. `encloseStraddlers` grows the ring around small
+ * chips; anything overhanging by more than `STRADDLE_MAX` and reaching
+ * past the halo padding into the target proper is a region, and the
+ * ring is cut to the target's portion clear of it instead. The trimmed
+ * side is reported as `open`: the scrim edge there is a straight,
+ * feathered line and the ring stroke is dropped (the tiles under it are
+ * dimmed whole, never half-lit with a gold line across them).
+ */
+export function trimStraddlers(
+  halo: HaloRect | null,
+  avoid: readonly HaloRect[],
+): { halo: HaloRect | null; open: SideMask } {
+  if (!halo || avoid.length === 0) return { halo, open: NO_OPEN_SIDES };
+  let left = halo.left;
+  let top = halo.top;
+  let right = halo.left + halo.width;
+  let bottom = halo.top + halo.height;
+  const open: SideMask = { ...NO_OPEN_SIDES };
+  // Anything that crosses an edge by more than `STRADDLE_MAX` is a
+  // neighbour whatever share of it the halo happens to cover — the hand
+  // tiles half under the dice modal included.
+  const neighbours = avoid.filter((r) => r.width > 0 && r.height > 0);
+  /** Total length of the halo edge covered by the crossing rects. */
+  const covered = (spans: Array<[number, number]>, lo: number, hi: number): number => {
+    const clipped = spans
+      .map(([a, b]) => [Math.max(lo, a), Math.min(hi, b)] as [number, number])
+      .filter(([a, b]) => b > a)
+      .sort((p, q) => p[0] - q[0]);
+    let total = 0;
+    let curA = Number.NEGATIVE_INFINITY;
+    let curB = Number.NEGATIVE_INFINITY;
+    for (const [a, b] of clipped) {
+      if (a > curB) {
+        if (curB > curA) total += curB - curA;
+        curA = a;
+        curB = b;
+      } else if (b > curB) curB = b;
+    }
+    if (curB > curA) total += curB - curA;
+    return total;
+  };
+  // Bottom
+  {
+    let cut = Number.POSITIVE_INFINITY;
+    const spans: Array<[number, number]> = [];
+    for (const r of neighbours) {
+      const rBottom = r.top + r.height;
+      if (!(r.top < bottom && rBottom > bottom)) continue;
+      if (rBottom - bottom <= STRADDLE_MAX) continue;
+      if (bottom - r.top <= HALO_PAD) continue;
+      spans.push([r.left, r.left + r.width]);
+      cut = Math.min(cut, r.top);
+    }
+    const newBottom = cut - STRADDLE_PAD;
+    if (
+      spans.length > 0 &&
+      covered(spans, left, right) >= TRIM_MIN_SPAN * (right - left) &&
+      newBottom - top >= TRIM_MIN_KEEP * (bottom - top)
+    ) {
+      bottom = newBottom;
+      open.bottom = true;
+    }
+  }
+  // Top
+  {
+    let cut = Number.NEGATIVE_INFINITY;
+    const spans: Array<[number, number]> = [];
+    for (const r of neighbours) {
+      const rBottom = r.top + r.height;
+      if (!(r.top < top && rBottom > top)) continue;
+      if (top - r.top <= STRADDLE_MAX) continue;
+      if (rBottom - top <= HALO_PAD) continue;
+      spans.push([r.left, r.left + r.width]);
+      cut = Math.max(cut, rBottom);
+    }
+    const newTop = cut + STRADDLE_PAD;
+    if (
+      spans.length > 0 &&
+      covered(spans, left, right) >= TRIM_MIN_SPAN * (right - left) &&
+      bottom - newTop >= TRIM_MIN_KEEP * (bottom - top)
+    ) {
+      top = newTop;
+      open.top = true;
+    }
+  }
+  // Right
+  {
+    let cut = Number.POSITIVE_INFINITY;
+    const spans: Array<[number, number]> = [];
+    for (const r of neighbours) {
+      const rRight = r.left + r.width;
+      if (!(r.left < right && rRight > right)) continue;
+      if (rRight - right <= STRADDLE_MAX) continue;
+      if (right - r.left <= HALO_PAD) continue;
+      spans.push([r.top, r.top + r.height]);
+      cut = Math.min(cut, r.left);
+    }
+    const newRight = cut - STRADDLE_PAD;
+    if (
+      spans.length > 0 &&
+      covered(spans, top, bottom) >= TRIM_MIN_SPAN * (bottom - top) &&
+      newRight - left >= TRIM_MIN_KEEP * (right - left)
+    ) {
+      right = newRight;
+      open.right = true;
+    }
+  }
+  // Left
+  {
+    let cut = Number.NEGATIVE_INFINITY;
+    const spans: Array<[number, number]> = [];
+    for (const r of neighbours) {
+      const rRight = r.left + r.width;
+      if (!(r.left < left && rRight > left)) continue;
+      if (left - r.left <= STRADDLE_MAX) continue;
+      if (rRight - left <= HALO_PAD) continue;
+      spans.push([r.top, r.top + r.height]);
+      cut = Math.max(cut, rRight);
+    }
+    const newLeft = cut + STRADDLE_PAD;
+    if (
+      spans.length > 0 &&
+      covered(spans, top, bottom) >= TRIM_MIN_SPAN * (bottom - top) &&
+      right - newLeft >= TRIM_MIN_KEEP * (right - left)
+    ) {
+      left = newLeft;
+      open.left = true;
+    }
+  }
+  if (!open.top && !open.bottom && !open.left && !open.right) return { halo, open };
+  return { halo: { left, top, width: right - left, height: bottom - top }, open };
 }
 
 /** Smallest spotlight worth keeping after a focus clip. */

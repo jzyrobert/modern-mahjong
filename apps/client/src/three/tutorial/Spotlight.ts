@@ -1,4 +1,14 @@
-import { getSpotlightTiles, spotlightVersion } from './targets';
+import {
+  SPOTLIGHT_MAX,
+  SPOTLIGHT_MIN,
+  SPOTLIGHT_PERIOD_MS,
+  SPOTLIGHT_STATIC,
+  getSpotlightTiles,
+  spotlightPulse,
+  spotlightVersion,
+} from '../core/spotlight';
+
+export { SPOTLIGHT_MAX, SPOTLIGHT_MIN, SPOTLIGHT_PERIOD_MS, SPOTLIGHT_STATIC, spotlightPulse };
 
 /**
  * World-space spotlight for the tutorial: raises `pose.highlight` on
@@ -16,20 +26,6 @@ import { getSpotlightTiles, spotlightVersion } from './targets';
 export interface HighlightPool {
   poses: { highlight: number }[];
   markDirty(): void;
-}
-
-export const SPOTLIGHT_PERIOD_MS = 1600;
-export const SPOTLIGHT_MIN = 0.45;
-export const SPOTLIGHT_MAX = 1;
-/** Level held under reduced motion (no breathing). */
-export const SPOTLIGHT_STATIC = 0.8;
-
-/** Breathing intensity in [SPOTLIGHT_MIN, SPOTLIGHT_MAX]; constant under reduced motion. */
-export function spotlightPulse(nowMs: number, reducedMotion: boolean): number {
-  if (reducedMotion) return SPOTLIGHT_STATIC;
-  const phase = ((nowMs % SPOTLIGHT_PERIOD_MS) / SPOTLIGHT_PERIOD_MS) * Math.PI * 2;
-  const t = 0.5 - 0.5 * Math.cos(phase); // 0 → 1 → 0, C1-smooth
-  return SPOTLIGHT_MIN + (SPOTLIGHT_MAX - SPOTLIGHT_MIN) * t;
 }
 
 /**

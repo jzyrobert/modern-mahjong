@@ -18,8 +18,9 @@ import type { TutorialTargetId } from '../../ui/tutorial/types';
  * World-space accent: a scene can *also* raise `pose.highlight` on the
  * tiles a step is about. The active step → tile ids mapping lives in
  * `tilesForTarget`; the ids are published through a tiny module-level
- * store (`setSpotlightTiles` / `getSpotlightTiles`) that a scene polls
- * from its update loop — no React on the hot path.
+ * store (`core/spotlight`: `setSpotlightTiles` / `getSpotlightTiles`)
+ * that `table/TableScene` polls from its update loop — no React on the
+ * hot path.
  *
  * `projectToRect` is the pure world → screen helper for anyone who
  * wants to register a rect from world-space bounds rather than a DOM
@@ -27,41 +28,15 @@ import type { TutorialTargetId } from '../../ui/tutorial/types';
  */
 
 // ── Spotlight store ────────────────────────────────────────────────────
-let spotlight: readonly number[] = [];
-let spotlightSeq = 0;
-const spotlightListeners = new Set<(ids: readonly number[]) => void>();
-
-/** Publish the tile ids (0..135) the active step is about. Deduped
- *  and sorted; a no-op write does not bump the version or notify. */
-export function setSpotlightTiles(tileIds: readonly number[]): void {
-  const next = Array.from(
-    new Set(tileIds.filter((id) => Number.isInteger(id) && id >= 0 && id < 136)),
-  ).sort((a, b) => a - b);
-  if (next.length === spotlight.length && next.every((id, i) => id === spotlight[i])) return;
-  spotlight = next;
-  spotlightSeq++;
-  for (const l of spotlightListeners) l(spotlight);
-}
-
-export function clearSpotlightTiles(): void {
-  setSpotlightTiles([]);
-}
-
-export function getSpotlightTiles(): readonly number[] {
-  return spotlight;
-}
-
-/** Monotonic — a render loop compares it to skip work when unchanged. */
-export function spotlightVersion(): number {
-  return spotlightSeq;
-}
-
-export function subscribeSpotlightTiles(cb: (ids: readonly number[]) => void): () => void {
-  spotlightListeners.add(cb);
-  return () => {
-    spotlightListeners.delete(cb);
-  };
-}
+// Lives in `core/spotlight` so the table scene can poll it without
+// importing this subsystem; re-exported here for the tutorial's callers.
+export {
+  clearSpotlightTiles,
+  getSpotlightTiles,
+  setSpotlightTiles,
+  spotlightVersion,
+  subscribeSpotlightTiles,
+} from '../core/spotlight';
 
 // ── Target → tiles ─────────────────────────────────────────────────────
 /**

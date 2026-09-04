@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'vitest';
 import {
   CARD_GAP,
+  CENTRE_CHROME_GAP,
+  CENTRE_DRIFT_MAX,
   CHROME_GAP,
   FEATHER_OUT,
   FEATHER_TIGHT,
@@ -8,9 +10,11 @@ import {
   HALO_PAD,
   NOTCH_DEPTH,
   NOTCH_MAX_GAP,
+  NO_OPEN_SIDES,
   SIDE_GUTTER,
   STRADDLE_MAX,
   STRADDLE_PAD,
+  centredRoom,
   encloseStraddlers,
   featherFor,
   focusRect,
@@ -18,6 +22,7 @@ import {
   placeCaption,
   safeInset,
   sideIdealTop,
+  trimStraddlers,
 } from './placement';
 
 const phone = { width: 412, height: 915 };
@@ -398,11 +403,64 @@ describe('placeCaption: centred card over chrome', () => {
       card.left + card.width > r.left &&
       card.top < r.top + r.height &&
       card.top + card.height > r.top;
-    expect(hits(toggle)).toBe(false);
+    // The toggle is either clear of the card or swallowed whole — never
+    // bisected; the hand row always stays clear.
+    const covers = (r: typeof toggle) =>
+      r.left >= card.left &&
+      r.left + r.width <= card.left + card.width &&
+      r.top >= card.top &&
+      r.top + r.height <= card.top + card.height;
+    expect(!hits(toggle) || covers(toggle)).toBe(true);
     expect(hits(hand)).toBe(false);
-    expect(p.overlapsChrome).toBe(false);
+    expect(p.overlapsChrome).toBe(hits(toggle));
     expect(inside(p, 300, landscape)).toBe(true);
     expect(p.left).toBeGreaterThanOrEqual(safeInset(915));
+  });
+
+  test('covers a small toggle whole near centre rather than sliding 70 px off it', () => {
+    // Landscape phone, 300 px card: the toggle's y range overlaps every
+    // top the hand row allows, so only a horizontal move can clear it.
+    // A 20 px shift that swallows the toggle (solid card) keeps the card
+    // reading as centred; the clear spot is 74 px off and does not.
+    const tallToggle = { left: 602, top: 51, width: 94, height: 17 };
+    const p = placeCaption({
+      viewport: landscape,
+      halo: null,
+      cardHeight: 300,
+      avoid: [tallToggle, hand],
+    });
+    const idealLeft = Math.round((915 - 440) / 2);
+    expect(Math.abs(p.left - idealLeft)).toBeLessThanOrEqual(CENTRE_DRIFT_MAX);
+    expect(p.overlapsChrome).toBe(true);
+    // Fully covered, never bisected.
+    expect(p.left).toBeLessThanOrEqual(tallToggle.left);
+    expect(p.left + p.width).toBeGreaterThanOrEqual(tallToggle.left + tallToggle.width);
+    // ≥ 12 px of air above the hand row.
+    expect(p.top + 300 + CENTRE_CHROME_GAP).toBeLessThanOrEqual(hand.top);
+  });
+
+  test('keeps CENTRE_CHROME_GAP of air even when a closer spot merely does not touch', () => {
+    // Toggle at y 45..63 with a 305 px card: flush-over-the-toggle (top 45,
+    // bottom 350) clears the hand row at 352 by 2 px and sits nearer the
+    // ideal, but the spot 12 px above the hand wins on air.
+    const toggle45 = { left: 602, top: 45, width: 94, height: 18 };
+    const hand352 = { left: 210, top: 352, width: 560, height: 60 };
+    const p = placeCaption({
+      viewport: landscape,
+      halo: null,
+      cardHeight: 305,
+      avoid: [toggle45, hand352],
+    });
+    expect(p.top + 305 + CENTRE_CHROME_GAP).toBeLessThanOrEqual(hand352.top);
+    expect(Math.abs(p.left - Math.round((915 - 440) / 2))).toBeLessThanOrEqual(CENTRE_DRIFT_MAX);
+  });
+
+  test('prefers a vertical shift over a sideways one when both clear the chrome', () => {
+    const chip = { left: 430, top: 60, width: 60, height: 20 };
+    const p = placeCaption({ viewport: landscape, halo: null, cardHeight: 200, avoid: [chip] });
+    expect(p.left).toBe(Math.round((915 - 440) / 2));
+    expect(p.overlapsChrome).toBe(false);
+    expect(p.top).toBeGreaterThanOrEqual(60 + 20 + CENTRE_CHROME_GAP);
   });
 
   test('reports the overlap (→ solid card) when no nearby spot is clear', () => {
@@ -434,6 +492,18 @@ describe('encloseStraddlers', () => {
     expect(out!.left + out!.width).toBe(960 + STRADDLE_PAD);
   });
 
+  test('never pulls in a neighbour whose centre lies outside the ring', () => {
+    // Landscape scoring-1: the seat strip's '西 Bao' badge sits 20 px
+    // above the result panel with only its bottom 6 px inside the halo
+    // padding. It is a neighbour, not a bisected label — the ring must
+    // hug the panel (HALO_PAD) instead of lighting the badge.
+    const badge = { left: 690, top: 262, width: 120, height: 24 };
+    expect(encloseStraddlers(halo, [badge], desktop)).toBe(halo);
+    // The same badge mostly inside the ring is enclosed as before.
+    const inside = { left: 690, top: 270, width: 120, height: 24 };
+    expect(encloseStraddlers(halo, [inside], desktop)?.top).toBe(270 - STRADDLE_PAD);
+  });
+
   test('leaves the halo alone for a neighbour that overhangs too far', () => {
     const region = { left: 400, top: 600, width: 640, height: 60 };
     const out = encloseStraddlers(halo, [region], desktop);
@@ -444,10 +514,78 @@ describe('encloseStraddlers', () => {
   test('ignores chrome that does not touch the ring and clamps to the safe inset', () => {
     const far = { left: 100, top: 100, width: 40, height: 14 };
     expect(encloseStraddlers(halo, [far], desktop)).toBe(halo);
-    const edge = { left: 1400, top: 300, width: 30, height: 18 };
+    const edge = { left: 1392, top: 300, width: 30, height: 18 };
     const wide = { left: 500, top: 280, width: 910, height: 340 };
     const out = encloseStraddlers(wide, [edge], desktop);
     expect(out!.left + out!.width).toBe(1440 - safeInset(1440));
+  });
+});
+
+describe('trimStraddlers', () => {
+  // Landscape phone, basics step 0: the dice modal (halo) overlaps the
+  // top ~50 px of the 14 hand tiles; each tile is ~55 × 80 and runs to
+  // the bottom edge.
+  const modal = { left: 210, top: 40, width: 495, height: 340 };
+  const tiles = Array.from({ length: 14 }, (_, i) => ({
+    left: 215 + i * 40,
+    top: 330,
+    width: 36,
+    height: 80,
+  }));
+
+  test('cuts the ring back to the modal portion above the hand row and opens that side', () => {
+    const { halo, open } = trimStraddlers(modal, tiles);
+    expect(open).toEqual({ top: false, right: false, bottom: true, left: false });
+    expect(halo).toEqual({ left: 210, top: 40, width: 495, height: 330 - STRADDLE_PAD - 40 });
+  });
+
+  test('leaves a lone small chip to encloseStraddlers', () => {
+    const counter = { left: 400, top: 372, width: 40, height: 14 };
+    const out = trimStraddlers(modal, [counter]);
+    expect(out.halo).toBe(modal);
+    expect(out.open).toEqual({ top: false, right: false, bottom: false, left: false });
+  });
+
+  test('ignores neighbours that only touch the halo padding', () => {
+    // Tiles 6 px under the claim bar: they cross the 8 px pad but not the
+    // target proper — featherFor tightens that side, the ring stays whole.
+    const bar = { left: 100, top: 300, width: 600, height: 72 };
+    const row = tiles.map((t) => ({ ...t, top: 366 }));
+    expect(trimStraddlers(bar, row).halo).toBe(bar);
+  });
+
+  test('keeps the ring whole when the neighbour covers most of the target', () => {
+    const region = { left: 0, top: 150, width: 915, height: 400 };
+    expect(trimStraddlers(modal, [region]).halo).toBe(modal);
+  });
+
+  test('a null halo passes through', () => {
+    expect(trimStraddlers(null, tiles)).toEqual({ halo: null, open: NO_OPEN_SIDES });
+  });
+});
+
+describe('centredRoom', () => {
+  // 3D landscape phone: HUD pills across the top (bottom ≈ 45), seat
+  // badges at the sides, the hand row from y 300.
+  const hand = { left: 115, top: 300, width: 685, height: 70 };
+  const hud = [
+    { left: 12, top: 12, width: 213, height: 33 },
+    { left: 232, top: 12, width: 38, height: 33 },
+    { left: 415, top: 12, width: 85, height: 33 },
+  ];
+  const sideBadges = [
+    { left: 12, top: 60, width: 94, height: 34 },
+    { left: 820, top: 90, width: 80, height: 34 },
+  ];
+  test('measures from the chrome above the card column to the hand row', () => {
+    const room = centredRoom(hand, [...hud, ...sideBadges, hand], landscape, 440);
+    expect(room).toBe(300 - CENTRE_CHROME_GAP - (45 + CENTRE_CHROME_GAP));
+  });
+  test('falls back to the safe inset with nothing above, and ignores lower-half chrome', () => {
+    const low = [{ left: 300, top: 250, width: 100, height: 30 }];
+    expect(centredRoom(hand, [...low, hand], landscape, 440)).toBe(
+      300 - CENTRE_CHROME_GAP - safeInset(915),
+    );
   });
 });
 
@@ -530,11 +668,13 @@ describe('placeCaption: keepClear (partly spotlit target)', () => {
     expect(p.kind).toBe('below');
   });
 
-  test('keeps the notch across the dimmed remainder of the panel even past NOTCH_MAX_GAP', () => {
-    // Portrait: the ideal below-dock would bisect the panel's action
-    // row, so the card drops to just under the faan-chip row (~95 px off
-    // the halo). That gap is the panel's own dimmed rules block, so the
-    // pointer stays; without `keepClear` the same gap drops it.
+  test('docks snug under the focus band over the dimmed remainder instead of floating past it', () => {
+    // Portrait: the ideal below-dock lands on the panel's rules chips.
+    // Those are the spotlit target's own dimmed remainder, which the
+    // solid card covers whole — so the card stays at CARD_GAP with its
+    // notch on the ring rather than dropping 90 px to clear them (where
+    // the notch would point at the chips). Without `keepClear` the same
+    // chrome pushes the card down and the long gap drops the notch.
     const phonePanel = { left: 16, top: 200, width: 380, height: 620 };
     const phoneHalo = { left: 12, top: 192, width: 388, height: 236 };
     const faanChips = { left: 200, top: 490, width: 180, height: 25 };
@@ -549,11 +689,13 @@ describe('placeCaption: keepClear (partly spotlit target)', () => {
       keepClear: phonePanel,
     });
     expect(p.kind).toBe('below');
-    expect(p.top).toBe(490 + 25 + CHROME_GAP + NOTCH_DEPTH);
-    expect(p.gap).toBeGreaterThan(NOTCH_MAX_GAP);
+    expect(p.top).toBe(192 + 236 + CARD_GAP);
+    expect(p.gap).toBe(CARD_GAP);
     expect(p.notch).not.toBeNull();
+    expect(p.overlapsChrome).toBe(true);
     const without = placeCaption({ viewport: phone, halo: phoneHalo, cardHeight: 284, avoid });
-    expect(without.top).toBe(p.top);
+    expect(without.top).toBe(490 + 25 + CHROME_GAP + NOTCH_DEPTH);
+    expect(without.gap).toBeGreaterThan(NOTCH_MAX_GAP);
     expect(without.notch).toBeNull();
   });
 

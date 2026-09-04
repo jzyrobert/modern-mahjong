@@ -24,6 +24,7 @@ import type { SortMode } from '../../ui/match/SortPicker';
 import type { SceneContext } from '../core/SceneHost';
 import { type LightRig, buildLights } from '../core/lights';
 import type { QualityProfile } from '../core/quality';
+import { getSpotlightTiles, spotlightPulse, spotlightVersion } from '../core/spotlight';
 import { TilePool } from '../tiles/TilePool';
 import { feltColors, setTileBackFinish } from '../tiles/materials';
 import { Choreographer } from './choreography';
@@ -197,6 +198,10 @@ export class TableScene {
   private nextDrawId: number | null = null;
   private needsDraw = false;
   private hoverId: number | null = null;
+  /** Tutorial spotlight (additive poll of `core/spotlight`): per-tile
+   *  mask rebuilt when the published set's version changes. */
+  private readonly spotMask = new Uint8Array(136);
+  private spotSeq = -1;
   private lift = new Float32Array(136);
   private pulseT = 0;
   /** Pulses run for a few seconds after each cue, then hold steady so a still table idles. */
@@ -382,7 +387,7 @@ export class TableScene {
       const layout = tileSheetLayout();
       this.lastLayout = layout;
       this.choreo.setLayout(layout, null, 0, 0, { snap: true });
-      this.writePoses();
+      this.writePoses(performance.now());
     }
   }
 
@@ -574,13 +579,28 @@ export class TableScene {
         this.lift[id] = target;
       }
     }
-    this.writePoses();
+    // Tutorial spotlight: the active lesson step publishes the tiles it
+    // is about (`three/tutorial/Tutorial3D` → `core/spotlight`); they
+    // breathe gold while the set is non-empty, and a change of set
+    // renders one frame even when it just cleared.
+    const spotIds = getSpotlightTiles();
+    if (spotlightVersion() !== this.spotSeq || (spotIds.length > 0 && !this.choreo.reducedMotion))
+      live = true;
+    this.writePoses(now);
     if (live) this.ctx.renderer.shadowMap.needsUpdate = true;
     return live;
   }
 
-  private writePoses(): void {
+  private writePoses(now: number): void {
     const pulse = this.pulseT === 0 ? 0.6 : 0.5 + 0.5 * Math.sin(this.pulseT * 4.2);
+    const spotIds = getSpotlightTiles();
+    const spotSeq = spotlightVersion();
+    if (spotSeq !== this.spotSeq) {
+      this.spotSeq = spotSeq;
+      this.spotMask.fill(0);
+      for (const id of spotIds) this.spotMask[id] = 1;
+    }
+    const spotLevel = spotIds.length > 0 ? spotlightPulse(now, this.choreo.reducedMotion) : 0;
     const tiles = this.choreo.tiles;
     for (let id = 0; id < 136; id++) {
       const t = tiles[id]!;
@@ -610,6 +630,7 @@ export class TableScene {
       } else if (id === this.latestDiscardId) hl = 0.4 + 0.45 * pulse;
       else if (id === this.drawnTileId) hl = 0.22;
       else if (id === this.hintTileId) hl = 0.12;
+      if (spotLevel > 0 && this.spotMask[id] === 1) hl = Math.max(hl, spotLevel);
       p.highlight = hl;
       p.tint.setScalar(1);
       const zone = t.slot?.zone;

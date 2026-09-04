@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef } from 'react';
+import { type ReactNode, useEffect, useId, useRef } from 'react';
 import { Animated, Easing, Platform, StyleSheet, View, type ViewStyle } from 'react-native';
 import Svg, {
   Defs,
@@ -10,7 +10,15 @@ import Svg, {
   Stop,
 } from 'react-native-svg';
 import { COLORS } from '../colors';
-import { FEATHER_OUT, FEATHER_TIGHT, type FeatherSides, type HaloRect } from './placement';
+import {
+  FEATHER_OUT,
+  FEATHER_TIGHT,
+  type FeatherSides,
+  HALO_OVERHANG,
+  type HaloRect,
+  NO_OPEN_SIDES,
+  type SideMask,
+} from './placement';
 
 /**
  * Dim + spotlight for the tutorial coach-marks.
@@ -32,6 +40,12 @@ import { FEATHER_OUT, FEATHER_TIGHT, type FeatherSides, type HaloRect } from './
  * `feather` shrinks the outward band per side (see `featherFor`): a side
  * that butts against an opaque neighbour gets a firm edge instead of
  * un-dimming a strip of it.
+ *
+ * `open` marks sides the halo was *trimmed* to (see `trimStraddlers`):
+ * the hole ends in a straight, square-cornered edge there — no corner
+ * arcs curling back over the neighbour — and the rings drop their
+ * stroke on that side, so a dice modal cut off above the hand row reads
+ * as "spotlight up to here", not as a box drawn across the tiles.
  *
  * The pulse is a separate `Animated.View` ring: transform + opacity
  * only (compositor-friendly), 1.6 s breathing loop, held static under
@@ -57,6 +71,7 @@ interface SpotlightScrimProps {
   halo: HaloRect | null;
   radius: number;
   feather?: FeatherSides | undefined;
+  open?: SideMask | undefined;
 }
 
 /** Smoothstep luminance ramp from `t0` (black = clear) to 1 (white =
@@ -79,6 +94,7 @@ export function SpotlightScrim({
   halo,
   radius,
   feather = FULL_FEATHER,
+  open = NO_OPEN_SIDES,
 }: SpotlightScrimProps) {
   const uid = `ts${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
   if (!halo) {
@@ -112,22 +128,46 @@ export function SpotlightScrim({
   const rxR = Math.min(R + f.right, (outer.right - outer.left) / 2);
   const ryT = Math.min(R + f.top, (outer.bottom - outer.top) / 2);
   const ryB = Math.min(R + f.bottom, (outer.bottom - outer.top) / 2);
+  // A corner next to an open (trimmed) side is square: no inner radius,
+  // no outer ellipse, no ramp sector — the side bands meet at the edge.
+  const sq = {
+    tl: open.top || open.left,
+    tr: open.top || open.right,
+    br: open.bottom || open.right,
+    bl: open.bottom || open.left,
+  };
+  const rTL = sq.tl ? 0 : R;
+  const rTR = sq.tr ? 0 : R;
+  const rBR = sq.br ? 0 : R;
+  const rBL = sq.bl ? 0 : R;
   // Every ramp ends in white, so its pieces overlap the white surround
   // by a hair: white on white is invisible, whereas a shared edge would
   // leave an anti-aliasing seam.
   const seam = 0.7;
+  // Per-corner outer arc radii (0 → the arc degenerates to a straight
+  // corner per the SVG spec).
+  const oTL: [number, number] = sq.tl ? [0, 0] : [rxL, ryT];
+  const oTR: [number, number] = sq.tr ? [0, 0] : [rxR, ryT];
+  const oBR: [number, number] = sq.br ? [0, 0] : [rxR, ryB];
+  const oBL: [number, number] = sq.bl ? [0, 0] : [rxL, ryB];
   const hole =
-    `M${outer.left + rxL} ${outer.top} H${outer.right - rxR} ` +
-    `A${rxR} ${ryT} 0 0 1 ${outer.right} ${outer.top + ryT} V${outer.bottom - ryB} ` +
-    `A${rxR} ${ryB} 0 0 1 ${outer.right - rxR} ${outer.bottom} H${outer.left + rxL} ` +
-    `A${rxL} ${ryB} 0 0 1 ${outer.left} ${outer.bottom - ryB} V${outer.top + ryT} ` +
-    `A${rxL} ${ryT} 0 0 1 ${outer.left + rxL} ${outer.top} Z`;
+    `M${outer.left + oTL[0]} ${outer.top} H${outer.right - oTR[0]} ` +
+    `A${oTR[0]} ${oTR[1]} 0 0 1 ${outer.right} ${outer.top + oTR[1]} V${outer.bottom - oBR[1]} ` +
+    `A${oBR[0]} ${oBR[1]} 0 0 1 ${outer.right - oBR[0]} ${outer.bottom} H${outer.left + oBL[0]} ` +
+    `A${oBL[0]} ${oBL[1]} 0 0 1 ${outer.left} ${outer.bottom - oBL[1]} V${outer.top + oTL[1]} ` +
+    `A${oTL[0]} ${oTL[1]} 0 0 1 ${outer.left + oTL[0]} ${outer.top} Z`;
 
-  // Side bands span between the corner centres.
-  const bandX = hLeft + R;
-  const bandW = Math.max(0, halo.width - 2 * R);
-  const bandY = hTop + R;
-  const bandH = Math.max(0, halo.height - 2 * R);
+  // Side bands span between the corner centres; next to a square corner
+  // they run to the halo edge (and the side bands past the outer edge,
+  // so the corner square outside the hole is ramped, not left clear).
+  const topX = hLeft + rTL;
+  const topW = Math.max(0, halo.width - rTL - rTR);
+  const botX = hLeft + rBL;
+  const botW = Math.max(0, halo.width - rBL - rBR);
+  const leftY = hTop + rTL - (sq.tl ? f.top : 0);
+  const leftH = Math.max(0, hBottom - rBL + (sq.bl ? f.bottom : 0) - leftY);
+  const rightY = hTop + rTR - (sq.tr ? f.top : 0);
+  const rightH = Math.max(0, hBottom - rBR + (sq.br ? f.bottom : 0) - rightY);
 
   // Corner quadrants: each is filled by a radial gradient in bounding-
   // box units centred on the quadrant's inner corner (the halo's corner
@@ -174,60 +214,68 @@ export function SpotlightScrim({
         <Mask id={`${uid}-m`} maskUnits="userSpaceOnUse" x={0} y={0} width={width} height={height}>
           <Rect x={0} y={0} width={width} height={height} fill="#fff" />
           <Path d={hole} fill="#000" />
-          {bandW > 0 ? (
-            <>
-              <Rect
-                x={bandX}
-                y={outer.top - seam}
-                width={bandW}
-                height={ryT - inR + seam}
-                fill={`url(#${uid}-t)`}
-              />
-              <Rect
-                x={bandX}
-                y={hBottom - R + inR}
-                width={bandW}
-                height={ryB - inR + seam}
-                fill={`url(#${uid}-b)`}
-              />
-            </>
+          {leftH > 0 ? (
+            <Rect
+              x={outer.left - seam}
+              y={leftY}
+              width={rxL - inR + seam}
+              height={leftH}
+              fill={`url(#${uid}-l)`}
+            />
           ) : null}
-          {bandH > 0 ? (
-            <>
-              <Rect
-                x={outer.left - seam}
-                y={bandY}
-                width={rxL - inR + seam}
-                height={bandH}
-                fill={`url(#${uid}-l)`}
-              />
-              <Rect
-                x={hRight - R + inR}
-                y={bandY}
-                width={rxR - inR + seam}
-                height={bandH}
-                fill={`url(#${uid}-r)`}
-              />
-            </>
+          {rightH > 0 ? (
+            <Rect
+              x={hRight - R + inR}
+              y={rightY}
+              width={rxR - inR + seam}
+              height={rightH}
+              fill={`url(#${uid}-r)`}
+            />
+          ) : null}
+          {topW > 0 ? (
+            <Rect
+              x={topX}
+              y={outer.top - seam}
+              width={topW}
+              height={ryT - inR + seam}
+              fill={`url(#${uid}-t)`}
+            />
+          ) : null}
+          {botW > 0 ? (
+            <Rect
+              x={botX}
+              y={hBottom - R + inR}
+              width={botW}
+              height={ryB - inR + seam}
+              fill={`url(#${uid}-b)`}
+            />
           ) : null}
           {/* Elliptical quadrant sectors, not rects: a gradient pads past its
                   last stop, so a rect would paint the region outside the ellipse. */}
-          <Path
-            d={sector(hLeft + R, hTop + R, rxL + seam, ryT + seam, -1, -1)}
-            fill={`url(#${uid}-tl)`}
-          />
-          <Path
-            d={sector(hRight - R, hTop + R, rxR + seam, ryT + seam, 1, -1)}
-            fill={`url(#${uid}-tr)`}
-          />
-          <Path
-            d={sector(hRight - R, hBottom - R, rxR + seam, ryB + seam, 1, 1)}
-            fill={`url(#${uid}-br)`}
-          />
-          <Path
-            d={sector(hLeft + R, hBottom - R, rxL + seam, ryB + seam, -1, 1)}
-            fill={`url(#${uid}-bl)`}
-          />
+          {sq.tl ? null : (
+            <Path
+              d={sector(hLeft + R, hTop + R, rxL + seam, ryT + seam, -1, -1)}
+              fill={`url(#${uid}-tl)`}
+            />
+          )}
+          {sq.tr ? null : (
+            <Path
+              d={sector(hRight - R, hTop + R, rxR + seam, ryT + seam, 1, -1)}
+              fill={`url(#${uid}-tr)`}
+            />
+          )}
+          {sq.br ? null : (
+            <Path
+              d={sector(hRight - R, hBottom - R, rxR + seam, ryB + seam, 1, 1)}
+              fill={`url(#${uid}-br)`}
+            />
+          )}
+          {sq.bl ? null : (
+            <Path
+              d={sector(hLeft + R, hBottom - R, rxL + seam, ryB + seam, -1, 1)}
+              fill={`url(#${uid}-bl)`}
+            />
+          )}
         </Mask>
       </Defs>
       <Rect
@@ -250,13 +298,25 @@ interface PulseRingProps {
    *  right outside the halo, so the pulse barely grows toward it and
    *  the glow leans away from it. */
   feather?: FeatherSides | undefined;
+  /** Sides the halo was trimmed to: the stroke is clipped away there. */
+  open?: SideMask | undefined;
 }
 
-interface SideMask {
-  top: boolean;
-  right: boolean;
-  bottom: boolean;
-  left: boolean;
+/** Overhang past the halo on an open side, so the ring's corner arcs
+ *  and stroke on that side land outside the clip. */
+const OPEN_EXT = HALO_OVERHANG;
+
+function extFor(open: SideMask | undefined): FeatherSides {
+  return {
+    top: open?.top ? OPEN_EXT : 0,
+    right: open?.right ? OPEN_EXT : 0,
+    bottom: open?.bottom ? OPEN_EXT : 0,
+    left: open?.left ? OPEN_EXT : 0,
+  };
+}
+
+function anyOpen(open: SideMask | undefined): boolean {
+  return !!open && (open.top || open.right || open.bottom || open.left);
 }
 
 function tightSides(feather: FeatherSides | undefined): SideMask {
@@ -349,17 +409,60 @@ function webPulseStyle(width: number, height: number, tight: SideMask): ViewStyl
   return style;
 }
 
-function WebPulseRing({ halo, radius, reducedMotion, feather }: PulseRingProps) {
+/**
+ * Clip box for a ring with open sides: the halo grown by `grow` on the
+ * closed sides (room for the pulse / aura) and flush on the open ones,
+ * so anything drawn past an open edge is cut off there.
+ */
+function ClipBox({
+  halo,
+  grow,
+  open,
+  children,
+}: {
+  halo: HaloRect;
+  grow: number;
+  open: SideMask | undefined;
+  children: (inner: HaloRect) => ReactNode;
+}) {
+  const g = (o: boolean | undefined) => (o ? 0 : grow);
+  const l = g(open?.left);
+  const t = g(open?.top);
+  const box = {
+    left: halo.left - l,
+    top: halo.top - t,
+    width: halo.width + l + g(open?.right),
+    height: halo.height + t + g(open?.bottom),
+  };
   return (
+    <View
+      pointerEvents="none"
+      style={{
+        position: 'absolute',
+        left: box.left,
+        top: box.top,
+        width: box.width,
+        height: box.height,
+        overflow: 'hidden',
+      }}
+    >
+      {children({ left: l, top: t, width: halo.width, height: halo.height })}
+    </View>
+  );
+}
+
+function WebPulseRing({ halo, radius, reducedMotion, feather, open }: PulseRingProps) {
+  const ext = extFor(open);
+  const ring = (at: HaloRect) => (
     <View
       pointerEvents="none"
       style={[
         {
           position: 'absolute',
-          left: halo.left,
-          top: halo.top,
-          width: halo.width,
-          height: halo.height,
+          left: at.left - ext.left,
+          top: at.top - ext.top,
+          width: at.width + ext.left + ext.right,
+          height: at.height + ext.top + ext.bottom,
           borderRadius: radius,
           borderWidth: PULSE_STROKE,
           borderColor: COLORS.gold,
@@ -371,9 +474,15 @@ function WebPulseRing({ halo, radius, reducedMotion, feather }: PulseRingProps) 
       ]}
     />
   );
+  if (!anyOpen(open)) return ring(halo);
+  return (
+    <ClipBox halo={halo} grow={PULSE_GROW_PX + 12} open={open}>
+      {ring}
+    </ClipBox>
+  );
 }
 
-function NativePulseRing({ halo, radius, reducedMotion, feather }: PulseRingProps) {
+function NativePulseRing({ halo, radius, reducedMotion, feather, open }: PulseRingProps) {
   const t = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     if (reducedMotion) {
@@ -405,15 +514,16 @@ function NativePulseRing({ halo, radius, reducedMotion, feather }: PulseRingProp
     ? PULSE_STATIC
     : t.interpolate({ inputRange: [0, 0.15, 1], outputRange: [0, PULSE_PEAK, 0] });
 
-  return (
+  const ext = extFor(open);
+  const ring = (at: HaloRect) => (
     <Animated.View
       pointerEvents="none"
       style={{
         position: 'absolute',
-        left: halo.left,
-        top: halo.top,
-        width: halo.width,
-        height: halo.height,
+        left: at.left - ext.left,
+        top: at.top - ext.top,
+        width: at.width + ext.left + ext.right,
+        height: at.height + ext.top + ext.bottom,
         borderRadius: radius,
         borderWidth: PULSE_STROKE,
         borderColor: COLORS.gold,
@@ -422,6 +532,12 @@ function NativePulseRing({ halo, radius, reducedMotion, feather }: PulseRingProp
         transform: [{ translateX }, { translateY }, { scaleX }, { scaleY }],
       }}
     />
+  );
+  if (!anyOpen(open)) return ring(halo);
+  return (
+    <ClipBox halo={halo} grow={PULSE_GROW_PX + 12} open={open}>
+      {ring}
+    </ClipBox>
   );
 }
 
@@ -454,12 +570,16 @@ export function HaloRing({
   halo,
   radius,
   feather,
+  open,
 }: {
   halo: HaloRect;
   radius: number;
   feather?: FeatherSides | undefined;
+  /** Sides the halo was trimmed to: no stroke, no aura, square corners. */
+  open?: SideMask | undefined;
 }) {
   const reach = auraReach(feather);
+  const ext = extFor(open);
   return (
     <>
       <View
@@ -476,15 +596,18 @@ export function HaloRing({
         <View
           style={{
             position: 'absolute',
-            left: reach.left,
-            top: reach.top,
-            width: halo.width,
-            height: halo.height,
+            left: reach.left - ext.left,
+            top: reach.top - ext.top,
+            width: halo.width + ext.left + ext.right,
+            height: halo.height + ext.top + ext.bottom,
             borderRadius: radius,
             boxShadow: AURA_SHADOW,
           }}
         />
       </View>
+      {/* The testID box is the exact halo rect (what the specs measure);
+          the stroke is a child extended past any open side and clipped
+          by this box, so the ring simply runs off that edge. */}
       <View
         testID="tutorial-halo"
         pointerEvents="none"
@@ -494,11 +617,22 @@ export function HaloRing({
           top: halo.top,
           width: halo.width,
           height: halo.height,
-          borderRadius: radius,
-          borderWidth: 2,
-          borderColor: 'rgba(216,168,90,0.95)',
+          overflow: anyOpen(open) ? 'hidden' : 'visible',
         }}
-      />
+      >
+        <View
+          style={{
+            position: 'absolute',
+            left: -ext.left,
+            top: -ext.top,
+            width: halo.width + ext.left + ext.right,
+            height: halo.height + ext.top + ext.bottom,
+            borderRadius: radius,
+            borderWidth: 2,
+            borderColor: 'rgba(216,168,90,0.95)',
+          }}
+        />
+      </View>
     </>
   );
 }
