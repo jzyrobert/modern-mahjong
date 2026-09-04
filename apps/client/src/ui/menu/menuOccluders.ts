@@ -23,6 +23,10 @@ export interface OccluderRect {
   w: number;
   h: number;
   kind: OccluderKind;
+  /** Per-rect fade ramp (CSS px); defaults to the caller's `band`. The
+   *  3D hero rack registers itself with a short ramp so the phone's
+   *  narrow side margins can still host whole tiles. */
+  band?: number;
 }
 
 const rects = new Map<string, OccluderRect>();
@@ -118,10 +122,11 @@ export function occluderFactor(
   let f = 1;
   for (const r of list) {
     const d = rectSignedDistance(x, y, r);
+    const ramp = r.band ?? band;
     let g: number;
-    if (r.kind === 'solid') g = clamp01((d - radius) / band);
+    if (r.kind === 'solid') g = clamp01((d - radius) / ramp);
     else {
-      g = clamp01((Math.abs(d) - radius) / band);
+      g = clamp01((Math.abs(d) - radius) / ramp);
       // Deep behind the glass the blur reads as depth, but a full-size
       // tile inside a form card still reads as debris — callers cap
       // the interior so those tiles shrink into faint depth cues.

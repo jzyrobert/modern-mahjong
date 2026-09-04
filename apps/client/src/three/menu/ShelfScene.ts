@@ -14,6 +14,7 @@ import { buildLights } from '../core/lights';
 import { clamp01, easeOutCubic } from '../core/tween';
 import { TilePool } from '../tiles/TilePool';
 import { BACK_CELL } from '../tiles/faceAtlas';
+import { TILE_D, TILE_H, TILE_W } from '../tiles/geometry';
 import { type FanParams, type Slot, fanSlots, fanWidth, fitDistance } from './layout';
 
 /**
@@ -27,6 +28,13 @@ import { type FanParams, type Slot, fanSlots, fanWidth, fitDistance } from './la
  * Still life: a short settle intro (tiles drop into place, ≤ 600 ms;
  * instant under reduced motion) and then the loop idles — the scene
  * re-renders only on resize or a tile-back skin change (rebuild).
+ *
+ * The camera looks down steeply enough (`SHELF_ELEVATION`) that the
+ * faces read square-on with a sliver of the bottom edge for depth; the
+ * frame is derived from the leaning tile's projected height
+ * (`shelfFrameHeight`) so the tops are never cut by the canvas edge.
+ * `__MAHJONG_SHELF_DEBUG__` publishes the projected tile bounds for
+ * the verifier / specs.
  */
 export interface ShelfSceneOptions {
   tileBack: TileBackSkin;
@@ -43,7 +51,7 @@ export const SHELF_CELLS: readonly number[] = [
   BACK_CELL,
 ];
 /** Body tint per slot — the outer backs recede like the 2D shelf did. */
-export const SHELF_TINTS: readonly number[] = [0.6, 0.78, 1, 1, 1, 0.78, 0.6];
+export const SHELF_TINTS: readonly number[] = [0.62, 0.8, 1, 1, 1, 0.8, 0.62];
 export const SHELF_FAN: FanParams = {
   spacing: 1.1,
   lean: 0.5,
@@ -54,28 +62,75 @@ export const SHELF_FAN: FanParams = {
   rowGap: 0,
 };
 export const SHELF_FOV = 28;
-export const SHELF_ELEVATION = 0.52;
+/**
+ * Camera elevation above the felt, radians. With the 0.5 rad lean the
+ * faces meet the view at sin(0.5 + 0.82) ≈ 0.97 (square-on) while
+ * cos(1.32) ≈ 0.25 of the bottom edge still shows, so the tiles read
+ * as solid blocks rather than flat cards. (0.52 put the camera nearly
+ * tangent to the faces: slivers with the glyphs unreadable.)
+ */
+export const SHELF_ELEVATION = 0.82;
 /** World units of air either side of the arc. */
-export const SHELF_MARGIN = 1.4;
-/** World height the frustum must span at the arc (leaning tiles +
- *  their contact shadows) — letterbox canvases fit this instead of the
- *  width, otherwise a 4:1 strip puts the camera so close that only a
- *  band through the tiles is in frame. */
-export const SHELF_FRAME_H = 2.7;
+export const SHELF_MARGIN = 1.0;
+/** Vertical margin above and below the tile + shadow group, world units. */
+export const SHELF_FRAME_PAD = 0.4;
+/** Floor the contact shadow is allowed to spread over, world units. */
+export const SHELF_SHADOW_REACH = 0.7;
+/** Canvas aspect the `ReplayShelf3D` host sizes to (width / height). */
+export const SHELF_CANVAS_ASPECT = 8.6 / 3.2;
 const INTRO_DELAY_MS = 80;
 const INTRO_STAGGER_MS = 40;
 const INTRO_TILE_MS = 520;
 
+declare global {
+  /** Projected bounds (CSS px, canvas space) of the shelf tiles once
+   *  the pose has been written, for the verifier / specs. */
+  // eslint-disable-next-line no-var
+  var __MAHJONG_SHELF_DEBUG__:
+    | {
+        top: number;
+        bottom: number;
+        left: number;
+        right: number;
+        width: number;
+        height: number;
+        settled: boolean;
+      }
+    | undefined;
+}
+
+/** World width the frame must span at the arc. */
+export function shelfFrameWidth(): number {
+  return fanWidth(SHELF_CELLS.length, SHELF_FAN.spacing) + SHELF_MARGIN;
+}
+
+/**
+ * World height the frustum must span at the arc: the leaning tile's
+ * extent along the camera's up vector (long side × sin(lean + elev.)
+ * plus the bottom edge × cos(lean + elev.)), the contact shadow on
+ * the floor seen at the elevation, and `SHELF_FRAME_PAD` either side.
+ * Letterbox canvases fit this instead of the width, otherwise a wide
+ * strip puts the camera so close that a band through the tiles is all
+ * that is in frame.
+ */
+export function shelfFrameHeight(lean = SHELF_FAN.lean, elevation = SHELF_ELEVATION): number {
+  const a = lean + elevation;
+  const tile = TILE_H * Math.abs(Math.sin(a)) + TILE_D * Math.abs(Math.cos(a));
+  const shadow = SHELF_SHADOW_REACH * Math.sin(elevation);
+  return tile + shadow + 2 * SHELF_FRAME_PAD;
+}
+
 /** Camera that frames the arc at `aspect`: as wide as the canvas allows
- *  while keeping `SHELF_FRAME_H` of height in view. */
+ *  while keeping `shelfFrameHeight()` of height in view. */
 export function shelfCamera(aspect: number): CameraPreset {
-  const width = fanWidth(SHELF_CELLS.length, SHELF_FAN.spacing) + SHELF_MARGIN;
   const a = Math.max(0.5, aspect);
   const distance = Math.max(
-    fitDistance(width, SHELF_FOV, a),
-    fitDistance(SHELF_FRAME_H * a, SHELF_FOV, a),
+    fitDistance(shelfFrameWidth(), SHELF_FOV, a),
+    fitDistance(shelfFrameHeight() * a, SHELF_FOV, a),
   );
-  const target: [number, number, number] = [0, 0.42, -0.1];
+  // Aim a touch in front of the tile centres so the group (tile +
+  // forward-falling contact shadow) sits centred in the frame.
+  const target: [number, number, number] = [0, 0.5, -0.05];
   return {
     position: [
       0,
@@ -88,6 +143,17 @@ export function shelfCamera(aspect: number): CameraPreset {
 }
 
 const _euler = new Euler();
+const _corner = new Vector3();
+const CORNERS: readonly [number, number, number][] = [
+  [-1, -1, -1],
+  [1, -1, -1],
+  [-1, 1, -1],
+  [1, 1, -1],
+  [-1, -1, 1],
+  [1, -1, 1],
+  [-1, 1, 1],
+  [1, 1, 1],
+];
 
 export function buildShelfScene(ctx: SceneContext, opts: ShelfSceneOptions): SceneHandle {
   const { scene, renderer, rig, quality, loop, reducedMotion } = ctx;
@@ -100,15 +166,19 @@ export function buildShelfScene(ctx: SceneContext, opts: ShelfSceneOptions): Sce
     groundColor: 0x1e2a23,
     shadowExtent: 6,
   });
-  lights.key.position.set(-3.5, 7, 5);
+  // Key from high back-left so each tile throws a short contact shadow
+  // to its right-front, onto the floor the camera sees.
+  lights.key.position.set(-3.2, 7.5, -1.6);
   lights.key.intensity = 2.3;
   lights.key.shadow.camera.far = 16;
-  lights.hemi.intensity = 0.7;
-  lights.ambient.intensity = 0.12;
+  lights.key.shadow.radius = 5;
+  lights.hemi.intensity = 0.75;
+  lights.ambient.intensity = 0.14;
   if (scene.environment) scene.environmentIntensity = 0.45;
 
   const floorGeo = new PlaneGeometry(40, 40);
-  const floorMat = new ShadowMaterial({ color: 0x000000, opacity: 0.55 });
+  // Soft enough to read as contact shadow on the void, not a slab.
+  const floorMat = new ShadowMaterial({ color: 0x000000, opacity: 0.32 });
   const floor = new Mesh(floorGeo, floorMat);
   floor.rotation.x = -Math.PI / 2;
   floor.position.y = -0.001;
@@ -132,7 +202,41 @@ export function buildShelfScene(ctx: SceneContext, opts: ShelfSceneOptions): Sce
     p.tint.setScalar(SHELF_TINTS[i] ?? 1);
     p.quaternion.copy(quats[i]!);
   });
-  const settleAt = start + INTRO_DELAY_MS + (slots.length - 1) * INTRO_STAGGER_MS + INTRO_TILE_MS;
+
+  /** Projected bounds of every tile corner through the live camera. */
+  const publishBounds = (settled: boolean) => {
+    const camera = rig.camera;
+    camera.updateMatrixWorld();
+    let x0 = Number.POSITIVE_INFINITY;
+    let y0 = Number.POSITIVE_INFINITY;
+    let x1 = Number.NEGATIVE_INFINITY;
+    let y1 = Number.NEGATIVE_INFINITY;
+    for (let i = 0; i < slots.length; i++) {
+      const p = pool.pose(i);
+      for (const c of CORNERS) {
+        _corner
+          .set((c[0] * TILE_W) / 2, (c[1] * TILE_H) / 2, (c[2] * TILE_D) / 2)
+          .applyQuaternion(p.quaternion)
+          .add(p.position)
+          .project(camera);
+        const sx = ((_corner.x + 1) / 2) * ctx.size.width;
+        const sy = ((1 - _corner.y) / 2) * ctx.size.height;
+        x0 = Math.min(x0, sx);
+        x1 = Math.max(x1, sx);
+        y0 = Math.min(y0, sy);
+        y1 = Math.max(y1, sy);
+      }
+    }
+    globalThis.__MAHJONG_SHELF_DEBUG__ = {
+      top: y0,
+      bottom: y1,
+      left: x0,
+      right: x1,
+      width: ctx.size.width,
+      height: ctx.size.height,
+      settled,
+    };
+  };
 
   const write = (now: number): boolean => {
     let live = false;
@@ -150,17 +254,27 @@ export function buildShelfScene(ctx: SceneContext, opts: ShelfSceneOptions): Sce
     return live;
   };
   write(start);
+  // Keep writing until every tween has landed. (Gating on a wall-clock
+  // settle time left the tiles frozen mid-drop when the first frame
+  // came late — SwiftShader's warm-up is ~1 s — so they hovered 1.1
+  // units above the floor with their tops cut by the canvas edge.)
+  let settled = false;
 
   return {
     update(_dt, now) {
-      if (reducedMotion || now > settleAt + 50) return false;
-      return write(now);
+      if (settled) return false;
+      const live = write(now);
+      if (!live) settled = true;
+      publishBounds(settled);
+      return live;
     },
     resize(width, height) {
       rig.snap(shelfCamera(width / Math.max(1, height)));
+      publishBounds(settled);
       loop.requestRender();
     },
     dispose() {
+      globalThis.__MAHJONG_SHELF_DEBUG__ = undefined;
       lights.dispose();
       pool.dispose();
       floorGeo.dispose();

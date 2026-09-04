@@ -42,8 +42,7 @@ export function ReplayLibrary() {
   const [importOpen, setImportOpen] = useState(false);
   const autoRecord = useGame((s) => s.settings.autoRecordReplays);
   const setSettings = useGame((s) => s.setSettings);
-  const { width, height } = useWindowDimensions();
-  const fillEmpty = width <= HERO_PHONE_BREAKPOINT;
+  const { height } = useWindowDimensions();
 
   const refresh = useCallback(() => setHeaders(listHeaders()), []);
   const onOpenReplay = (id: string) => {
@@ -91,15 +90,17 @@ export function ReplayLibrary() {
                 flex: 1,
                 justifyContent: 'center',
                 paddingHorizontal: 20,
-                // Wide: a focal card at the optical centre (a little above
-                // the geometric middle) of the space under the ribbon.
-                // Phones: the card *is* the shelf — it fills the rest of
-                // the viewport so nothing reads as leftover void.
-                paddingBottom: fillEmpty ? 0 : Math.round(height * 0.1),
+                // A focal card at the optical centre (a little above the
+                // geometric middle) of the space under the ribbon, with
+                // the parlour gradient showing around it. (A card that
+                // filled the phone column was a full-height slab with
+                // the scene a third of the way down and 200 px of dead
+                // glass under the button.)
+                paddingBottom: Math.round(height * 0.1),
               }}
             >
-              <Reveal index={1} style={fillEmpty ? { flex: 1 } : undefined}>
-                <EmptyState onImport={() => setImportOpen(true)} fill={fillEmpty} />
+              <Reveal index={1}>
+                <EmptyState onImport={() => setImportOpen(true)} />
               </Reveal>
             </View>
           ) : (
@@ -286,7 +287,7 @@ function AutoRecordRibbon({ enabled, onToggle }: { enabled: boolean; onToggle: (
 
 // ─── Empty state ───────────────────────────────────────────────────
 
-function EmptyState({ onImport, fill = false }: { onImport: () => void; fill?: boolean }) {
+function EmptyState({ onImport }: { onImport: () => void }) {
   const { width, height } = useWindowDimensions();
   const rendererSetting = useGame((s) => s.settings.renderer);
   // Under the 3D renderer the shelf is a real scene (`ReplayShelf3D`)
@@ -299,7 +300,10 @@ function EmptyState({ onImport, fill = false }: { onImport: () => void; fill?: b
     hasWebGL2();
   // Landscape phones are wide but short — keep the compact card there.
   const wide = width > 720 && height >= 600;
-  const tileWidth = wide ? 44 : fill ? 40 : 34;
+  // Phones: as wide as the card's content box allows (the 3D shelf
+  // canvas is 8.6 tile widths across; 20 px card + 20 px page inset
+  // each side), so the tiles are the card's focal object.
+  const tileWidth = wide ? 44 : Math.max(30, Math.min(44, Math.floor((width - 80) / 8.6)));
   return (
     <GlassCard
       hover={false}
@@ -309,13 +313,12 @@ function EmptyState({ onImport, fill = false }: { onImport: () => void; fill?: b
         paddingBottom: wide ? 26 : 20,
         alignItems: 'center',
         justifyContent: 'center',
-        gap: fill ? 14 : 12,
+        gap: 12,
         marginTop: 8,
         // A focal object, not a full-width band, on wide viewports.
         maxWidth: wide ? 620 : undefined,
         width: '100%',
         alignSelf: 'center',
-        ...(fill ? { flex: 1 } : {}),
       }}
     >
       {shelf3d && ReplayShelf3D ? (

@@ -41,22 +41,26 @@ export const PREVIEW_TILES: readonly PreviewTile[] = [
 /**
  * Camera looks a little in front of the stage centre so the near rail's
  * bevel clears the frame's bottom edge with a band of void beneath it,
- * mirroring the void above the far rail.
+ * mirroring the void above the far rail. The aim point sits at z 0.14
+ * (was 0.32): looking ~7 px further into the stage on a 412 px phone
+ * drops the far rail's top edge below the LIVE PREVIEW pill while the
+ * near rail keeps ≥ 20 px of void under its bevel.
  */
 export const PREVIEW_CAMERA = {
   position: [0, 5.1, 6.35] as [number, number, number],
-  target: [0, 0, 0.32] as [number, number, number],
+  target: [0, 0, 0.14] as [number, number, number],
   fov: 30,
 };
 
 /**
  * Horizontal field of view the preview keeps constant across aspect
  * ratios (the canvas is ~1.7–1.9:1 depending on panel width), so the
- * rail always fits with a band of void either side. 57° leaves ~9 %
+ * rail always fits with a band of void either side. 60° leaves ~11 %
  * of the width free per side at the rail's widest point (52° ran the
- * rounded corners into the frame edge on a 384 px phone canvas).
+ * rounded corners into the frame edge on a 384 px phone canvas; 57°
+ * still put the far rail's top-left corner under the LIVE PREVIEW pill).
  */
-export const PREVIEW_HFOV_DEG = 57;
+export const PREVIEW_HFOV_DEG = 60;
 
 /**
  * Past this aspect the canvas is a letterbox strip (phone landscape:

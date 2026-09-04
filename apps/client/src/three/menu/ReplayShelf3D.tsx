@@ -1,17 +1,19 @@
 import { useCallback } from 'react';
 import { useGame } from '../../state/game';
 import { type SceneContext, type SceneHandle, SceneHost } from '../core/SceneHost';
-import { buildShelfScene, shelfCamera } from './ShelfScene';
+import { SHELF_CANVAS_ASPECT, buildShelfScene, shelfCamera } from './ShelfScene';
 
 export interface ReplayShelf3DProps {
-  /** Reference tile width in CSS px — sizes the canvas (9 tiles wide). */
+  /** Reference tile width in CSS px — sizes the canvas (~8.6 tiles wide). */
   tileWidth: number;
 }
 
 /**
  * 3D "empty shelf" for the replay library's empty state (`ShelfScene`).
  * A transparent canvas over the glass card, sized from `tileWidth` so
- * the seven tiles land at roughly that width on screen. Web-only via
+ * the seven tiles land at roughly that width on screen and the canvas
+ * is tall enough (3.2 tile widths) for the leaning tiles plus their
+ * contact shadow with air above and below. Web-only via
  * `src/three/entry`; the library keeps its flat art on classic / native.
  */
 export function ReplayShelf3D({ tileWidth }: ReplayShelf3DProps) {
@@ -20,8 +22,8 @@ export function ReplayShelf3D({ tileWidth }: ReplayShelf3DProps) {
     (ctx: SceneContext): SceneHandle => buildShelfScene(ctx, { tileBack }),
     [tileBack],
   );
-  const width = Math.round(tileWidth * 9.2);
-  const height = Math.round(tileWidth * 2.1);
+  const width = Math.round(tileWidth * 8.6);
+  const height = Math.round(width / SHELF_CANVAS_ASPECT);
   return (
     <div
       data-testid="replay-shelf-3d"

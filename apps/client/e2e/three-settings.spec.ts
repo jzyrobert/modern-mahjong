@@ -266,6 +266,18 @@ test.describe('3D settings panel', () => {
     expect(badgeBox.y - box.y).toBeLessThan(20);
     expect(badgeBox.x - box.x).toBeLessThan(20);
     expect(await badge.evaluate((el) => getComputedStyle(el).fontSize)).toBe('11px');
+    // …and the far rail's top edge stays ≥ 6 px under the pill along its
+    // whole width (round-1 critic: the pill's lower third sat on the wood
+    // at the rail's rounded corner). Void, not wood, 5 px below the pill.
+    for (const fx of [0.1, 0.5, 0.9]) {
+      const under = await sampleArea(
+        page,
+        Math.round(badgeBox.x + badgeBox.width * fx),
+        Math.round(badgeBox.y + badgeBox.height + 5),
+      );
+      expect(luminance(under), `under badge rgb(${under.join(',')}) at ${fx}`).toBeLessThan(0.02);
+      expect(under[0]).toBeLessThanOrEqual(under[1] + 4);
+    }
     // The status pill reads "Classic active" here (the legacy fixture
     // pins the classic shells) — either label is the same 11 px pill.
     expect(

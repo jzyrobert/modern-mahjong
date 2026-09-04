@@ -79,17 +79,19 @@ export function SettingsPreview3D({ felt, tileBack, height = 210 }: SettingsPrev
         onFatal={setFatal}
         testID="settings-preview-scene"
       />
-      {/* Top-left: the void above the far rail is guaranteed on every
-          aspect, while the near rail's bevel reaches the bottom edge on
-          phone canvases and put the badge on the wood. */}
+      {/* Top-left, tucked into the corner: the void above the far rail
+          is guaranteed on every aspect (the camera aims so the rail's
+          top edge sits ≥ 6 px under the pill at 412 px), while the near
+          rail's bevel reaches the bottom edge on phone canvases and put
+          the badge on the wood. */}
       <div
         aria-hidden
         data-testid="settings-preview-badge"
         style={{
           position: 'absolute',
-          left: 12,
-          top: 10,
-          padding: '4px 8px',
+          left: 10,
+          top: 8,
+          padding: '3px 8px',
           borderRadius: 999,
           fontFamily: 'system-ui, sans-serif',
           fontSize: 11,

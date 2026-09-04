@@ -102,7 +102,8 @@ describe('settings preview config', () => {
   });
 
   test('camera looks slightly in front of centre so the near rail clears the frame', () => {
-    expect(PREVIEW_CAMERA.target[2]).toBeGreaterThan(0.2);
+    expect(PREVIEW_CAMERA.target[2]).toBeGreaterThan(0.1);
+    expect(PREVIEW_CAMERA.target[2]).toBeLessThan(0.3);
     expect(PREVIEW_CAMERA.position[1]).toBeGreaterThan(4);
     expect(PREVIEW_BACK_FINISH.clearcoat).toBeLessThan(0.3);
     expect(PREVIEW_BACK_FINISH.roughness).toBeGreaterThan(0.5);

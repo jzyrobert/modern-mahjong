@@ -24,7 +24,7 @@ import { buildLights } from '../core/lights';
 import { clamp01, easeOutCubic, lerp } from '../core/tween';
 import { TilePool } from '../tiles/TilePool';
 import { BACK_CELL } from '../tiles/faceAtlas';
-import { TILE_H } from '../tiles/geometry';
+import { TILE_D, TILE_H, TILE_W } from '../tiles/geometry';
 import { DIE_SIZE, createDice } from './dice';
 import {
   DRIFT_COUNT,
@@ -76,22 +76,50 @@ const POINTER_HOT_MS = 700;
 const FOG_COLOR = 0x0f1914;
 /**
  * Visibility cap for a drift tile sitting fully inside a glass card
- * (`occluderFactor`'s `glassInterior`). Wide viewports keep them as
- * faint depth cues (40 % size); on phones the card column is the whole
- * width and the form is the highest-attention area, so the field stays
- * out of the cards entirely and lives in the hero band.
+ * (`occluderFactor`'s `glassInterior`): 0 — the field stays out of the
+ * cards on every class. Wide viewports used to keep 40 %-size tiles
+ * behind the glass as depth cues, but at 16 px blur they were not
+ * recognisable as tiles and read as smudges under the card copy.
  */
-function glassInterior(cls: MenuLayout['cls']): number {
-  return cls === 'wide' ? 0.4 : 0;
-}
-/** Fraction of a drift tile's disc allowed past the frame edge. */
+const GLASS_INTERIOR = 0;
+/** Fraction of a drift tile's disc allowed past the frame edge while
+ *  the field moves. A frozen (reduced-motion) field keeps whole discs
+ *  inside the frame (`FRAME_SLACK_FROZEN`, negative = inset) so no tile
+ *  stays half-cut forever. */
 const FRAME_SLACK = 0.5;
+/** Frozen field: whole disc inside the frame; portrait keeps ≥ 70 % of
+ *  the (over-bounding) disc inside — its only open ground is the hero
+ *  band's narrow side margins, and the disc is ~2× the tile's area. */
+const FRAME_SLACK_FROZEN = -1.0;
+const FRAME_SLACK_FROZEN_PORTRAIT = -0.4;
+/** Phones: the hero rack's projected silhouette (tiles + dice) is a
+ *  solid keep-out with this fade ramp, so a drifting tile is gone
+ *  before any part of it can poke out from under the rack's edge
+ *  (slivers there read as debris). The drift disc (`TILE_R`) already
+ *  over-bounds the tile's silhouette, so a disc merely tangent to the
+ *  rack is clear of it; the ramp only needs to cover projection slop,
+ *  and staying short keeps the hero band's ~40 px side margins open
+ *  for whole far tiles. Wide viewports let tiles pass behind the fan:
+ *  one peeking past its edge there is real depth. */
+const RACK_BAND_PX = 2;
+/** Re-seed lattice columns: portrait's only open ground is the hero
+ *  band's narrow side margins, which a 14-column lattice (~30 px
+ *  steps on a 412 px phone) skips right over. */
+const LATTICE_COLS_PORTRAIT = 28;
+/** DOM rects keep moving for a while after the scene mounts (the cards'
+ *  entrance slide, the 800 ms settle re-measure): re-run the keep-out
+ *  placement on every rect change inside this window after build. */
+const OCCLUDER_SETTLE_MS = 3000;
+/** Below this best-case visibility a re-seeded tile is parked (hidden)
+ *  rather than shown as a speck in an edge band. */
+const PARK_BELOW = 0.75;
 /** Minimum centre distance between re-seeded tiles, in summed radii. */
 const SPREAD = 1.6;
 /** Fade / keep-out disc radii in world units. */
 const TILE_R = TILE_H * 0.72;
 const DIE_R = DIE_SIZE * 0.87;
-/** Dice re-placement after a resize waits for the camera ease. */
+/** Dice re-placement after a resize waits for the camera ease (0 under
+ *  reduced motion, where the camera snaps and the loop idles). */
 const DICE_PLACE_DELAY_MS = 450;
 /** Intro is fully settled (hero + dice) by this many ms after mount. */
 const MENU_MOTION_SETTLE_MS = Math.max(
@@ -111,11 +139,24 @@ declare global {
   var __MAHJONG_MENU_DEBUG__:
     | {
         occluders: number;
+        /** The rects the fade currently runs against (CSS px). */
+        occluderRects: OccluderRect[];
         reseeded: boolean;
         visible: number;
+        /** Visible-slot tiles the re-seed parked (no open spot) — hidden. */
+        parked: number;
         fades: number[];
-        tiles: { x: number; y: number; r: number; fade: number }[];
+        tiles: { x: number; y: number; r: number; fade: number; parked: boolean }[];
+        /** Keep-out factor per die (1 = clear of every rect). */
         dice: number[];
+        /** How many times the dice keep-out pass ran, and how many DOM
+         *  rects it saw the last time. */
+        dicePlaceRuns: number;
+        dicePlaceRects: number;
+        /** Projected disc per die, CSS px. */
+        diceRects: { x: number; y: number; r: number }[];
+        /** The hero rack's projected footprint (phones: a solid keep-out). */
+        rack: { x: number; y: number; w: number; h: number };
       }
     | undefined;
 }
@@ -137,10 +178,24 @@ interface DriftState extends DriftTile {
   ax: number;
   ay: number;
   scaleTween: Tween;
+  /** Re-seed found no spot with any visibility: the tile is hidden
+   *  rather than left on its seed (which may sit under the rack or
+   *  half off the frame). */
+  parked: boolean;
 }
 
 const _obj = new Object3D();
 const _euler = new Euler();
+const TILE_CORNERS: readonly [number, number, number][] = [
+  [-1, -1, -1],
+  [1, -1, -1],
+  [-1, 1, -1],
+  [1, 1, -1],
+  [-1, -1, 1],
+  [1, -1, 1],
+  [-1, 1, 1],
+  [1, 1, 1],
+];
 const _q = new Quaternion();
 const _vWorld = new Vector3();
 const _vCam = new Vector3();
@@ -233,6 +288,7 @@ export function buildMenuScene(ctx: SceneContext, opts: MenuSceneOptions): Scene
     ...placeOutsideKeepOut(d, layout.keepOut),
     ax: d.rx,
     ay: d.ry,
+    parked: false,
     scaleTween: {
       start: introStart + 200 + d.stagger * 520,
       duration: snap ? 0 : INTRO_DRIFT_MS,
@@ -252,22 +308,13 @@ export function buildMenuScene(ctx: SceneContext, opts: MenuSceneOptions): Scene
   // drift tile shrinks to nothing while it straddles a glass edge or
   // crosses solid copy (`occluderFactor`). Rects change on scroll /
   // resize, so a change wakes the loop for one pass.
-  let occluders: OccluderRect[] = getOccluders();
+  /** Rects the lobby DOM registered — the gate for re-seeding. */
+  let domOccluders: OccluderRect[] = getOccluders();
+  /** DOM rects + the scene's own keep-outs (`sceneOccluders`). */
+  let occluders: OccluderRect[] = domOccluders;
   let occluderSeen = occluderVersion();
   let reseeded = false;
   const unsubscribeOccluders = subscribeOccluders(() => loop.requestRender());
-
-  /** Root-owned chrome the DOM never registers: the FULLSCREEN /
-   *  DISMISS chip in the top-right corner of landscape phones. */
-  const chromeOccluders = (): OccluderRect[] =>
-    layout.cls === 'landscape-phone'
-      ? [{ x: ctx.size.width - 236, y: 0, w: 236, h: 104, kind: 'solid' }]
-      : [];
-  const refreshOccluders = () => {
-    occluderSeen = occluderVersion();
-    occluders = [...getOccluders(), ...chromeOccluders()];
-  };
-  refreshOccluders();
 
   /** World position of a drift tile at normalised (ux, uy) — the same
    *  mapping `writeDrift` uses (field plane `depth` behind the hero,
@@ -316,6 +363,69 @@ export function buildMenuScene(ctx: SceneContext, opts: MenuSceneOptions): Scene
   };
 
   /**
+   * The hero rack's projected silhouette (every hero tile's eight
+   * corners at its resting pose, plus the dice pair's discs), in CSS
+   * px through the live camera — tight to the pixels the rack covers,
+   * unlike the disc union, which over-bounds a leaning tile by ~20 px
+   * a side.
+   */
+  const rackRect = (): OccluderRect => {
+    const proj = { x: 0, y: 0, r: 0 };
+    let x0 = Number.POSITIVE_INFINITY;
+    let y0 = Number.POSITIVE_INFINITY;
+    let x1 = Number.NEGATIVE_INFINITY;
+    let y1 = Number.NEGATIVE_INFINITY;
+    const grow = (x: number, y: number, r: number) => {
+      x0 = Math.min(x0, x - r);
+      y0 = Math.min(y0, y - r);
+      x1 = Math.max(x1, x + r);
+      y1 = Math.max(y1, y + r);
+    };
+    for (const h of hero) {
+      for (const c of TILE_CORNERS) {
+        _vWorld
+          .set((c[0] * TILE_W) / 2, (c[1] * TILE_H) / 2, (c[2] * TILE_D) / 2)
+          .applyQuaternion(h.toQuat)
+          .add(h.toPos);
+        projectPoint(_vWorld, 0, proj);
+        grow(proj.x, proj.y, 0);
+      }
+    }
+    for (const d of layout.dice) {
+      projectPoint(_vWorld.set(d.x, d.y, d.z), DIE_R, proj);
+      grow(proj.x, proj.y, proj.r);
+    }
+    return { x: x0, y: y0, w: x1 - x0, h: y1 - y0, kind: 'solid', band: RACK_BAND_PX };
+  };
+
+  /**
+   * Keep-outs the DOM never registers: the root FULLSCREEN / DISMISS
+   * chip in the top-right corner of landscape phones, and — on phones
+   * — the hero rack itself, so a drifting tile fades out before any
+   * part of it can poke out from under the rack's edge (a blue corner
+   * under the bottom-right 中 read as debris). Wide viewports let tiles
+   * pass behind the fan: a tile peeking past its edge there is depth.
+   */
+  const chromeOccluders = (): OccluderRect[] =>
+    layout.cls === 'landscape-phone'
+      ? [{ x: ctx.size.width - 236, y: 0, w: 236, h: 104, kind: 'solid' }]
+      : [];
+  const sceneOccluders = (): OccluderRect[] => {
+    const out = chromeOccluders();
+    if (layout.cls !== 'wide') {
+      rig.camera.updateMatrixWorld();
+      out.push(rackRect());
+    }
+    return out;
+  };
+  const refreshOccluders = () => {
+    occluderSeen = occluderVersion();
+    domOccluders = getOccluders();
+    occluders = [...domOccluders, ...sceneOccluders()];
+  };
+  refreshOccluders();
+
+  /**
    * Bias the seed field toward the open void: once the DOM rects are
    * known, every visible tile that would start faded (behind an edge or
    * inside copy) scans a stratified lattice of alternatives
@@ -331,36 +441,32 @@ export function buildMenuScene(ctx: SceneContext, opts: MenuSceneOptions): Scene
    * it just makes the first settled frame read better.
    */
   const reseedForOccluders = () => {
-    if (reseeded || occluders.length === 0) return;
+    if (reseeded || domOccluders.length === 0) return;
     reseeded = true;
     const rnd = seededRandom(97);
     const proj = { x: 0, y: 0, r: 0 };
-    // The rack's own screen footprint: a seed whose centre is behind
-    // the hero tiles is hidden by them, so the seeding avoids it —
-    // a tile peeking out from behind the rack's edge is real depth
-    // and stays allowed.
-    let rx0 = Number.POSITIVE_INFINITY;
-    let ry0 = Number.POSITIVE_INFINITY;
-    let rx1 = Number.NEGATIVE_INFINITY;
-    let ry1 = Number.NEGATIVE_INFINITY;
-    for (const h of hero) {
-      projectPoint(h.toPos, TILE_R, proj);
-      rx0 = Math.min(rx0, proj.x - proj.r);
-      ry0 = Math.min(ry0, proj.y - proj.r);
-      rx1 = Math.max(rx1, proj.x + proj.r);
-      ry1 = Math.max(ry1, proj.y + proj.r);
-    }
-    const rack: OccluderRect = { x: rx0, y: ry0, w: rx1 - rx0, h: ry1 - ry0, kind: 'solid' };
+    // The rack's own screen footprint. On wide viewports a seed whose
+    // centre is behind the hero tiles is hidden by them, so the seeding
+    // avoids it — a tile peeking out from behind the fan's edge is real
+    // depth and stays allowed. On phones the rack is already a solid
+    // keep-out in `occluders` (`sceneOccluders`), so every disc that
+    // touches it scores zero through `occluderFactor` as well.
+    const rack = rackRect();
     const solid: OccluderRect[] = occluders.map((r) => ({ ...r, kind: 'solid' as const }));
     const W = ctx.size.width;
     const H = ctx.size.height;
+    const slack = !reducedMotion
+      ? FRAME_SLACK
+      : layout.cls === 'portrait'
+        ? FRAME_SLACK_FROZEN_PORTRAIT
+        : FRAME_SLACK_FROZEN;
     const taken: { x: number; y: number; r: number }[] = [];
     const blocked = (x: number, y: number, r: number) =>
-      x + r * FRAME_SLACK < 0 ||
-      x - r * FRAME_SLACK > W ||
-      y + r * FRAME_SLACK < 0 ||
-      y - r * FRAME_SLACK > H ||
-      rectSignedDistance(x, y, rack) < -r * 0.5 ||
+      x + r * slack < 0 ||
+      x - r * slack > W ||
+      y + r * slack < 0 ||
+      y - r * slack > H ||
+      (layout.cls === 'wide' && rectSignedDistance(x, y, rack) < -r * 0.3) ||
       taken.some((t) => Math.hypot(t.x - x, t.y - y) < (t.r + r) * SPREAD);
     const factorAt = (
       d: DriftState,
@@ -374,10 +480,9 @@ export function buildMenuScene(ctx: SceneContext, opts: MenuSceneOptions): Scene
       if (blocked(proj.x, proj.y, proj.r)) return 0;
       return occluderFactor(proj.x, proj.y, proj.r, rects, OCCLUDER_BAND_PX, interior);
     };
-    const cands = driftCandidates();
-    const interior = glassInterior(layout.cls);
-    let openLeft =
-      layout.cls === 'wide' ? Math.ceil(layout.driftVisible * 0.6) : layout.driftVisible;
+    const cands = driftCandidates(layout.cls === 'portrait' ? LATTICE_COLS_PORTRAIT : undefined);
+    const interior = GLASS_INTERIOR;
+    let openLeft = layout.driftVisible;
     // Nearest (largest, brightest) tiles pick first so the open void
     // gets the ones that actually read; far tiles can sit behind glass.
     const order = drift
@@ -410,6 +515,16 @@ export function buildMenuScene(ctx: SceneContext, opts: MenuSceneOptions): Scene
           }
         }
       }
+      if (Math.max(bestOpen, bestAny) < PARK_BELOW) {
+        // Nowhere worth going (blocked, straddling or off-frame
+        // everywhere the lattice looked, or only a speck in an edge
+        // band): hide it. Leaving it on its seed is how a far back
+        // ended up poking out from under the phone rack and how frozen
+        // reduced-motion fields kept tiles half-cut at the edge.
+        d.parked = true;
+        continue;
+      }
+      d.parked = false;
       if (opens.length > 0 && (openLeft > 0 || bestOpen >= bestAny)) {
         // Any fully open spot is as good as another — pick one at random
         // so the field spreads instead of filling lattice order.
@@ -442,7 +557,13 @@ export function buildMenuScene(ctx: SceneContext, opts: MenuSceneOptions): Scene
   const diceMove = diceRest.map((d) => ({ from: { ...d }, tween: { start: 0, duration: 0 } }));
   let dicePlaced = false;
   let dicePlaceAfter = 0;
+  /** Wakes the (possibly idle) loop once the camera ease is over so the
+   *  deferred keep-out pass actually runs. */
+  let diceWake: ReturnType<typeof setTimeout> | undefined;
   const debugDice: number[] = [1, 1];
+  let dicePlaceRuns = 0;
+  let dicePlaceRects = 0;
+  let diceMoved = false;
 
   /** Keep-out factor for a die resting at `slot` against every DOM rect
    *  (glass edges + solid copy), zero when its disc leaves the frame. */
@@ -457,7 +578,16 @@ export function buildMenuScene(ctx: SceneContext, opts: MenuSceneOptions): Scene
       proj.y + proj.r > ctx.size.height
     )
       return 0;
-    return occluderFactor(proj.x, proj.y, proj.r, occluders, OCCLUDER_BAND_PX, 1);
+    // DOM rects + chrome only: the rack keep-out in `occluders` is the
+    // dice's own footprint.
+    return occluderFactor(
+      proj.x,
+      proj.y,
+      proj.r,
+      [...domOccluders, ...chromeOccluders()],
+      OCCLUDER_BAND_PX,
+      1,
+    );
   };
 
   /**
@@ -469,8 +599,10 @@ export function buildMenuScene(ctx: SceneContext, opts: MenuSceneOptions): Scene
    * over the hero band is transient). After the intro the move eases.
    */
   const placeDice = (now: number) => {
-    if (dicePlaced || occluders.length === 0 || now < dicePlaceAfter) return;
+    if (dicePlaced || domOccluders.length === 0 || now < dicePlaceAfter) return;
     dicePlaced = true;
+    dicePlaceRuns++;
+    dicePlaceRects = domOccluders.length;
     let best = { dx: 0, dz: 0 };
     let bestF = Number.NEGATIVE_INFINITY;
     let bestFs = [1, 1];
@@ -501,7 +633,12 @@ export function buildMenuScene(ctx: SceneContext, opts: MenuSceneOptions): Scene
       diceRest[i] = to;
       debugDice[i] = bestFs[i] ?? 1;
     }
+    // The hero pass for this frame has already run: pose the dice next
+    // frame and make sure that frame renders even if nothing else is
+    // live (a frozen reduced-motion scene otherwise idles on the frame
+    // that still shows the un-nudged pair).
     heroLive = true;
+    diceMoved = true;
   };
 
   // ── Pointer parallax ───────────────────────────────────────────────
@@ -545,13 +682,23 @@ export function buildMenuScene(ctx: SceneContext, opts: MenuSceneOptions): Scene
 
   const _proj = { x: 0, y: 0, r: 0 };
   const debugFades: number[] = [];
-  const debugTiles: { x: number; y: number; r: number; fade: number }[] = [];
+  const debugTiles: { x: number; y: number; r: number; fade: number; parked: boolean }[] = [];
   const writeDrift = (now: number, dt: number): boolean => {
     let live = false;
     if (!reseeded || !dicePlaced || occluderVersion() !== occluderSeen) {
-      refreshOccluders();
       // Projection needs the camera's matrices for this frame.
       rig.camera.updateMatrixWorld();
+      const changed = occluderVersion() !== occluderSeen;
+      refreshOccluders();
+      // The lobby's rects settle over the first seconds (entrance slide,
+      // the 800 ms re-measure): a placement made against a card that is
+      // still sliding in leaves a die on its final corner, so redo the
+      // dice (eased) — and the frozen reduced-motion field, whose one
+      // frame is all anyone sees — while rects are still changing.
+      if (changed && now - introStart < OCCLUDER_SETTLE_MS) {
+        dicePlaced = false;
+        if (snap) reseeded = false;
+      }
       reseedForOccluders();
       placeDice(now);
     }
@@ -576,13 +723,13 @@ export function buildMenuScene(ctx: SceneContext, opts: MenuSceneOptions): Scene
       const e = tweenProgress(d.scaleTween, now);
       if (e < 1) live = true;
       const p = pool.pose(HERO_COUNT + j);
-      p.visible = j < layout.driftVisible;
+      p.visible = j < layout.driftVisible && !d.parked;
       driftWorldPos(d, d.ux, d.uy, pointerSmooth.x * par, pointerSmooth.y * par * 0.5, p.position);
       p.quaternion.setFromEuler(_euler.set(d.ax, d.ay, d.rz, 'XYZ'));
       // Shrink to nothing while straddling a glass edge / crossing copy,
       // and to a faint depth cue while fully behind a glass card.
       let fade = 1;
-      if (occluders.length > 0) {
+      if (domOccluders.length > 0) {
         projectPoint(p.position, TILE_R, _proj);
         fade = occluderFactor(
           _proj.x,
@@ -590,26 +737,41 @@ export function buildMenuScene(ctx: SceneContext, opts: MenuSceneOptions): Scene
           _proj.r,
           occluders,
           OCCLUDER_BAND_PX,
-          glassInterior(layout.cls),
+          GLASS_INTERIOR,
         );
       } else {
         projectPoint(p.position, TILE_R, _proj);
       }
+      if (d.parked) fade = 0;
       p.scale = 0.001 + 0.999 * e * fade;
       debugFades[j] = fade;
-      debugTiles[j] = { x: _proj.x, y: _proj.y, r: _proj.r * fade, fade };
+      debugTiles[j] = { x: _proj.x, y: _proj.y, r: _proj.r * fade, fade, parked: d.parked };
     }
+    let parked = 0;
+    for (let j = 0; j < layout.driftVisible; j++) if (drift[j]?.parked) parked++;
+    const rack =
+      layout.cls === 'wide' ? rackRect() : (occluders[occluders.length - 1] ?? rackRect());
     globalThis.__MAHJONG_MENU_DEBUG__ = {
       occluders: occluders.length,
+      occluderRects: occluders.map((r) => ({ ...r })),
       reseeded,
       visible: layout.driftVisible,
+      parked,
       fades: debugFades.slice(0, layout.driftVisible),
       tiles: debugTiles.slice(0, layout.driftVisible),
       dice: [...debugDice],
+      dicePlaceRuns,
+      dicePlaceRects,
+      diceRects: debugDiceRects.map((r) => ({ ...r })),
+      rack: { x: rack.x, y: rack.y, w: rack.w, h: rack.h },
     };
     return live;
   };
 
+  const debugDiceRects = [
+    { x: 0, y: 0, r: 0 },
+    { x: 0, y: 0, r: 0 },
+  ];
   const writeDice = (now: number): boolean => {
     let live = false;
     for (let i = 0; i < 2; i++) {
@@ -629,6 +791,7 @@ export function buildMenuScene(ctx: SceneContext, opts: MenuSceneOptions): Scene
       _obj.scale.setScalar(1);
       _obj.updateMatrix();
       dice.setMatrixAt(i, _obj.matrix);
+      projectPoint(_obj.position, DIE_R, debugDiceRects[i]!);
     }
     dice.instanceMatrix.needsUpdate = true;
     return live;
@@ -652,7 +815,8 @@ export function buildMenuScene(ctx: SceneContext, opts: MenuSceneOptions): Scene
     const aspect = width / Math.max(1, height);
     layout = menuLayout(aspect);
     refreshOccluders();
-    rig.setPreset(layout.camera);
+    if (snap) rig.snap(layout.camera);
+    else rig.setPreset(layout.camera);
     (scene.fog as FogExp2).density = layout.fogDensity;
     applyViewOffset(width, height);
     // A rotation moves the title block — keep the field out from under it.
@@ -667,8 +831,17 @@ export function buildMenuScene(ctx: SceneContext, opts: MenuSceneOptions): Scene
       diceRest[i] = { ...d };
       diceMove[i] = { from: { ...d }, tween: { start: now, duration: 0 } };
     }
+    // Under reduced motion the camera has just snapped and the loop
+    // idles after the next frame, so the test must run in that frame:
+    // no wait at all (not even `now + 0` — the first rAF timestamp can
+    // trail a `performance.now()` taken while scheduling it by a few
+    // ms, which is exactly how the desktop pair stayed on the Tutorial
+    // card's corner). In motion the drift cadence keeps the loop alive,
+    // but a scroll-quiet idle loop still needs the timer nudge.
     dicePlaced = false;
-    dicePlaceAfter = now + DICE_PLACE_DELAY_MS;
+    dicePlaceAfter = snap ? 0 : now + DICE_PLACE_DELAY_MS;
+    if (diceWake !== undefined) clearTimeout(diceWake);
+    if (!snap) diceWake = setTimeout(() => loop.requestRender(), DICE_PLACE_DELAY_MS + 40);
     const next = fanSlots(HERO_COUNT, layout.fan);
     const cells = heroCells(layout.fan.rows);
     for (let i = 0; i < HERO_COUNT; i++) {
@@ -712,13 +885,17 @@ export function buildMenuScene(ctx: SceneContext, opts: MenuSceneOptions): Scene
         const diceLive = writeDice(now);
         heroLive = heroLive || diceLive;
         live = live || heroLive;
+        if (diceMoved) {
+          diceMoved = false;
+          live = true;
+        }
       }
 
       // Drift field: full rate during intro / pointer motion, else a
       // throttled cadence so the loop idles between steps. The occluder
       // fade projects through the camera, whose matrices the rig has
       // just moved — refresh them first.
-      if (occluders.length > 0) rig.camera.updateMatrixWorld();
+      if (domOccluders.length > 0) rig.camera.updateMatrixWorld();
       if (driftLive || live || pointerHot || firstFrame) {
         driftLive = writeDrift(now, reducedMotion ? 0 : dt);
         driftAccum = 0;
@@ -730,9 +907,13 @@ export function buildMenuScene(ctx: SceneContext, opts: MenuSceneOptions): Scene
           driftAccum = 0;
           live = true;
         }
-      } else if (occluderVersion() !== occluderSeen) {
-        // Frozen field, but a card moved (scroll / late measurement):
-        // one pass so the fade tracks the DOM, then idle again.
+      } else if (
+        occluderVersion() !== occluderSeen ||
+        ((!reseeded || !dicePlaced) && now >= dicePlaceAfter && getOccluders().length > 0)
+      ) {
+        // Frozen field, but a card moved (scroll / late measurement) or
+        // a keep-out pass is still owed (a relayout reset it): one pass
+        // so the fade / placement tracks the DOM, then idle again.
         writeDrift(now, 0);
         live = true;
       }
@@ -753,6 +934,7 @@ export function buildMenuScene(ctx: SceneContext, opts: MenuSceneOptions): Scene
     dispose() {
       globalThis.__MAHJONG_MENU_INTRO__ = undefined;
       globalThis.__MAHJONG_MENU_DEBUG__ = undefined;
+      if (diceWake !== undefined) clearTimeout(diceWake);
       unsubscribeOccluders();
       if (parallaxOn) window.removeEventListener('pointermove', onPointer);
       lights.dispose();
