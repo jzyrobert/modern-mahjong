@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "updatedAt": "2026-09-04T03:10:00Z",
+  "updatedAt": "2026-09-04T03:58:00Z",
   "round": 1,
   "passThreshold": 8.5,
   "subsystems": {
@@ -293,12 +293,550 @@
     }
   },
   "wholeGame": {
-    "score": null,
+    "score": 8.2,
     "pass": false,
-    "issues": [],
-    "history": []
+    "issues": [
+      {
+        "rank": 1,
+        "severity": "high",
+        "title": "Opening-rolls dice modal is a classic cream-paper surface inside the 3D flow",
+        "state": "tutorial-basics-0 (and every hand start) @ phone 412x915, phone-landscape 915x412, desktop 1440x900 (3d)",
+        "subsystem": "table",
+        "detail": "The 'Opening rolls' modal (wg-phone-dice-modal.png crop) is an off-white paper card with black serif-ish text, red-pip 2D dice and a grey 'Tap anywhere to dismiss' \u2014 the legacy classic theme, sitting a few pixels from a dark-glass coach card and the dark glass HUD. It is the single most visible theme leak in the product because every match opens with it, not only the tutorial. Should be the same glass panel as ResultPanel/coach card: rgba dark glass + gold hairline, uppercase micro-label 'OPENING ROLLS', ivory 3D-shaded dice (or the scene's real dice via a short camera push), gold total, secondary 0.62-alpha dismiss hint."
+      },
+      {
+        "rank": 2,
+        "severity": "high",
+        "title": "Desktop claim toast stacks on the ClaimBar and covers the PENG button",
+        "state": "match-claim @ desktop 1440x900 (3d)",
+        "subsystem": "table",
+        "detail": "Confirmed in wg-desktop-claim-toast.png: the 'CHI \u00b7 Bao called' glass toast sits ~20 CSS px inside the claim strip, hiding the strip's top border, the upper third of the gold \u78b0 PENG button and the tops of the three preview tiles. HUD-over-HUD on the one control the player must hit under time pressure. Anchor toasts above the strip when a ClaimBar is mounted (strip rect + 12 px gap) or move the toast to the top-centre chrome row as landscape already does."
+      },
+      {
+        "rank": 3,
+        "severity": "medium",
+        "title": "Landscape ClaimBar sits on the near wall's tile tops; footer pills hide the bottom of the hand tiles",
+        "state": "match-claim, match-mid-hand, match-dealt, match-my-turn @ phone-landscape 915x412 (3d)",
+        "subsystem": "table",
+        "detail": "wg-landscape-claimbar.png: the 56 px strip's bottom edge lies across the blue tile tops of the near wall along its whole width, reading as a panel dropped onto the wall rather than floating in a felt band. wg-landscape-footer-left.png: the user badge covers the bottom ~7 CSS px of \u516d\u842c/\u4e03\u842c (rounded edge and contact shadow lost) and the SUIT pill covers \u767c. Add the footer pill height to the hand's bottom constraint in the landscape camera solve, and place the claim strip in the felt band between the near wall and the far river (or push the near wall 0.4 world units toward the camera so a clear band exists)."
+      },
+      {
+        "rank": 4,
+        "severity": "medium",
+        "title": "Portrait table reads as a flat top-down band with dead void above and below",
+        "state": "match-dealt, match-my-turn, match-dealt-jade-plum @ phone 412x915 (3d)",
+        "subsystem": "table",
+        "detail": "Near-orthographic 76\u00b0 camera, side rails cropped off, ~88 CSS px empty between the seat badges and the far rail and ~68 px between the near rail and the hand. Side walls become featureless white sticks and the scene loses the depth that makes desktop/landscape feel 3D. Tilt to ~62-65\u00b0 so wall sides and the near rail bevel are visible, fill the upper band with the far rail and seat badges (badges can sit on the rail), and let the toast band live inside the composition rather than in void."
+      },
+      {
+        "rank": 5,
+        "severity": "medium",
+        "title": "Pre-game lobby and replay library are flat dark voids with no scene behind the glass",
+        "state": "match-lobby, replay-library @ desktop 1440x900 and phone 412x915 (3d)",
+        "subsystem": "table",
+        "detail": "LobbyGlass is styled correctly but floats on a plain gradient; on desktop ~45% of the viewport (right column below Rules, whole lower half) is empty and no 3D element exists at all, so the step between the menu (drifting tiles, rack) and the table (felt) is a blank screen. Reuse the menu backdrop (MenuScene drift field, no hero rack) behind the lobby, or a dimmed out-of-focus table with the four seats lit as players fill them; on desktop move Rules under Seats and use the right column for a seat preview."
+      },
+      {
+        "rank": 6,
+        "severity": "medium",
+        "title": "Menu backdrop debris: drift tiles inside the MATCH CODE input (phone) and dice straddling the Tutorial card corner (desktop)",
+        "state": "menu, menu-tutorials @ phone 412x915; menu @ desktop 1440x900 (3d)",
+        "subsystem": "menu",
+        "detail": "Phone: a green \u7d22 face sits inside the match-code input beside the ABCDE placeholder, a tile back crosses the 'Join match' label and two more frame the input's right end \u2014 the glass does not swallow them. Desktop (wg-desktop-dice.png): one die is half behind the Tutorial glass (blurred, dimmed) and half crisp outside. Keep the drift field out of the card column entirely on phone (seed x outside the 24-px card inset) and add the hero dice to the occluder band so they never intersect a card edge."
+      },
+      {
+        "rank": 7,
+        "severity": "medium",
+        "title": "Desktop ClaimBar floats mid-felt over the own-river growth zone",
+        "state": "match-mid-hand, match-claim @ desktop 1440x900 (3d)",
+        "subsystem": "table",
+        "detail": "The CHI/PENG strip is centred at y\u2248530-585 on the felt between the centre plate and the near wall \u2014 exactly where the player's own discards accumulate after ~8 turns. Early-hand shots look clean, but late-hand the strip will sit on top of readable river tiles. Anchor it to the hand row (12 px above the tallest hand tile, as landscape does) so it always reads as 'your action' and never covers discards."
+      },
+      {
+        "rank": 8,
+        "severity": "low",
+        "title": "Portrait river glyphs are soft at ~17 CSS px (dpr 1.5)",
+        "state": "match-mid-hand @ phone 412x915 (3d)",
+        "subsystem": "table",
+        "detail": "wg-phone-river.png: discards render at 17-18 CSS px; \u7d22/\u842c glyphs and the upside-down far river are guessable, not readable. Tap-to-zoom exists but the default view should carry the game. Allow dpr 2 on the low tier for \u2264420 px viewports (11 draw calls leave headroom) or scale river tiles 1.1x in portrait."
+      },
+      {
+        "rank": 9,
+        "severity": "low",
+        "title": "Dead-wall step reads as misaligned stacks, not a marker",
+        "state": "match-dealt @ desktop (near wall right end) and phone (far wall left end) (3d)",
+        "subsystem": "table",
+        "detail": "wg-desktop-deadwall.png: the last two stacks step toward the rail by under a fifth of a tile with a barely different tint, so the kink looks like a placement bug. Use a clear half-tile gap between live and dead stacks, or drop the offset and tint the dead wall ~0.5."
+      },
+      {
+        "rank": 10,
+        "severity": "low",
+        "title": "Replay library empty-state uses flat 2D classic tile art",
+        "state": "replay-library @ phone, phone-landscape, desktop (3d)",
+        "subsystem": "menu",
+        "detail": "The 'Nothing on the shelf yet' illustration is flat blue-back cards and 2D \u6771\u5357\u897f faces \u2014 a different tile design from the ivory clearcoat tiles everywhere else. Replace with a pre-rendered PNG of the 3D tiles (same atlas faces, blue gradient backs) or reuse the settings PreviewScene at a shallow angle."
+      },
+      {
+        "rank": 11,
+        "severity": "low",
+        "title": "Landscape chrome details: lesson sheet clips card 03, Import replays floats mid-header, DISMISS contrast",
+        "state": "menu-tutorials, replay-library, all FullscreenPrompt states @ phone-landscape 915x412 (3d)",
+        "subsystem": "menu",
+        "detail": "Confirmed: card 03 'Reading the table' is cut by the sheet's inner border with zero trailing inset; the Import button sits between the title and the FULLSCREEN chip with a ~145 px void; the DISMISS pill label is a mid-grey well below the 0.62-alpha secondary spec. Add paddingRight equal to the left inset, right-align Import to the chip's left edge, use rgba(255,255,255,0.62)."
+      },
+      {
+        "rank": 12,
+        "severity": "low",
+        "title": "Settings phone preview: rail corners clip the frame edges, LIVE PREVIEW badge sits on wood; Blue back reads pale cyan",
+        "state": "settings, settings-jade-plum @ phone 412x915; walls in match-dealt @ all viewports (3d)",
+        "subsystem": "settings",
+        "detail": "The near rail's rounded corners run into the preview frame's left/right edges and the badge overlaps the wood instead of floating in void. The face-down preview tile and the wall tops render as a sky-blue gradient noticeably cooler and paler than the Blue chip swatch; Plum shows the same drift. Pull the preview camera back ~8% and darken/saturate the back-colour compensation toward the chip."
+      },
+      {
+        "rank": 13,
+        "severity": "low",
+        "title": "Tutorial: 'LESSON 1/14' label vs step dots count different things; landscape basics-0 ring cuts the hand row",
+        "state": "all tutorial states; tutorial-basics-0 @ phone-landscape 915x412 (3d)",
+        "subsystem": "tutorial",
+        "detail": "Header says LESSON 1/14 while the dots show 6 steps of the lesson; on basics-1 the 2nd dot is lit under '1/14'. In landscape the gold ring around the dice modal passes through the \u516b hand tile and the footer badge/sort pill, leaving them half-lit. Add a 'STEP 2 OF 6' micro-label beside the dots; in landscape shrink the ring to the modal rect and dim the whole hand row."
+      }
+    ],
+    "history": [
+      {
+        "round": 1,
+        "score": 8.2,
+        "errors": 0,
+        "perfPass": true,
+        "pass": false,
+        "critic": "whole-game-art-director",
+        "openIssues": 13,
+        "notes": "Rubric visual 8.4 / motion 8.0 / legibility 8.0 / polish 8.1 / cohesion 8.3. Weakest subsystem: table. Zero errors, perf budget met on every 3D state at phone / landscape / desktop.",
+        "at": "2026-09-04T03:58:00Z"
+      }
+    ],
+    "errors": 0,
+    "weakestSubsystem": "table"
   },
-  "blindJudges": [],
+  "blindJudges": [
+    {
+      "summary": {
+        "3d": 45,
+        "baseline": 0,
+        "tie": 0
+      },
+      "verdicts": [
+        {
+          "judge": 1,
+          "pair": 0,
+          "state": "match-dealt-jade-plum",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.9,
+          "why": "B's perspective table with plum tile backs, wooden rim, and large two-row hand reads as a real game scene with depth; A is a flat green panel that is mostly empty space with small hand tiles. A's explicit 'YOUR TURN \u00b7 DISCARD' pill and bot-skill labels are clearer, and B wastes a large dark band above the table."
+        },
+        {
+          "judge": 1,
+          "pair": 1,
+          "state": "match-dealt",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.9,
+          "why": "A has depth, a readable large hand, dealer chip and dice detail, and a clear DISCARD status pill; B is a flat dark-green layout dominated by an empty discards box. B's compact top bar shows bot difficulty and the turn prompt is more explicit, but it looks like a placeholder."
+        },
+        {
+          "judge": 1,
+          "pair": 2,
+          "state": "match-lobby",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.8,
+          "why": "B fills the screen with a coherent dark/gold lobby, highlights the player's own seat, expands the rules inline and has a stronger CTA hierarchy; A leaves two-thirds of the phone blank and its pale pink selected states are low contrast. A is calmer and its collapsed accordion is arguably less busy."
+        },
+        {
+          "judge": 1,
+          "pair": 3,
+          "state": "match-mid-hand",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.85,
+          "why": "A shows the whole table with rivers and the CHI toast in its own row without collisions; in B the CHI toast sits on top of the opponent rows and clips 'Bot (Standa'. A's centre river tiles are small and hard to read at phone size, while B's discard row is very legible."
+        },
+        {
+          "judge": 1,
+          "pair": 4,
+          "state": "match-my-turn",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.85,
+          "why": "B lifts the just-drawn tile out of the hand and highlights the wall draw spot on a rich 3D table, so what happened is obvious; A is a flat layout with four discards, a giant empty panel and a lone blue placeholder card in the middle. A's 'YOUR TURN \u00b7 DRAW' pill is more explicit than B's small DRAW tag."
+        },
+        {
+          "judge": 1,
+          "pair": 5,
+          "state": "match-river-zoom",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.7,
+          "why": "A's zoomed river makes every discard legible and the hand is large; B's PENG toast overlaps and clips the opponent labels. B counters with a clear claim bar (CHI / PASS) telling the player exactly what to do, whereas A's 'CHI Jin called' toast is ghosted and its header buttons overlap the wooden rim."
+        },
+        {
+          "judge": 1,
+          "pair": 6,
+          "state": "menu",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.8,
+          "why": "B's hero of 3D tiles and dice, gold primary CTA and dark theme make it feel like a game rather than a settings form, and it fills the viewport; A is clean but bland with half the screen empty. B's footer credit is clipped at the bottom edge and it is longer to scroll."
+        },
+        {
+          "judge": 1,
+          "pair": 7,
+          "state": "replay-library",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.9,
+          "why": "A has a designed empty state (fanned tiles, 'Nothing on the shelf yet', a Paste a replay action) and a LIBRARY eyebrow, so the screen feels finished; B is a header, a toggle and a blank cream page. B's larger typography is very readable."
+        },
+        {
+          "judge": 1,
+          "pair": 8,
+          "state": "match-dealt-jade-plum",
+          "viewport": "desktop",
+          "prefers": "3d",
+          "confidence": 0.9,
+          "why": "B's angled 3D table with plum-backed walls, per-seat badges around the rim and a hand that spans the width is a proper desktop game view; A is a small flat green rectangle with tiny tiles and a big empty inner panel plus unused space below. A's LIVE/#SOLO chip and turn pill are informative."
+        },
+        {
+          "judge": 1,
+          "pair": 9,
+          "state": "match-dealt",
+          "viewport": "desktop",
+          "prefers": "3d",
+          "confidence": 0.9,
+          "why": "A is the perspective table with readable tiles and clear seat badges; B is the flat 2D board with small tiles, an empty discard well, and a dead lower third of the viewport. B's centered 'YOUR TURN \u00b7 DISCARD' pill is a clearer prompt."
+        },
+        {
+          "judge": 1,
+          "pair": 10,
+          "state": "match-lobby",
+          "viewport": "desktop",
+          "prefers": "3d",
+          "confidence": 0.75,
+          "why": "B uses a two-column layout that fits the whole lobby above the fold with strong gold selection states and a highlighted 'You' seat; A's pale pink selected states are hard to read and the page is a narrow column of beige cards. A does surface the match code copy chip and 'waiting for players' status, which B omits."
+        },
+        {
+          "judge": 1,
+          "pair": 11,
+          "state": "match-mid-hand",
+          "viewport": "desktop",
+          "prefers": "3d",
+          "confidence": 0.8,
+          "why": "A keeps everything on the 3D table with the CHI/PASS claim bar floating near the river and no collisions; in B the PENG toast covers Mei's badge and the claim card sits off to the side of the board. B's discards and melds are easier to read individually, and its claim card is bigger."
+        },
+        {
+          "judge": 1,
+          "pair": 12,
+          "state": "match-my-turn",
+          "viewport": "desktop",
+          "prefers": "3d",
+          "confidence": 0.9,
+          "why": "B raises the drawn tile out of the hand and highlights the draw point on the wall, on a table with depth and lighting; A is the flat board with tiny river tiles and a mostly empty green well. A's explicit 'YOUR TURN \u00b7 DRAW' pill is the one thing it does better."
+        },
+        {
+          "judge": 1,
+          "pair": 13,
+          "state": "menu",
+          "viewport": "desktop",
+          "prefers": "3d",
+          "confidence": 0.85,
+          "why": "A is a complete landing screen: hero tile fan, three balanced columns, a tutorial grid that fits, and drifting tile decorations; B's tutorial list runs off the bottom, the first two columns are mostly empty, and the pastel tile shapes look like unfinished placeholders. B's large \u6771 tile logo is a nice focal element."
+        },
+        {
+          "judge": 1,
+          "pair": 14,
+          "state": "replay-library",
+          "viewport": "desktop",
+          "prefers": "3d",
+          "confidence": 0.85,
+          "why": "B has a centred empty-state card with tile illustration, explanation and a Paste a replay action, plus a proper page header; A is a blank cream page with an oversized faint decorative shape that reads as a rendering artifact. A's full-width layout puts the header controls at the edges, which some might prefer."
+        },
+        {
+          "judge": 2,
+          "pair": 0,
+          "state": "match-dealt-jade-plum",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.9,
+          "why": "B's perspective table with lit tile walls, wooden rim, dice plate and large readable hand tiles reads as a real game scene, while A is a flat green panel that is 70% empty 'DISCARDS' box with small tiles. Strongest point for A: everything fits in one compact layout with no dead band, and the player's name is not truncated (B shows 'Lucky Drag...')."
+        },
+        {
+          "judge": 2,
+          "pair": 1,
+          "state": "match-dealt",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.9,
+          "why": "A (the 3D table) has depth, a clear focal plate and big tiles; B is the same flat layout as pair 0 with a huge empty discard region and cramped 14-tile row. For B: the 'YOUR TURN \u00b7 DISCARD' chip is a slightly more explicit call to action than A's small 'DISCARD' pill."
+        },
+        {
+          "judge": 2,
+          "pair": 2,
+          "state": "match-lobby",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.8,
+          "why": "B fills the phone screen with a coherent dark/gold glass design, highlights the player's own seat, and exposes the rules inline; A leaves the bottom half blank and its beige segmented controls have weak selected-state contrast. For A: it is lighter and arguably quicker to scan, with the Start button fixed to the bottom edge."
+        },
+        {
+          "judge": 2,
+          "pair": 3,
+          "state": "match-mid-hand",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.8,
+          "why": "A shows the live river on a 3D table with the CHI toast cleanly placed under the seat strip; B's toast overlaps and clips the opponent list ('Bot (Standa'), and the giant lone draw tile floating in a sea of empty green looks unfinished. For B: its discard rows with owner colour bars are far more legible than A's tiny centre-table tiles."
+        },
+        {
+          "judge": 2,
+          "pair": 4,
+          "state": "match-my-turn",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.85,
+          "why": "B has a raised, selected tile in a large hand, a coherent 3D scene and no wasted space; A is mostly empty felt with one oversized pulsing tile. For A: the 'YOUR TURN \u00b7 DRAW' banner and the discards row are clearer at a glance."
+        },
+        {
+          "judge": 2,
+          "pair": 5,
+          "state": "match-river-zoom",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.7,
+          "why": "A's zoomed river makes every discard legible with real depth, and the close button is integrated into the chrome; B's toast collides with the opponent list and the layout is largely empty. Against A: the half-faded CHI toast sitting on the felt looks like a rendering artefact and the top-right wall is hard-clipped, so it is the less polished of the 3D shots."
+        },
+        {
+          "judge": 2,
+          "pair": 6,
+          "state": "menu",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.75,
+          "why": "B's dark hero with rendered tiles and dice, gold primary CTA and eyebrow label feels like a game landing page; A is a plain settings-style list. For A: it is compact, fully above the fold, and B's disabled 'Join match' button is a muddy brown and the floating background tiles add visual noise behind the form."
+        },
+        {
+          "judge": 2,
+          "pair": 7,
+          "state": "replay-library",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.9,
+          "why": "A has a proper empty state: illustrated tile fan, headline, guidance and a 'Paste a replay' action inside a card; B is a headline, a toggle and a bare paragraph over an empty beige page. For B: the light theme is calm and text contrast is fine, but that is all it offers."
+        },
+        {
+          "judge": 2,
+          "pair": 8,
+          "state": "match-dealt-jade-plum",
+          "viewport": "desktop",
+          "prefers": "3d",
+          "confidence": 0.9,
+          "why": "B's tilted 3D table with wooden rim, dice plate and dealer chip is dramatically more attractive and uses the wide viewport; A is a flat board with a large empty inner rectangle and small tiles floating below it. For A: player badges sit directly beside each wall so ownership is instantly clear."
+        },
+        {
+          "judge": 2,
+          "pair": 9,
+          "state": "match-dealt",
+          "viewport": "desktop",
+          "prefers": "3d",
+          "confidence": 0.9,
+          "why": "Same comparison as pair 8 in reverse: A's perspective table has depth and readable large tiles, B is the flat board with the empty discard rectangle. For B: it is compact and nothing is occluded."
+        },
+        {
+          "judge": 2,
+          "pair": 10,
+          "state": "match-lobby",
+          "viewport": "desktop",
+          "prefers": "3d",
+          "confidence": 0.7,
+          "why": "B uses the desktop width for a two-column layout, highlights the user's seat in gold and has strong selected states on the skill toggles; A stacks everything in a narrow column with faint pink selection states. For A: it is very readable and its single-column order (seats, skill, rules, start) has a clear top-to-bottom flow."
+        },
+        {
+          "judge": 2,
+          "pair": 11,
+          "state": "match-mid-hand",
+          "viewport": "desktop",
+          "prefers": "3d",
+          "confidence": 0.8,
+          "why": "A's 3D scene with the raised \u4e00\u842c tile and a compact floating CHI/PASS bar looks polished; B's PENG toast overlaps the top opponent badge and the right-hand claim panel floats off the table edge. For B: labelled melds ('PENG', 'CHI') and larger flat discards are easier to read than A's small centre-table tiles."
+        },
+        {
+          "judge": 2,
+          "pair": 12,
+          "state": "match-my-turn",
+          "viewport": "desktop",
+          "prefers": "3d",
+          "confidence": 0.85,
+          "why": "B's lifted tile and 3D table clearly signal 'your move' with real depth; A is mostly empty flat felt with a few scattered small discards. For A: the 'YOUR TURN \u00b7 DRAW' chip and highlighted own badge are explicit."
+        },
+        {
+          "judge": 2,
+          "pair": 13,
+          "state": "menu",
+          "viewport": "desktop",
+          "prefers": "3d",
+          "confidence": 0.8,
+          "why": "A fits the whole menu including a 14-lesson tutorial grid into the viewport with a strong hero tile row and consistent dark/gold styling; B's tutorial column overflows the screen while the other two columns are largely empty. For B: the large \u6771 tile mark and cream palette are clean and friendly, and its buttons have stronger colour contrast."
+        },
+        {
+          "judge": 2,
+          "pair": 14,
+          "state": "replay-library",
+          "viewport": "desktop",
+          "prefers": "3d",
+          "confidence": 0.85,
+          "why": "B presents a designed empty state (tile fan illustration, headline, help text, 'Paste a replay') centred in a card; A is a header, a toggle and a sentence over a mostly blank page with a faint decorative background. For A: the light theme is easy on the eyes and nothing competes for attention."
+        },
+        {
+          "judge": 3,
+          "pair": 0,
+          "state": "match-dealt-jade-plum",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.9,
+          "why": "B's rendered 3D table with wood rim, shaded walls, dice plate and large readable hand tiles reads as a real game; A is a flat green panel with a huge empty 'Discards' box and small tiles. A's one-row hand plus explicit 'YOUR TURN \u00b7 DISCARD' pill is the only thing it does more clearly."
+        },
+        {
+          "judge": 3,
+          "pair": 1,
+          "state": "match-dealt",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.9,
+          "why": "A (3D table, blue-back walls, depth, big hand tiles) is far more attractive and polished than B's flat felt with an empty discards area dominating the screen. B's compact single-row hand and clear turn label are its strongest points."
+        },
+        {
+          "judge": 3,
+          "pair": 2,
+          "state": "match-lobby",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.75,
+          "why": "B's dark glass lobby with gold selected chips, a 'You \u00b7 Online' seat highlight, subtitle copy and fully visible rules feels more premium and complete; A's cream version is tidy but leaves two-thirds of the screen empty and hides rules behind a collapsed row. A is quicker to scan and less busy."
+        },
+        {
+          "judge": 3,
+          "pair": 3,
+          "state": "match-mid-hand",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.75,
+          "why": "A shows a convincing 3D table with melds, river and a legible CHI toast, and the drawn tile is clearly set apart; B's flat layout has a lone highlighted draw tile floating in a big empty area. B's discards row is more readable at a glance than A's small central river tiles."
+        },
+        {
+          "judge": 3,
+          "pair": 4,
+          "state": "match-my-turn",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.85,
+          "why": "B's 3D table with the freshly drawn tile raised in the hand and the wall break highlighted gives depth and clear 'what changed' cues; A is flat and mostly empty. A's turn pill and seat list are slightly more explicit about whose turn it is."
+        },
+        {
+          "judge": 3,
+          "pair": 5,
+          "state": "match-river-zoom",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.6,
+          "why": "A's zoomed river with large legible discards and the wood rim looks more like a game and reads well; B is a plain list but has a very clear claim panel (tile, CHI, PASS). A's CHI toast is washed out over the felt and the top HUD pills overlap the rim, which cost it confidence."
+        },
+        {
+          "judge": 3,
+          "pair": 6,
+          "state": "menu",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.7,
+          "why": "B's dark hero with rendered tiles and dice, gold 'Play vs bots' CTA and title treatment feels like a game menu; A is a clean but generic cream card list. B's falling-tile decorations clutter the match-code input area and the footer is cut off, which are real polish nits in A's favour."
+        },
+        {
+          "judge": 3,
+          "pair": 7,
+          "state": "replay-library",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.9,
+          "why": "A has a designed empty state (fanned tile illustration, headline, helpful copy, 'Paste a replay' action) on a dark theme; B is a bare cream page with a paragraph and nothing else. B's higher-contrast toggle row is its only edge."
+        },
+        {
+          "judge": 3,
+          "pair": 8,
+          "state": "match-dealt-jade-plum",
+          "viewport": "desktop",
+          "prefers": "3d",
+          "confidence": 0.9,
+          "why": "B's perspective 3D table with wood frame, shaded jade-plum walls, dealer chip and full-width hand looks like a modern game; A is a flat, small, centered 2D board with tiny tiles and lots of unused canvas. A's explicit 'YOUR TURN \u00b7 DISCARD' pill next to the hand is more prominent than B's header pill."
+        },
+        {
+          "judge": 3,
+          "pair": 9,
+          "state": "match-dealt",
+          "viewport": "desktop",
+          "prefers": "3d",
+          "confidence": 0.9,
+          "why": "A (3D perspective table, depth, large tiles, badges anchored to seats) is much more attractive and readable than B's small flat board floating in cream space. B's compact layout keeps everything in one glance, but at the cost of tiny tiles."
+        },
+        {
+          "judge": 3,
+          "pair": 10,
+          "state": "match-lobby",
+          "viewport": "desktop",
+          "prefers": "3d",
+          "confidence": 0.65,
+          "why": "B's dark two-column lobby with gold selections and 'You \u00b7 Online' seat state feels more polished and game-like; A is well balanced and centered but visually plain. A's centered composition uses the desktop width better than B's left-heavy layout with empty right and bottom areas."
+        },
+        {
+          "judge": 3,
+          "pair": 11,
+          "state": "match-mid-hand",
+          "viewport": "desktop",
+          "prefers": "3d",
+          "confidence": 0.8,
+          "why": "A's 3D table with melds, river and a compact claim bar (tile, CHI, PASS) placed over the felt looks cohesive; B's flat layout has the PENG toast overlapping the Mei seat badge and a detached claim card off to the right. B's discards and melds are individually easier to read than A's small central tiles."
+        },
+        {
+          "judge": 3,
+          "pair": 12,
+          "state": "match-my-turn",
+          "viewport": "desktop",
+          "prefers": "3d",
+          "confidence": 0.85,
+          "why": "B's rendered table with the raised drawn tile, break-wall highlight and readable hand is more inviting; A's flat board with a few tiny discards in a big dark rectangle looks sparse. A's 'YOUR TURN \u00b7 DRAW' pill beside the hand is a clearer call to action."
+        },
+        {
+          "judge": 3,
+          "pair": 13,
+          "state": "menu",
+          "viewport": "desktop",
+          "prefers": "3d",
+          "confidence": 0.85,
+          "why": "A's dark hero with a tile spread, three balanced cards and a compact 14-lesson tutorial grid fits the viewport and feels like a game landing page; B's light version has a tutorial list that runs off screen and tall cards with large empty areas. B's list gives lesson descriptions, which is helpful but hurts layout."
+        },
+        {
+          "judge": 3,
+          "pair": 14,
+          "state": "replay-library",
+          "viewport": "desktop",
+          "prefers": "3d",
+          "confidence": 0.85,
+          "why": "B provides a designed empty state with a tile illustration, headline, guidance and a 'Paste a replay' action on a dark theme; A is a nearly blank cream page with a faint decorative glyph. A's header controls are slightly larger and higher-contrast."
+        }
+      ],
+      "judges": 3,
+      "pairs": 15,
+      "method": "3 judges \u00d7 15 pairs; labels A/B assigned by a fixed parity shuffle, files copied to neutral names; judges never saw build names",
+      "at": "2026-09-04T03:58:00Z"
+    }
+  ],
   "baseline": {
     "dist": "apps/client/dist-baseline",
     "commit": "0eb1155",
