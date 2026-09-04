@@ -1,4 +1,5 @@
 import type { ComponentType } from 'react';
+import type { ReplayShelf3DProps } from './menu/ReplayShelf3D';
 import type { SettingsPreview3DProps } from './settings/SettingsPreview3D';
 import type { Table3DShellProps } from './table/Table3DShell';
 import type { Lobby3DViewProps } from './table/hud/LobbyGlass';
@@ -16,3 +17,4 @@ export const Menu3DBackdrop: ComponentType<Record<string, never>> | null = null;
 export const SettingsPreview3D: ComponentType<SettingsPreview3DProps> | null = null;
 export const Tutorial3D: ComponentType<Record<string, never>> | null = null;
 export const Lobby3DView: ComponentType<Lobby3DViewProps> | null = null;
+export const ReplayShelf3D: ComponentType<ReplayShelf3DProps> | null = null;

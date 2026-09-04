@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 import {
   Platform,
   Pressable,
@@ -20,6 +20,7 @@ import { SettingsPreview3D } from '../../three/entry';
 import { hasWebGL2, rendererOverride, resolveRenderer } from '../../three/renderer';
 import { Modal } from '../Modal';
 import { COLORS, SWITCH_TRACK } from '../colors';
+import { HOVER_TRANSITION } from '../menu/theme';
 import {
   QUALITY_OPTIONS,
   RENDERER_HINT,
@@ -74,7 +75,10 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
   const live3D = webgl2 && SettingsPreview3D !== null;
   const resolved = resolveRenderer(settings.renderer);
   const override = rendererOverride();
-  const previewHeight = height < 520 ? 150 : isDesktop ? 236 : 206;
+  // Landscape phones: the sheet is short, so the stage trades section
+  // gap for height (170 px + a 2.3:1 fov cap in `previewConfig`).
+  const shortSheet = height < 520;
+  const previewHeight = shortSheet ? 170 : isDesktop ? 236 : 206;
 
   return (
     <Modal
@@ -87,7 +91,11 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
     >
       <ScrollView
         testID="settings-panel"
-        contentContainerStyle={{ padding: isDesktop ? 18 : 14, paddingBottom: 28, gap: 22 }}
+        contentContainerStyle={{
+          padding: isDesktop ? 18 : 14,
+          paddingBottom: 28,
+          gap: shortSheet ? 16 : 22,
+        }}
       >
         {live3D && SettingsPreview3D ? (
           <SettingsPreview3D
@@ -235,9 +243,10 @@ function StatusPill({ label, tone }: { label: string; tone: 'gold' | 'neutral' }
       />
       <Text
         style={{
-          fontSize: 10,
+          fontSize: 11,
+          lineHeight: 13,
           fontWeight: '700',
-          letterSpacing: 1.2,
+          letterSpacing: 2,
           textTransform: 'uppercase',
           color: gold ? G.gold : G.text2,
         }}
@@ -311,41 +320,89 @@ function Segmented<T extends string>({
         borderColor: G.hairline,
       }}
     >
-      {options.map((o) => {
-        const selected = o.value === value;
-        return (
-          <Pressable
-            key={o.value}
-            onPress={() => onChange(o.value)}
-            accessibilityRole="radio"
-            accessibilityLabel={`${groupLabel}: ${o.label}`}
-            accessibilityState={{ selected, checked: selected }}
-            aria-checked={selected}
-            testID={`${testIDPrefix}-${o.value}`}
-            style={({ pressed }) => ({
-              flex: 1,
-              minHeight: compact ? 38 : 44,
-              alignItems: 'center',
-              justifyContent: 'center',
-              borderRadius: 9,
-              backgroundColor: selected ? G.gold : pressed ? G.surfaceHi : 'transparent',
-              transform: [{ scale: pressed ? 0.97 : 1 }],
-            })}
-          >
-            <Text
-              style={{
-                fontSize: 13,
-                fontWeight: selected ? '800' : '600',
-                color: selected ? G.ink : 'rgba(255,255,255,0.78)',
-                letterSpacing: 0.2,
-              }}
-            >
-              {o.label}
-            </Text>
-          </Pressable>
-        );
-      })}
+      {options.map((o) => (
+        <Segment
+          key={o.value}
+          option={o}
+          selected={o.value === value}
+          onPress={() => onChange(o.value)}
+          groupLabel={groupLabel}
+          testID={`${testIDPrefix}-${o.value}`}
+          compact={compact}
+        />
+      ))}
     </View>
+  );
+}
+
+/**
+ * Pointer hover (RN-web `onHoverIn/Out`): 1 px lift + brightness 1.05
+ * over 160 ms, per the HUD language. Inert on touch / native.
+ */
+function useHoverLift(): {
+  hovered: boolean;
+  hoverProps: { onHoverIn: () => void; onHoverOut: () => void };
+  hoverStyle: (pressed: boolean) => Record<string, unknown>;
+} {
+  const [hovered, setHovered] = useState(false);
+  const lifted = hovered ? (pressed: boolean) => !pressed : () => false;
+  return {
+    hovered,
+    hoverProps: { onHoverIn: () => setHovered(true), onHoverOut: () => setHovered(false) },
+    hoverStyle: (pressed: boolean) => ({
+      ...HOVER_TRANSITION,
+      transform: [{ translateY: lifted(pressed) ? -1 : 0 }, { scale: pressed ? 0.97 : 1 }],
+      ...(lifted(pressed) ? { filter: 'brightness(1.05)' } : {}),
+    }),
+  };
+}
+
+function Segment<T extends string>({
+  option: o,
+  selected,
+  onPress,
+  groupLabel,
+  testID,
+  compact,
+}: {
+  option: SegmentOption<T>;
+  selected: boolean;
+  onPress: () => void;
+  groupLabel: string;
+  testID: string;
+  compact: boolean;
+}) {
+  const { hovered, hoverProps, hoverStyle } = useHoverLift();
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="radio"
+      accessibilityLabel={`${groupLabel}: ${o.label}`}
+      accessibilityState={{ selected, checked: selected }}
+      aria-checked={selected}
+      testID={testID}
+      {...hoverProps}
+      style={({ pressed }) => ({
+        flex: 1,
+        minHeight: compact ? 38 : 44,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 9,
+        backgroundColor: selected ? G.gold : pressed || hovered ? G.surfaceHi : 'transparent',
+        ...hoverStyle(pressed),
+      })}
+    >
+      <Text
+        style={{
+          fontSize: 13,
+          fontWeight: selected ? '800' : '600',
+          color: selected ? G.ink : 'rgba(255,255,255,0.78)',
+          letterSpacing: 0.2,
+        }}
+      >
+        {o.label}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -369,6 +426,7 @@ function SkinChip({
   swatch,
   basis,
 }: ChipProps) {
+  const { hoverProps, hoverStyle } = useHoverLift();
   return (
     <Pressable
       onPress={onPress}
@@ -377,6 +435,7 @@ function SkinChip({
       accessibilityState={{ selected, checked: selected }}
       aria-checked={selected}
       testID={testID}
+      {...hoverProps}
       style={({ pressed }) => ({
         flexGrow: 1,
         flexBasis: basis,
@@ -391,7 +450,7 @@ function SkinChip({
         borderWidth: 2,
         borderColor: selected ? G.gold : pressed ? G.surfaceHi : G.border,
         backgroundColor: selected ? G.goldTint : pressed ? G.surfaceHi : G.surface,
-        transform: [{ scale: pressed ? 0.97 : 1 }],
+        ...hoverStyle(pressed),
       })}
     >
       {swatch}

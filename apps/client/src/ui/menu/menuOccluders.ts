@@ -104,6 +104,8 @@ export const OCCLUDER_BAND_PX = 24;
  * Visibility factor (0..1) for a disc of radius `radius` centred on
  * (x, y): 1 clear of every rect, 0 while it overlaps a `solid` rect
  * or straddles a `glass` edge, ramping linearly over `band` px.
+ * `glassInterior` (default 1) caps the factor for a disc that sits
+ * fully inside a `glass` rect.
  */
 export function occluderFactor(
   x: number,
@@ -111,12 +113,20 @@ export function occluderFactor(
   radius: number,
   list: readonly OccluderRect[],
   band = OCCLUDER_BAND_PX,
+  glassInterior = 1,
 ): number {
   let f = 1;
   for (const r of list) {
     const d = rectSignedDistance(x, y, r);
-    const g =
-      r.kind === 'solid' ? clamp01((d - radius) / band) : clamp01((Math.abs(d) - radius) / band);
+    let g: number;
+    if (r.kind === 'solid') g = clamp01((d - radius) / band);
+    else {
+      g = clamp01((Math.abs(d) - radius) / band);
+      // Deep behind the glass the blur reads as depth, but a full-size
+      // tile inside a form card still reads as debris — callers cap
+      // the interior so those tiles shrink into faint depth cues.
+      if (d < 0 && g > glassInterior) g = glassInterior;
+    }
     if (g < f) f = g;
     if (f === 0) break;
   }

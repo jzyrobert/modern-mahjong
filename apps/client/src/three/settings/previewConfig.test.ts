@@ -5,6 +5,7 @@ import {
   ORBIT_AMPLITUDE,
   PREVIEW_BACK_ALBEDO,
   PREVIEW_BACK_FINISH,
+  PREVIEW_BACK_HUE_TRIM,
   PREVIEW_BACK_SATURATION,
   PREVIEW_CAMERA,
   PREVIEW_HFOV_DEG,
@@ -75,17 +76,27 @@ describe('settings preview config', () => {
     expect(grey[0]).toBeCloseTo(0.4 * PREVIEW_BACK_ALBEDO, 6);
     expect(grey[1]).toBeCloseTo(grey[0], 6);
     expect(grey[2]).toBeCloseTo(grey[0], 6);
-    // Luminance always scales by the albedo, whatever the hue.
+    // Luminance always scales by the albedo, whatever the hue — the
+    // hue trim is chroma-only.
     const blue: [number, number, number] = [0.15, 0.33, 0.49];
-    const out = compensateBackColor(blue);
-    expect(linearLuminance(out)).toBeCloseTo(linearLuminance(blue) * PREVIEW_BACK_ALBEDO, 6);
+    const neutral = compensateBackColor(blue);
+    const trimmed = compensateBackColor(blue, undefined, undefined, PREVIEW_BACK_HUE_TRIM.blue);
+    expect(linearLuminance(neutral)).toBeCloseTo(linearLuminance(blue) * PREVIEW_BACK_ALBEDO, 6);
+    expect(linearLuminance(trimmed)).toBeCloseTo(linearLuminance(blue) * PREVIEW_BACK_ALBEDO, 6);
     // …while the spread around that luminance grows by the saturation factor.
     const yIn = linearLuminance(blue);
-    const yOut = linearLuminance(out);
-    expect((out[2] - yOut) / (blue[2] - yIn)).toBeCloseTo(
+    const yOut = linearLuminance(neutral);
+    expect((neutral[2] - yOut) / (blue[2] - yIn)).toBeCloseTo(
       PREVIEW_BACK_SATURATION * PREVIEW_BACK_ALBEDO,
       6,
     );
+    // Blue's trim counters its cyan cast (more blue, less green); plum's
+    // counters its pink cast (less red); cream is untouched.
+    expect(trimmed[2] / trimmed[1]).toBeGreaterThan(neutral[2] / neutral[1]);
+    const plum: [number, number, number] = [0.48, 0.21, 0.47];
+    const plumTrim = compensateBackColor(plum, undefined, undefined, PREVIEW_BACK_HUE_TRIM.plum);
+    expect(plumTrim[0] / plumTrim[2]).toBeLessThan(plum[0] / plum[2]);
+    expect(PREVIEW_BACK_HUE_TRIM.cream).toEqual([1, 1, 1]);
     // Never negative, even for a fully saturated primary.
     for (const c of compensateBackColor([0, 0, 1], 0.8, 3)) expect(c).toBeGreaterThanOrEqual(0);
   });
@@ -103,7 +114,7 @@ describe('settings preview config', () => {
     // Wider canvas → narrower vertical fov, monotonically.
     expect(verticalFovFor(1.7)).toBeGreaterThan(verticalFovFor(1.9));
     expect(verticalFovFor(1.9)).toBeGreaterThan(20);
-    expect(verticalFovFor(1.7)).toBeLessThan(35);
+    expect(verticalFovFor(1.7)).toBeLessThan(38);
     // Degenerate aspect never divides by zero.
     expect(Number.isFinite(verticalFovFor(0))).toBe(true);
   });

@@ -110,12 +110,17 @@ const SCROLL_TO_TOP = `
 /**
  * Tap one skin chip, then the original, let the tint tween settle, and
  * scroll the sheet back up (Playwright scrolls the chips into view).
+ * The settle waits for the loop to report idle rather than a fixed
+ * sleep: on SwiftShader the preview renders at 1–2 fps, so 900 ms of
+ * wall clock could capture the re-tint mid-tween and skew any colour
+ * measurement taken from the PNG.
  */
 const RETINT_ROUNDTRIP = (away, back) => [
   { clickTestId: away },
   { waitMs: 350 },
   { clickTestId: back },
   { waitMs: 900 },
+  { waitForFunction: 'globalThis.__MAHJONG_PERF__?.idle === true', timeout: 12000 },
   { evaluate: SCROLL_TO_TOP },
   { waitMs: 250 },
 ];
@@ -157,15 +162,15 @@ export const STATES = {
   },
   'replay-library': {
     owner: 'menu',
-    // Themed like the lobby but with no 3D scene (ARCHITECTURE.md §0
-    // non-goals) — `scene: false` tells the verifier not to expect
-    // `__MAHJONG_PERF__` here.
-    scene: false,
+    // Themed like the lobby; the only scene is the empty state's 3D
+    // shelf (`ReplayShelf3D`, seven tiles, one draw call) — a fresh
+    // context always has zero replays, so the menu budget applies.
     steps: [
       { goto: '/replays' },
       { waitForText: 'Replays' },
       { waitForSettled: '[data-reveal]' },
-      { waitMs: 300 },
+      { waitFor: '[data-testid="replay-shelf-3d"] canvas', timeout: 15000 },
+      { waitMs: 900 },
     ],
   },
   'replay-import': {

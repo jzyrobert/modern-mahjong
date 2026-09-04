@@ -8,6 +8,8 @@ import { deleteRecord, listHeaders } from '../../replay/storage';
 import type { ReplayHeader } from '../../replay/types';
 import { winnerOf } from '../../replay/winner';
 import { useGame } from '../../state/game';
+import { ReplayShelf3D } from '../../three/entry';
+import { hasWebGL2, resolveRenderer } from '../../three/renderer';
 import { Tile } from '../Tile';
 import { type Position, SEAT_COLOR } from '../match/seatColor';
 import { GlassCard } from '../menu/GlassCard';
@@ -135,9 +137,14 @@ export function ReplayLibrary() {
 // ─── Hero ──────────────────────────────────────────────────────────
 
 const HERO_PHONE_BREAKPOINT = 480;
-/** Width of the top-right strip the root FULLSCREEN / DISMISS chip
- *  occupies on landscape phones (`FullscreenPrompt`, ≈ 220 px). */
-const CHIP_STRIP_W = 232;
+/**
+ * Width of the top-right strip the root FULLSCREEN / DISMISS chip
+ * occupies on landscape phones: the glass pill (`FullscreenPrompt`,
+ * 12 px pads + glyph + 10 px / 1.6-tracked label ≈ 124 px) plus its
+ * 8 px margin, plus a 12 px gap — so the Import button's right edge
+ * sits 12 px left of the chip instead of parked at a 236 px band.
+ */
+const CHIP_STRIP_W = 124 + 8 + 12;
 /** Glow centre behind the centred empty-state card. */
 const EMPTY_GLOW = { x: 0.5, y: 0.55 };
 
@@ -209,7 +216,7 @@ function Hero({
         alignItems: 'center',
         gap: 18,
         paddingHorizontal: 20,
-        paddingRight: 20 + chipStrip,
+        paddingRight: chipStrip || 20,
         paddingTop: chipStrip ? 12 : 24,
         paddingBottom: 18,
       }}
@@ -281,8 +288,18 @@ function AutoRecordRibbon({ enabled, onToggle }: { enabled: boolean; onToggle: (
 
 function EmptyState({ onImport, fill = false }: { onImport: () => void; fill?: boolean }) {
   const { width, height } = useWindowDimensions();
+  const rendererSetting = useGame((s) => s.settings.renderer);
+  // Under the 3D renderer the shelf is a real scene (`ReplayShelf3D`)
+  // so no classic flat tile art sits inside the 3D flow; classic and
+  // native keep the SVG / `Tile` illustration.
+  const shelf3d =
+    Platform.OS === 'web' &&
+    ReplayShelf3D !== null &&
+    resolveRenderer(rendererSetting) === '3d' &&
+    hasWebGL2();
   // Landscape phones are wide but short — keep the compact card there.
   const wide = width > 720 && height >= 600;
+  const tileWidth = wide ? 44 : fill ? 40 : 34;
   return (
     <GlassCard
       hover={false}
@@ -301,7 +318,11 @@ function EmptyState({ onImport, fill = false }: { onImport: () => void; fill?: b
         ...(fill ? { flex: 1 } : {}),
       }}
     >
-      <ShelfIllustration tileWidth={wide ? 44 : fill ? 40 : 34} />
+      {shelf3d && ReplayShelf3D ? (
+        <ReplayShelf3D tileWidth={tileWidth} />
+      ) : (
+        <ShelfIllustration tileWidth={tileWidth} />
+      )}
       <Text style={{ fontSize: wide ? 18 : 16, fontWeight: '800', color: MENU.text }}>
         Nothing on the shelf yet
       </Text>

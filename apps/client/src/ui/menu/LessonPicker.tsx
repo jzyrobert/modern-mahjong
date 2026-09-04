@@ -171,28 +171,38 @@ interface PickerProps {
   onStart: (id: string) => void;
 }
 
+/** Trailing fade of the lesson rail, CSS px past the gutter. */
+export const LESSON_RAIL_FADE_PX = 36;
+
 /**
  * Horizontal card row — phone. Bleeds to the card edge with `gutter`
- * px of side padding; on web the edges fade out over the gutter (a
- * CSS mask) so a card cut by the panel edge reads as intentional
- * overflow rather than a hard clip against the panel's border.
+ * px of side padding on both ends (symmetric inset), and on web the
+ * trailing edge fades out over `LESSON_RAIL_FADE_PX` (a CSS mask on
+ * the wrapping View, where Chromium always honours it) so the card cut
+ * by the panel edge reads as intentional overflow rather than a hard
+ * clip against the panel's border. The leading edge fades over the
+ * gutter only, so card 01 stays fully opaque at scroll 0.
  */
 export function LessonRail({ items, onStart, gutter = 12 }: PickerProps & { gutter?: number }) {
-  const fade = `linear-gradient(to right, transparent 0px, #000 ${gutter}px, #000 calc(100% - ${gutter + 10}px), transparent 100%)`;
+  const fade = `linear-gradient(to right, transparent 0px, #000 ${gutter}px, #000 calc(100% - ${gutter + LESSON_RAIL_FADE_PX}px), transparent calc(100% - 2px))`;
   return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
+    <View
+      testID="lesson-rail"
       style={{
         marginHorizontal: -gutter,
         ...webStyle({ maskImage: fade, WebkitMaskImage: fade }),
       }}
-      contentContainerStyle={{ paddingHorizontal: gutter, gap: 8 }}
     >
-      {items.map((item) => (
-        <LessonCard key={item.id} item={item} onPress={() => onStart(item.id)} />
-      ))}
-    </ScrollView>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ paddingHorizontal: gutter, gap: 8 }}
+      >
+        {items.map((item) => (
+          <LessonCard key={item.id} item={item} onPress={() => onStart(item.id)} />
+        ))}
+      </ScrollView>
+    </View>
   );
 }
 

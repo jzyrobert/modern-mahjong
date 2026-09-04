@@ -75,6 +75,13 @@ export interface SceneHostProps {
    * sharpness on every tier so face glyphs stay crisp.
    */
   maxDpr?: number;
+  /**
+   * Floor for the device-pixel-ratio — supersampling for a small canvas
+   * on a dpr-1 display (the settings preview at 1440×900 showed stair-
+   * step tile edges; `antialias: true` is not honoured everywhere).
+   * Applied after `maxDpr`, so `minDpr: 2, maxDpr: 2` pins 2×.
+   */
+  minDpr?: number;
 }
 
 const MAX_CONTEXT_LOSSES = 2;
@@ -91,6 +98,7 @@ export function SceneHost({
   testID,
   releaseContextOnUnmount = false,
   maxDpr,
+  minDpr,
 }: SceneHostProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const buildRef = useRef(build);
@@ -155,7 +163,10 @@ export function SceneHost({
     const applySize = () => {
       const w = host.clientWidth || 1;
       const h = host.clientHeight || 1;
-      const dpr = Math.min(window.devicePixelRatio || 1, maxDpr ?? quality.maxDpr);
+      const dpr = Math.max(
+        minDpr ?? 0,
+        Math.min(window.devicePixelRatio || 1, maxDpr ?? quality.maxDpr),
+      );
       // The ResizeObserver's initial callback and a `resize` event that
       // didn't touch this host would otherwise re-render an identical
       // frame — skip them (the quality downgrade changes `dpr`, so it
@@ -274,6 +285,7 @@ export function SceneHost({
     clearColor,
     releaseContextOnUnmount,
     maxDpr,
+    minDpr,
   ]);
 
   return (

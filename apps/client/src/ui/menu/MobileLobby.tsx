@@ -165,6 +165,7 @@ export function MobileLobby({ isLandscape }: MobileLobbyProps) {
           onPress={() => code && transport.joinOnline(code)}
           disabled={code.length !== 5}
           style={{ flexGrow: 1 }}
+          occlude
         >
           Join match
         </GoldButton>
@@ -204,7 +205,7 @@ export function MobileLobby({ isLandscape }: MobileLobbyProps) {
         offline.
       </Text>
       {isLandscape ? <View style={{ flex: 1 }} /> : null}
-      <GoldButton size="sm" onPress={transport.joinSolo} full={!isLandscape}>
+      <GoldButton size="sm" onPress={transport.joinSolo} full={!isLandscape} occlude>
         Play vs bots
       </GoldButton>
     </ModeCard>

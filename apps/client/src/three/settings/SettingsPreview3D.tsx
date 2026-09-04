@@ -72,20 +72,28 @@ export function SettingsPreview3D({ felt, tileBack, height = 210 }: SettingsPrev
         releaseContextOnUnmount
         // Full sharpness on every tier: the canvas is small and the
         // scene is ~6.6k triangles, and the face glyphs must stay crisp.
+        // `minDpr` supersamples 2× on dpr-1 desktops (stair-step edges
+        // otherwise — software / non-MSAA contexts ignore `antialias`).
         maxDpr={2}
+        minDpr={2}
         onFatal={setFatal}
         testID="settings-preview-scene"
       />
+      {/* Top-left: the void above the far rail is guaranteed on every
+          aspect, while the near rail's bevel reaches the bottom edge on
+          phone canvases and put the badge on the wood. */}
       <div
         aria-hidden
+        data-testid="settings-preview-badge"
         style={{
           position: 'absolute',
           left: 12,
-          bottom: 10,
+          top: 10,
           padding: '4px 8px',
           borderRadius: 999,
           fontFamily: 'system-ui, sans-serif',
-          fontSize: 10,
+          fontSize: 11,
+          lineHeight: '13px',
           fontWeight: 700,
           letterSpacing: 2,
           textTransform: 'uppercase',

@@ -1,4 +1,5 @@
 import { HONORS } from '@mahjong/game-logic';
+import type { TileBackSkin } from '../../state/game';
 import { BACK_CELL } from '../tiles/faceAtlas';
 
 /**
@@ -51,17 +52,21 @@ export const PREVIEW_CAMERA = {
 /**
  * Horizontal field of view the preview keeps constant across aspect
  * ratios (the canvas is ~1.7–1.9:1 depending on panel width), so the
- * rail always fits with a sliver of void either side.
+ * rail always fits with a band of void either side. 57° leaves ~9 %
+ * of the width free per side at the rail's widest point (52° ran the
+ * rounded corners into the frame edge on a 384 px phone canvas).
  */
-export const PREVIEW_HFOV_DEG = 52;
+export const PREVIEW_HFOV_DEG = 57;
 
 /**
  * Past this aspect the canvas is a letterbox strip (phone landscape:
- * ~570×150 → 3.8:1). Holding the horizontal fov there would collapse
+ * ~570×170 → 3.4:1). Holding the horizontal fov there would collapse
  * the vertical fov to ~15° and crop both rails, so the vertical fov is
  * floored at the value it has here and the extra width becomes void.
+ * 2.3 (was 1.9) lets the letterbox stage use ~20 % more of its height
+ * while the rail ring (depth 4.7) still clears both edges.
  */
-export const PREVIEW_MAX_ASPECT = 1.9;
+export const PREVIEW_MAX_ASPECT = 2.3;
 
 /**
  * Vertical fov (deg) that yields `PREVIEW_HFOV_DEG` at this aspect,
@@ -107,7 +112,10 @@ export const PREVIEW_LIGHTS = {
   envIntensity: 0.3,
 } as const;
 
-/** Matte back inlay: no lacquer, cloth-like roughness. */
+/** Matte back inlay: no lacquer, cloth-like roughness. (0.8 was tried
+ *  for the far-edge lift: it spread the specular over the whole back
+ *  and lifted plum's green by ~10 sRGB units — the lift is the bevel
+ *  catching the key, not the roughness.) */
 export const PREVIEW_BACK_FINISH = { clearcoat: 0.12, roughness: 0.72 } as const;
 
 /**
@@ -121,6 +129,27 @@ export const PREVIEW_BACK_FINISH = { clearcoat: 0.12, roughness: 0.72 } as const
 export const PREVIEW_BACK_ALBEDO = 0.8;
 export const PREVIEW_BACK_SATURATION = 1.4;
 
+/**
+ * Per-hue chroma trim for the back albedo, measured skin by skin on the
+ * verifier (settled tint, centre + both edges, phone and desktop). The
+ * global albedo × saturation above lands the luminance, but ACES plus
+ * the warm key shift each hue its own way: blue rendered ≈ +4 % green /
+ * −5 % blue / −2 % red against its gradient (cyan cast, ΔE 3.5–4.2 at
+ * every row) while plum rendered ≈ +10 % red / −4 % green / −3 % blue
+ * (pink, ΔE 3.3–5.3). Each entry is the inverse of that measured
+ * rendered / target ratio in linear RGB; luminance is re-normalised
+ * afterwards so `PREVIEW_BACK_ALBEDO` still means what it says. Cream
+ * (near-neutral) and mint are left untrimmed — neither was measured off
+ * its gradient by the critic.
+ */
+export const PREVIEW_BACK_HUE_TRIM: Record<TileBackSkin, readonly [number, number, number]> = {
+  cream: [1, 1, 1],
+  blue: [1 / 0.98, 1 / 1.043, 1 / 0.952],
+  plum: [1 / 1.105, 1 / 0.964, 1 / 0.974],
+  mint: [1, 1, 1],
+};
+export const NEUTRAL_TRIM: readonly [number, number, number] = [1, 1, 1];
+
 /** Rec. 709 luminance of a linear RGB triple. */
 export function linearLuminance(rgb: readonly [number, number, number]): number {
   return 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
@@ -128,15 +157,31 @@ export function linearLuminance(rgb: readonly [number, number, number]): number 
 
 /**
  * Pre-compensate a linear-RGB back colour: scale chroma about its own
- * luminance by `saturation`, then scale the whole colour by `albedo`.
- * Greys are only darkened; nothing goes negative.
+ * luminance by `saturation`, apply the skin's measured hue `trim`
+ * (luminance-preserving), then scale the whole colour by `albedo`.
+ * Greys stay grey and are only darkened; nothing goes negative.
  */
 export function compensateBackColor(
   rgb: readonly [number, number, number],
   albedo = PREVIEW_BACK_ALBEDO,
   saturation = PREVIEW_BACK_SATURATION,
+  trim: readonly [number, number, number] = NEUTRAL_TRIM,
 ): [number, number, number] {
   const y = linearLuminance(rgb);
-  const f = (c: number) => Math.max(0, (y + (c - y) * saturation) * albedo);
-  return [f(rgb[0]), f(rgb[1]), f(rgb[2])];
+  const sat = (c: number) => Math.max(0, y + (c - y) * saturation);
+  const s: [number, number, number] = [sat(rgb[0]), sat(rgb[1]), sat(rgb[2])];
+  const ys = linearLuminance(s);
+  // Chroma-only trim: pull the channels by the measured inverse, then
+  // rescale so the luminance is unchanged (a grey stays exactly grey
+  // and the albedo term below is the only darkening).
+  const b: [number, number, number] = [s[0] * trim[0], s[1] * trim[1], s[2] * trim[2]];
+  const yb = linearLuminance(b);
+  const k = yb > 0 ? ys / yb : 1;
+  const grey = Math.abs(rgb[0] - y) + Math.abs(rgb[1] - y) + Math.abs(rgb[2] - y) < 1e-9;
+  const out = grey ? s : b.map((c) => c * k);
+  return [
+    Math.max(0, (out[0] ?? 0) * albedo),
+    Math.max(0, (out[1] ?? 0) * albedo),
+    Math.max(0, (out[2] ?? 0) * albedo),
+  ];
 }
