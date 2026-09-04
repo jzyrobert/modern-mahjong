@@ -112,6 +112,27 @@ export class CameraRig {
     return live;
   }
 
+  /**
+   * True once the preset springs (position, target, fov) are visibly at
+   * rest — within `eps` world units of the goal. Parallax is excluded, so
+   * a pointer wobble never counts as camera motion. The tutorial holds a
+   * lesson's first coach card on this (via `core/sceneRects`), so it is
+   * coarser than `update`'s own 1e-3 rest test: a 20-unit dolly is
+   * sub-pixel long before the spring calls itself finished.
+   */
+  presetSettled(eps = 0.05): boolean {
+    const g = this.goal;
+    return (
+      Math.abs(this.pos.x.value - g.position[0]) < eps &&
+      Math.abs(this.pos.y.value - g.position[1]) < eps &&
+      Math.abs(this.pos.z.value - g.position[2]) < eps &&
+      Math.abs(this.tgt.x.value - g.target[0]) < eps &&
+      Math.abs(this.tgt.y.value - g.target[1]) < eps &&
+      Math.abs(this.tgt.z.value - g.target[2]) < eps &&
+      Math.abs(this.fov.value - g.fov) < eps * 10
+    );
+  }
+
   private apply(): void {
     const c = this.camera;
     c.position.set(

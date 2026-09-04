@@ -7,6 +7,8 @@ import {
   CHROME_GAP,
   FEATHER_OUT,
   FEATHER_TIGHT,
+  GRAZE_MIN_PAD,
+  GRAZE_PAD,
   HALO_OVERHANG,
   HALO_PAD,
   NOTCH_DEPTH,
@@ -17,6 +19,7 @@ import {
   STRADDLE_PAD,
   STRIP_HEIGHT_ESTIMATE,
   centredRoom,
+  clearGrazers,
   encloseStraddlers,
   featherFor,
   focusRect,
@@ -79,6 +82,13 @@ describe('haloFor', () => {
     // Padding alone poking past the safe line is still clamped.
     const inset = haloFor({ x: 100, y: 20, w: 40, h: 20 }, phone);
     expect(inset?.top).toBe(12);
+    // The desktop claim strip ends inside the 24 px safe inset with room
+    // for a full ring below it: the bottom stays closed and padded.
+    const strip = haloFor({ x: 557, y: 802, w: 325, h: 74 }, desktop);
+    expect((strip?.top ?? 0) + (strip?.height ?? 0)).toBe(876 + HALO_PAD);
+    // …but a strip flush with a landscape phone's bottom edge still opens.
+    const flush = haloFor({ x: 338, y: 369, w: 244, h: 37 }, landscape);
+    expect((flush?.top ?? 0) + (flush?.height ?? 0)).toBe(412 + HALO_OVERHANG);
     // A well-inset target is untouched.
     expect(haloFor({ x: 100, y: 100, w: 40, h: 20 }, phone)).toEqual({
       left: 92,
@@ -819,5 +829,80 @@ describe('placeCaption: centred card width on a short viewport', () => {
   test('portrait and desktop keep CARD_MAX_WIDTH', () => {
     expect(placeCaption({ viewport: desktop, halo: null, cardHeight: 200 }).width).toBe(440);
     expect(placeCaption({ viewport: phone, halo: null, cardHeight: 200 }).width).toBe(412 - 24);
+  });
+});
+
+describe('clearGrazers: chrome reaching into the padding band nudges the edge off it', () => {
+  // The landscape 3D hand row: tiles y 300..362, footer badge + sort pill
+  // 5 px under them — the padded halo (…370) crossed their top edges.
+  const hand = haloFor({ x: 110, y: 300, w: 700, h: 62 }, landscape)!;
+  const badge = { left: 12, top: 367, width: 140, height: 40 };
+  const pill = { left: 700, top: 367, width: 200, height: 40 };
+
+  test('the bottom edge pulls back to GRAZE_PAD above the grazing controls', () => {
+    const out = clearGrazers(hand, [badge, pill])!;
+    expect(out.top).toBe(hand.top);
+    expect(out.left).toBe(hand.left);
+    expect(out.left + out.width).toBe(hand.left + hand.width);
+    expect(out.top + out.height).toBe(367 - GRAZE_PAD);
+    // …while still padding the target itself.
+    expect(out.top + out.height).toBeGreaterThanOrEqual(362 + GRAZE_MIN_PAD);
+  });
+
+  test('a graze deeper than the padding allows keeps GRAZE_MIN_PAD to the target', () => {
+    const close = { left: 12, top: 363, width: 140, height: 40 };
+    const out = clearGrazers(hand, [close])!;
+    expect(out.top + out.height).toBe(362 + GRAZE_MIN_PAD);
+  });
+
+  test('chrome reaching into the target proper is left to trimStraddlers', () => {
+    const deep = { left: 12, top: 355, width: 700, height: 60 };
+    expect(clearGrazers(hand, [deep])).toBe(hand);
+  });
+
+  test('a control mostly inside the ring (a bisected label) is not backed away from', () => {
+    const label = { left: 400, top: 350, width: 60, height: 24 };
+    expect(clearGrazers(hand, [label])).toBe(hand);
+  });
+
+  test('a neighbour clear of the halo leaves it untouched', () => {
+    const far = { left: 12, top: 380, width: 140, height: 30 };
+    expect(clearGrazers(hand, [far])).toBe(hand);
+  });
+
+  test('works on every side', () => {
+    const halo = { left: 100, top: 100, width: 200, height: 100 };
+    const above = { left: 120, top: 40, width: 60, height: 64 }; // bottom 104, 4 px into band
+    const leftC = { left: 40, top: 120, width: 64, height: 40 }; // right 104
+    const rightC = { left: 296, top: 120, width: 60, height: 40 }; // left 296, 4 px in
+    const out = clearGrazers(halo, [above, leftC, rightC])!;
+    expect(out.top).toBe(104 + GRAZE_PAD);
+    expect(out.left).toBe(104 + GRAZE_PAD);
+    expect(out.left + out.width).toBe(296 - GRAZE_PAD);
+    expect(out.top + out.height).toBe(200);
+  });
+});
+
+describe('placeCaption: a lifted vertical dock does not redock beside the halo over chrome', () => {
+  // Landscape 3D win lesson: the tsumo button sits under the hand row at
+  // the bottom edge (ring open below), the card above it is pushed up
+  // over the hand row's height, and a 300 px side slot exists on both
+  // sides. The side card would cover the last four hand tiles whole —
+  // the vertical dock must stay.
+  const halo = { left: 330, top: 361, width: 259, height: 412 + HALO_OVERHANG - 361 };
+  const tiles = Array.from({ length: 14 }, (_, i) => ({
+    left: 125 + i * 47.5,
+    top: 295,
+    width: 46,
+    height: 62,
+  }));
+  test('keeps the above dock instead of covering the hand', () => {
+    const p = placeCaption({ viewport: landscape, halo, cardHeight: 230, avoid: tiles });
+    expect(p.kind).toBe('above');
+    for (const t of tiles) expect(intersectionArea({ ...p, height: 230 }, t)).toBe(0);
+  });
+  test('still redocks beside the halo when the side slot is clear', () => {
+    const p = placeCaption({ viewport: landscape, halo, cardHeight: 230, avoid: [tiles[6]!] });
+    expect(['left', 'right']).toContain(p.kind);
   });
 });

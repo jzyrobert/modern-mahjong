@@ -51,7 +51,11 @@ export function useFollowedRect(
         setShown(null);
         return;
       }
-      const dt = Math.min(0.1, Math.max(0, (now - last) / 1000));
+      // Wall-clock, unclamped: on a starved renderer (software GL, a
+      // busy tab) frames can be 500 ms+ apart, and a clamped step eased
+      // the ring from the previous step's target over several seconds.
+      // With the real dt a long gap simply lands the ring on the goal.
+      const dt = Math.max(0, (now - last) / 1000);
       last = now;
       const k = 1 - 2 ** (-dt / HALF_LIFE_S);
       cur.x += (goal.x - cur.x) * k;

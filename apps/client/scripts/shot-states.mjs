@@ -344,6 +344,42 @@ export const STATES = {
       { waitMs: 1200 },
     ],
   },
+  'tutorial-claims-3': {
+    // `claim` step of `claims`: the claim window is open on seat 3's
+    // scripted chi-completion discard and the coach-mark ring must hug
+    // the CHI / PASS strip. The lesson's passive bots pass every other
+    // window (the force-pass seam keeps a coin-flip peng from hijacking
+    // the turn order), so the strip is the only actionable HUD.
+    owner: 'tutorial',
+    steps: [
+      { initScript: 'globalThis.__MAHJONG_TUTORIAL_FORCE_PASS__ = true;' },
+      { goto: '/' },
+      { waitForText: 'Modern Mahjong' },
+      { startTutorial: 'claims' },
+      { waitMs: 800 },
+      { clickTutorialNext: true },
+      { waitForOwnHand: true },
+      { waitMs: 600 },
+      { clickTestId: 'own-hand-tile', nth: 0 },
+      { waitForText: 'Claim the chi!', timeout: 20000 },
+      { waitMs: 900 },
+    ],
+  },
+  'tutorial-win-1': {
+    // `declare` step of `win`: the dealt hand is already complete, so
+    // the gold "Declare win (tsumo)" CTA is the target from the first
+    // turn and the ring must hug that button, not its flex parent.
+    owner: 'tutorial',
+    steps: [
+      { goto: '/' },
+      { waitForText: 'Modern Mahjong' },
+      { startTutorial: 'win' },
+      { waitMs: 800 },
+      { clickTutorialNext: true },
+      { waitForOwnHand: true },
+      { waitMs: 1200 },
+    ],
+  },
 
   // ── In-game ──────────────────────────────────────────────────────────
   'match-dice': {

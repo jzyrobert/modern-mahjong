@@ -37,6 +37,10 @@ declare global {
     | undefined;
   // Published by `three/core/spotlight`.
   var __MAHJONG_TEST_SPOTLIGHT__: (() => readonly number[]) | undefined;
+  // Published by `three/core/sceneRects`.
+  var __MAHJONG_TEST_CAMERA_MOTION__:
+    | (() => { live: boolean; lastLiveAt: number; ticks: number })
+    | undefined;
 }
 
 test.beforeEach(async ({ page }) => {
@@ -53,6 +57,10 @@ test.beforeEach(async ({ page }) => {
     g.__MAHJONG_TEST_BOT_CLAIM_DELAY_MS__ = 0;
   });
 });
+
+// Three lesson steps plus a 15 s enclosure poll: on a software rasteriser
+// with sibling workers the default 30 s budget is the binding limit.
+test.setTimeout(90_000);
 
 test('3D tutorial: coach-marks render over the canvas with zero errors and perf in budget', async ({
   page,
@@ -73,8 +81,10 @@ test('3D tutorial: coach-marks render over the canvas with zero errors and perf 
     g.__MAHJONG_TEST_START_TUTORIAL__('basics');
   });
 
-  // Step 1 — dice ceremony, targeted caption.
-  await expect(page.getByText('Opening dice')).toBeVisible();
+  // Step 1 — dice ceremony, targeted caption. The first card waits for
+  // the camera rig to settle (up to 3.5 s), on top of a software
+  // rasteriser's first paint.
+  await expect(page.getByText('Opening dice')).toBeVisible({ timeout: 15_000 });
   await expect(page.getByTestId('table-3d')).toBeVisible();
   const cta = page.getByTestId('tutorial-next');
   await expect(cta).toBeVisible();
@@ -124,9 +134,9 @@ test('3D tutorial: coach-marks render over the canvas with zero errors and perf 
         return `${outside.length}/${boxes.length} out; halo ${[h.x, h.y, h.width, h.height].map(Math.round)} first ${o ? [o.x, o.y, o.width, o.height].map(Math.round) : '-'}`;
       },
       // The camera eases in and the hit targets re-project every frame;
-      // on a software rasteriser with a sibling worker that can take a
-      // while to settle.
-      { timeout: 15_000 },
+      // on a software rasteriser with sibling workers the deal itself can
+      // still be flying tiles in for a long while.
+      { timeout: 40_000 },
     )
     .toBe('enclosed');
   // …and the world-space accent lights those same 14 tiles.
@@ -205,7 +215,9 @@ test.describe('3D coach-marks: landscape dice step', () => {
           const cut = boxes.filter((b) => b && intersects(halo, b));
           return cut.length === 0 ? 'clear' : `cuts ${cut.length}`;
         },
-        { timeout: 8_000 },
+        // The deal may still be flying tiles under the modal on a starved
+        // rasteriser; the ring only has to end up clear.
+        { timeout: 30_000 },
       )
       .toBe('clear');
     const layout = await page.evaluate(() => globalThis.__MAHJONG_TEST_TUTORIAL_LAYOUT__);
@@ -495,7 +507,9 @@ test.describe('classic coach-marks: landscape side dock', () => {
           const cut = boxes.filter((b) => b && intersects(halo, b));
           return cut.length === 0 ? 'clear' : `cuts ${cut.length}`;
         },
-        { timeout: 8_000 },
+        // The deal may still be flying tiles under the modal on a starved
+        // rasteriser; the ring only has to end up clear.
+        { timeout: 30_000 },
       )
       .toBe('clear');
     const layout = await page.evaluate(() => globalThis.__MAHJONG_TEST_TUTORIAL_LAYOUT__);
@@ -647,6 +661,9 @@ test.describe('classic coach-marks: landscape side dock', () => {
 test.describe('3D coach-marks: readiness under CPU throttling', () => {
   test.use({ viewport: { width: 1440, height: 900 } });
   const READY_BUDGET_MS = 1500;
+  // The first card also waits for the camera rig (≤ 3.5 s); under a 4x
+  // throttle on an already loaded machine the whole flow needs headroom.
+  test.setTimeout(90_000);
 
   test('scrim hole, card and clickable CTA land together under a 4x CPU throttle', async ({
     page,
@@ -681,7 +698,7 @@ test.describe('3D coach-marks: readiness under CPU throttling', () => {
       let scrimAt: number | null = null;
       let ringAt: number | null = null;
       let ctaAt: number | null = null;
-      while (performance.now() - start < 15_000) {
+      while (performance.now() - start < 30_000) {
         const now = performance.now();
         if (scrimAt === null && q('tutorial-scrim')) scrimAt = now;
         if (ringAt === null && q('tutorial-halo')) ringAt = now;
@@ -730,5 +747,167 @@ test.describe('3D coach-marks: readiness under CPU throttling', () => {
     await page.mouse.click(cx, cy);
     await expect(page.getByText('Welcome to mahjong')).toBeVisible({ timeout: 5_000 });
     expect(pageErrors, pageErrors.join('\n')).toEqual([]);
+  });
+});
+
+/**
+ * The claim-strip ring (user feedback: "the highlight around the actions
+ * pill is not correct"). The `claims` lesson parks on seat 3's scripted
+ * chi-completion discard; the `claim-bar` target must ring the visible
+ * CHI / PASS strip — hugging it within the halo padding on every side,
+ * never a flex wrapper or a zero-size stand-in — and the lesson must reach
+ * the step without a React error (a landscape phone used to crash with
+ * "maximum update depth" on the own-hand step before it).
+ */
+const RING_SLACK = 12;
+const clampToViewport = (b: Box, vp: { width: number; height: number }): Box => {
+  const x = Math.max(0, b.x);
+  const y = Math.max(0, b.y);
+  return {
+    x,
+    y,
+    width: Math.min(vp.width, b.x + b.width) - x,
+    height: Math.min(vp.height, b.y + b.height) - y,
+  };
+};
+for (const [label, use] of [
+  ['phone', { viewport: { width: 412, height: 915 }, isMobile: true, hasTouch: true }],
+  ['landscape', { viewport: { width: 915, height: 412 }, isMobile: true, hasTouch: true }],
+  ['desktop', { viewport: { width: 1440, height: 900 } }],
+] as const) {
+  test.describe(`3D coach-marks: claim strip ring (${label})`, () => {
+    test.use(use);
+    // Driving a lesson to its claim window on a software rasteriser with
+    // sibling workers takes 15-25 s on its own.
+    test.setTimeout(90_000);
+    test('the ring hugs the CHI / PASS strip and the lesson reaches it error-free', async ({
+      page,
+    }) => {
+      const pageErrors: string[] = [];
+      page.on('pageerror', (e) => pageErrors.push(String(e)));
+      await page.addInitScript(() => {
+        (
+          globalThis as { __MAHJONG_TUTORIAL_FORCE_PASS__?: boolean }
+        ).__MAHJONG_TUTORIAL_FORCE_PASS__ = true;
+      });
+      await page.goto('/');
+      await expect(page.getByRole('heading', { name: 'Modern Mahjong' })).toBeVisible();
+      await page.evaluate(() => {
+        const g = globalThis as { __MAHJONG_TEST_START_TUTORIAL__?: (id: string) => void };
+        g.__MAHJONG_TEST_START_TUTORIAL__?.('claims');
+      });
+      await expect(page.getByText('Claiming a tile')).toBeVisible({ timeout: 15_000 });
+      await page.getByTestId('tutorial-next').click();
+      await expect(page.getByText('Take your first turn')).toBeVisible();
+      await page.getByTestId('own-hand-tile').first().click();
+      await expect(page.getByText('Claim the chi!')).toBeVisible({ timeout: 20_000 });
+
+      const strip = page.getByTestId('claim-bar');
+      await expect(strip).toBeVisible();
+      const chi = page.getByRole('button', { name: 'Chi' });
+      await expect(chi).toBeVisible();
+      const halo = page.getByTestId('tutorial-halo');
+      await expect
+        .poll(
+          async () => {
+            const raw = await halo.boundingBox();
+            const s = await strip.boundingBox();
+            const c = await chi.boundingBox();
+            if (!raw || !s || !c) return 'missing';
+            // A strip flush with the bottom safe line opens the ring on
+            // that side (the halo overhangs the viewport); the visible
+            // ring is the viewport-clamped box.
+            const h = clampToViewport(raw, page.viewportSize()!);
+            if (!contains(h, s) || !contains(h, c))
+              return `not enclosed ${JSON.stringify({ h, s })}`;
+            const slack = [
+              s.x - h.x,
+              s.y - h.y,
+              h.x + h.width - (s.x + s.width),
+              h.y + h.height - (s.y + s.height),
+            ];
+            return slack.every((v) => v <= RING_SLACK)
+              ? 'hugging'
+              : `loose ${slack.map(Math.round)}`;
+          },
+          { timeout: 15_000 },
+        )
+        .toBe('hugging');
+      // Exactly one live registration feeds the ring: one strip in the DOM.
+      await expect(strip).toHaveCount(1);
+      expect(pageErrors, pageErrors.join('\n')).toEqual([]);
+    });
+  });
+}
+
+/**
+ * A lesson's first card waits for the camera: the desktop table eases in
+ * after mount, and the opening coach-mark used to be captured over a
+ * table caught mid-dolly. The card may only appear once the rig reports
+ * itself at rest.
+ */
+test.describe('3D coach-marks: first card waits for the camera to settle', () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+  test.setTimeout(60_000);
+  test('the opening card appears with the rig at rest', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.getByRole('heading', { name: 'Modern Mahjong' })).toBeVisible();
+    const startedAt = Date.now();
+    await page.evaluate(() => {
+      const g = globalThis as { __MAHJONG_TEST_START_TUTORIAL__?: (id: string) => void };
+      g.__MAHJONG_TEST_START_TUTORIAL__?.('basics');
+    });
+    await expect(page.getByTestId('table-3d')).toBeVisible({ timeout: 15_000 });
+    const cta = page.getByTestId('tutorial-next');
+    await expect(cta).toBeVisible({ timeout: 15_000 });
+    const waited = Date.now() - startedAt;
+    // Sampled the instant the card is up: the rig is at rest — or, on a
+    // starved rasteriser whose rig steps seconds apart, the gate's hard
+    // cap (3.5 s) released the card rather than the card ignoring the rig.
+    const motion = await page.evaluate(() => globalThis.__MAHJONG_TEST_CAMERA_MOTION__?.() ?? null);
+    expect(motion).not.toBeNull();
+    if (motion!.live) expect(waited).toBeGreaterThanOrEqual(3400);
+  });
+});
+
+/**
+ * The tsumo button's ring on a phone: the button sits in the portrait
+ * action tray (a 96 px layout slot); the chrome scan must not count the
+ * slot as a control, or the ring grows to the slot instead of the button.
+ */
+test.describe('3D coach-marks: tsumo button ring (phone)', () => {
+  test.use({ viewport: { width: 412, height: 915 }, isMobile: true, hasTouch: true });
+  test.setTimeout(60_000);
+  test('the ring hugs the Declare win button', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.getByRole('heading', { name: 'Modern Mahjong' })).toBeVisible();
+    await page.evaluate(() => {
+      const g = globalThis as { __MAHJONG_TEST_START_TUTORIAL__?: (id: string) => void };
+      g.__MAHJONG_TEST_START_TUTORIAL__?.('win');
+    });
+    await expect(page.getByText('Winning a hand')).toBeVisible({ timeout: 15_000 });
+    await page.getByTestId('tutorial-next').click();
+    await expect(page.getByText("You're already winning!")).toBeVisible();
+    const button = page.getByRole('button', { name: /^Declare win \(tsumo/ });
+    await expect(button).toBeVisible();
+    const halo = page.getByTestId('tutorial-halo');
+    await expect
+      .poll(
+        async () => {
+          const h = await halo.boundingBox();
+          const b = await button.boundingBox();
+          if (!h || !b) return 'missing';
+          if (!contains(h, b)) return 'not enclosed';
+          const slack = [
+            b.x - h.x,
+            b.y - h.y,
+            h.x + h.width - (b.x + b.width),
+            h.y + h.height - (b.y + b.height),
+          ];
+          return slack.every((v) => v <= RING_SLACK) ? 'hugging' : `loose ${slack.map(Math.round)}`;
+        },
+        { timeout: 15_000 },
+      )
+      .toBe('hugging');
   });
 });

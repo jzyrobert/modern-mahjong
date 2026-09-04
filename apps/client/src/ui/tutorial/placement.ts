@@ -154,14 +154,20 @@ export function haloFor(
     // side clamp always lands in padding, never across content.
     left = Math.max(safe, left);
     right = Math.min(viewport.width - safe, right);
-    // Vertical: a target whose edge reaches the safe line runs to the
-    // screen edge (hand tiles at the bottom of a phone, a result panel
-    // taller than a landscape viewport). The halo then overhangs so its
-    // stroke and corners are clipped away rather than drawn across the
-    // target's edge; otherwise the padded halo is clamped like the sides.
-    top = rect.y <= safe + MIN_RING_PAD ? -HALO_OVERHANG : Math.max(safe, top);
+    // Vertical: a target with no room for a padded ring before the screen
+    // edge (hand tiles at the bottom of a phone, a result panel taller
+    // than a landscape viewport) runs to that edge. The halo then
+    // overhangs so its stroke and corners are clipped away rather than
+    // drawn across the target's edge; otherwise the padded halo is kept
+    // `MIN_RING_PAD` inside the viewport. The safe inset is a card
+    // margin, not a ring limit: the desktop claim strip sits inside the
+    // 24 px inset with room for a full ring below it, and clamping the
+    // ring to the inset used to open its bottom onto the screen edge.
+    top = rect.y < HALO_PAD + MIN_RING_PAD ? -HALO_OVERHANG : Math.max(MIN_RING_PAD, top);
     bottom =
-      rect.y + rect.h >= H - safe - MIN_RING_PAD ? H + HALO_OVERHANG : Math.min(H - safe, bottom);
+      rect.y + rect.h > H - HALO_PAD - MIN_RING_PAD
+        ? H + HALO_OVERHANG
+        : Math.min(H - MIN_RING_PAD, bottom);
   } else {
     left = Math.max(0, left);
     top = Math.max(0, top);
@@ -553,9 +559,23 @@ export function placeCaption({
     const bisects = scoreAt(chosen.kind, chosen.left, chosen.top, chosen.width).partial > 0;
     if ((chosen.gap ?? 0) > NOTCH_MAX_GAP || onTarget || bisects) {
       const alt = side(SIDE_REDOCK_MIN_WIDTH);
+      // The side card may swallow chrome beside the halo whole (a seat
+      // badge level with the modal) but nothing else: on a landscape
+      // phone the tsumo card redocked beside the button *over* the last
+      // four hand tiles, whichever run happened to cover them whole.
+      const altScore = alt
+        ? scoreAt(alt.kind, alt.left, alt.top, alt.width, chrome, besideHalo)
+        : null;
+      // …and it must actually sit beside the halo: a side card slid clear
+      // of that chrome until it no longer shares the halo's vertical span
+      // is the floating card this redock exists to avoid.
+      const besides = alt !== null && alt.top <= haloBottom && alt.top + h >= halo.top;
       if (
         alt &&
-        scoreAt(alt.kind, alt.left, alt.top, alt.width).partial === 0 &&
+        besides &&
+        altScore !== null &&
+        altScore.partial === 0 &&
+        altScore.total === 0 &&
         (keepClear === null ||
           intersectionArea(
             { left: alt.left, top: alt.top, width: alt.width, height: h },
@@ -994,6 +1014,60 @@ export function trimStraddlers(
   }
   if (!open.top && !open.bottom && !open.left && !open.right) return { halo, open };
   return { halo: { left, top, width: right - left, height: bottom - top }, open };
+}
+
+/** Air between the ring stroke and a control it would otherwise graze. */
+export const GRAZE_PAD = 2;
+/** Least padding kept between the ring and the target after a graze pull. */
+export const GRAZE_MIN_PAD = 1;
+
+/**
+ * Pull a halo edge off any chrome it merely *grazes* — a neighbour that
+ * reaches into the ring's padding band (≤ `HALO_PAD` deep) without
+ * touching the target itself. `encloseStraddlers` handles controls that
+ * are mostly inside the ring and `trimStraddlers` regions that reach
+ * into the target; a graze falls between the two (the landscape footer
+ * badge and sort pill sitting 5 px under the hand row) and left the
+ * stroke drawn across the control's top edge. The edge moves at most
+ * `HALO_PAD - GRAZE_MIN_PAD`, so the ring still hugs the target; the
+ * side stays closed.
+ */
+export function clearGrazers(halo: HaloRect | null, avoid: readonly HaloRect[]): HaloRect | null {
+  if (!halo || avoid.length === 0) return halo;
+  let left = halo.left;
+  let top = halo.top;
+  let right = halo.left + halo.width;
+  let bottom = halo.top + halo.height;
+  const maxPull = HALO_PAD - GRAZE_MIN_PAD;
+  for (const r of avoid) {
+    if (r.width <= 0 || r.height <= 0) continue;
+    const rRight = r.left + r.width;
+    const rBottom = r.top + r.height;
+    // A control mostly inside the ring is a bisected label (enclosed
+    // elsewhere), not a neighbour to back away from.
+    const cx = r.left + r.width / 2;
+    const cy = r.top + r.height / 2;
+    if (cx > left && cx < right && cy > top && cy < bottom) continue;
+    const spansX = r.left < right && rRight > left;
+    const spansY = r.top < bottom && rBottom > top;
+    // Bottom edge: the neighbour's top lies inside the padding band.
+    if (spansX && r.top < bottom && rBottom > bottom && bottom - r.top <= HALO_PAD)
+      bottom = Math.max(halo.top + halo.height - maxPull, r.top - GRAZE_PAD);
+    if (spansX && rBottom > top && r.top < top && rBottom - top <= HALO_PAD)
+      top = Math.min(halo.top + maxPull, rBottom + GRAZE_PAD);
+    if (spansY && r.left < right && rRight > right && right - r.left <= HALO_PAD)
+      right = Math.max(halo.left + halo.width - maxPull, r.left - GRAZE_PAD);
+    if (spansY && rRight > left && r.left < left && rRight - left <= HALO_PAD)
+      left = Math.min(halo.left + maxPull, rRight + GRAZE_PAD);
+  }
+  if (
+    left === halo.left &&
+    top === halo.top &&
+    right === halo.left + halo.width &&
+    bottom === halo.top + halo.height
+  )
+    return halo;
+  return { left, top, width: right - left, height: bottom - top };
 }
 
 /** Smallest spotlight worth keeping after a focus clip. */

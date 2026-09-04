@@ -41,3 +41,28 @@ describe('CameraRig.goalCamera', () => {
     expect(settled.y).toBeCloseTo(early.y, 3);
   });
 });
+
+describe('CameraRig.presetSettled', () => {
+  test('false while a preset eases, true once the springs are visibly at rest', () => {
+    const rig = new CameraRig(A, 1.6);
+    expect(rig.presetSettled()).toBe(true);
+    rig.setPreset(B);
+    expect(rig.presetSettled()).toBe(false);
+    let now = 1000;
+    for (let i = 0; i < 20 && !rig.presetSettled(); i++) {
+      now += 100;
+      rig.update(0.1, now);
+    }
+    // ~10 half-lives of 0.22 s bring a 14-unit move under 0.05 units.
+    expect(now - 1000).toBeLessThanOrEqual(2000);
+    expect(rig.presetSettled()).toBe(true);
+  });
+
+  test('parallax alone never counts as preset motion', () => {
+    const rig = new CameraRig(A, 1.6);
+    rig.parallaxEnabled = true;
+    rig.setPointer(1, 1);
+    expect(rig.update(0.016, 1000)).toBe(true); // the rig is live (parallax)…
+    expect(rig.presetSettled()).toBe(true); // …but the preset is at rest.
+  });
+});

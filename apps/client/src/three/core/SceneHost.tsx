@@ -13,6 +13,7 @@ import {
   readDeviceHints,
   resolveQuality,
 } from './quality';
+import { publishCameraLive } from './sceneRects';
 
 /**
  * The one React ↔ three bridge. Owns the `<canvas>`, the renderer, the
@@ -265,7 +266,13 @@ function createRuntime(
     pooled: o.pooled,
     onDestroy: new Set(),
   };
-  loop.add((dt, now) => rig.update(dt, now));
+  loop.add((dt, now) => {
+    const live = rig.update(dt, now);
+    // Additive (tutorial): the overlay gates its first card on a settled
+    // preset — parallax excluded, so a moving pointer never holds it.
+    publishCameraLive(!rig.presetSettled(), now);
+    return live;
+  });
   loop.add((dt, now) => rt.handle?.update?.(dt, now) ?? false);
 
   canvas.addEventListener('webglcontextlost', (e: Event) => {

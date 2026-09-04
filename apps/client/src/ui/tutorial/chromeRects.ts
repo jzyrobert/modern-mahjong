@@ -106,6 +106,12 @@ export function collectChromeRects({
     if (el.closest(`[${OVERLAY_ATTR}], [${IGNORE_ATTR}]`)) continue;
     const inTarget = targetSel !== null && el.closest(targetSel) !== null;
     if (inTarget && !focusBand) continue;
+    // An element that *contains* the spotlit target is the slot it sits
+    // in (the portrait action tray, the footer's claim-float row), not a
+    // neighbouring control: counting it grew the ring to the slot's
+    // height — 104 px around a 40 px tsumo button — and shifted the
+    // claim-strip ring off the strip.
+    if (targetSel !== null && !inTarget && el.querySelector(targetSel) !== null) continue;
     const control =
       el.hasAttribute('role') || el.hasAttribute('data-testid') || el.hasAttribute('aria-label');
     let text: string | null = null;
