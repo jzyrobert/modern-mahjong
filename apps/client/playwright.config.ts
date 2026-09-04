@@ -74,6 +74,8 @@ const SHARD_3_SPECS = [
   'solo-match.spec.ts',
   // 3D table smoke (~20 s on SwiftShader).
   'three-table.spec.ts',
+  // 3D menu backdrop smoke (~8 s): budget + DOM contract over the canvas.
+  'three-menu.spec.ts',
   // 3D render layer — settings panel + live preview (~15 s).
   'three-settings.spec.ts',
 ];

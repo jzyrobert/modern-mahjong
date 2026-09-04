@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "updatedAt": "2026-09-03T23:53:00Z",
-  "round": 2,
+  "updatedAt": "2026-09-04T01:28:00Z",
+  "round": 3,
   "passThreshold": 8.5,
   "subsystems": {
     "core": {
@@ -33,11 +33,59 @@
       "history": []
     },
     "menu": {
-      "score": null,
+      "score": 8.5,
       "errors": 0,
-      "pass": false,
-      "issues": [],
-      "history": []
+      "pass": true,
+      "issues": [
+        {
+          "rank": 1,
+          "severity": "medium",
+          "title": "Desktop: dice pair straddles the Tutorial card's top-right corner",
+          "state": "menu, menu-tutorials, menu-reduced-motion @ desktop 1440x900 (3d)",
+          "detail": "At 1440x900 the hero dice sit at roughly (1215-1275, 305-355) CSS px while the Tutorial GlassCard's top-right corner is at (1255, 343). The zoomed crop shows one die half behind the glass (blurred, dimmed, with the card shadow across it) and half crisp outside — exactly the half-sharp/half-blurred straddle the occluder band exists to prevent. The dice are hero-adjacent, not drift tiles, so they bypass occluderFactor and are placed purely by layout. Fix: either run the dice resting position through the same occluder/keep-out test in reseedForOccluders (nudge them ~40 px up-right until factor >= 0.9), or move the desktop dice to the open void right of the fan's 中中 end where nothing is registered. Reproduce with the desktop menu shot; verify the die is fully clear of every glass rect."
+        },
+        {
+          "rank": 2,
+          "severity": "medium",
+          "title": "Phone portrait: drift tiles ghost inside the MATCH CODE input and across the Join match CTA",
+          "state": "menu, menu-tutorials @ phone 412x915 (3d)",
+          "detail": "Behind the Online match card five or more drift tiles are seeded 'deep behind glass', but the 0.62 glass + 16 px blur does not swallow them: a green 索 face sits inside the match-code input right next to the ABCDE placeholder, a tile back overlaps the 'Join match' label, and two more sit around the input's right end. In the highest-attention form area this reads as debris behind the form rather than depth, and desktop cards show far fewer tiles behind them so the phone card looks comparatively busy. Fix options, cheapest first: (a) register the TextInput wrapper and the primary button as 'solid' occluders via useMenuOccluder('solid') so tiles fade anywhere inside them; (b) cap the factor for tiles fully inside a glass rect at ~0.35 so they read as faint depth cues; (c) in reseedForOccluders reserve the Online match card for far-depth tiles only. Reduced-motion phone (which has no drift field) shows how much calmer the card reads without them."
+        },
+        {
+          "rank": 3,
+          "severity": "low",
+          "title": "Landscape phone lesson sheet hard-clips the third card with no trailing inset",
+          "state": "menu-tutorials @ phone-landscape 915x412 (3d)",
+          "detail": "The horizontal lesson rail inside the Tutorial glass sheet has a ~24 px inset on the left (card 01 starts at x 233 vs sheet edge 218) but zero on the right: card 03 'Reading the table' is cut by the sheet's inner border at x 697, with the sheet stroke drawn over it. The asymmetry makes the clip look accidental. Fix: add contentContainerStyle paddingRight equal to the left inset (or a partial 'peek' width so the third card is clearly cut mid-card), and/or a 24 px linear-gradient mask on the trailing edge of the scroller so the clip fades instead of ending on a hard line."
+        },
+        {
+          "rank": 4,
+          "severity": "low",
+          "title": "Landscape replay library: Import button floats mid-header",
+          "state": "replay-library @ phone-landscape 915x412 (3d)",
+          "detail": "Import replays spans x 464-662 CSS px while the FULLSCREEN chip starts at x 807, leaving a ~145 px void; the button ends up neither right-aligned nor centred, just parked at the edge of the 236 px chrome keep-out. Fix: right-align Import to the chip's left edge with a 12 px gap (measure the chip strip, not the fixed 236 px band) or, when the chip is present, drop Import below the title row on the left so the header reads Lobby / Replays / Import as one aligned cluster."
+        },
+        {
+          "rank": 5,
+          "severity": "low",
+          "title": "Reduced-motion portrait backdrop has no visible drift field (known gap confirmed)",
+          "state": "menu-reduced-motion @ phone 412x915 (3d)",
+          "detail": "With animations off on portrait the backdrop shows only the rack and dice; every seeded drift tile sits behind glass and is invisible, so the portrait reduced-motion scene is measurably less rich than landscape/desktop reduced-motion, which are fully populated. It still looks clean rather than broken, so this is low. Fix: for the frozen field, seed the driftVisible tiles into the open bands portrait actually has — the side margins of the hero band (x < 12% and x > 88%) and the strip below the last card — instead of behind the cards; or lower driftVisible for reduced-motion portrait and document the decision in ARCHITECTURE.md."
+        }
+      ],
+      "history": [
+        {
+          "round": 3,
+          "score": 8.5,
+          "errors": 0,
+          "perfPass": true,
+          "pass": true,
+          "critic": "art-director",
+          "openIssues": 5,
+          "notes": "Passed round 3 (8.4 → 8.4 → 8.5). Merged into integration.",
+          "at": "2026-09-04T01:28:00Z"
+        }
+      ]
     },
     "settings": {
       "score": 8.6,

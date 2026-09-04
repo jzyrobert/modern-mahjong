@@ -1,37 +1,27 @@
 import { useTransport } from '@/src/net/transport-context';
 import { BOT_LABELS, generateMatchCode } from '@mahjong/protocol';
 import { useRouter } from 'expo-router';
-import { type ReactNode, useEffect, useRef, useState } from 'react';
-import {
-  Platform,
-  Pressable,
-  ScrollView,
-  Text,
-  TextInput,
-  View,
-  useWindowDimensions,
-} from 'react-native';
+import { type ReactNode, useEffect, useState } from 'react';
+import { Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getDisplayName, setDisplayName } from '../../identity';
-import {
-  isLanServerAvailable,
-  advertise as lanAdvertise,
-  start as lanStart,
-  stop as lanStop,
-  unadvertise as lanUnadvertise,
-} from '../../native/lan-server';
-import { startLanHostBridge, stopLanHostBridge } from '../../net/lan-host-bridge';
 import { listHeaders } from '../../replay/storage';
 import type { ReplayHeader } from '../../replay/types';
 import { useGame } from '../../state/game';
-import { LESSONS, LESSON_ORDER } from '../../state/tutorial';
+import { LESSON_ORDER } from '../../state/tutorial';
 import { BrowseLobbyModal } from '../BrowseLobbyModal';
 import { JoinLanModal } from '../JoinLanModal';
-import { Modal } from '../Modal';
-import { COLORS as SHARED_COLORS } from '../colors';
 import { useIsLandscape } from '../useOrientation';
+import { GlassCard } from './GlassCard';
+import { GlassSheet } from './GlassSheet';
+import { LessonProgress, LessonRail, useLessonItems } from './LessonPicker';
+import { Footer, InlineHint, OnlineConnectionStatus } from './Lobby';
+import { LobbyBackdrop } from './LobbyBackdrop';
+import { BrandMark, IdentityPill, TitleBlock } from './LobbyHeader';
 import { LobbyPreview } from './LobbyPreview';
-import { WindEmblem } from './WindEmblem';
+import { GlassButton, GoldButton, MenuTextField } from './MenuButtons';
+import { CardHeader, IconSwatch, ModeCard } from './ModeCard';
+import { Reveal } from './Reveal';
 import {
   BotIcon,
   BoxIcon,
@@ -42,135 +32,58 @@ import {
   WifiIcon,
 } from './icons';
 import { replaySubtitleFor, summariseReplays } from './replaySubtitle';
+import { HOVER_TRANSITION, MENU, TYPE, glass } from './theme';
+import { useLanHost } from './useLanHost';
+import { useMenuOccluder } from './useMenuOccluder';
 
 /**
- * Mobile-only lobby — replaces the legacy `<Lobby>`'s hero + 280-px
- * `ModeGrid` cards with a denser app-bar-led layout that fits the
- * primary actions (Online + Practice) above the iPhone-SE fold
- * (~568 px viewport height) without scrolling.
+ * Phone-class lobby. Portrait: sticky glass app bar (identity pill +
+ * brand mark), title block over the hero band, then the Online and
+ * Practice cards and three secondary rows (Tutorial expands inline to
+ * a horizontal lesson rail, LAN expands inline, Replays navigates).
+ * Landscape: an identity row, then a title column on the left (the
+ * 3D rack + dice render under it) with the cards + rows in a denser
+ * grid on the right; Tutorial / LAN open glass sheets because the
+ * inline expansion is taller than a 412 px viewport.
  *
- * Dispatched from `Lobby.tsx` when `Math.min(width, height) <= 480` so
- * both portrait (393×852-ish) and landscape (852×393-ish) phones land
- * here; wider viewports keep the existing desktop layout.
- *
- * Visual spec lives in the design handoff zip (lobby-mobile-v2.jsx +
- * README) — every dimension, colour, and typography choice traces
- * back there. Helpers (AppBar / SecondaryRow / Tutorial+LAN sheet
- * pair) all live in this one file: they're shared only within this
- * component and splitting would add file-count without simplifying
- * review.
- *
- * Live state — `code`, `name`, `lobby`, `tutorialsCompleted`,
- * `replayCount`, `hostStatus` — mirrors `Lobby.tsx` so the existing
- * `useTransport()` integration carries over unchanged.
+ * Phone cards use `borderRadius: 12` as an inline style — the
+ * lobby-layout spec walks up from each row title to its 12 px-radius
+ * ancestor to assert the rows stack without overlap.
  */
-
-// Embedded LAN server port — kept in sync with Lobby.tsx.
-const HOST_PORT = 7777;
-
-const COLORS = {
-  ...SHARED_COLORS,
-  // Avatar square colour from the design tokens (not in the shared
-  // palette since only the identity pill uses it).
-  avatarBg: '#c66b58',
-  // Accent border for the Online card — slightly hotter than the
-  // salmon edge so it reads from across the row.
-  accentBorder: '#ec9275',
-  // Neutral icon-swatch background for non-accent cards.
-  neutralSwatch: '#ede5d3',
-};
+const PHONE_RADIUS = 12;
+/** Landscape header row height — the root fullscreen chip is ≈ 52 px
+ *  tall from y = 8, so cards start below y ≈ 66. */
+const LANDSCAPE_HEADER_H = 44;
+/** Width of the top-right strip reserved for that chip. */
+const LANDSCAPE_CHIP_W = 220;
 
 interface MobileLobbyProps {
-  /** When false the parent `<Lobby>` rendered the desktop layout
-   *  instead. Kept as a single prop so the parent owns viewport
-   *  classification and this component stays presentational. */
   isLandscape: boolean;
 }
 
 export function MobileLobby({ isLandscape }: MobileLobbyProps) {
   const router = useRouter();
   const transport = useTransport();
+  const { height } = useWindowDimensions();
   const lobby = useGame((s) => s.lobby);
-  const tutorialsCompleted = useGame((s) => s.settings.tutorialsCompleted);
-  const completedCount = LESSON_ORDER.reduce(
-    (acc, id) => acc + (tutorialsCompleted.includes(id) ? 1 : 0),
-    0,
-  );
+  const lessons = useLessonItems();
+  const completedCount = lessons.filter((l) => l.done).length;
   const [name, setName] = useState(() => getDisplayName());
   const [code, setCode] = useState('');
-  const [hostStatus, setHostStatus] = useState<null | 'starting' | string>(null);
   const [joinLanOpen, setJoinLanOpen] = useState(false);
   const [browseLobbiesOpen, setBrowseLobbiesOpen] = useState(false);
   const [headers, setHeaders] = useState<readonly ReplayHeader[]>([]);
-  // Inline-expanded row identity (portrait only) — landscape uses
-  // modal sheets via `openSheet` because the inline expansion is
-  // taller than a 393-px landscape viewport.
   const [expandedRow, setExpandedRow] = useState<'tutorial' | 'lan' | null>(null);
   const [openSheet, setOpenSheet] = useState<'tutorial' | 'lan' | null>(null);
+  const { canHostLan, hostStatus, hostError, onHostLan } = useLanHost(transport);
 
   useEffect(() => {
     setHeaders(listHeaders());
   }, []);
 
-  const canHostLan = Platform.OS !== 'web' && isLanServerAvailable();
-
-  // Host handler — identical to the `DesktopLobby` copy in
-  // `Lobby.tsx`. `Lobby.tsx` itself stays as the phone-vs-desktop
-  // dispatcher (it forwards phone viewports here and renders the
-  // tablet/desktop layout inline as `DesktopLobby`) — there is no
-  // active plan to retire it, so the two copies will keep co-existing
-  // until someone extracts a `useLanHost(transport)` hook for both
-  // paths. The duplication is small enough (this handler +
-  // `HOST_PORT` + `OnlineConnectionStatus` + `LessonRow`) that it
-  // hasn't become load-bearing — a bug fix here should be mirrored
-  // into `Lobby.tsx` until the extraction lands.
-  const onHostLan = async () => {
-    if (hostStatus === 'starting') return;
-    setHostStatus('starting');
-    try {
-      stopLanHostBridge();
-      await lanUnadvertise().catch((err) =>
-        console.warn('MobileLobby.onHostLan: lanUnadvertise failed', err),
-      );
-      await lanStop().catch((err) =>
-        console.warn('MobileLobby.onHostLan: lanStop (pre-start) failed', err),
-      );
-      const res = await lanStart({ port: HOST_PORT });
-      const hostUrl = res.addresses[0];
-      if (!hostUrl) {
-        await lanStop().catch((err) =>
-          console.warn('MobileLobby.onHostLan: lanStop (rollback) failed', err),
-        );
-        setHostStatus('No LAN address found — are you on Wi-Fi?');
-        return;
-      }
-      startLanHostBridge();
-      const serviceName = getDisplayName() || 'Modern Mahjong host';
-      lanAdvertise({ serviceName, port: res.port }).catch((err) =>
-        console.warn('MobileLobby.onHostLan: lanAdvertise failed', err),
-      );
-      const matchCode = generateMatchCode();
-      transport.joinLan(hostUrl, matchCode);
-      setHostStatus(null);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setHostStatus(`Couldn't start the embedded server: ${msg}`);
-    }
-  };
-
-  const onToggleTutorial = () => {
-    if (isLandscape) {
-      setOpenSheet((s) => (s === 'tutorial' ? null : 'tutorial'));
-    } else {
-      setExpandedRow((r) => (r === 'tutorial' ? null : 'tutorial'));
-    }
-  };
-  const onToggleLan = () => {
-    if (isLandscape) {
-      setOpenSheet((s) => (s === 'lan' ? null : 'lan'));
-    } else {
-      setExpandedRow((r) => (r === 'lan' ? null : 'lan'));
-    }
+  const toggle = (row: 'tutorial' | 'lan') => {
+    if (isLandscape) setOpenSheet((s) => (s === row ? null : row));
+    else setExpandedRow((r) => (r === row ? null : row));
   };
 
   const replaySummary = summariseReplays(headers);
@@ -180,562 +93,335 @@ export function MobileLobby({ isLandscape }: MobileLobbyProps) {
     replaySummary.streak,
     isLandscape,
   );
-  // Compact "X/N lessons" count replaces the per-lesson green-dots row
-  // that used to live in the SecondaryRow's `trailing` slot. With the
-  // curriculum at 12 lessons (and growing), a dot per lesson overflowed
-  // the row on phone-class viewports — both the ~393 px portrait card
-  // and the ~256 px landscape side-by-side column. The subtitle already
-  // carried the same "5/12" count, so promoting it to the canonical
-  // affordance keeps the row legible without adding a new breakpoint.
-  // Desktop `Lobby.tsx` never rendered dots (it uses a textual subtitle),
-  // so this is a mobile-only change.
-  const tutorialSubtitleLandscape = `${completedCount}/${LESSON_ORDER.length} lessons complete`;
-  const tutorialSubtitle = `${completedCount}/${LESSON_ORDER.length} lessons complete · tap to start`;
+  const tutorialSubtitle = isLandscape
+    ? `${completedCount}/${LESSON_ORDER.length} lessons`
+    : `${completedCount}/${LESSON_ORDER.length} lessons · tap to pick one`;
   const lanSubtitle = isLandscape ? 'Same Wi-Fi' : 'Same Wi-Fi · no accounts';
 
-  // Tutorial card / sheet body — same lesson list either way, so
-  // factor it once and reuse.
+  const startLesson = (id: string) => {
+    setOpenSheet(null);
+    setExpandedRow(null);
+    transport.joinSoloTutorial(id);
+  };
+
   const tutorialBody = (
-    <View style={{ gap: 4 }}>
-      {LESSON_ORDER.map((id) => {
-        const lesson = LESSONS[id];
-        if (!lesson) return null;
-        const done = tutorialsCompleted.includes(id);
-        return (
-          <LessonRow
-            key={id}
-            title={lesson.title}
-            blurb={lesson.blurb}
-            done={done}
-            onPress={() => {
-              setOpenSheet(null);
-              setExpandedRow(null);
-              transport.joinSoloTutorial(id);
-            }}
-          />
-        );
-      })}
+    <View style={{ gap: 10 }}>
+      <LessonProgress done={completedCount} total={LESSON_ORDER.length} />
+      <LessonRail items={lessons} onStart={startLesson} gutter={14} />
     </View>
   );
 
-  // LAN card / sheet body.
   const lanBody = (
     <>
-      <Text style={{ fontSize: 12, color: COLORS.ink3, fontWeight: '600', lineHeight: 18 }}>
+      <Text style={TYPE.body}>
         Four-player matches over local Wi-Fi. Host shares a URL; guests paste it into any browser on
         the same network.
       </Text>
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 8,
-          backgroundColor: COLORS.creamLow,
-          borderColor: COLORS.hairline,
-          borderWidth: 1,
-          borderRadius: 8,
-          paddingHorizontal: 10,
-          paddingVertical: 8,
-        }}
-      >
-        <BoxIcon color={COLORS.ink3} />
-        <Text style={{ flex: 1, fontSize: 11, color: COLORS.ink3, fontWeight: '600' }}>
-          Works offline. No accounts. No data leaves your network.
-        </Text>
-      </View>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+      <InlineHint icon={<BoxIcon color={MENU.text2} />}>
+        Works offline. No accounts. No data leaves your network.
+      </InlineHint>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         {canHostLan ? (
-          <CompactPrimary
-            onPress={onHostLan}
-            disabled={hostStatus === 'starting'}
-            label={hostStatus === 'starting' ? 'Starting host…' : 'Host LAN match'}
-          />
+          <GoldButton size="sm" onPress={onHostLan} disabled={hostStatus === 'starting'}>
+            {hostStatus === 'starting' ? 'Starting host…' : 'Host LAN match'}
+          </GoldButton>
         ) : null}
-        <CompactGhost onPress={() => setJoinLanOpen(true)} label="Join LAN match" />
+        <GlassButton size="sm" onPress={() => setJoinLanOpen(true)}>
+          Join LAN match
+        </GlassButton>
       </View>
-      {typeof hostStatus === 'string' && hostStatus !== 'starting' ? (
-        <Text style={{ fontSize: 12, color: COLORS.red, fontWeight: '700', lineHeight: 16 }}>
-          {hostStatus}
+      {hostError ? (
+        <Text style={{ fontSize: 12, color: '#e59a8b', fontWeight: '700', lineHeight: 16 }}>
+          {hostError}
         </Text>
       ) : null}
     </>
   );
 
   const onlineCard = (
-    <PrimaryModeCard
+    <ModeCard
       accent
+      compact
+      radius={PHONE_RADIUS}
       title="Online match"
       subtitle="Play with friends over the internet"
-      icon={<GlobeIcon color={COLORS.red} size={18} />}
-      // RECOMMENDED pill paused — restore by re-adding `badge="RECOMMENDED"`.
-      // badge="RECOMMENDED"
-      fillHeight={isLandscape}
+      icon={<GlobeIcon color={MENU.goldHi} size={18} />}
+      style={isLandscape ? { flex: 1 } : undefined}
+      testID="mode-online"
     >
-      <View>
-        <Text style={[fieldLabelStyle, { marginBottom: 4 }]}>MATCH CODE</Text>
-        <MatchCodeInput value={code} onChangeText={(v) => setCode(v.toUpperCase())} />
-      </View>
+      <MenuTextField
+        label="Match code"
+        value={code}
+        onChangeText={(v) => setCode(v.toUpperCase())}
+        placeholder="ABCDE"
+        mono
+        maxLength={5}
+        autoCapitalize="characters"
+        compact
+      />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-        <CompactPrimary
-          label="Join match"
+        <GoldButton
+          size="sm"
           onPress={() => code && transport.joinOnline(code)}
           disabled={code.length !== 5}
-        />
-        <CompactPrimary
-          label="Create"
+          style={{ flexGrow: 1 }}
+        >
+          Join match
+        </GoldButton>
+        <GlassButton
+          size="sm"
           onPress={() => {
             const fresh = generateMatchCode();
             setCode(fresh);
             transport.joinOnline(fresh);
           }}
-        />
-        <CompactPrimary label="Browse" onPress={() => setBrowseLobbiesOpen(true)} />
+        >
+          Create
+        </GlassButton>
+        <GlassButton size="sm" onPress={() => setBrowseLobbiesOpen(true)}>
+          Browse
+        </GlassButton>
       </View>
-      <OnlineConnectionStatus />
-    </PrimaryModeCard>
+      <OnlineConnectionStatus compact />
+    </ModeCard>
   );
 
   const practiceCard = (
-    <PrimaryModeCard
+    <ModeCard
+      compact
+      radius={PHONE_RADIUS}
       title="Practice vs bots"
       subtitle={isLandscape ? 'vs bots · offline' : 'Single device · no connection'}
-      icon={<BotIcon color={COLORS.ink2} size={18} />}
-      fillHeight={isLandscape}
+      icon={<BotIcon color={MENU.text} size={18} />}
+      style={isLandscape ? { flex: 1 } : undefined}
+      testID="mode-practice"
     >
-      <Text style={{ fontSize: 11, color: COLORS.ink3, fontWeight: '600', lineHeight: 16 }}>
+      <Text style={[TYPE.small, { lineHeight: 16 }]}>
         Three bots —{' '}
-        <Text style={{ color: COLORS.ink2, fontWeight: '800' }}>{BOT_LABELS.heuristic}</Text>,{' '}
-        <Text style={{ color: COLORS.ink2, fontWeight: '800' }}>{BOT_LABELS.simple}</Text>, and{' '}
-        <Text style={{ color: COLORS.ink2, fontWeight: '800' }}>{BOT_LABELS.passive}</Text>. Runs
+        <Text style={{ color: MENU.text2, fontWeight: '800' }}>{BOT_LABELS.heuristic}</Text>,{' '}
+        <Text style={{ color: MENU.text2, fontWeight: '800' }}>{BOT_LABELS.simple}</Text>, and{' '}
+        <Text style={{ color: MENU.text2, fontWeight: '800' }}>{BOT_LABELS.passive}</Text>. Runs
         offline.
       </Text>
-      <View style={{ flexDirection: 'row' }}>
-        <CompactPrimary label="Play vs bots" onPress={transport.joinSolo} />
-      </View>
-    </PrimaryModeCard>
+      {isLandscape ? <View style={{ flex: 1 }} /> : null}
+      <GoldButton size="sm" onPress={transport.joinSolo} full={!isLandscape}>
+        Play vs bots
+      </GoldButton>
+    </ModeCard>
   );
 
+  const tutorialRow = (
+    <SecondaryRow
+      icon={<TutorialIcon color={MENU.text} size={18} />}
+      title="Tutorial"
+      subtitle={tutorialSubtitle}
+      onPress={() => toggle('tutorial')}
+      testID="mode-tutorial"
+    />
+  );
+  const lanRow = (
+    <SecondaryRow
+      icon={<WifiIcon color={MENU.text} size={18} />}
+      title="LAN / offline"
+      subtitle={lanSubtitle}
+      onPress={() => toggle('lan')}
+      testID="mode-lan"
+    />
+  );
+  const replaysRow = (
+    <SecondaryRow
+      icon={<PlayIcon color={MENU.text} size={18} />}
+      title="Replays"
+      subtitle={replaySubtitle}
+      onPress={() => router.push('/replays')}
+      testID="mode-replays"
+    />
+  );
+
+  const modals = (
+    <>
+      <GlassSheet
+        open={openSheet === 'tutorial'}
+        title="Tutorial"
+        onClose={() => setOpenSheet(null)}
+      >
+        <View style={{ padding: 14, gap: 10 }}>
+          <Text style={TYPE.cardSubtitle}>
+            {completedCount}/{LESSON_ORDER.length} lessons complete · tap a lesson to start
+          </Text>
+          {tutorialBody}
+        </View>
+      </GlassSheet>
+      <GlassSheet
+        open={openSheet === 'lan'}
+        title="LAN / offline"
+        onClose={() => setOpenSheet(null)}
+      >
+        <ScrollView contentContainerStyle={{ padding: 14, gap: 10 }}>{lanBody}</ScrollView>
+      </GlassSheet>
+      <JoinLanModal
+        open={joinLanOpen}
+        onClose={() => setJoinLanOpen(false)}
+        onJoin={(hostUrl, matchCode) => {
+          setJoinLanOpen(false);
+          transport.joinLan(hostUrl, matchCode);
+        }}
+      />
+      <BrowseLobbyModal
+        open={browseLobbiesOpen}
+        onClose={() => setBrowseLobbiesOpen(false)}
+        onJoin={(matchCode, opts) => transport.joinOnline(matchCode, opts)}
+      />
+    </>
+  );
+
+  const onChangeName = (v: string) => {
+    setName(v);
+    setDisplayName(v);
+  };
+
+  if (isLandscape) {
+    return (
+      <View style={{ flex: 1, backgroundColor: MENU.void0 }}>
+        <LobbyBackdrop />
+        <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }} edges={['top', 'bottom']}>
+          <ScrollView
+            style={{ flex: 1 }}
+            // `flexGrow: 1` + the spacer below pin the credit line to the
+            // bottom-right corner, clear of the hero fan + dice that sit
+            // under the title column (`heroAnchor` → x ≈ 0.16, y ≈ 0.58).
+            contentContainerStyle={{ padding: 12, paddingBottom: 12, flexGrow: 1 }}
+          >
+            {/* Header row: identity pill left. The right ~220 × 60 px is
+                left empty for the root FULLSCREEN / DISMISS chip
+                (`FullscreenPrompt`, landscape phones only) so it never
+                lands on a card header. */}
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                minHeight: LANDSCAPE_HEADER_H,
+                paddingRight: LANDSCAPE_CHIP_W,
+              }}
+            >
+              <View style={{ width: '30%', minWidth: 220 }}>
+                <IdentityPill name={name} onChangeName={onChangeName} compact grow />
+              </View>
+            </View>
+            <View
+              style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start', marginTop: 10 }}
+            >
+              <View style={{ width: '30%', minWidth: 220, paddingLeft: 4, paddingTop: 6 }}>
+                <TitleBlock size="sm" align="left" tagline={false} />
+              </View>
+              <View style={{ flex: 1, minWidth: 0, gap: 10 }}>
+                <Reveal index={0}>
+                  <View style={{ flexDirection: 'row', gap: 10, alignItems: 'stretch' }}>
+                    {onlineCard}
+                    {practiceCard}
+                  </View>
+                </Reveal>
+                <Reveal index={1}>
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <View style={{ flex: 1, minWidth: 0 }}>{tutorialRow}</View>
+                    <View style={{ flex: 1, minWidth: 0 }}>{lanRow}</View>
+                    <View style={{ flex: 1, minWidth: 0 }}>{replaysRow}</View>
+                  </View>
+                </Reveal>
+                {lobby ? <LobbyPreview lobby={lobby} matchCode={null} /> : null}
+              </View>
+            </View>
+            <View style={{ flex: 1 }} />
+            <Footer compact align="right" />
+          </ScrollView>
+          {modals}
+        </SafeAreaView>
+      </View>
+    );
+  }
+
+  // Portrait: leave the band under the title clear for the 3D hero.
+  const heroMinHeight = Math.max(200, Math.round(height * 0.3));
   return (
-    <View style={{ flex: 1, backgroundColor: COLORS.cream }}>
-      <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.cream }} edges={['top', 'bottom']}>
+    <View style={{ flex: 1, backgroundColor: MENU.void0 }}>
+      <LobbyBackdrop />
+      <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }} edges={['top', 'bottom']}>
         <ScrollView
           style={{ flex: 1 }}
-          contentContainerStyle={{ paddingBottom: 28 }}
-          // The app bar is the first child — stickyHeaderIndices keeps
-          // it pinned at the top while the content scrolls beneath.
-          // Works on both RN-Web and native targets.
+          contentContainerStyle={{ paddingBottom: 24 }}
           stickyHeaderIndices={[0]}
         >
-          <AppBar
-            name={name}
-            onChangeName={(v) => {
-              setName(v);
-              setDisplayName(v);
-            }}
-          />
-          {isLandscape ? (
-            <View style={{ padding: 12, gap: 10 }}>
-              <View style={{ flexDirection: 'row', gap: 10 }}>
-                <View style={{ flex: 1, minWidth: 0 }}>{onlineCard}</View>
-                <View style={{ flex: 1, minWidth: 0 }}>{practiceCard}</View>
-              </View>
-              <View style={{ flexDirection: 'row', gap: 10 }}>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <SecondaryRow
-                    icon={<TutorialIcon color={COLORS.ink2} size={18} />}
-                    title="Tutorial"
-                    subtitle={tutorialSubtitleLandscape}
-                    onPress={onToggleTutorial}
-                  />
-                </View>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <SecondaryRow
-                    icon={<WifiIcon color={COLORS.ink2} size={18} />}
-                    title="LAN / offline"
-                    subtitle="Same Wi-Fi"
-                    onPress={onToggleLan}
-                  />
-                </View>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <SecondaryRow
-                    icon={<PlayIcon color={COLORS.ink2} size={18} />}
-                    title="Replays"
-                    subtitle={replaySubtitle}
-                    onPress={() => router.push('/replays')}
-                  />
-                </View>
-              </View>
-              {lobby ? <LobbyPreview lobby={lobby} matchCode={null} /> : null}
-              <Text
-                style={{
-                  fontSize: 11,
-                  color: COLORS.ink3,
-                  fontWeight: '600',
-                  textAlign: 'center',
-                  marginTop: 8,
-                }}
-              >
-                Sound by みんなの創作支援サイトＴスタ
-              </Text>
-            </View>
-          ) : (
-            <View style={{ padding: 12, gap: 10 }}>
-              {onlineCard}
-              {practiceCard}
+          <AppBar name={name} onChangeName={onChangeName} />
+          <View style={{ minHeight: heroMinHeight, paddingHorizontal: 16, paddingTop: 18 }}>
+            <TitleBlock size="md" align="left" />
+          </View>
+          <View style={{ padding: 12, gap: 10 }}>
+            <Reveal index={0}>{onlineCard}</Reveal>
+            <Reveal index={1}>{practiceCard}</Reveal>
+            <Reveal index={2}>
               {expandedRow === 'tutorial' ? (
                 <ExpandedCard
-                  icon={<TutorialIcon color={COLORS.ink2} size={18} />}
+                  icon={<TutorialIcon color={MENU.text} size={18} />}
                   title="Tutorial"
-                  subtitle={`${completedCount}/${LESSON_ORDER.length} complete · tap a lesson to start`}
-                  onCollapse={onToggleTutorial}
+                  subtitle={`${completedCount}/${LESSON_ORDER.length} complete · swipe for more`}
+                  onCollapse={() => toggle('tutorial')}
                 >
                   {tutorialBody}
                 </ExpandedCard>
               ) : (
-                <SecondaryRow
-                  icon={<TutorialIcon color={COLORS.ink2} size={18} />}
-                  title="Tutorial"
-                  subtitle={tutorialSubtitle}
-                  onPress={onToggleTutorial}
-                />
+                tutorialRow
               )}
+            </Reveal>
+            <Reveal index={3}>
               {expandedRow === 'lan' ? (
                 <ExpandedCard
-                  icon={<WifiIcon color={COLORS.ink2} size={18} />}
+                  icon={<WifiIcon color={MENU.text} size={18} />}
                   title="LAN / offline"
                   subtitle={lanSubtitle}
-                  onCollapse={onToggleLan}
+                  onCollapse={() => toggle('lan')}
                 >
                   {lanBody}
                 </ExpandedCard>
               ) : (
-                <SecondaryRow
-                  icon={<WifiIcon color={COLORS.ink2} size={18} />}
-                  title="LAN / offline"
-                  subtitle={lanSubtitle}
-                  onPress={onToggleLan}
-                />
+                lanRow
               )}
-              <SecondaryRow
-                icon={<PlayIcon color={COLORS.ink2} size={18} />}
-                title="Replays"
-                subtitle={replaySubtitle}
-                onPress={() => router.push('/replays')}
-              />
-              {lobby ? <LobbyPreview lobby={lobby} matchCode={null} /> : null}
-              <Text
-                style={{
-                  fontSize: 11,
-                  color: COLORS.ink3,
-                  fontWeight: '600',
-                  textAlign: 'center',
-                  marginTop: 12,
-                }}
-              >
-                Sound by みんなの創作支援サイトＴスタ
-              </Text>
-            </View>
-          )}
+            </Reveal>
+            <Reveal index={4}>{replaysRow}</Reveal>
+            {lobby ? <LobbyPreview lobby={lobby} matchCode={null} /> : null}
+            <Footer compact />
+          </View>
         </ScrollView>
-        {/* Landscape modal sheets — see Modal.tsx for the slide/fade. */}
-        <Modal
-          open={openSheet === 'tutorial'}
-          title="Tutorial"
-          onClose={() => setOpenSheet(null)}
-          placement="center"
-          maxWidth={480}
-        >
-          <ScrollView contentContainerStyle={{ padding: 14, gap: 8 }}>{tutorialBody}</ScrollView>
-        </Modal>
-        <Modal
-          open={openSheet === 'lan'}
-          title="LAN / offline"
-          onClose={() => setOpenSheet(null)}
-          placement="center"
-          maxWidth={480}
-        >
-          <ScrollView contentContainerStyle={{ padding: 14, gap: 10 }}>{lanBody}</ScrollView>
-        </Modal>
-        <JoinLanModal
-          open={joinLanOpen}
-          onClose={() => setJoinLanOpen(false)}
-          onJoin={(hostUrl, matchCode) => {
-            setJoinLanOpen(false);
-            transport.joinLan(hostUrl, matchCode);
-          }}
-        />
-        <BrowseLobbyModal
-          open={browseLobbiesOpen}
-          onClose={() => setBrowseLobbiesOpen(false)}
-          onJoin={(matchCode, opts) => transport.joinOnline(matchCode, opts)}
-        />
+        {modals}
       </SafeAreaView>
     </View>
   );
 }
 
-// ─── App bar ────────────────────────────────────────────────────────
+// ─── App bar (portrait) ─────────────────────────────────────────────
 
-interface AppBarProps {
-  name: string;
-  onChangeName: (v: string) => void;
-}
-
-/**
- * Compact sticky top bar — identity pill on the left (avatar +
- * editable name + EDIT label), brand mark on the right (wind emblem
- * + "Modern Mahjong" / "麻將"). Replaces the legacy `<LobbyHeader>`
- * hero which ate ~280 px of vertical real estate before the first
- * mode card. Held in place by the parent ScrollView's
- * `stickyHeaderIndices={[0]}` so it stays pinned during scroll.
- */
-function AppBar({ name, onChangeName }: AppBarProps) {
-  const initials = (name || '?').slice(0, 2).toUpperCase();
-  // Ref so the EDIT pill (and the avatar) can pull the TextInput into
-  // focus — the input itself is always editable, but the EDIT
-  // affordance only does something if a tap actually reaches the
-  // underlying input. Without this the pill was a decorative no-op.
-  const nameInputRef = useRef<TextInput>(null);
-  const [nameFocused, setNameFocused] = useState(false);
-  // On web the pill renders as a real `<button>` (via
-  // `accessibilityRole`), and mousedown on a button shifts focus to
-  // it as a browser default — which blurs the TextInput before
-  // `onPress` ever fires. Without this guard, a tap on DONE blurs the
-  // input via the focus shift, then `onPress` reads the post-blur
-  // state and re-focuses, making the pill look stuck on DONE.
-  // `onMouseDown` preventDefault is the canonical fix: it suppresses
-  // the focus shift so `onPress` sees the input's true focus state.
-  // RN-Web forwards `onMouseDown` to the rendered DOM element; native
-  // builds ignore the prop.
-  const webBlurGuard: { onMouseDown?: (e: { preventDefault?: () => void }) => void } =
-    Platform.OS === 'web' ? { onMouseDown: (e) => e?.preventDefault?.() } : {};
-  const onPillPress = () => {
-    if (nameInputRef.current?.isFocused()) {
-      nameInputRef.current.blur();
-    } else {
-      nameInputRef.current?.focus();
-    }
-  };
+function AppBar({ name, onChangeName }: { name: string; onChangeName: (v: string) => void }) {
+  const occluder = useMenuOccluder('glass');
   return (
     <View
+      ref={occluder.ref}
+      onLayout={occluder.onLayout}
       style={{
         flexDirection: 'row',
         alignItems: 'center',
         gap: 10,
-        paddingHorizontal: 14,
-        paddingVertical: 10,
-        backgroundColor: 'rgba(241,234,220,0.92)',
-        borderBottomColor: COLORS.hairline,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        ...glass({ quiet: true, radius: 0, flat: true }),
+        borderWidth: 0,
         borderBottomWidth: 1,
+        borderBottomColor: MENU.hairlineSoft,
       }}
     >
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 7,
-          backgroundColor: COLORS.paperHi,
-          borderColor: nameFocused ? COLORS.red : COLORS.hairline,
-          borderWidth: 1,
-          borderRadius: 8,
-          paddingVertical: 4,
-          paddingHorizontal: 8,
-          paddingLeft: 4,
-          flex: 1,
-          minWidth: 0,
-        }}
-      >
-        <View
-          style={{
-            width: 26,
-            height: 26,
-            borderRadius: 6,
-            backgroundColor: COLORS.avatarBg,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Text style={{ color: 'white', fontWeight: '800', fontSize: 11 }}>{initials}</Text>
-        </View>
-        <TextInput
-          ref={nameInputRef}
-          value={name}
-          onChangeText={onChangeName}
-          onFocus={() => setNameFocused(true)}
-          onBlur={() => setNameFocused(false)}
-          placeholder="Display name"
-          placeholderTextColor={COLORS.ink3}
-          accessibilityLabel="Display name"
-          style={{
-            fontFamily: 'Nunito',
-            fontSize: 13,
-            fontWeight: '700',
-            color: COLORS.ink,
-            flex: 1,
-            minWidth: 0,
-            padding: 0,
-          }}
-        />
-        <Pressable
-          {...webBlurGuard}
-          onPress={onPillPress}
-          accessibilityRole="button"
-          accessibilityLabel={nameFocused ? 'Done editing display name' : 'Edit display name'}
-          style={({ pressed }) => ({
-            backgroundColor: nameFocused ? COLORS.red : pressed ? COLORS.cream : COLORS.creamLow,
-            borderRadius: 4,
-            paddingHorizontal: 6,
-            paddingVertical: 2,
-          })}
-        >
-          <Text
-            style={{
-              fontSize: 10,
-              fontWeight: '800',
-              color: nameFocused ? 'white' : COLORS.ink3,
-              letterSpacing: 0.4,
-            }}
-          >
-            {nameFocused ? 'DONE' : 'EDIT'}
-          </Text>
-        </Pressable>
-      </View>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-        <WindEmblem wind="東" size={22} />
-        <View>
-          {/* `accessibilityRole="header"` so Playwright's
-              `getByRole('heading', { name: 'Modern Mahjong' })` finds
-              the brand mark — the test specs use that selector to wait
-              for the lobby to settle before clicking through. Renders
-              an `<h1>` via RN-Web. */}
-          <Text
-            accessibilityRole="header"
-            style={{ fontSize: 13, fontWeight: '900', color: COLORS.ink, lineHeight: 14 }}
-          >
-            Modern Mahjong
-          </Text>
-          <Text
-            style={{
-              fontFamily: 'Noto Serif TC',
-              fontSize: 13,
-              fontWeight: '700',
-              color: COLORS.red,
-              lineHeight: 14,
-              marginTop: 2,
-            }}
-          >
-            麻將
-          </Text>
-        </View>
-      </View>
+      <IdentityPill name={name} onChangeName={onChangeName} compact grow />
+      <BrandMark size={22} />
     </View>
   );
 }
-
-// ─── Primary mode card ──────────────────────────────────────────────
-
-interface PrimaryModeCardProps {
-  accent?: boolean;
-  title: string;
-  subtitle: string;
-  icon: ReactNode;
-  // RECOMMENDED pill paused — `badge?: string` slot removed alongside
-  // its render hook below. Restore both together (see ModeCard.tsx
-  // for the matching pause on the desktop side) when the pill comes
-  // back.
-  /** When true, the card claims `flex: 1` so it stretches to fill
-   *  its parent's cross-axis. Used in the landscape side-by-side row
-   *  to equalise the Online + Practice card heights — the Online
-   *  card carries more content (match-code input + 3 buttons +
-   *  connection status), so without this the Practice card sits
-   *  shorter and the row reads uneven. Portrait stacks the cards
-   *  vertically inside a column-flex parent where flex:1 would
-   *  greedily consume the rest of the column, so callers must only
-   *  set this when the parent is a row-flex container. */
-  fillHeight?: boolean;
-  children: ReactNode;
-}
-
-/**
- * Mobile-tighter version of `ModeCard` — 12×14 padding instead of
- * 22, 32×32 icon swatch instead of 40, 15 px title instead of 16.
- * Kept local rather than parameterising `ModeCard` because the
- * mobile redesign is the only consumer at this size and the desktop
- * card's chrome shouldn't drift toward the mobile spec.
- */
-function PrimaryModeCard({
-  accent = false,
-  title,
-  subtitle,
-  icon,
-  fillHeight = false,
-  children,
-}: PrimaryModeCardProps) {
-  return (
-    <View
-      style={{
-        backgroundColor: COLORS.paperHi,
-        borderColor: accent ? COLORS.accentBorder : COLORS.hairline,
-        borderWidth: 1,
-        borderRadius: 12,
-        paddingHorizontal: 14,
-        paddingVertical: 12,
-        gap: 10,
-        boxShadow: '0px 1px 3px rgba(0,0,0,0.04)',
-        ...(fillHeight && { flex: 1 }),
-      }}
-    >
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-        <View
-          style={{
-            width: 32,
-            height: 32,
-            borderRadius: 8,
-            backgroundColor: accent ? COLORS.accentSalmonSwatch : COLORS.neutralSwatch,
-            borderColor: accent ? COLORS.accentSalmonEdge : COLORS.hairline,
-            borderWidth: 1,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          {icon}
-        </View>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-            <Text
-              style={{
-                fontSize: 15,
-                fontWeight: '900',
-                color: COLORS.ink,
-                lineHeight: 17,
-              }}
-            >
-              {title}
-            </Text>
-            {/* RECOMMENDED pill paused — re-add the badge prop + a
-                <RecommendedBadge label={badge} /> render here when
-                restoring. See ModeCard.tsx for the desktop pair. */}
-          </View>
-          <Text
-            style={{
-              fontSize: 11,
-              color: COLORS.ink3,
-              fontWeight: '600',
-              marginTop: 1,
-            }}
-          >
-            {subtitle}
-          </Text>
-        </View>
-      </View>
-      {children}
-    </View>
-  );
-}
-
-// RecommendedBadge — paused. Re-add as `function RecommendedBadge({ label })`
-// returning the salmon-on-cream pill (see git history pre-this-PR) when
-// the slot in PrimaryModeCard above is restored.
 
 // ─── Secondary row ──────────────────────────────────────────────────
 
@@ -744,67 +430,49 @@ interface SecondaryRowProps {
   title: string;
   subtitle: string;
   onPress: () => void;
-  /** Optional trailing slot — rendered before the chevron. Currently
-   *  unused (the Tutorial progress dots that lived here were replaced
-   *  by a textual "X/N" subtitle when the curriculum grew past ~8
-   *  lessons and the dot row stopped fitting on phone viewports), but
-   *  kept as an extension point for other rows that want a small
-   *  trailing indicator. */
-  trailing?: ReactNode;
+  testID?: string;
 }
 
-/**
- * Single tappable row used for Tutorial-collapsed, LAN-collapsed,
- * and Replays. Same chrome as `PrimaryModeCard` minus the body
- * children — when the row needs to "expand" the consumer swaps it
- * for `<ExpandedCard>` instead of toggling internal state.
- */
-function SecondaryRow({ icon, title, subtitle, onPress, trailing }: SecondaryRowProps) {
+/** Tappable quiet-glass row (Tutorial / LAN collapsed, Replays). */
+function SecondaryRow({ icon, title, subtitle, onPress, testID }: SecondaryRowProps) {
+  const [hovered, setHovered] = useState(false);
+  const occluder = useMenuOccluder('glass');
   return (
     <Pressable
+      ref={occluder.ref}
+      onLayout={occluder.onLayout}
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={title}
+      testID={testID}
+      onHoverIn={() => setHovered(true)}
+      onHoverOut={() => setHovered(false)}
       style={({ pressed }) => ({
+        ...glass({ quiet: true, radius: PHONE_RADIUS }),
         flexDirection: 'row',
         alignItems: 'center',
         gap: 10,
-        backgroundColor: pressed ? COLORS.cream : COLORS.paperHi,
-        borderColor: COLORS.hairline,
-        borderWidth: 1,
-        borderRadius: 12,
-        paddingHorizontal: 14,
+        paddingHorizontal: 12,
         paddingVertical: 10,
-        boxShadow: '0px 1px 3px rgba(0,0,0,0.04)',
+        minHeight: 56,
+        ...(pressed ? { backgroundColor: 'rgba(24,34,28,0.7)' } : {}),
+        ...HOVER_TRANSITION,
+        transform: [{ translateY: hovered && !pressed ? -1 : 0 }, { scale: pressed ? 0.98 : 1 }],
       })}
     >
-      <View
-        style={{
-          width: 32,
-          height: 32,
-          borderRadius: 8,
-          backgroundColor: COLORS.neutralSwatch,
-          borderColor: COLORS.hairline,
-          borderWidth: 1,
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        {icon}
-      </View>
+      <IconSwatch icon={icon} size={34} />
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={{ fontSize: 13, fontWeight: '900', color: COLORS.ink, lineHeight: 16 }}>
+        <Text style={{ fontSize: 14, fontWeight: '800', color: MENU.text, lineHeight: 17 }}>
           {title}
         </Text>
         <Text
-          style={{ fontSize: 11, color: COLORS.ink3, fontWeight: '600', marginTop: 1 }}
+          style={[TYPE.cardSubtitle, { fontSize: 11, lineHeight: 14, marginTop: 1 }]}
           numberOfLines={1}
         >
           {subtitle}
         </Text>
       </View>
-      {trailing}
-      <ChevronRightIcon size={11} color={COLORS.ink3} />
+      <ChevronRightIcon size={11} color={MENU.text4} />
     </Pressable>
   );
 }
@@ -819,299 +487,41 @@ interface ExpandedCardProps {
   children: ReactNode;
 }
 
-/**
- * Portrait-only inline expansion — same chrome as `SecondaryRow` plus
- * a content body underneath. Chevron rotates 90° to signal the row
- * is open; tap the header to collapse.
- */
 function ExpandedCard({ icon, title, subtitle, onCollapse, children }: ExpandedCardProps) {
   return (
-    <View
-      style={{
-        backgroundColor: COLORS.paperHi,
-        borderColor: COLORS.hairline,
-        borderWidth: 1,
-        borderRadius: 12,
-        paddingHorizontal: 14,
-        paddingVertical: 12,
-        gap: 10,
-        boxShadow: '0px 1px 3px rgba(0,0,0,0.04)',
-      }}
+    <GlassCard
+      radius={PHONE_RADIUS}
+      style={{ paddingHorizontal: 14, paddingVertical: 12, gap: 12 }}
     >
       <Pressable
         onPress={onCollapse}
         accessibilityRole="button"
         accessibilityLabel={`Collapse ${title}`}
-        style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}
       >
-        <View
-          style={{
-            width: 32,
-            height: 32,
-            borderRadius: 8,
-            backgroundColor: COLORS.neutralSwatch,
-            borderColor: COLORS.hairline,
-            borderWidth: 1,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          {icon}
-        </View>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={{ fontSize: 13, fontWeight: '900', color: COLORS.ink, lineHeight: 16 }}>
-            {title}
-          </Text>
-          <Text style={{ fontSize: 11, color: COLORS.ink3, fontWeight: '600', marginTop: 1 }}>
-            {subtitle}
-          </Text>
-        </View>
-        <View style={{ transform: [{ rotate: '90deg' }] }}>
-          <ChevronRightIcon size={11} color={COLORS.ink3} />
-        </View>
+        <CardHeader
+          icon={icon}
+          title={title}
+          subtitle={subtitle}
+          compact
+          trailing={
+            <View style={{ transform: [{ rotate: '90deg' }] }}>
+              <ChevronRightIcon size={11} color={MENU.text4} />
+            </View>
+          }
+        />
       </Pressable>
       {children}
-    </View>
+    </GlassCard>
   );
-}
-
-// ─── Lesson row ─────────────────────────────────────────────────────
-
-interface LessonRowProps {
-  title: string;
-  blurb: string;
-  done: boolean;
-  onPress: () => void;
-}
-
-/**
- * Compact lesson row used inside both the inline-expanded Tutorial
- * card (portrait) and the Tutorial modal sheet (landscape). Done
- * lessons render with a green ✓ in a filled circle; pending lessons
- * show a hairline-outlined transparent circle.
- */
-function LessonRow({ title, blurb, done, onPress }: LessonRowProps) {
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={`${done ? 'Replay' : 'Start'} ${title}`}
-      style={({ pressed }) => ({
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-        paddingHorizontal: 8,
-        paddingVertical: 6,
-        borderRadius: 6,
-        backgroundColor: pressed ? COLORS.creamLow : COLORS.cream,
-        borderColor: COLORS.hairline,
-        borderWidth: 1,
-      })}
-    >
-      <View
-        style={{
-          width: 18,
-          height: 18,
-          borderRadius: 9,
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: done ? COLORS.success : 'transparent',
-          borderWidth: done ? 0 : 1,
-          borderColor: COLORS.hairline,
-        }}
-      >
-        {done ? <Text style={{ fontSize: 10, fontWeight: '900', color: '#fff' }}>✓</Text> : null}
-      </View>
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={{ fontSize: 12, fontWeight: '800', color: COLORS.ink, lineHeight: 14 }}>
-          {title}
-        </Text>
-        <Text style={{ fontSize: 10, color: COLORS.ink3, fontWeight: '600', marginTop: 1 }}>
-          {blurb}
-        </Text>
-      </View>
-      <ChevronRightIcon size={11} color={COLORS.ink3} />
-    </Pressable>
-  );
-}
-
-// ─── Match code input ───────────────────────────────────────────────
-
-interface MatchCodeInputProps {
-  value: string;
-  onChangeText: (v: string) => void;
-}
-
-/**
- * Compact match-code input — the only place in the mobile lobby that
- * uses monospace. Renders a focused brand-red ring via local
- * `useState(focused)` since `TextInput` doesn't surface :focus to
- * RN-Web's stylesheet.
- */
-function MatchCodeInput({ value, onChangeText }: MatchCodeInputProps) {
-  const [focused, setFocused] = useState(false);
-  // Empty-state styling tilts the input toward "placeholder" — italic
-  // + zero letter-spacing — so the `ABCDE` hint stops reading like a
-  // typed `A B C D E` value. Once the user types, both flip back to
-  // the live mono-tracked appearance so the entered code keeps its
-  // legibility.
-  const isEmpty = value.length === 0;
-  return (
-    <TextInput
-      value={value}
-      onChangeText={onChangeText}
-      maxLength={5}
-      autoCapitalize="characters"
-      autoCorrect={false}
-      placeholder="ABCDE"
-      placeholderTextColor={COLORS.ink3}
-      onFocus={() => setFocused(true)}
-      onBlur={() => setFocused(false)}
-      // `accessibilityLabel` is what RN-Web emits as `aria-label`,
-      // so Playwright specs that find this input via
-      // `page.getByLabel('Match code')` (the same selector the
-      // desktop `TextField` exposes via its `label` prop) keep
-      // working on the mobile lobby.
-      accessibilityLabel="Match code"
-      style={{
-        fontFamily: 'JetBrains Mono',
-        fontSize: 16,
-        fontWeight: '700',
-        fontStyle: isEmpty ? 'italic' : 'normal',
-        color: COLORS.ink,
-        letterSpacing: isEmpty ? 0 : 3,
-        backgroundColor: COLORS.paperHi,
-        borderColor: focused ? COLORS.red : COLORS.hairline,
-        borderWidth: 1,
-        borderRadius: 8,
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-        ...(focused && { boxShadow: '0px 0px 0px 3px rgba(177,77,58,0.15)' }),
-      }}
-    />
-  );
-}
-
-const fieldLabelStyle = {
-  fontSize: 10,
-  fontWeight: '800' as const,
-  color: COLORS.ink3,
-  letterSpacing: 0.6,
-};
-
-// ─── Compact CTAs ───────────────────────────────────────────────────
-
-/**
- * Tighter primary CTA tuned for the mobile lobby — 8/14 padding and
- * 12 px text vs. `PrimaryButton`'s 10/16/13. Sizing matches the
- * design tokens exactly; doing it inline rather than adding another
- * size to `PrimaryButton` keeps the desktop CTA shape untouched.
- */
-function CompactPrimary({
-  label,
-  onPress,
-  disabled = false,
-}: { label: string; onPress?: () => void; disabled?: boolean }) {
-  return (
-    <Pressable
-      onPress={disabled ? undefined : onPress}
-      disabled={disabled}
-      accessibilityRole="button"
-      accessibilityState={{ disabled }}
-      style={({ pressed }) => ({
-        backgroundColor: disabled ? '#c9c1b3' : pressed ? '#d05746' : COLORS.red,
-        borderRadius: 8,
-        paddingHorizontal: 14,
-        paddingVertical: 8,
-        opacity: disabled ? 0.6 : 1,
-        transform: [{ translateY: pressed && !disabled ? -1 : 0 }],
-      })}
-    >
-      <Text
-        style={{
-          color: 'white',
-          fontWeight: '800',
-          fontSize: 12,
-          letterSpacing: 0.3,
-        }}
-      >
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
-function CompactGhost({ label, onPress }: { label: string; onPress?: () => void }) {
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      style={({ pressed }) => ({
-        backgroundColor: pressed ? COLORS.cream : 'white',
-        borderColor: COLORS.hairline,
-        borderWidth: 1,
-        borderRadius: 8,
-        paddingHorizontal: 14,
-        paddingVertical: 8,
-      })}
-    >
-      <Text style={{ color: COLORS.ink, fontWeight: '700', fontSize: 12 }}>{label}</Text>
-    </Pressable>
-  );
-}
-
-// ─── Replay subtitle ────────────────────────────────────────────────
-
-/**
- * Reuses the same per-header summary the existing `ReplayLibrary`
- * uses ("wins / losses / streak"). Kept local rather than imported
- * from `ReplayLibrary.tsx` to avoid coupling a menu screen to a
- * replay-library implementation detail; the function below is the
- * mobile-lobby's subtitle formatter only.
- */
-// ─── Online connection status (carried over from Lobby.tsx) ─────────
-
-function OnlineConnectionStatus() {
-  const transport = useTransport();
-  const state = useGame((s) => s.state);
-  if (transport.status === 'idle' || state) return null;
-  if (transport.status === 'connecting') {
-    return (
-      <Text style={{ fontSize: 11, color: COLORS.ink3, fontWeight: '700' }}>
-        Connecting to {transport.resolvedHost}…
-      </Text>
-    );
-  }
-  if (transport.status === 'closed') {
-    return (
-      <View style={{ gap: 2 }}>
-        <Text style={{ fontSize: 11, color: COLORS.red, fontWeight: '800' }}>
-          Couldn't reach the match server.
-        </Text>
-        <Text style={{ fontSize: 10, color: COLORS.ink3, fontWeight: '600', lineHeight: 14 }}>
-          Tried {transport.resolvedHost || '(no host)'}.
-        </Text>
-      </View>
-    );
-  }
-  return null;
 }
 
 // ─── Phone-class viewport classifier (consumed by Lobby.tsx) ────────
 
 /**
  * True when the short edge of the viewport is at most 480 px. Catches
- * both portrait (393×852 → short=393) and landscape (852×393 →
- * short=393) phones; tablets and desktops fall to the legacy
- * `<Lobby>` layout.
- *
- * `isLandscape` comes from the shared `useIsLandscape` hook so the
- * orientation classification stays consistent with `LobbyAccordion`'s
- * portrait/landscape body split — see that hook's comment for the
- * soft-keyboard rationale.
- *
- * Hook lives here so the dispatch site in `Lobby.tsx` stays a single
- * import — the viewport classification is a presentational concern.
+ * both portrait and landscape phones; tablets and desktops fall to the
+ * desktop layout. `isLandscape` comes from the shared `useIsLandscape`
+ * hook (matchMedia on web — soft-keyboard safe).
  */
 export function useIsPhoneViewport(): { isPhone: boolean; isLandscape: boolean } {
   const { width, height } = useWindowDimensions();

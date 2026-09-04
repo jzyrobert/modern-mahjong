@@ -11,6 +11,8 @@
  *   { waitFor: selector, state?: 'visible'|'hidden', timeout? }
  *   { waitForText: 'Lobby' }
  *   { waitMs: 400 }                        settle animations (use sparingly)
+ *   { waitForSettled: '[data-reveal]' }    every match has finished its CSS animations and is opaque
+ *   { waitForFunction: 'js expression' }   polls until the expression is truthy
  *   { evaluate: 'js source' }              runs in page
  *   { setSettings: { felt: 'jade' } }      patches useGame.settings via the test hook
  *   { waitForPerf: true }                  waits until __MAHJONG_PERF__ published ≥ 2 samples
@@ -28,8 +30,9 @@
  *
  * `owner` is the subsystem the state belongs to (used by STATUS.json).
  * `budget` overrides the default per-subsystem perf budget. `noScene`
- * marks a state that renders a classic DOM view even under the 3D
- * renderer (pre-game lobby) so the WebGL budget isn't applied.
+ * (or `scene: false`) marks a state that renders a classic DOM view
+ * even under the 3D renderer (pre-game lobby) so the WebGL budget isn't
+ * applied and the budget check doesn't wait for `__MAHJONG_PERF__`.
  */
 
 /**
@@ -78,6 +81,25 @@ const START_SOLO = [
   { dismissDice: true },
 ];
 
+/**
+ * Menu settle: the card stagger (`Reveal`, CSS-driven) has finished and,
+ * when the 3D backdrop is mounted, its intro tweens have too
+ * (`MenuScene` flips `__MAHJONG_MENU_INTRO__` to 'settled'). Under the
+ * classic renderer there is no scene, so only the DOM half applies.
+ * Waiting on these instead of a fixed sleep means a cold-start stall
+ * can't hand the verifier a half-faded frame.
+ */
+const MENU_INTRO_SETTLED = `(() => {
+  if (!document.querySelector('[data-testid="lobby-backdrop-3d"]')) return true;
+  return globalThis.__MAHJONG_MENU_INTRO__ === 'settled';
+})()`;
+const MENU_SETTLED = [
+  { waitForSettled: '[data-reveal]' },
+  { waitForFunction: MENU_INTRO_SETTLED },
+  // One drift step + the canvas fade-in (400 ms) after the intro.
+  { waitMs: 450 },
+];
+
 /** Scroll every scrolled container back to the top (the sheet's ScrollView). */
 const SCROLL_TO_TOP = `
 (() => {
@@ -102,21 +124,62 @@ export const STATES = {
   // ── Menu ─────────────────────────────────────────────────────────────
   menu: {
     owner: 'menu',
-    steps: [{ goto: '/' }, { waitForText: 'Modern Mahjong' }, { waitMs: 900 }],
+    steps: [{ goto: '/' }, { waitForText: 'Modern Mahjong' }, ...MENU_SETTLED],
   },
   'menu-tutorials': {
     owner: 'menu',
+    // Phone: the Tutorial row expands into the lesson rail (portrait)
+    // or a glass sheet (landscape). Desktop / tablet: the lesson grid
+    // is always visible, the click is a no-op. Settle first so the tap
+    // doesn't scroll a still-moving row into view.
     steps: [
       { goto: '/' },
       { waitForText: 'Modern Mahjong' },
-      { click: 'text=Tutorial' },
-      { waitMs: 600 },
+      ...MENU_SETTLED,
+      { click: '[data-testid="mode-tutorial"]' },
+      { waitFor: '[data-testid="lesson-basics"]' },
+      { waitForSettled: '[data-reveal]' },
+      { waitMs: 500 },
+    ],
+  },
+  'menu-reduced-motion': {
+    owner: 'menu',
+    // `animations: false` → no intro, no drift, no parallax: the loop
+    // must report idle (0 renders/s) once the first frame has painted.
+    steps: [
+      { setSettings: { animations: false } },
+      { goto: '/' },
+      { waitForText: 'Modern Mahjong' },
+      ...MENU_SETTLED,
+      { waitMs: 800 },
     ],
     optional: true,
   },
   'replay-library': {
     owner: 'menu',
-    steps: [{ goto: '/replays' }, { waitMs: 600 }],
+    // Themed like the lobby but with no 3D scene (ARCHITECTURE.md §0
+    // non-goals) — `scene: false` tells the verifier not to expect
+    // `__MAHJONG_PERF__` here.
+    scene: false,
+    steps: [
+      { goto: '/replays' },
+      { waitForText: 'Replays' },
+      { waitForSettled: '[data-reveal]' },
+      { waitMs: 300 },
+    ],
+  },
+  'replay-import': {
+    owner: 'menu',
+    scene: false,
+    steps: [
+      { goto: '/replays' },
+      { waitForText: 'Replays' },
+      { waitForSettled: '[data-reveal]' },
+      { click: 'role=button[name="Import replays"]' },
+      { waitForText: 'Paste a JSON-encoded replay' },
+      { waitMs: 700 },
+    ],
+    optional: true,
   },
 
   // ── Settings ─────────────────────────────────────────────────────────

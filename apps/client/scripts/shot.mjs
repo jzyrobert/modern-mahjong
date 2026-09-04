@@ -184,6 +184,28 @@ async function runStep(page, step, ctx) {
       .waitFor({ timeout: step.timeout ?? 15_000 });
   if (step.waitMs) return page.waitForTimeout(step.waitMs);
   if (step.evaluate) return page.evaluate(step.evaluate);
+  if (step.waitForFunction)
+    return page.waitForFunction(step.waitForFunction, null, {
+      timeout: step.timeout ?? 15_000,
+      polling: 100,
+    });
+  if (step.waitForSettled) {
+    // Every element matching the selector has finished its CSS
+    // animations / transitions and is fully opaque — i.e. an entrance
+    // stagger (`Reveal`) is over. Passes trivially when nothing matches.
+    return page.waitForFunction(
+      (sel) => {
+        const els = Array.from(document.querySelectorAll(sel));
+        return els.every((el) => {
+          const anims = typeof el.getAnimations === 'function' ? el.getAnimations() : [];
+          const running = anims.some((a) => a.playState === 'running' || a.playState === 'pending');
+          return !running && getComputedStyle(el).opacity === '1';
+        });
+      },
+      step.waitForSettled,
+      { timeout: step.timeout ?? 15_000, polling: 100 },
+    );
+  }
   if (step.initScript) {
     // Runs before every navigation in this page — for globals the app
     // reads at boot (debug recipes, test seams). Order it before `goto`.
@@ -356,7 +378,7 @@ function judgeBudget(perf, budget, renderer, recipe) {
   const violations = [];
   if (renderer !== '3d')
     return { pass: true, violations, note: 'classic renderer — no WebGL budget' };
-  if (recipe?.noScene)
+  if (recipe?.noScene || recipe?.scene === false)
     return {
       pass: true,
       violations,
