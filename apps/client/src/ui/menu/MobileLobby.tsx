@@ -417,12 +417,21 @@ export function MobileLobby({ isLandscape }: MobileLobbyProps) {
 
 // ─── App bar (portrait) ─────────────────────────────────────────────
 
+/**
+ * Sticky app bar. Its ground is the near-opaque void (`MENU.glassSolid`,
+ * 0.94) rather than quiet glass: the hero rack scrolls under it, and at
+ * 0.42 the blurred ivory tinted the whole bar khaki (round-2 critic:
+ * rgb(113,109,93) across the bar for ~140 px of scroll). At 0.94 the
+ * bar stays inside the void family whatever passes beneath — the 6 %
+ * leak of the blur reads as a faint warmth, not a colour.
+ */
 function AppBar({ name, onChangeName }: { name: string; onChangeName: (v: string) => void }) {
   const occluder = useMenuOccluder('glass');
   return (
     <View
       ref={occluder.ref}
       onLayout={occluder.onLayout}
+      testID="lobby-app-bar"
       style={{
         flexDirection: 'row',
         alignItems: 'center',
@@ -430,6 +439,7 @@ function AppBar({ name, onChangeName }: { name: string; onChangeName: (v: string
         paddingHorizontal: 12,
         paddingVertical: 8,
         ...glass({ quiet: true, radius: 0, flat: true }),
+        backgroundColor: MENU.glassSolid,
         borderWidth: 0,
         borderBottomWidth: 1,
         borderBottomColor: MENU.hairlineSoft,

@@ -8,11 +8,11 @@ import { FlipBagProvider } from '@/src/ui/FlipBag';
 import { FullscreenPrompt } from '@/src/ui/FullscreenPrompt';
 import { ShuffleOverlay } from '@/src/ui/ShuffleOverlay';
 import { WinCelebration } from '@/src/ui/WinCelebration';
-import { type PageChrome, pageChrome } from '@/src/ui/menu/theme';
+import { type PageChrome, pageChrome, pageSurface } from '@/src/ui/menu/theme';
 import { TargetRegistryProvider } from '@/src/ui/tutorial/TargetRegistry';
 import { TutorialOverlay } from '@/src/ui/tutorial/TutorialOverlay';
 import { useIsHydrated } from '@/src/ui/useIsHydrated';
-import { Stack } from 'expo-router';
+import { Stack, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { Platform, View } from 'react-native';
@@ -108,19 +108,20 @@ function RouteTree({ chrome }: { chrome: PageChrome }) {
 
 /**
  * What the static render assumes before it can know the renderer: the
- * 3D void. `+html.tsx` paints html / body the same colour, so the
- * pre-hydration shell, the document behind it and the first frame of
- * the 3D lobby are one surface.
+ * void every menu surface paints. `+html.tsx` paints html / body the
+ * same colour, so the pre-hydration shell, the document behind it and
+ * the first frame of the lobby are one surface.
  */
-const STATIC_CHROME = pageChrome('3d');
+const STATIC_CHROME = pageChrome('menu', '3d');
 
 /**
- * Page chrome for the renderer in effect — the colour behind the app
- * root and the matching status-bar style. Everything outside the app's
- * root `View` is painted by the browser from `html` / `body`, so on
- * Android Chrome the strip a retracting URL bar exposes under the
- * lobby (and any overscroll) shows *this* colour: the parlour void for
- * the 3D flow, the classic shells' cream otherwise.
+ * Page chrome for the current route — the colour behind the app root
+ * and the matching status-bar style. Everything outside the app's root
+ * `View` is painted by the browser from `html` / `body`, so on Android
+ * Chrome the strip a retracting URL bar exposes under the lobby (and
+ * any overscroll) shows *this* colour: the parlour void for the lobby
+ * and the replay routes under either renderer, and for the match only
+ * the classic shells' cream (`pageChrome`).
  *
  * The renderer resolves at runtime (persisted setting + WebGL2), which
  * the static render cannot know: the hydration render returns the
@@ -131,7 +132,10 @@ const STATIC_CHROME = pageChrome('3d');
 function usePageChrome(): PageChrome {
   const hydrated = useIsHydrated();
   const setting = useGame((s) => s.settings.renderer);
-  const chrome = hydrated ? pageChrome(resolveRenderer(setting)) : STATIC_CHROME;
+  const pathname = usePathname();
+  const chrome = hydrated
+    ? pageChrome(pageSurface(pathname), resolveRenderer(setting))
+    : STATIC_CHROME;
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof document === 'undefined') return;
     document.documentElement.style.backgroundColor = chrome.background;

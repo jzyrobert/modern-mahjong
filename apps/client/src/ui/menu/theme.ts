@@ -4,7 +4,9 @@ export {
   CLASSIC_PAGE_BG,
   MENU,
   type PageChrome,
+  type PageSurface,
   pageChrome,
+  pageSurface,
 } from './palette';
 import { MENU } from './palette';
 

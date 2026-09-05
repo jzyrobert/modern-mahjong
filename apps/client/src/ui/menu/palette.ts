@@ -56,15 +56,25 @@ export interface PageChrome {
   statusBar: 'light' | 'dark';
 }
 
+/** Which surface a route paints: the dark menu family (`/`, `/replays…`)
+ *  or the match, whose shells depend on the renderer. */
+export type PageSurface = 'menu' | 'match';
+
+export function pageSurface(pathname: string | null | undefined): PageSurface {
+  return pathname?.startsWith('/match') ? 'match' : 'menu';
+}
+
 /**
- * Everything the browser paints *around* the app for a renderer: the
- * 3D flow is the parlour void end to end (menu, table, replays), so a
- * retracting URL bar or an overscroll on Android Chrome reveals more
- * void — never the classic cream (round-1 feedback: a cream band under
- * the lobby cards). The classic shells keep their cream.
+ * Everything the browser paints *around* the app for a route: the
+ * lobby and the replay library are the parlour void under *both*
+ * renderers (the classic lobby is the same dark backdrop with a DOM
+ * fan), so a retracting URL bar or an overscroll on Android Chrome
+ * reveals more void there — never the classic cream (round-1 feedback:
+ * a cream band under the lobby cards). Only the match keys on the
+ * renderer: the classic shells keep their cream, the 3D table is void.
  */
-export function pageChrome(renderer: ResolvedRenderer): PageChrome {
-  return renderer === '3d'
+export function pageChrome(surface: PageSurface, renderer: ResolvedRenderer): PageChrome {
+  return surface === 'menu' || renderer === '3d'
     ? { background: MENU.void0, statusBar: 'light' }
     : { background: CLASSIC_PAGE_BG, statusBar: 'dark' };
 }
