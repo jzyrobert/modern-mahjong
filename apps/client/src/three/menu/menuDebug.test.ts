@@ -15,6 +15,7 @@ describe('menu debug seam', () => {
       dicePlaceRuns: () => 2,
       dicePlaceRects: () => 9,
       viewOffsetApplies: () => 3,
+      relayouts: () => 1,
       heroBuilds: () => 1,
     });
     const d = globalThis.__MAHJONG_MENU_DEBUG__;
@@ -23,6 +24,7 @@ describe('menu debug seam', () => {
     expect(d?.band).toEqual({ x: 16, y: 300, w: 380, h: 140 });
     expect(d?.diceRects).toEqual([{ x: 21, y: 306, r: 7 }]);
     expect(d?.viewOffsetApplies).toBe(3);
+    expect(d?.heroRelayouts).toBe(1);
     // The page scrolls 120 px: the same object now reads the moved rack
     // — nothing had to re-render or re-publish.
     top = 180;
@@ -41,6 +43,7 @@ describe('menu debug seam', () => {
       parked: 2,
       fades: [1, 0.5],
       tiles: [],
+      driftRelayouts: 0,
     });
     expect(globalThis.__MAHJONG_MENU_DEBUG__?.occluders).toBe(3);
     expect(globalThis.__MAHJONG_MENU_DEBUG__?.band).toBeNull();
@@ -54,6 +57,7 @@ describe('menu debug seam', () => {
       dicePlaceRuns: () => 0,
       dicePlaceRects: () => 0,
       viewOffsetApplies: () => 1,
+      relayouts: () => 0,
       heroBuilds: () => 1,
     });
     expect(globalThis.__MAHJONG_MENU_DEBUG__?.reseeded).toBe(true);

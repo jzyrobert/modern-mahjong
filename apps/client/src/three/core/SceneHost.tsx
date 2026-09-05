@@ -14,6 +14,7 @@ import {
   resolveQuality,
 } from './quality';
 import { publishCameraLive } from './sceneRects';
+import { applyHostSize } from './sizing';
 
 /**
  * The one React ↔ three bridge. Owns the `<canvas>`, the renderer, the
@@ -309,35 +310,13 @@ function presize(rt: Runtime): void {
   rt.rig.setAspect(w / h);
 }
 
-/** Size the renderer to the attached host (no-op when nothing changed). */
+/** Size the renderer to the attached host (no-op when nothing changed);
+ *  the contract — including the synchronous redraw after a real resize —
+ *  is `applyHostSize` (core/sizing.ts). */
 function applySize(rt: Runtime): void {
   const host = rt.host;
   if (!host) return;
-  const w = host.clientWidth || 1;
-  const h = host.clientHeight || 1;
-  const dpr = Math.max(
-    rt.minDpr ?? 0,
-    Math.min(window.devicePixelRatio || 1, rt.maxDpr ?? rt.quality.maxDpr),
-  );
-  // The ResizeObserver's initial callback and a `resize` event that
-  // didn't touch this host would otherwise re-render an identical
-  // frame — skip them (the quality downgrade changes `dpr`, so it
-  // still gets through).
-  if (
-    rt.sizedOnce &&
-    w === rt.size.width &&
-    h === rt.size.height &&
-    dpr === rt.renderer.getPixelRatio()
-  )
-    return;
-  rt.sizedOnce = true;
-  rt.size.width = w;
-  rt.size.height = h;
-  rt.renderer.setPixelRatio(dpr);
-  rt.renderer.setSize(rt.size.width, rt.size.height, false);
-  rt.rig.setAspect(rt.size.width / rt.size.height);
-  rt.handle?.resize?.(rt.size.width, rt.size.height);
-  rt.loop.requestRender();
+  applyHostSize(rt, host.clientWidth || 1, host.clientHeight || 1, window.devicePixelRatio || 1);
 }
 
 function destroyRuntime(rt: Runtime, releaseContext: boolean): void {

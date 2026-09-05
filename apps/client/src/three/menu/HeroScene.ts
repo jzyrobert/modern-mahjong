@@ -37,6 +37,7 @@ import {
   seededRandom,
 } from './layout';
 import { setHeroDebugProvider } from './menuDebug';
+import { MENU_PARALLAX, PointerSmoother, normalisePointer } from './parallax';
 
 /**
  * Menu hero: the fanned winning hand + two dice resting on an unseen
@@ -59,6 +60,16 @@ import { setHeroDebugProvider } from './menuDebug';
  * is translation-invariant, the band is laid out at the frame's origin
  * and the canvas's position on the page never enters the maths: only
  * a resize (viewport or band) re-fits.
+ *
+ * The frame is keyed on the viewport's *width*. Browser chrome changes
+ * the height on its own — Android Chrome retracts its URL bar as the
+ * page scrolls (`innerHeight` grows by 56–100 px mid-scroll and shrinks
+ * again on the way back up) — and a re-fit on every such change had
+ * the rack's tiles tweening to new slots and the camera easing under
+ * the user's finger (round-4 feedback: "the tiles flicker when
+ * scrolling"). A height-only change with the same width keeps the
+ * frame; a width change (orientation flip, window drag, split screen)
+ * or a band resize re-reads it.
  *
  * Motion budget (ARCHITECTURE.md §2): an intro settle of ~1.5 s, then
  * the loop idles (pointer parallax on wide viewports wakes it).
@@ -177,6 +188,8 @@ export function buildHeroScene(ctx: SceneContext, opts: HeroSceneOptions): Scene
   let fitted = layout.band !== null;
   rig.snap(layout.camera);
   rig.halfLife = 0.28;
+  // Menu-tuned (the rig default is the table's): see `parallax.ts`.
+  rig.parallaxStrength = MENU_PARALLAX.cameraStrength;
 
   // ── Lights + unseen felt ───────────────────────────────────────────
   const lights = buildLights(scene, renderer, quality, {
@@ -400,15 +413,13 @@ export function buildHeroScene(ctx: SceneContext, opts: HeroSceneOptions): Scene
   };
 
   // ── Pointer parallax ───────────────────────────────────────────────
+  // The rig follows the *smoothed* pointer (fed from `update`), so its
+  // own lerp chains after the menu's slower smoothing.
   const parallaxOn = quality.parallax && !reducedMotion;
-  const pointer = { x: 0, y: 0 };
-  const pointerSmooth = { x: 0, y: 0 };
+  const pointer = new PointerSmoother();
   const onPointer = (e: PointerEvent) => {
-    const w = window.innerWidth || 1;
-    const h = window.innerHeight || 1;
-    pointer.x = (e.clientX / w) * 2 - 1;
-    pointer.y = -((e.clientY / h) * 2 - 1);
-    rig.setPointer(pointer.x, pointer.y);
+    const n = normalisePointer(e.clientX, e.clientY, window.innerWidth, window.innerHeight);
+    pointer.set(n.x, n.y);
   };
   if (parallaxOn) window.addEventListener('pointermove', onPointer, { passive: true });
 
@@ -418,8 +429,8 @@ export function buildHeroScene(ctx: SceneContext, opts: HeroSceneOptions): Scene
 
   const writeHero = (now: number): boolean => {
     let live = false;
-    const px = pointerSmooth.x * 0.22;
-    const py = pointerSmooth.y * 0.1;
+    const px = pointer.x * MENU_PARALLAX.heroShiftX;
+    const py = pointer.y * MENU_PARALLAX.heroShiftY;
     for (let i = 0; i < HERO_COUNT; i++) {
       const h = hero[i]!;
       const e = tweenProgress(h.tween, now);
@@ -449,8 +460,8 @@ export function buildHeroScene(ctx: SceneContext, opts: HeroSceneOptions): Scene
       const em = tweenProgress(m.tween, now);
       if (e < 1 || em < 1) live = true;
       _obj.position.set(
-        lerp(m.from.x, s.x, em) + pointerSmooth.x * 0.22,
-        s.y + (1 - e) * 2.6 + pointerSmooth.y * 0.1,
+        lerp(m.from.x, s.x, em) + pointer.x * MENU_PARALLAX.heroShiftX,
+        s.y + (1 - e) * 2.6 + pointer.y * MENU_PARALLAX.heroShiftY,
         lerp(m.from.z, s.z, em),
       );
       _obj.quaternion.setFromEuler(
@@ -505,6 +516,9 @@ export function buildHeroScene(ctx: SceneContext, opts: HeroSceneOptions): Scene
    * the view offset — SceneHost has just reset the rig's aspect to the
    * canvas's — and leaves the intro tweens running.
    */
+  /** Re-fits that moved something (camera ease + tile tweens) — the
+   *  debug seam's proof that a scroll re-laid nothing out. */
+  let relayouts = 0;
   const applyLayout = (width: number, height: number, now: number) => {
     const next = fit(width, height);
     const same = sameFit(next, layout);
@@ -515,6 +529,7 @@ export function buildHeroScene(ctx: SceneContext, opts: HeroSceneOptions): Scene
       loop.requestRender();
       return;
     }
+    relayouts++;
     if (snap) rig.snap(layout.camera);
     else rig.setPreset(layout.camera);
     (scene.fog as FogExp2).density = layout.fogDensity;
@@ -555,10 +570,13 @@ export function buildHeroScene(ctx: SceneContext, opts: HeroSceneOptions): Scene
   // SceneHost's ResizeObserver (`resize`). A viewport change that left
   // the band's size alone (a landscape / desktop band is `flex: 1`)
   // still changes the frame — the class, the fov, the pixel scale —
-  // so watch the window too. Resize only; scroll never gets here.
+  // so watch the window too. Resize only; scroll never gets here — and
+  // neither does a height-only change with the same width: that is the
+  // URL bar (or an older Chrome's soft keyboard) moving, not the
+  // viewport, and the frame is keyed on the width (see the header).
   const onWindowResize = () => {
     const next = heroFrame();
-    if (next.width === frame.width && next.height === frame.height) return;
+    if (next.width === frame.width) return;
     frame = next;
     applyLayout(ctx.size.width, ctx.size.height, performance.now());
   };
@@ -573,22 +591,18 @@ export function buildHeroScene(ctx: SceneContext, opts: HeroSceneOptions): Scene
     dicePlaceRuns: () => dicePlaceRuns,
     dicePlaceRects: () => dicePlaceRects,
     viewOffsetApplies: () => viewOffsetApplies,
+    relayouts: () => relayouts,
     heroBuilds: () => heroBuilds,
   });
 
   return {
     update(dt, now) {
       let live = false;
-      // Pointer smoothing — exponential, frame-rate independent.
-      if (parallaxOn) {
-        const k = 1 - 2 ** (-dt / 0.16);
-        const dx = pointer.x - pointerSmooth.x;
-        const dy = pointer.y - pointerSmooth.y;
-        if (Math.abs(dx) > 1e-4 || Math.abs(dy) > 1e-4) {
-          pointerSmooth.x += dx * k;
-          pointerSmooth.y += dy * k;
-          live = true;
-        }
+      // Pointer smoothing — exponential, frame-rate independent; the
+      // camera rig gets the smoothed value.
+      if (parallaxOn && pointer.step(dt)) {
+        rig.setPointer(pointer.x, pointer.y);
+        live = true;
       }
 
       // The lobby's rects settle over the first seconds (entrance
@@ -627,6 +641,8 @@ export function buildHeroScene(ctx: SceneContext, opts: HeroSceneOptions): Scene
       return live || wrote;
     },
     resize(width, height) {
+      // The band itself changed size: a real layout change, so the
+      // frame is re-read too (the desktop band is `flex: 1`).
       frame = heroFrame();
       applyLayout(width, height, performance.now());
     },

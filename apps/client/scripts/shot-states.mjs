@@ -282,6 +282,15 @@ const SCROLL_LOBBY_TO = (top) => `
 /** …to its end. */
 const SCROLL_TO_BOTTOM = SCROLL_LOBBY_TO('best.scrollHeight');
 
+/** Park the pointer near the right edge, mid-height (the menu's parallax listens on `window`). */
+const POINTER_TO_RIGHT_EDGE = `
+(() => {
+  window.dispatchEvent(new PointerEvent('pointermove', {
+    clientX: Math.round(window.innerWidth * 0.96), clientY: Math.round(window.innerHeight * 0.5), bubbles: true,
+  }));
+})();
+`;
+
 /** Scroll every scrolled container back to the top (the sheet's ScrollView). */
 const SCROLL_TO_TOP = `
 (() => {
@@ -505,6 +514,27 @@ export const STATES = {
       { waitMs: 700 },
       { evaluate: SCROLL_TO_BOTTOM },
       { waitMs: 500 },
+    ],
+  },
+  'menu-parallax': {
+    owner: 'menu',
+    // Desktop pointer parallax: the mouse parked at the right edge, the
+    // rack and the field settled on their offset (round-4 feedback: the
+    // menu swung with the mouse; it now drifts at 40 % of that and
+    // trails the pointer over ~0.4 s).
+    viewport: 'desktop',
+    steps: [
+      // `auto` resolves to a tier without parallax on a software
+      // rasteriser; pin `high` so the pointer actually moves the scene.
+      { setSettings: { quality: 'high' } },
+      { goto: '/' },
+      { waitForText: 'Modern Mahjong' },
+      ...MENU_SETTLED,
+      { evaluate: POINTER_TO_RIGHT_EDGE },
+      // The pointer smoother runs on the loop's dt (clamped to 0.1 s a
+      // frame), so on a 2 fps software rasteriser its 0.42 s time
+      // constant needs several seconds of wall clock to settle.
+      { waitMs: 6000 },
     ],
   },
   'menu-reduced-motion': {

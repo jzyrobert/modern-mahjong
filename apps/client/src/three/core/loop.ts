@@ -46,6 +46,24 @@ export class Loop {
     this.dirty = true;
   }
 
+  /**
+   * Render right now, outside the rAF, and clear the pending request.
+   * For a canvas whose drawing buffer has just been re-allocated
+   * (`renderer.setSize`): the buffer comes back cleared, and if the
+   * next `renderer.render` waits for the following animation frame the
+   * compositor presents the empty canvas in between — a one-frame blink
+   * of everything the scene draws (Android Chrome fires that resize
+   * from the URL bar retracting *during* a scroll). Updaters do not run
+   * here — this is the current frame at the new size, not a step — and
+   * the perf ring is not touched, so a frame is never counted twice.
+   * A cost-neutral no-op for the perf budget; `requestRender` keeps its
+   * meaning for callers that can wait for the loop.
+   */
+  renderNow(): void {
+    this.dirty = false;
+    this.opts.render();
+  }
+
   start(): void {
     if (this.running) return;
     this.running = true;
