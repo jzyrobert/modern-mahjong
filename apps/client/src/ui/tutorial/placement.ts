@@ -63,6 +63,12 @@ export interface CaptionPlacement {
    *  under the dice card) instead of cutting a chip in two. The overlay
    *  gives the card this height and centres the content in it. */
   height?: number;
+  /** Only for a `strip`: the vertical px of the band it sits in — from
+   *  the hand / ring edge (plus `CHROME_GAP`) to the safe edge — which
+   *  is how tall the strip may grow. Geometry only, so the overlay can
+   *  size the strip's body to it without the strip ever outgrowing the
+   *  band that placed it. */
+  room?: number;
 }
 
 export interface PlacementInput {
@@ -650,6 +656,7 @@ export function placeCaption({
         (keepClear !== null && intersectionArea(card, keepClear) > 0) ||
         (avoid ?? []).some((r) => intersectionArea(card, r) > 0),
       ...(best.height !== hs ? { height: best.height } : {}),
+      room: bandBottom - bandTop,
     };
   };
 
@@ -756,6 +763,9 @@ export function placeCaption({
       notch: null,
       gap: Math.max(0, top - haloBottom),
       overlapsChrome: covers,
+      // The band under the ring: the strip may grow up to it (over the
+      // dimmed hand row it already sits on), never onto the modal.
+      room: Math.max(hs, H - safe - (haloBottom + CHROME_GAP)),
     };
   }
 
@@ -777,6 +787,29 @@ export function sideIdealTop(halo: HaloRect, cardHeight: number, viewportHeight:
   if (cy > viewportHeight - band) return Math.round(halo.top + halo.height - cardHeight);
   if (cy < band) return Math.round(halo.top);
   return Math.round(cy - cardHeight / 2);
+}
+
+/**
+ * Vertical room a card docked above or below the halo has: the larger
+ * of the two slots, less the halo gap and the safe inset. The overlay
+ * caps a docked card's body to `slotRoom − chrome` when no side strip
+ * could take the card instead, so it docks there with a scrolling body
+ * rather than falling through to the bottom strip over the spotlit
+ * hand. Measured from the halo and the viewport only — never from the
+ * card — so the cap cannot oscillate with the dock it decides.
+ */
+export function slotRoom(halo: HaloRect, viewport: { width: number; height: number }): number {
+  const below = viewport.height - (halo.top + halo.height);
+  return Math.max(halo.top, below) - CARD_GAP - safeInset(viewport.width);
+}
+
+/** True when neither side of the halo has room for a side-docked card
+ *  of at least `SIDE_CARD_MIN_WIDTH` — the docked card's only fallback
+ *  is then the bottom strip. */
+export function noSideSlot(halo: HaloRect, viewport: { width: number; height: number }): boolean {
+  const safe = safeInset(viewport.width);
+  const sideRoom = Math.max(halo.left, viewport.width - halo.left - halo.width) - SIDE_GAP - safe;
+  return sideRoom < SIDE_CARD_MIN_WIDTH;
 }
 
 /** How far a centred (no-target) card may move off dead centre to

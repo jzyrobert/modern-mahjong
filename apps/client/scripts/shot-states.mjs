@@ -831,6 +831,20 @@ export const STATES = {
       { waitMs: 1200 },
     ],
   },
+  'tutorial-ron-0': {
+    // Intro caption of `ron` (no target) — the longest opening body in
+    // the curriculum (five lines at phone width). The centred card must
+    // show it whole on a phone, or at least four lines plus the
+    // overflow cue on the shortest ones, instead of two lines and a
+    // scroll (round-3 feedback).
+    owner: 'tutorial',
+    steps: [
+      { goto: '/' },
+      { waitForText: 'Modern Mahjong' },
+      { startTutorial: 'ron' },
+      { waitMs: 1200 },
+    ],
+  },
   'tutorial-claims-3': {
     // `claim` step of `claims`: the claim window is open on seat 3's
     // scripted chi-completion discard and the coach-mark ring must hug

@@ -32,7 +32,10 @@ declare global {
         feather?: { top: number; right: number; bottom: number; left: number };
         open?: { top: boolean; right: boolean; bottom: boolean; left: boolean };
         halo: { left: number; top: number; width: number; height: number } | null;
+        avoid?: ReadonlyArray<{ left: number; top: number; width: number; height: number }>;
         solid: boolean;
+        room?: number;
+        frame?: 'regular' | 'dense';
       }
     | undefined;
   // Published by `three/core/spotlight`.
@@ -1117,6 +1120,14 @@ test.describe('3D coach-marks: portrait dice step keeps off the hand', () => {
     await expect(cta).toBeVisible();
     const ctaBox = await cta.boundingBox();
     expect(ctaBox!.y + ctaBox!.height).toBeLessThanOrEqual(915);
+    // The strip grows to its band: the four-line dice caption shows
+    // whole (no overflow chevron) instead of two lines and a scroll.
+    await expect
+      .poll(() => bodyLines(page), { timeout: 5_000 })
+      .toMatchObject({
+        overflow: false,
+        visible: 4,
+      });
     // Every HUD control under the strip (turn chip, table chip, footer
     // badge, sort pills) is either clear of it or covered whole — the
     // strip stretches over the band rather than cutting a chip in two.
@@ -1198,3 +1209,97 @@ test.describe('3D coach-marks: landscape lesson-complete card keeps off the resu
     expect(card!.x + card!.width).toBeLessThanOrEqual(915 - 12 + 1);
   });
 });
+
+/** Visible vs total body lines of the coach card's scrolling copy. */
+const bodyLines = (page: import('@playwright/test').Page) =>
+  page.evaluate(() => {
+    const body = document.querySelector('[data-testid="tutorial-body"]');
+    const scroll = body?.firstElementChild as HTMLElement | null;
+    const text = scroll?.querySelector<HTMLElement>('div[dir="auto"]') ?? null;
+    if (!scroll || !text) return null;
+    const lh = Number.parseFloat(getComputedStyle(text).lineHeight);
+    return {
+      visible: Math.floor((scroll.clientHeight + 0.5) / lh),
+      total: Math.round(scroll.scrollHeight / lh),
+      overflow: document.querySelector('[data-testid="tutorial-body-more"]') !== null,
+    };
+  });
+
+/**
+ * Round-3 feedback: on a phone the intro card showed two body lines and
+ * a scroll chevron under a large title and generous padding. The body
+ * now takes the room the centred placement really has (chrome above →
+ * hand row below): the whole step text when it fits, at least four
+ * lines above the cue when it does not — with the card still clear of
+ * the hand tiles and every HUD control by ≥ 8 px.
+ */
+for (const [label, viewport] of [
+  ['phone', { width: 412, height: 700 }],
+  ['phone-small', { width: 360, height: 640 }],
+] as const) {
+  test.describe(`3D coach-marks: intro body uses the room (${label})`, () => {
+    test.use({ viewport, isMobile: true, hasTouch: true });
+    test.setTimeout(60_000);
+
+    const start = async (page: import('@playwright/test').Page, lesson: string, title: string) => {
+      await page.goto('/');
+      await expect(page.getByRole('heading', { name: 'Modern Mahjong' })).toBeVisible();
+      await page.evaluate((id) => {
+        const g = globalThis as { __MAHJONG_TEST_START_TUTORIAL__?: (id: string) => void };
+        g.__MAHJONG_TEST_START_TUTORIAL__?.(id);
+      }, lesson);
+      await expect(page.getByText(title)).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByTestId('own-hand-tile').first()).toBeAttached({ timeout: 15_000 });
+    };
+
+    /** Whole text, or ≥ 4 lines above the cue — and the card clear of
+     *  the hand and the HUD by the placement's 8 px gap. */
+    const assertBody = async (page: import('@playwright/test').Page) => {
+      await expect
+        .poll(
+          async () => {
+            const l = await bodyLines(page);
+            if (!l) return 'no body';
+            if (!l.overflow)
+              return l.visible === l.total ? 'whole' : `clipped ${l.visible}/${l.total}`;
+            return l.visible >= 4 ? 'whole' : `${l.visible} lines + chevron of ${l.total}`;
+          },
+          { timeout: 15_000 },
+        )
+        .toBe('whole');
+      const card = await page.getByTestId('tutorial-card').boundingBox();
+      expect(card).not.toBeNull();
+      for (const t of await ownHandTileBoxes(page)) {
+        expect(intersects(card!, t), `card over tile ${JSON.stringify(t)}`).toBe(false);
+        expect(t.y - (card!.y + card!.height)).toBeGreaterThanOrEqual(8);
+      }
+      const layout = await page.evaluate(() => globalThis.__MAHJONG_TEST_TUTORIAL_LAYOUT__);
+      expect(layout?.placement.kind).toBe('center');
+      // Every HUD control in the card's column sits ≥ 8 px off the card.
+      for (const a of layout?.avoid ?? []) {
+        const box = { x: a.left, y: a.top, width: a.width, height: a.height };
+        if (a.left + a.width <= card!.x || a.left >= card!.x + card!.width) continue;
+        expect(intersects(card!, box), `card over chrome ${JSON.stringify(a)}`).toBe(false);
+        const gap =
+          a.top >= card!.y ? a.top - (card!.y + card!.height) : card!.y - (a.top + a.height);
+        expect(gap, `chrome ${JSON.stringify(a)} within 8 px of the card`).toBeGreaterThanOrEqual(
+          8,
+        );
+      }
+      const cta = await page.getByTestId('tutorial-next').boundingBox();
+      expect(cta!.height).toBeGreaterThanOrEqual(44);
+    };
+
+    test('Claiming a tile: the four-line intro shows whole or ≥ 4 lines', async ({ page }) => {
+      await start(page, 'claims', 'Claiming a tile');
+      await assertBody(page);
+    });
+
+    test('Winning off a discard: the longest intro shows ≥ 4 lines', async ({ page }) => {
+      await start(page, 'ron', 'Winning off a discard');
+      await assertBody(page);
+      const l = await bodyLines(page);
+      expect(l!.visible).toBeGreaterThanOrEqual(4);
+    });
+  });
+}

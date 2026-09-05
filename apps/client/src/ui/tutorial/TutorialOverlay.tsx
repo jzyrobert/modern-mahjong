@@ -42,10 +42,19 @@ import {
   useTargetRegistry,
   useTutorialTargetRect,
 } from './TargetRegistry';
+import {
+  BODY_CUE_H,
+  type CardFrame,
+  MIN_SCROLL_LINES,
+  STACKED_HEADER_MAX_WIDTH,
+  STRIP_BREATHING,
+  bodyCap,
+  chooseFrame,
+  fitBody,
+} from './bodyCap';
 import { OVERLAY_ATTR, isChromeCandidate } from './chromeRects';
 import { focusFor } from './focus';
 import {
-  CARD_GAP,
   CARD_MAX_WIDTH,
   CENTRE_CHROME_GAP,
   type CaptionPlacement,
@@ -53,16 +62,16 @@ import {
   type HaloRect,
   NARROW_STRIP_MAX_WIDTH,
   SHORT_VIEWPORT_MAX_HEIGHT,
-  SIDE_CARD_MIN_WIDTH,
-  SIDE_GAP,
   type SideMask,
   centredRoom,
   clearGrazers,
   encloseStraddlers,
   featherFor,
   haloFor,
+  noSideSlot,
   placeCaption,
   safeInset,
+  slotRoom,
   trimStraddlers,
 } from './placement';
 import type { Lesson, LessonStep } from './types';
@@ -161,8 +170,23 @@ export function TutorialOverlay() {
   if (!active && justCompleted) return <CompletionPrompt lessonId={justCompleted} />;
   if (!active) return null;
   if (!sceneSettled) return null;
-  return <ActiveStep lesson={active.lesson} step={active.step} stepIndex={active.stepIndex} />;
+  return (
+    <ActiveStep
+      lesson={active.lesson}
+      step={active.step}
+      stepIndex={active.stepIndex}
+      classic={!is3d}
+    />
+  );
 }
+
+/** How far the classic shells' `HandTile` lifts the freshly drawn tile
+ *  above the hand row (translateY −10 px, scale 1.06) beyond the 4 px
+ *  pad the registered `own-hand` wrapper gives it. The keep-out grows by
+ *  this much under the classic renderer so a card measured to the rect
+ *  still clears the lifted tile by the placement's air. The 3D shell
+ *  registers the tiles' settled poses, so nothing pokes out there. */
+const CLASSIC_HAND_LIFT = 8;
 
 /** Quiet the rig must hold before its motion counts as over. */
 const CAMERA_QUIET_MS = 160;
@@ -224,6 +248,8 @@ interface ActiveStepProps {
   lesson: Lesson;
   step: LessonStep;
   stepIndex: number;
+  /** Classic renderer (see `CLASSIC_HAND_LIFT`). */
+  classic: boolean;
 }
 
 /** Coach-card glass. Deep enough that the felt, walls and tiles behind
@@ -261,7 +287,7 @@ const BODY_FONT = Platform.select({
   default: undefined,
 });
 
-function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
+function ActiveStep({ lesson, step, stepIndex, classic }: ActiveStepProps) {
   const dismiss = useTutorial((s) => s.dismiss);
   const advance = useTutorial((s) => s.advance);
   const transport = useTransport();
@@ -326,7 +352,25 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
   // real height: card measured → strip chosen → strip measured → card
   // height forgotten → estimate fits → card chosen → … a synchronous
   // layout-effect loop React aborts with "maximum update depth".
-  const measureKey = `${stepKey}|${window.width}x${window.height}`;
+  // The card frame (regular / dense, see `bodyCap.chooseFrame`) is part
+  // of the key too: its chrome differs by ~30 px, so a regular
+  // measurement must never size a dense body.
+  const frameKey = `${stepKey}|${window.width}x${window.height}`;
+  const [frameState, setFrameState] = useState<{
+    key: string;
+    frame: CardFrame;
+    /** Dense → regular returns so far for this key (at most one). */
+    returns: number;
+  }>({ key: '', frame: 'regular', returns: 0 });
+  const chosenBefore = frameState.key === frameKey ? frameState.frame : null;
+  // Short viewport (landscape phone): the card lives in the ~215 px
+  // band between the top HUD and the hand row, where the regular
+  // frame (18 px pad, 10 px gaps, 26 px title) left two body lines and
+  // a scroll for a three-sentence intro. Always dense there; portrait
+  // phones go dense when the room turns out scarce (decided below).
+  const shortViewport = window.height <= SHORT_VIEWPORT_MAX_HEIGHT;
+  const frame: CardFrame = shortViewport ? 'dense' : (chosenBefore ?? 'regular');
+  const measureKey = `${frameKey}|${frame}`;
   const [measured, setMeasured] = useState<{
     key: string;
     card: number | null;
@@ -355,9 +399,19 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
   // the card's real chrome, which sizes the body cap below.
   const [bodyMeasured, setBodyMeasured] = useState<{ key: string; height: number } | null>(null);
   const bodyHeight = bodyMeasured?.key === measureKey ? bodyMeasured.height : null;
+  // Natural height of the body text (the ScrollView's content), keyed by
+  // step + viewport + card width — the frame does not change it, so a
+  // regular card's measurement still decides whether to go dense.
+  const [contentMeasured, setContentMeasured] = useState<{
+    key: string;
+    height: number;
+  } | null>(null);
   /** The card's measured chrome (everything but the body) per step +
-   *  viewport (see below). */
+   *  viewport + frame (see below). */
   const chromeRef = useRef<{ key: string; chrome: number }>({ key: '', chrome: 0 });
+  /** Same for the strip layout, whose chrome is its own (title row,
+   *  step label, frame) — a card's chrome must never size a strip body. */
+  const stripChromeRef = useRef<{ key: string; chrome: number }>({ key: '', chrome: 0 });
 
   // Every card keeps clear of the user's hand row: the registered
   // `own-hand` rect is a keep-out for its placement (the two-row portrait
@@ -374,15 +428,26 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
   const handRect = useTutorialTargetRect(
     targetId === 'own-hand' || targetId === 'result-panel' ? null : 'own-hand',
   );
+  // Whether the hand has stopped moving — the frame decision below only
+  // runs while it has. During the deal the live rect spans the tiles
+  // still in flight from the wall, which made the intro card's room look
+  // scarce for a moment and flipped its frame.
+  const handAtRest = useSettledRect(handRect, stepKey) === handRect;
   const panelRect = useTutorialTargetRect(targetId === 'result-panel' ? null : 'result-panel');
+  // The hand as a region to keep off: under the classic renderer it
+  // reaches `CLASSIC_HAND_LIFT` above the registered wrapper.
+  const handKeepOut = useMemo(() => {
+    const hand = toHalo(handRect);
+    if (!hand || !classic) return hand;
+    return { ...hand, top: hand.top - CLASSIC_HAND_LIFT, height: hand.height + CLASSIC_HAND_LIFT };
+  }, [handRect, classic]);
   const hardKeepOut = useMemo(() => {
     const out: HaloRect[] = [];
-    const hand = toHalo(handRect);
     const panel = toHalo(panelRect);
-    if (hand) out.push(hand);
+    if (handKeepOut) out.push(handKeepOut);
     if (panel) out.push(panel);
     return out;
-  }, [handRect, panelRect]);
+  }, [handKeepOut, panelRect]);
 
   // Web: measure synchronously before paint. RNW's `onLayout` goes
   // through ResizeObserver + setTimeout, i.e. it waits for a frame — on a
@@ -415,7 +480,7 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
   const { halo, open } = shapeHalo(haloRect);
   const feather = halo ? featherFor(halo, avoid) : undefined;
   const cardHalo = shapeHalo(cardRect).halo;
-  const keepOut = cardHalo === null ? toHalo(handRect) : null;
+  const keepOut = cardHalo === null ? handKeepOut : null;
   const avoidForCard = keepOut ? [...avoid, keepOut] : avoid;
   // Real chrome (everything but the body), taken once per step from the
   // first pair of measurements — before any cap has moved the body, so
@@ -432,6 +497,14 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
   )
     chromeRef.current = { key: measureKey, chrome: cardHeight - bodyHeight };
   const chromeKnown = chromeRef.current.key === measureKey;
+  if (
+    stripHeight !== null &&
+    bodyHeight !== null &&
+    modeRef.current === 'strip' &&
+    stripChromeRef.current.key !== measureKey
+  )
+    stripChromeRef.current = { key: measureKey, chrome: stripHeight - bodyHeight };
+  const stripChromeKnown = stripChromeRef.current.key === measureKey;
   // Docked card with no side slot to fall back on (a landscape phone's
   // own-hand step: the hand spans the width, the side gutters are ~100
   // px): cap the body to the larger vertical slot so the card docks
@@ -446,14 +519,14 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
   const safe = safeInset(window.width);
   const dockLine = Math.min(CARD_MAX_WIDTH, window.width - safe * 2) < 260 ? 17 : 21;
   let slotBodyCap = Number.POSITIVE_INFINITY;
-  if (cardHalo && chromeKnown) {
-    const sideRoom =
-      Math.max(cardHalo.left, window.width - cardHalo.left - cardHalo.width) - SIDE_GAP - safe;
-    if (sideRoom < SIDE_CARD_MIN_WIDTH) {
-      const vertical = Math.max(cardHalo.top, window.height - cardHalo.top - cardHalo.height);
-      const room = vertical - CARD_GAP - safe - chromeRef.current.chrome;
-      const lines = Math.floor(room / dockLine);
-      if (lines >= 3) slotBodyCap = lines * dockLine;
+  /** Room the docked card has in its vertical slot (see `slotRoom`). */
+  let dockRoom = Number.POSITIVE_INFINITY;
+  if (cardHalo && chromeKnown && noSideSlot(cardHalo, window)) {
+    const room = slotRoom(cardHalo, window);
+    const lines = Math.floor((room - chromeRef.current.chrome - BODY_CUE_H) / dockLine);
+    if (lines >= MIN_SCROLL_LINES) {
+      dockRoom = room;
+      slotBodyCap = room - chromeRef.current.chrome;
     }
   }
   const placedCardHeight =
@@ -473,17 +546,6 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
   modeRef.current = strip ? 'strip' : 'card';
   const solid = placement.overlapsChrome;
   const glassBg = solid ? GLASS_BG_SOLID : GLASS_BG;
-  publishLayout({
-    stepKey,
-    placement,
-    halo,
-    feather,
-    open,
-    avoid,
-    cardHeight,
-    solid,
-    viewport: { width: window.width, height: window.height },
-  });
 
   // Step transition: fade + 8 px slide once the new card is measured.
   // `ready` drops to false on every step change (the measurement is
@@ -526,48 +588,95 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
   const lessonLabel =
     lessonIndex >= 0 ? `Lesson ${lessonIndex + 1}/${LESSON_ORDER.length}` : 'Tutorial';
   const compact = placement.width < 260;
-  // Short viewport (landscape phone): the card lives in the ~215 px
-  // band between the top HUD and the hand row, where the regular
-  // frame (18 px pad, 10 px gaps, 26 px title) left two body lines and
-  // a scroll for a three-sentence intro. Trim the frame — never the 44
-  // px CTA — so a third line fits.
-  const dense = !compact && window.height <= SHORT_VIEWPORT_MAX_HEIGHT;
-  // Below this width the header stacks (lesson + step labels on one
-  // row, dots beneath) — a single row would wrap the labels.
-  const stackedHeader = placement.width < 380;
-  // Hard CTA-visibility guarantee: cap the body copy so the whole card
-  // fits between the safe insets even for a narrow side dock (landscape
-  // phone beside the result panel). `CHROME` approximates everything in
-  // the card that is not body text; overflow scrolls inside the card.
-  const chromeEstimate = compact ? 220 : 236;
-  let bodyMaxHeight = Math.max(64, window.height - safe * 2 - chromeEstimate);
-  const chromeNow = chromeKnown ? chromeRef.current.chrome : chromeEstimate;
-  // Centred card: room between the chrome above it and the hand row.
-  // The cap depends only on those rects — never on the card's own
-  // height or dock — so it follows the 3D camera easing in without
-  // ping-ponging. It applies from the very first render (with the
-  // chrome estimate until the real chrome is known) so the line count
-  // the user sees does not depend on when the measurements landed.
-  // (Docked cards are deliberately not capped this way: their dock
-  // kind depends on the card height, and a cap keyed to the dock
-  // oscillated between an above dock and a side dock every frame.)
-  if (keepOut) {
-    const room = centredRoom(keepOut, avoidForCard, window, placement.width, placement.left);
-    bodyMaxHeight = Math.min(bodyMaxHeight, room - chromeNow);
+  // Room the card really has, from geometry alone (never from the card's
+  // own height or dock, so it follows the 3D camera easing in without
+  // ping-ponging): a centred card's band between the chrome above it and
+  // the hand row; a docked card's vertical slot when it has no side slot
+  // to fall back on; the strip's band. Anything else (a side dock, a
+  // desktop card) is bounded only by the safe insets. It applies from
+  // the very first render (with a chrome estimate until the real chrome
+  // is known) so the line count the user sees does not depend on when
+  // the measurements landed. (Docked cards with a side slot are
+  // deliberately not capped to their dock: the dock kind depends on the
+  // card height, and a cap keyed to the dock oscillated between an
+  // above dock and a side dock every frame.)
+  let room = window.height - safe * 2;
+  if (strip) room = placement.room ?? room;
+  else if (keepOut)
+    room = Math.min(
+      room,
+      centredRoom(keepOut, avoidForCard, window, placement.width, placement.left),
+    );
+  else room = Math.min(room, dockRoom);
+  // Frame: dense trades padding, gaps and title size for body lines when
+  // the room is scarce or the regular frame would scroll the step text
+  // (see `chooseFrame`). Decided only while the hand is at rest, so the
+  // deal animation cannot flip it; the cap above keeps following the
+  // live rect so the card never lands on a tile in flight. A dense card
+  // may return to regular once per step — a hard stop on any flip-flop
+  // the estimate in `chooseFrame` could otherwise allow.
+  const contentHeight =
+    contentMeasured?.key === `${frameKey}|${placement.width}` ? contentMeasured.height : null;
+  const returns = frameState.key === frameKey ? frameState.returns : 0;
+  let chosenFrame: CardFrame = frame;
+  if (!compact && !strip && !shortViewport && handAtRest) {
+    chosenFrame = chooseFrame({
+      room,
+      chrome: chromeKnown ? chromeRef.current.chrome : null,
+      current: frame,
+      width: placement.width,
+      contentHeight,
+    });
+    if (chosenFrame === 'regular' && frame === 'dense' && returns >= 1) chosenFrame = 'dense';
   }
-  // Snap a capped body to whole lines *plus* the overflow cue's gutter:
-  // `ScrollBody` takes the gutter off the cap before it snaps the scroll
-  // area to whole lines, so a cap snapped to bare lines handed it one
-  // line less than the room held (a 75 px cap floored to 63 showed two
-  // lines and a chevron where three fitted). Never below three lines.
+  // Flip before paint: the frame decides the card's measurements, and
+  // a layout effect re-renders synchronously so the regular card is
+  // never painted on a viewport that needs the dense one.
+  useLayoutEffect(() => {
+    if (chosenFrame !== frame)
+      setFrameState((prev) => ({
+        key: frameKey,
+        frame: chosenFrame,
+        returns: (prev.key === frameKey ? prev.returns : 0) + (chosenFrame === 'regular' ? 1 : 0),
+      }));
+  }, [chosenFrame, frame, frameKey]);
+  const dense = !compact && frame === 'dense';
+  // Below this width the regular header stacks (lesson + step labels on
+  // one row, dots beneath) — a single row would wrap the labels. The
+  // dense header is always one row (labels only, no dots) so the body
+  // gets that row back.
+  const stackedHeader = placement.width < STACKED_HEADER_MAX_WIDTH && !dense;
+  // Everything in the card that is not body text, before it is measured:
+  // conservative, so the first paint never overshoots the room.
+  const chromeEstimate = strip ? 74 : compact ? 220 : dense ? 200 : 236;
+  const chromeNow = strip
+    ? stripChromeKnown
+      ? stripChromeRef.current.chrome
+      : chromeEstimate
+    : chromeKnown
+      ? chromeRef.current.chrome
+      : chromeEstimate;
   const lineHeight = strip ? STRIP_LINE_HEIGHT : compact ? 17 : 21;
-  // The vertical-slot cap decided above (docked card, no side slot).
-  bodyMaxHeight = Math.min(bodyMaxHeight, slotBodyCap);
-  if (strip) bodyMaxHeight = STRIP_LINE_HEIGHT * STRIP_BODY_LINES;
-  bodyMaxHeight = Math.max(
-    lineHeight * 3,
-    Math.floor((bodyMaxHeight - BODY_CUE_H) / lineHeight) * lineHeight + BODY_CUE_H,
-  );
+  // The body gets the room less the chrome (floored at three lines plus
+  // the cue gutter); `ScrollBody` snaps it to whole lines once it knows
+  // the text height, so a text that fits shows whole with no cue. A
+  // strip keeps `STRIP_BREATHING` off its band's far edge so it never
+  // outgrows the band that placed it.
+  const bodyMaxHeight = bodyCap(strip ? room - STRIP_BREATHING : room, chromeNow, lineHeight);
+  publishLayout({
+    stepKey,
+    placement,
+    halo,
+    feather,
+    open,
+    avoid,
+    cardHeight,
+    solid,
+    viewport: { width: window.width, height: window.height },
+    room,
+    frame: chosenFrame,
+    bodyMaxHeight,
+  });
   const ctaLabel = step.ctaLabel ?? 'Got it';
   const canRestart = stepIndex > 0 && lesson.id !== '_stub';
 
@@ -741,6 +850,7 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
                 index={stepIndex}
                 compact={compact}
                 stacked={stackedHeader}
+                dots={!dense || placement.width >= STACKED_HEADER_MAX_WIDTH}
               />
               <Text
                 accessibilityRole="header"
@@ -768,6 +878,12 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
                       : { key: measureKey, height },
                   )
                 }
+                onContentHeight={(height) => {
+                  const key = `${frameKey}|${placement.width}`;
+                  setContentMeasured((prev) =>
+                    prev?.key === key && prev.height === height ? prev : { key, height },
+                  );
+                }}
               />
               <View
                 style={{
@@ -833,6 +949,12 @@ export interface TutorialLayoutSnapshot {
   cardHeight: number | null;
   solid: boolean;
   viewport: { width: number; height: number };
+  /** Vertical room the card had for this placement (`Infinity` when
+   *  bounded only by the safe insets); see `bodyCap.ts`. */
+  room: number;
+  frame: CardFrame;
+  /** Body cap handed to `ScrollBody` (unsnapped). */
+  bodyMaxHeight: number;
 }
 
 function publishLayout(snapshot: TutorialLayoutSnapshot): void {
@@ -868,17 +990,14 @@ function otherTargetRects(
   return out;
 }
 
-/** Body copy in the landscape bottom strip: one size, up to three lines. */
+/** Body copy in the bottom strip: one size; as many lines as the band
+ *  holds (`bodyCap`), never fewer than `MIN_SCROLL_LINES` plus the cue. */
 const STRIP_LINE_HEIGHT = 18;
 /** Vertical padding of the strip card, and the card frame around the
  *  strip's content block (padding + 1 px borders) — the content is what
  *  gets measured, so a stretched strip reports its natural height. */
-const STRIP_PAD = 10;
+const STRIP_PAD = 8;
 const STRIP_FRAME = STRIP_PAD * 2 + 2;
-const STRIP_BODY_LINES = 3;
-/** Gutter under a capped, scrollable body that holds the "more below"
- *  chevron — its own row, never painted over the last visible line. */
-const BODY_CUE_H = 12;
 
 /**
  * Scrolling body copy with an overflow cue. When the text is taller than
@@ -896,19 +1015,24 @@ function ScrollBody({
   fontSize,
   lineHeight,
   onLayout,
+  onContentHeight,
 }: {
   text: string;
   maxHeight: number;
   fontSize: number;
   lineHeight: number;
   onLayout?: (height: number) => void;
+  /** Natural height of the text (the ScrollView's content). */
+  onContentHeight?: (height: number) => void;
 }) {
   const [contentH, setContentH] = useState(0);
   const [atEnd, setAtEnd] = useState(false);
-  const overflow = contentH > maxHeight + 1;
-  const scrollMax = overflow
-    ? Math.max(lineHeight * 2, Math.floor((maxHeight - BODY_CUE_H) / lineHeight) * lineHeight)
-    : maxHeight;
+  // Before the content is measured the cap is the limit; once known, a
+  // text that fits shows whole (no gutter reserved) and one that does
+  // not gets whole lines above the cue.
+  const fit = contentH > 0 ? fitBody(contentH, maxHeight, lineHeight) : null;
+  const overflow = fit?.overflow ?? false;
+  const scrollMax = fit ? fit.height : maxHeight;
   return (
     <View
       testID="tutorial-body"
@@ -920,7 +1044,10 @@ function ScrollBody({
         showsVerticalScrollIndicator
         nestedScrollEnabled
         scrollEventThrottle={32}
-        onContentSizeChange={(_w, h) => setContentH(h)}
+        onContentSizeChange={(_w, h) => {
+          setContentH(h);
+          onContentHeight?.(h);
+        }}
         onScroll={(e) => {
           const { contentOffset, layoutMeasurement, contentSize } = e.nativeEvent;
           setAtEnd(contentOffset.y + layoutMeasurement.height >= contentSize.height - 2);
@@ -1122,12 +1249,17 @@ function CardHeader({
   index,
   compact,
   stacked,
+  dots = true,
 }: {
   lessonLabel: string;
   ids: string[];
   index: number;
   compact: boolean;
   stacked: boolean;
+  /** Show the step dots. A dense card narrower than the stacking width
+   *  drops them: the labels alone fill one row, and the step label
+   *  already carries the count — the row the dots took goes to the body. */
+  dots?: boolean;
 }) {
   const count = ids.length;
   const lesson = (
@@ -1158,7 +1290,7 @@ function CardHeader({
       >
         {lesson}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 1 }}>
-          <StepDots ids={ids} index={index} />
+          {dots ? <StepDots ids={ids} index={index} /> : null}
           {stepLabel}
         </View>
       </View>

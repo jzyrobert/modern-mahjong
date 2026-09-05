@@ -30,9 +30,11 @@ import {
   focusRect,
   haloFor,
   intersectionArea,
+  noSideSlot,
   placeCaption,
   safeInset,
   sideIdealTop,
+  slotRoom,
   trimStraddlers,
 } from './placement';
 
@@ -1144,5 +1146,72 @@ describe('band strip: stretches to swallow the chrome under it whole', () => {
     expect(p.kind).toBe('strip');
     expect(p.height).toBeUndefined();
     expect(p.top).toBe(hand.top + hand.height + CHROME_GAP);
+  });
+});
+
+describe('slotRoom / noSideSlot: the room a docked card may grow into', () => {
+  test('the larger vertical slot less the halo gap and the safe inset', () => {
+    // 360×640 dice card: the modal halo spans 101–346, the card docks
+    // below it and may use everything down to the safe edge.
+    const small = { width: 360, height: 640 };
+    const modal = { left: 12, top: 101, width: 336, height: 245 };
+    expect(slotRoom(modal, small)).toBe(640 - 346 - CARD_GAP - safeInset(360));
+    // A bottom target (the landscape own-hand row) grows upward instead.
+    const hand = { left: 115, top: 300, width: 685, height: 70 };
+    expect(slotRoom(hand, landscape)).toBe(300 - CARD_GAP - safeInset(915));
+  });
+  test('a full-width halo leaves no side slot; a desktop hand row does', () => {
+    expect(noSideSlot({ left: 12, top: 101, width: 336, height: 245 }, phone)).toBe(true);
+    expect(noSideSlot({ left: 115, top: 300, width: 685, height: 70 }, landscape)).toBe(true);
+    expect(noSideSlot({ left: 344, top: 707, width: 752, height: 89 }, desktop)).toBe(false);
+  });
+});
+
+describe('strip placements report the band they may grow into', () => {
+  const hand = { left: 40, top: 571, width: 332, height: 177 };
+  const footer = [
+    { left: 12, top: 862, width: 358, height: 40 },
+    { left: 206, top: 866, width: 194, height: 32 },
+  ];
+  test('the band strip under the portrait hand: hand bottom + gap to the safe edge', () => {
+    const modal = haloFor({ x: 12, y: 132, w: 388, h: 411 }, phone)!;
+    const p = placeCaption({
+      viewport: phone,
+      halo: modal,
+      cardHeight: 250,
+      avoid: footer,
+      keepOut: [hand],
+    });
+    expect(p.kind).toBe('strip');
+    const bandTop = hand.top + hand.height + CHROME_GAP;
+    const bandBottom = phone.height - safeInset(phone.width);
+    expect(p.room).toBe(bandBottom - bandTop);
+    // A strip measured at (almost) the band's height still lands in the band.
+    const grown = placeCaption({
+      viewport: phone,
+      halo: modal,
+      cardHeight: 250,
+      stripHeight: (p.room ?? 0) - 4,
+      avoid: footer,
+      keepOut: [hand],
+    });
+    expect(grown.kind).toBe('strip');
+    expect(grown.top).toBeGreaterThanOrEqual(bandTop);
+    expect(grown.top + (p.room ?? 0) - 4).toBeLessThanOrEqual(bandBottom);
+  });
+  test('the landscape fallback strip: from under the ring to the safe edge', () => {
+    // Wide modal on a landscape phone, no keep-out registered: neither
+    // slot fits, the side strips are too narrow, the bottom strip wins.
+    const modal = haloFor({ x: 150, y: 128, w: 616, h: 157 }, landscape)!;
+    const p = placeCaption({ viewport: landscape, halo: modal, cardHeight: 250 });
+    expect(p.kind).toBe('strip');
+    const haloBottom = modal.top + modal.height;
+    expect(p.room).toBe(landscape.height - safeInset(landscape.width) - (haloBottom + CHROME_GAP));
+    expect(p.room).toBeGreaterThanOrEqual(STRIP_HEIGHT_ESTIMATE);
+  });
+  test('docked and centred cards carry no strip room', () => {
+    const own = haloFor({ x: 40, y: 571, w: 332, h: 177 }, phone)!;
+    expect(placeCaption({ viewport: phone, halo: own, cardHeight: 195 }).room).toBeUndefined();
+    expect(placeCaption({ viewport: phone, halo: null, cardHeight: 195 }).room).toBeUndefined();
   });
 });
