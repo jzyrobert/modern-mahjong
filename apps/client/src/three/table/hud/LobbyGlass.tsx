@@ -96,6 +96,34 @@ function useOverflowBelow(ref: { current: HTMLDivElement | null }, enabled: bool
   return more;
 }
 
+/**
+ * Phone portrait: whether the Rules card collapses to its summary row.
+ * The panel renders the expanded card first and measures its scroll
+ * container before paint; only when the content overflows the capped
+ * panel (height − header − Start row − felt band) does the card collapse
+ * — round-7: the tall 412×915 phone had the room but showed the summary
+ * row over ~300 px of table. Re-measured (expanded again) when the
+ * viewport or insets change, so a rotation re-decides from scratch.
+ */
+function usePortraitRulesCollapse(
+  ref: { current: HTMLDivElement | null },
+  enabled: boolean,
+  width: number,
+  height: number,
+  insets: { top: number; bottom: number },
+): boolean {
+  const sizeKey = `${width}x${height}+${insets.top}+${insets.bottom}`;
+  const [fit, setFit] = useState<{ key: string; collapsed: boolean } | null>(null);
+  const collapsed = enabled && fit?.key === sizeKey ? fit.collapsed : false;
+  useLayoutEffect(() => {
+    if (!enabled || fit?.key === sizeKey) return;
+    const el = ref.current;
+    if (!el) return;
+    setFit({ key: sizeKey, collapsed: el.scrollHeight - el.clientHeight > 2 });
+  }, [ref, enabled, sizeKey, fit]);
+  return collapsed;
+}
+
 /** Mirrors the server's `startHand` SEATS gate. */
 function allSeatsFilled(lobby: { players: readonly PublicPlayer[] } | null): boolean {
   if (!lobby) return false;
@@ -139,6 +167,7 @@ export function LobbyGlass(props: Lobby3DViewProps) {
   const pad = compact ? 12 : 24;
   const panelRef = useRef<HTMLDivElement | null>(null);
   const moreBelow = useOverflowBelow(panelRef, shortWide || phonePortrait);
+  const rulesCollapsed = usePortraitRulesCollapse(panelRef, phonePortrait, width, height, insets);
   const isSolo = matchCode === 'SOLO';
   const isLanHost = !!(isHost && joinInfo?.kind === 'lan' && joinInfo.hostUrl && matchCode);
   const joinUrl =
@@ -411,16 +440,20 @@ export function LobbyGlass(props: Lobby3DViewProps) {
     </GlassPanel>
   ) : null;
 
-  // Phone portrait: the rules start collapsed to their one-line summary
-  // (`Min 0 faan · no timer ▾`) so Seats and Bot skill fit the panel
-  // above the felt band without scrolling; a tap expands them in place.
+  // Phone portrait: the rules collapse to their one-line summary
+  // (`Min 0 faan · no timer ▾`) only when the expanded card would push
+  // the capped panel into a scroll (a phone in a browser); a tall phone
+  // keeps the whole card (`usePortraitRulesCollapse`). A tap expands the
+  // summary in place. `RulePanel` reads `collapsible` once, so the key
+  // remounts it when the measurement flips.
   const rulesBody = (
     <RulePanel
+      key={rulesCollapsed ? 'collapsed' : 'expanded'}
       rules={rules}
       isHost={isHost}
       onAction={onAction}
       theme="glass"
-      collapsible={phonePortrait}
+      collapsible={rulesCollapsed}
     />
   );
   const rulesCard = <div style={glassStyle({ padding: compact ? 6 : 8 })}>{rulesBody}</div>;

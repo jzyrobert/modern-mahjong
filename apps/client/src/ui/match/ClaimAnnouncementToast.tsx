@@ -58,7 +58,10 @@ const THEMES = {
     border: 'rgba(255,255,255,0.14)',
     borderWidth: 1,
     glyph: '#e57a63',
-    label: 'rgba(255,255,255,0.62)',
+    // 0.78 alpha (not the HUD's 0.62 secondary tone): the toast can sit in
+    // the portrait seat-strip slot over the warm glow, where the lighter
+    // backdrop pulled the 11 px kind label to 3.9:1 (round-7).
+    label: 'rgba(255,255,255,0.78)',
     text: 'rgba(255,255,255,0.92)',
     shadow: '0px 12px 40px rgba(0,0,0,0.35)',
   },

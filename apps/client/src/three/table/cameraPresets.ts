@@ -720,6 +720,44 @@ export function portraitDiceBandShort(width: number, height: number, topInset = 
 }
 
 /**
+ * Height of the dense opening-rolls card (40 px dice, 2×2, inline totals)
+ * before it has been measured, CSS px: the footer's dealer line and
+ * dismiss hint share a row at ≥ 400 px wide and stack on a 360 px phone.
+ */
+export function portraitDiceDenseH(width: number): number {
+  return width >= 400 ? 229 : 248;
+}
+/**
+ * Height of the basics lesson's dice caption card, CSS px: four body
+ * lines at ≥ 400 px wide, five on a 360 px phone (the body wraps).
+ */
+export function diceLessonCardH(width: number): number {
+  return width >= 400 ? 236 : 270;
+}
+/** Air the tutorial overlay leaves between the dice card and the caption docked under it, CSS px. */
+export const DICE_LESSON_GAP = 16;
+/**
+ * Top edge of the dice card on a short portrait phone while the lesson
+ * spotlights it (`portraitDiceBandShort`, hand parked): the dice card and
+ * the caption docked under it share the band between the seat strip and
+ * the viewport bottom, so the slack splits equally above the dice and
+ * below the caption instead of piling up as scrim under a top-pinned
+ * stack (round-7). Never closer than 4 px to the strip; a phone whose
+ * band the pair fills (360×640) keeps the pinned-top layout. Pure.
+ */
+export function portraitDiceLessonTop(
+  width: number,
+  height: number,
+  topInset = 0,
+  diceCardH: number | null = null,
+): number {
+  const stripBottom = PORTRAIT_STRIP_TOP + PORTRAIT_STRIP_H + topInset;
+  const pair = (diceCardH ?? portraitDiceDenseH(width)) + DICE_LESSON_GAP + diceLessonCardH(width);
+  const slack = height - stripBottom - pair;
+  return stripBottom + Math.max(4, Math.round(slack / 2));
+}
+
+/**
  * The near-camera frame the user's hand is laid out in on phone
  * portrait. Fourteen tiles cannot reach 44 CSS px each in a single
  * table-scale row at 412 px, so the hand leaves the table and is held

@@ -470,11 +470,18 @@ CC0-only asset policy, verifier rules. Operational notes:
   the far rail sits ~10 px under the strip; the tutorial's opening-dice
   step parks the held hand below the viewport (`heldHandParkedBaseline`,
   `data-hand-parked`) so the dense dice card and the lesson card share
-  the band; the portrait lobby is one scrolling panel over a 56 px felt
-  band (`LOBBY_PORTRAIT_FELT_BAND`) with Start / Leave pinned under it;
+  the band, centred as a pair (`portraitDiceLessonTop`) rather than
+  pinned under the strip; the portrait lobby is one scrolling panel
+  over a 56 px felt band (`LOBBY_PORTRAIT_FELT_BAND`) with Start /
+  Leave pinned under it, and its Rules card collapses to the summary
+  row only when the expanded card would overflow the capped panel
+  (`usePortraitRulesCollapse` — the tall phone keeps it expanded);
   the 360×640 result card pins to the top (`resultPanelPinsTop`) so the
-  scoring caption docks below the winning hand. Shoot with one
-  `shot.mjs` process at a time — three in parallel on SwiftShader once
+  scoring caption docks below the winning hand. Timing-dependent HUD
+  (a bot's claim toast) gets its own store-driven recipe
+  (`match-claim-toast` fires `flashClaimAnnouncement` through
+  `__MAHJONG_TEST_GET_STATE__`) instead of hoping `match-claim` catches
+  one. Shoot with one `shot.mjs` process at a time — three in parallel on SwiftShader once
   produced a frame with the camera still easing in from the lobby.
 - **Sandboxed containers**: `pnpm install --offline --frozen-lockfile`
   works in a fresh worktree (store is warm). Point

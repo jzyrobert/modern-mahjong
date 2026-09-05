@@ -429,6 +429,25 @@ export const STATES = {
       { waitMs: 700 },
     ],
   },
+  'match-claim-toast': {
+    owner: 'table',
+    // A bot's claim announcement (glass toast) fired through the store
+    // once the deal has settled — deterministic where `match-claim`'s
+    // incidental bot claims are not. Portrait short phones host it in
+    // the seat strip's row (`data-toast-slot="strip"`), the tall phone
+    // and the wide viewports in their rail / chrome slots.
+    steps: [
+      ...START_SOLO,
+      { waitForOwnHand: true },
+      { waitMs: 1600 },
+      {
+        evaluate:
+          "globalThis.__MAHJONG_TEST_GET_STATE__().flashClaimAnnouncement({ seat: 1, kind: 'chi' })",
+      },
+      { waitForText: 'CHI' },
+      { waitMs: 700 },
+    ],
+  },
   'match-result': {
     owner: 'table',
     // Step 0 of the scoring lesson is an intro caption; the first

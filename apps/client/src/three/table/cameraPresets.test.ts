@@ -2,6 +2,7 @@ import { PerspectiveCamera, Vector3 } from 'three';
 import { describe, expect, test } from 'vitest';
 import { TILE_D, TILE_H } from '../tiles/geometry';
 import {
+  DICE_LESSON_GAP,
   HELD_BOTTOM_PX,
   LANDSCAPE_ZOOM_ELEV_DEG,
   LANDSCAPE_ZOOM_HALF,
@@ -25,6 +26,7 @@ import {
   ZOOM_WALL_ANCHOR_Y,
   cameraFor,
   classifyViewport,
+  diceLessonCardH,
   heldHandFrameFor,
   heldHandParkedBaseline,
   heldHandTilePx,
@@ -33,6 +35,8 @@ import {
   portraitCameraAnchored,
   portraitCameraFor,
   portraitDiceBandShort,
+  portraitDiceDenseH,
+  portraitDiceLessonTop,
   portraitElevationFor,
   portraitMetrics,
   projectPreset,
@@ -513,6 +517,24 @@ describe('short-phone opening-dice step', () => {
     // The predicate is the band test the dice card uses for its dense layout.
     const band = heldHandTopPx(412, 915) - (PORTRAIT_STRIP_TOP + PORTRAIT_STRIP_H);
     expect(band).toBeGreaterThanOrEqual(PORTRAIT_DICE_REGULAR_H + 16);
+  });
+  test('the dice card + lesson card pair is centred in the band under the strip', () => {
+    const strip = PORTRAIT_STRIP_TOP + PORTRAIT_STRIP_H;
+    // A phone in a browser: ~120 px of slack splits above the dice card
+    // and below the caption instead of piling up under a top-pinned stack.
+    const top = portraitDiceLessonTop(412, 700);
+    const pair = portraitDiceDenseH(412) + DICE_LESSON_GAP + diceLessonCardH(412);
+    const above = top - strip;
+    const below = 700 - (top + pair);
+    expect(above).toBeGreaterThan(40);
+    expect(Math.abs(above - below)).toBeLessThanOrEqual(1);
+    // The measured card height replaces the estimate.
+    expect(portraitDiceLessonTop(412, 700, 0, portraitDiceDenseH(412) + 20)).toBe(top - 10);
+    // A 360×640 phone's band is filled by the pair: the card stays 4 px
+    // under the strip (the round-6 pinned-top layout).
+    expect(portraitDiceLessonTop(360, 640)).toBe(strip + 4);
+    // The device inset moves the strip and the card with it.
+    expect(portraitDiceLessonTop(412, 700, 24)).toBe(top + 12);
   });
   test('the parked hand lies wholly below the viewport from the same preset', () => {
     for (const [w, h] of [

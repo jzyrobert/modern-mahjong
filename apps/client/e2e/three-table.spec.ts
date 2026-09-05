@@ -105,6 +105,13 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('the opening rolls wear the glass language and the lobby keeps a scene', async ({ page }) => {
+  // Hold the modal open: it auto-dismisses after 3.5 s (`DISMISS_MS`), and
+  // on a loaded shard the glass could vanish between its visibility wait
+  // and the text assertions (round-7: 'Opening rolls' not found while the
+  // hand was already dealt). The tap below still dismisses it.
+  await page.addInitScript(() => {
+    (globalThis as { __MAHJONG_TEST_HOLD_DICE__?: boolean }).__MAHJONG_TEST_HOLD_DICE__ = true;
+  });
   const errors: string[] = [];
   page.on('console', (m) => {
     if (m.type() === 'error') errors.push(m.text());
@@ -123,9 +130,8 @@ test('the opening rolls wear the glass language and the lobby keeps a scene', as
   // Every match opens with the dice modal; under the 3D renderer it is
   // the dark-glass panel (micro-label, ivory dice), never the paper card.
   const glass = page.getByTestId('dice-ceremony-glass');
-  await expect(glass).toBeVisible({ timeout: 20_000 });
+  await expect(glass.getByText('Opening rolls')).toBeVisible({ timeout: 20_000 });
   await expect(page.getByTestId('dice-ceremony-paper')).toHaveCount(0);
-  await expect(glass.getByText('Opening rolls')).toBeVisible();
   await expect(glass.getByText('Tap anywhere to dismiss', { exact: true })).toBeVisible();
   await dismissDice(page);
   await expect(page.getByTestId('own-hand-tile').first()).toBeVisible({ timeout: 20_000 });
@@ -526,10 +532,12 @@ for (const [w, h] of [
     expect(startBox.y).toBeGreaterThanOrEqual(panelBox.y + panelBox.height);
     expect(startBox.y + startBox.height).toBeLessThanOrEqual(h - 56);
     expect(startBox.height).toBeGreaterThanOrEqual(44);
-    // Rules start collapsed to their summary; Bot skill rows are whole
+    // The expanded Rules card would overflow the capped panel here, so
+    // the rules collapse to their summary; Bot skill rows are whole
     // inside the panel or scroll under the fade cue — never clipped by
     // the page.
     await expect(page.getByText(/Min \d faan/)).toBeVisible();
+    await expect(page.getByRole('radiogroup', { name: 'Minimum faan' })).toHaveCount(0);
     const scroll = page.getByTestId('lobby-portrait-scroll');
     const overflow = await scroll.evaluate((el) => el.scrollHeight - el.clientHeight > 2);
     await expect(page.getByTestId('lobby-panel-fade')).toHaveCount(overflow ? 1 : 0);
@@ -541,6 +549,38 @@ for (const [w, h] of [
     expect(errors, 'console / page errors').toEqual([]);
   });
 }
+
+/**
+ * The tall 412×915 phone has the room for the whole Rules card inside the
+ * capped panel, so it renders expanded (min-faan chips, timer toggle)
+ * above the Start row and the felt band — round-7: it collapsed to the
+ * summary row over ~300 px of table.
+ */
+test('portrait lobby (412×915): the Rules card stays expanded above the felt band', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 412, height: 915 });
+  const errors: string[] = [];
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(m.text());
+  });
+  page.on('pageerror', (e) => errors.push(String(e)));
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Play vs bots' }).click({ timeout: 20_000 });
+  const panel = page.getByTestId('lobby-portrait-panel');
+  await expect(panel).toBeVisible();
+  await expect(page.getByRole('radiogroup', { name: 'Minimum faan' })).toBeVisible();
+  await expect(page.getByText(/Min \d faan ·/)).toHaveCount(0);
+  await expect(page.getByTestId('lobby-panel-fade')).toHaveCount(0);
+  const start = page.getByRole('button', { name: 'Start match' });
+  const startBox = (await start.boundingBox())!;
+  const panelBox = (await panel.boundingBox())!;
+  expect(startBox.y).toBeGreaterThanOrEqual(panelBox.y + panelBox.height);
+  expect(startBox.y + startBox.height).toBeLessThanOrEqual(915 - 56);
+  const scroll = page.getByTestId('lobby-portrait-scroll');
+  expect(await scroll.evaluate((el) => el.scrollHeight - el.clientHeight > 2)).toBe(false);
+  expect(errors, 'console / page errors').toEqual([]);
+});
 
 /**
  * The basics lesson's opening-dice step on a phone in a browser: the
@@ -577,11 +617,19 @@ test('phone in a browser: the dice lesson step parks the hand under the lesson c
   const diceBox = (await dice.boundingBox())!;
   const ctaBox = (await cta.boundingBox())!;
   const strip = (await page.getByTestId('seat-strip').boundingBox())!;
-  // Dice card pinned under the strip, lesson card (its CTA) below the
-  // dice card and inside the viewport; no hand tile on screen.
-  expect(diceBox.y).toBeGreaterThanOrEqual(strip.y + strip.height);
+  // Dice card under the strip, lesson card (its CTA) below the dice card
+  // and inside the viewport; no hand tile on screen. The pair is centred
+  // in the band: the slack above the dice card matches the slack under
+  // the caption (its CTA sits ~18 px above the card's bottom edge) to
+  // within a notch, instead of the stack pinning to the strip over ~120
+  // px of bare scrim (round-7).
+  const stripBottom = strip.y + strip.height;
+  expect(diceBox.y).toBeGreaterThanOrEqual(stripBottom + 40);
   expect(ctaBox.y).toBeGreaterThan(diceBox.y + diceBox.height);
-  expect(ctaBox.y + ctaBox.height).toBeLessThanOrEqual(700);
+  expect(ctaBox.y + ctaBox.height).toBeLessThanOrEqual(700 - 30);
+  const above = diceBox.y - stripBottom;
+  const below = 700 - (ctaBox.y + ctaBox.height + 18);
+  expect(Math.abs(above - below)).toBeLessThanOrEqual(30);
   const tileTops = await page.getByTestId('own-hand-tile').evaluateAll((els) =>
     els
       .map((el) => el.getBoundingClientRect())

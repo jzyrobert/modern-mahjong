@@ -54,3 +54,12 @@ export const portraitStripBottom: ((width: number, height: number) => number | n
  */
 export const portraitDiceBandShort: ((width: number, height: number) => boolean | null) | null =
   null;
+/**
+ * Top edge (CSS px) of the dice card while a lesson spotlights it on a
+ * short portrait phone: the dice card + docked caption pair is centred in
+ * the band under the seat strip (`portraitDiceLessonTop`). `null` off
+ * portrait / off web.
+ */
+export const portraitDiceLessonTop:
+  | ((width: number, height: number, topInset: number, diceCardH: number | null) => number | null)
+  | null = null;

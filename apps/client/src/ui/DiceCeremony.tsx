@@ -13,7 +13,12 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { nameForSeat, useGame } from '../state/game';
 import { LESSONS, useActiveTutorialStep, useTutorial } from '../state/tutorial';
-import { portraitDiceBandShort, portraitHeldHandTop, portraitStripBottom } from '../three/entry';
+import {
+  portraitDiceBandShort,
+  portraitDiceLessonTop,
+  portraitHeldHandTop,
+  portraitStripBottom,
+} from '../three/entry';
 import { resolveRenderer } from '../three/renderer';
 import { useFadeInOut } from './animations';
 import { COLORS } from './colors';
@@ -242,10 +247,15 @@ export function DiceCeremony() {
   const activeStep = useActiveTutorialStep();
   const tutorialTargetsDice = activeStep?.step.targetId === 'dice-ceremony';
   // Short portrait phone + the lesson's dice step: the 3D shell parks the
-  // held hand below the viewport, so the card pins to the top of the
-  // band (4 px under the strip) and the lesson card docks under it on
-  // free scrim instead of on the tiles (round-6).
+  // held hand below the viewport and the lesson card docks under the dice
+  // card on free scrim instead of on the tiles (round-6). The pair is
+  // centred in the band under the strip — the slack splits above the dice
+  // and below the caption, with the felt showing through both gaps — from
+  // the card's measured height once it has laid out (round-7).
   const pinTop = bandShort && tutorialTargetsDice;
+  const [cardH, setCardH] = useState<number | null>(null);
+  const lessonTop =
+    pinTop && portraitDiceLessonTop ? portraitDiceLessonTop(vw, vh, insets.top, cardH) : null;
   useEffect(() => {
     if (!open || seed === undefined || tutorialTargetsDice) return;
     // Test seam: the screenshot verifier pins the modal open so the
@@ -339,7 +349,7 @@ export function DiceCeremony() {
         // sits edge-to-edge on a portrait phone (a 320px iPhone SE
         // would otherwise clip the rounded corners).
         padding: 20,
-        paddingTop: pinTop ? scrimPadTop - 4 : scrimPadTop,
+        paddingTop: lessonTop ?? scrimPadTop,
         paddingBottom: scrimPadBottom,
         zIndex: 100,
       }}
@@ -361,6 +371,7 @@ export function DiceCeremony() {
           if (!rootNode) return;
           rootNode.measureInWindow((rootX, rootY) => {
             cardRef.current?.measureInWindow((x, y, w, h) => {
+              setCardH((prev) => (prev !== null && Math.abs(prev - h) < 1 ? prev : Math.round(h)));
               registry.set('dice-ceremony', {
                 x: x - rootX,
                 y: y - rootY,
