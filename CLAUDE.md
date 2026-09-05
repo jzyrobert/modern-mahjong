@@ -444,14 +444,45 @@ CC0-only asset policy, verifier rules. Operational notes:
   null-check the exports. Nothing under `src/three/` other than
   `renderer.ts` and `entry.tsx` may be imported by universal code.
 - **Evidence rule**: no visual claim without a screenshot from
-  `node scripts/shot.mjs --state <name> --viewport phone|desktop
-  --renderer 3d|classic [--dist dist-x] [--label run]` (writes PNG +
-  JSON with console/page errors, `__MAHJONG_PERF__`, budget verdict to
+  `node scripts/shot.mjs --state <name> --viewport
+  phone|phone-tall|phone-small|phone-landscape|desktop --renderer
+  3d|classic [--dist dist-x] [--label run]` (writes PNG + JSON with
+  console/page errors, `__MAHJONG_PERF__`, budget verdict to
   `apps/client/shots/<label>/`). Recipes live in
   `scripts/shot-states.mjs`; add a recipe rather than hand-driving. The
   tool needs an export first (`npx expo export --platform web
   [--output-dir dist-x]`, ~35 s). It runs on SwiftShader — gate on draw
   calls / triangles / programs / JS frame time, not fps.
+- **Phone viewports are a phone *in a browser***: `phone` is 412×700
+  CSS px at dpr 2.625 (1080×1830 device px once Chrome's address bar
+  and the system bars take their share of a 1080×2400 panel). The
+  full-screen 412×915 (installed PWA / fullscreen) is `phone-tall`,
+  and `phone-small` is a 360×640 budget phone. Every portrait match
+  state must compose at `phone` and `phone-small`, not only at the tall
+  size (round-5 feedback: the tall-only tuning zoomed the table out into
+  a 280 px square with void columns on a real phone). A recipe pinned
+  to `viewport: 'phone'` shoots at whichever portrait phone size the
+  CLI asks for. Portrait maths that must give ground on short phones
+  goes through `cameraPresets.portraitMetrics(height)` /
+  `portraitFitFor` rather than per-size constants. Short-phone rules
+  that follow from the pitched camera: portrait toasts take the seat
+  strip's row (`data-toast-slot="strip"`, badges step aside) because
+  the far rail sits ~10 px under the strip; the tutorial's opening-dice
+  step parks the held hand below the viewport (`heldHandParkedBaseline`,
+  `data-hand-parked`) so the dense dice card and the lesson card share
+  the band, centred as a pair (`portraitDiceLessonTop`) rather than
+  pinned under the strip; the portrait lobby is one scrolling panel
+  over a 56 px felt band (`LOBBY_PORTRAIT_FELT_BAND`) with Start /
+  Leave pinned under it, and its Rules card collapses to the summary
+  row only when the expanded card would overflow the capped panel
+  (`usePortraitRulesCollapse` — the tall phone keeps it expanded);
+  the 360×640 result card pins to the top (`resultPanelPinsTop`) so the
+  scoring caption docks below the winning hand. Timing-dependent HUD
+  (a bot's claim toast) gets its own store-driven recipe
+  (`match-claim-toast` fires `flashClaimAnnouncement` through
+  `__MAHJONG_TEST_GET_STATE__`) instead of hoping `match-claim` catches
+  one. Shoot with one `shot.mjs` process at a time — three in parallel on SwiftShader once
+  produced a frame with the camera still easing in from the lobby.
 - **Sandboxed containers**: `pnpm install --offline --frozen-lockfile`
   works in a fresh worktree (store is warm). Point
   `PW_CHROMIUM_PATH=/opt/pw-browsers/chromium` at the pre-installed

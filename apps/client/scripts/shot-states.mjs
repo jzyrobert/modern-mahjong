@@ -743,6 +743,25 @@ export const STATES = {
       { waitMs: 700 },
     ],
   },
+  'match-claim-toast': {
+    owner: 'table',
+    // A bot's claim announcement (glass toast) fired through the store
+    // once the deal has settled — deterministic where `match-claim`'s
+    // incidental bot claims are not. Portrait short phones host it in
+    // the seat strip's row (`data-toast-slot="strip"`), the tall phone
+    // and the wide viewports in their rail / chrome slots.
+    steps: [
+      ...START_SOLO,
+      { waitForOwnHand: true },
+      { waitMs: 1600 },
+      {
+        evaluate:
+          "globalThis.__MAHJONG_TEST_GET_STATE__().flashClaimAnnouncement({ seat: 1, kind: 'chi' })",
+      },
+      { waitForText: 'CHI' },
+      { waitMs: 700 },
+    ],
+  },
   'match-result': {
     owner: 'table',
     // Step 0 of the scoring lesson is an intro caption; the first
@@ -795,10 +814,10 @@ export const STATES = {
   },
   'match-river-zoom-landscape': {
     owner: 'table',
-    // Phone landscape: the same tap lifts the camera to 50° over the
+    // Phone landscape: the same tap lifts the camera to 62° over the
     // river block, framed between the zoom header (glass across the
-    // chrome row, the far wall behind it) and the footer (~28 px tiles,
-    // ~21 px tall vs ~8 from the resting 31° camera). The zoom stays
+    // chrome row, the far wall behind it) and the footer (~30 px tiles
+    // near plan-view vs ~8 px tall from the resting 31° camera). The zoom stays
     // through the player's own turn: the footer's hand rail shows the
     // hand as face thumbnails (tap → the table returns) and carries the
     // gold Draw pill while the player has to draw; the side seats' rows
@@ -848,8 +867,19 @@ export const BUDGETS = {
   tutorial: { drawCalls: 48, triangles: 160_000, programs: 14, frameMsP95: 8, textures: 14 },
 };
 
+/**
+ * Viewports, in CSS px. `phone` is a phone *in a browser*: 1080×1830
+ * device px of viewport once the address bar and system bars take
+ * their share of a 1080×2400 panel, i.e. ≈ 412×697 CSS px at dpr 2.625
+ * (aspect 1.69). The old 412×915 full-screen size (aspect 2.22) stays
+ * as `phone-tall` for the installed-PWA / fullscreen case, and
+ * `phone-small` is a 360×640 budget phone — the shortest band the
+ * portrait layout must still fit at ≥ 40 px hand tiles.
+ */
 export const VIEWPORTS = {
-  phone: { width: 412, height: 700, dpr: 2, mobile: true },
+  phone: { width: 412, height: 700, dpr: 2.625, mobile: true },
+  'phone-tall': { width: 412, height: 915, dpr: 2, mobile: true },
+  'phone-small': { width: 360, height: 640, dpr: 3, mobile: true },
   'phone-landscape': { width: 915, height: 412, dpr: 2, mobile: true },
   tablet: { width: 834, height: 1194, dpr: 2, mobile: true },
   desktop: { width: 1440, height: 900, dpr: 1, mobile: false },

@@ -6,6 +6,7 @@ import { useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Matrix4 } from 'three';
 import { type LobbyState, nameForSeat, useGame } from '../../state/game';
+import { useActiveTutorialStep } from '../../state/tutorial';
 import { ClaimBar } from '../../ui/ClaimBar';
 import { ChatBubbles } from '../../ui/match/ChatBubbles';
 import { ClaimAnnouncementToast } from '../../ui/match/ClaimAnnouncementToast';
@@ -30,14 +31,16 @@ import {
   PORTRAIT_BAND_TOP,
   PORTRAIT_FAR_RAIL_POINT,
   PORTRAIT_RIVER_SCALE,
-  PORTRAIT_TRAY_GAP,
-  PORTRAIT_TRAY_H,
+  PORTRAIT_STRIP_H,
   type ViewportClass,
   cameraFor,
   classifyViewport,
   heldHandFrameFor,
+  heldHandParkedBaseline,
   heldHandTopPx,
   landscapeZoomCameraFor,
+  portraitDiceBandShort,
+  portraitMetrics,
   riverZoomCameraFor,
   sheetCameraFor,
 } from './cameraPresets';
@@ -241,11 +244,11 @@ const PORTRAIT_SHARP_MAX_WIDTH = 420;
 /**
  * Table preset for a viewport. The river zoom (tap the discards) applies
  * on both phone classes: portrait eases the table in under the held
- * hand; landscape lifts the camera to 50° over the river block, framed
- * between the chrome row and the footer (the hand leaves the frame —
- * the ✕ in the chrome brings it back, and the shell exits the zoom by
- * itself when the turn comes round). Desktop rivers read at 38–40 px
- * and stay inert.
+ * hand; landscape lifts the camera to `LANDSCAPE_ZOOM_ELEV_DEG` (62°)
+ * over the river block, framed between the chrome row and the footer
+ * (the hand leaves the frame — the ✕ in the chrome or the footer's hand
+ * rail brings it back; a claim window or a declare CTA ends the zoom by
+ * itself). Desktop rivers read at 38–40 px and stay inert.
  */
 function presetFor(width: number, height: number, topInset: number, zoom: boolean) {
   const cls = classifyViewport(width, height);
@@ -257,16 +260,24 @@ function presetFor(width: number, height: number, topInset: number, zoom: boolea
   }
   return cameraFor(width, height, topInset);
 }
-/** Held-hand frame for a viewport, or null outside phone portrait. */
+/**
+ * Held-hand frame for a viewport, or null outside phone portrait.
+ * `parked` lays the hand out below the viewport (`heldHandParkedBaseline`)
+ * — the tutorial's opening-dice step on short phones — from the same
+ * preset, so the camera holds still and the hand springs up on exit.
+ */
 function heldFrameFor(
   width: number,
   height: number,
   topInset: number,
   zoom: boolean,
+  parked: boolean,
 ): HeldHandFrame | null {
-  return classifyViewport(width, height) === 'phone-portrait'
-    ? heldHandFrameFor(presetFor(width, height, topInset, zoom), width, height)
-    : null;
+  if (classifyViewport(width, height) !== 'phone-portrait') return null;
+  const preset = presetFor(width, height, topInset, zoom);
+  return parked
+    ? heldHandFrameFor(preset, width, height, heldHandParkedBaseline(width, height))
+    : heldHandFrameFor(preset, width, height);
 }
 /** Approximate height of a glass toast, CSS px (anchor maths only). */
 const TOAST_H = 52;
@@ -288,6 +299,9 @@ export function Table3DShell(props: Table3DShellProps) {
   const landscape = vpClass === 'phone-landscape';
   const pad = compact ? 12 : 24;
   const chromeH = landscape ? CHROME_H_LANDSCAPE : CHROME_H;
+  // Portrait HUD metrics under the hand: the tray and its gaps give
+  // ground on short phones so the table keeps its band (`portraitMetrics`).
+  const { trayH, trayGap } = portraitMetrics(height);
   const sortMode: SortMode = props.sortMode ?? 'suit';
   const tileSheet = globalThis.__MAHJONG_DEBUG_TILE_SHEET__ === true;
 
@@ -308,6 +322,20 @@ export function Table3DShell(props: Table3DShellProps) {
   const [riverZoom, setRiverZoom] = useState(false);
   const riverZoomRef = useRef(false);
   riverZoomRef.current = riverZoom && compact;
+  // Tutorial opening-dice step on a short portrait phone: the dense dice
+  // card and the lesson card need the whole band under the seat strip,
+  // so the held hand parks below the viewport (with its tray + footer)
+  // until the step advances (`heldHandParkedBaseline`).
+  const tutorialStep = useActiveTutorialStep();
+  const handParked =
+    portrait &&
+    tutorialStep?.step.targetId === 'dice-ceremony' &&
+    portraitDiceBandShort(width, height, insets.top);
+  const handParkedRef = useRef(false);
+  handParkedRef.current = handParked;
+  // Portrait toasts that have taken the seat strip's row (see `toastTop`).
+  const [announceUp, setAnnounceUp] = useState(false);
+  const [missedUp, setMissedUp] = useState(false);
 
   // The 3D layer animates its own draw; drop the classic overlay's
   // pending draw-animation record so a later renderer switch doesn't
@@ -543,7 +571,7 @@ export function Table3DShell(props: Table3DShellProps) {
       ctx.rig.parallaxStrength = 0.45;
       heldRef.current = tileSheet
         ? null
-        : heldFrameFor(ctx.size.width, ctx.size.height, inset, zoom);
+        : heldFrameFor(ctx.size.width, ctx.size.height, inset, zoom, handParkedRef.current);
       if (!tileSheet) syncScene();
       settleFrames.current = 0;
       return {
@@ -560,7 +588,7 @@ export function Table3DShell(props: Table3DShellProps) {
             // The held-hand frame is viewport-derived; re-lay the hand
             // out so it slides between the table edge and the held
             // position on rotation.
-            heldRef.current = heldFrameFor(w, h, ti, zoom);
+            heldRef.current = heldFrameFor(w, h, ti, zoom, handParkedRef.current);
             syncScene();
           }
           settleFrames.current = 0;
@@ -605,18 +633,19 @@ export function Table3DShell(props: Table3DShellProps) {
 
   // River zoom: ease the camera and re-derive the held-hand frame from
   // the new preset (the hand keeps its screen position; the table
-  // eases in underneath it).
+  // eases in underneath it). The parked hand re-derives the same way
+  // (camera unchanged, the hand springs between the two baselines).
   useEffect(() => {
     const ctx = ctxRef.current;
     if (!ctx || tileSheet) return;
     const zoom = riverZoom && compact;
     const { width: w, height: h } = ctx.size;
     ctx.rig.setPreset(presetFor(w, h, topInsetRef.current, zoom));
-    heldRef.current = heldFrameFor(w, h, topInsetRef.current, zoom);
+    heldRef.current = heldFrameFor(w, h, topInsetRef.current, zoom, handParked);
     syncScene();
     settleFrames.current = 0;
     ctx.loop.requestRender();
-  }, [riverZoom, compact, tileSheet, syncScene]);
+  }, [riverZoom, compact, tileSheet, syncScene, handParked]);
   const toggleRiverZoom = useCallback(() => setRiverZoom((v) => !v), []);
   const exitRiverZoom = useCallback(() => setRiverZoom(false), []);
   const ctaProps = {
@@ -735,13 +764,31 @@ export function Table3DShell(props: Table3DShellProps) {
   // chrome row (see `toastSlot`), the one void that never holds a tile
   // or a discard-to-be.
   const farRowTop = hudRects.farRowTop;
+  // Zoomed short phones: the near wall's outer edge sits right above the
+  // hand (`riverZoomCameraFor` widens the frame only until it clears),
+  // so the toast is capped to stay off the hand and lands on the wall's
+  // backs instead — the one zoomed surface that carries no glyph.
+  // Short phones (full table): the pitched camera parks the far rail
+  // ~10 px under the strip, so the rail slot cannot hold a toast — it
+  // would land on the far rack + wall (round-6). The toast takes the
+  // seat strip's row instead and the three badges step aside (opacity)
+  // while it shows: HUD replacing HUD, never HUD over tiles.
+  // The rail slot holds a toast when one parked at `stripBottom + 6`
+  // still clears the far rack's tops by ≥ 4 px (`PORTRAIT_FAR_RAIL_GAP`
+  // was derived for a 6 px clearance that rounds to a 2 px tie).
+  const stripBottom = stripTop + PORTRAIT_STRIP_H;
+  const railSlotFits = farRowTop !== null && stripBottom + 6 + TOAST_H <= farRowTop - 4;
+  const toastInStrip = portrait && !zoomed && !railSlotFits;
   const toastTop = portrait
     ? zoomed && nearWallBottom !== null
-      ? nearWallBottom + 10
-      : farRowTop !== null && !zoomed
-        ? Math.max(stripTop + 34 + 6, farRowTop - 6 - TOAST_H)
-        : stripTop + 40
+      ? Math.min(nearWallBottom + 10, heldHandTopPx(width, height) - TOAST_H - 6)
+      : toastInStrip
+        ? stripTop + Math.round((PORTRAIT_STRIP_H - TOAST_H) / 2)
+        : farRowTop !== null && !zoomed
+          ? Math.max(stripBottom + 6, farRowTop - 6 - TOAST_H)
+          : stripTop + 40
     : 0;
+  const stripCleared = toastInStrip && (announceUp || missedUp);
   // Portrait: where the table centre lands in the viewport (0–100 %),
   // for the void's lamp glow — from the projected river square once the
   // scene has one, else the band maths.
@@ -760,6 +807,11 @@ export function Table3DShell(props: Table3DShellProps) {
       <ClaimAnnouncementToast theme="glass" top={0} />
     </>
   );
+  // Portrait footer on a phone: the three-segment sort control leaves the
+  // fluid badge ~130–180 px, where a two-word name ellipsised to a few
+  // letters (round-6: "Sil…" at 360, "Sharp Pho…" at 412), so the badge
+  // goes dense and shows the first name only.
+  const narrowFooter = portrait && width < 430;
 
   const badgeFixedStyle = (pos: Position): React.CSSProperties => {
     if (!compact) return { position: 'absolute', left: 0, top: 0, willChange: 'transform' };
@@ -813,6 +865,8 @@ export function Table3DShell(props: Table3DShellProps) {
       data-testid="table-3d"
       data-viewport-class={vpClass}
       data-river-zoom={compact && riverZoom ? 'true' : 'false'}
+      data-hand-parked={handParked ? 'true' : 'false'}
+      data-toast-slot={portrait ? (toastInStrip ? 'strip' : 'rail') : 'chrome'}
       onPointerMove={onPointerMove}
       onPointerLeave={onPointerLeave}
       style={{
@@ -967,6 +1021,7 @@ export function Table3DShell(props: Table3DShellProps) {
             <div
               data-testid="seat-strip"
               data-zoom-bar={zoomed ? 'true' : 'false'}
+              data-cleared={stripCleared ? 'true' : 'false'}
               style={{
                 position: 'absolute',
                 display: 'flex',
@@ -999,7 +1054,17 @@ export function Table3DShell(props: Table3DShellProps) {
               {(['left', 'top', 'right'] as Position[]).map((pos) => {
                 const b = badgeAt(pos);
                 return b ? (
-                  <SeatBadge key={b.seat} model={b} lobby={lobby} compact dense />
+                  <SeatBadge
+                    key={b.seat}
+                    model={b}
+                    lobby={lobby}
+                    compact
+                    dense
+                    style={{
+                      opacity: stripCleared ? 0 : 1,
+                      transition: 'opacity 160ms ease-out',
+                    }}
+                  />
                 ) : (
                   <span key={pos} />
                 );
@@ -1033,15 +1098,15 @@ export function Table3DShell(props: Table3DShellProps) {
               strip (+ declare CTAs) replaces it. Fixed height so the hand
               never jumps; the slot is HUD, never table, so the strip can
               never cover a discard. */}
-          {portrait && !resolved ? (
+          {portrait && !resolved && !handParked ? (
             <div
               data-testid={trayActions ? 'claim-float' : 'action-tray'}
               style={{
                 position: 'absolute',
                 left: pad + insets.left,
                 right: pad + insets.right,
-                bottom: pad + insets.bottom + 44 + PORTRAIT_TRAY_GAP,
-                height: PORTRAIT_TRAY_H,
+                bottom: pad + insets.bottom + 44 + trayGap,
+                height: trayH,
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
@@ -1081,7 +1146,7 @@ export function Table3DShell(props: Table3DShellProps) {
                     alignItems: 'center',
                     justifyContent: 'center',
                     gap: 8,
-                    height: PORTRAIT_TRAY_H,
+                    height: trayH,
                   }}
                 >
                   <TurnChip
@@ -1129,7 +1194,8 @@ export function Table3DShell(props: Table3DShellProps) {
               left: pad + insets.left,
               right: pad + insets.right,
               bottom: (landscape ? LANDSCAPE_FOOTER_PAD : pad) + insets.bottom,
-              display: 'flex',
+              // The footer parks with the hand (see `handParked`).
+              display: handParked ? 'none' : 'flex',
               flexDirection: 'column',
               alignItems: 'stretch',
               gap: 10,
@@ -1152,7 +1218,8 @@ export function Table3DShell(props: Table3DShellProps) {
                     model={youBadge}
                     lobby={lobby}
                     compact={compact}
-                    dense={landscape}
+                    dense={landscape || narrowFooter}
+                    shortName={narrowFooter}
                     fluid
                     style={
                       landscape
@@ -1231,8 +1298,12 @@ export function Table3DShell(props: Table3DShellProps) {
             </div>
           ) : portrait ? (
             <>
-              <ClaimMissedToast theme="glass" top={toastTop} />
-              <ClaimAnnouncementToast theme="glass" top={toastTop} />
+              <ClaimMissedToast theme="glass" top={toastTop} onVisibleChange={setMissedUp} />
+              <ClaimAnnouncementToast
+                theme="glass"
+                top={toastTop}
+                onVisibleChange={setAnnounceUp}
+              />
             </>
           ) : null}
 

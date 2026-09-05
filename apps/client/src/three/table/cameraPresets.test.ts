@@ -2,6 +2,7 @@ import { PerspectiveCamera, Vector3 } from 'three';
 import { describe, expect, test } from 'vitest';
 import { TILE_D, TILE_H } from '../tiles/geometry';
 import {
+  DICE_LESSON_GAP,
   HELD_BOTTOM_PX,
   LANDSCAPE_ZOOM_ELEV_DEG,
   LANDSCAPE_ZOOM_HALF,
@@ -10,23 +11,37 @@ import {
   PORTRAIT_BAND_BIAS,
   PORTRAIT_BAND_GAP,
   PORTRAIT_BAND_TOP,
+  PORTRAIT_DICE_REGULAR_H,
+  PORTRAIT_ELEV_DEG,
+  PORTRAIT_ELEV_MIN_DEG,
   PORTRAIT_FAR_RAIL_GAP,
   PORTRAIT_FAR_RAIL_POINT,
   PORTRAIT_RIVER_SCALE,
   PORTRAIT_STRIP_H,
   PORTRAIT_STRIP_TOP,
   PORTRAIT_X_HALF,
+  RESULT_PANEL_H_ESTIMATE,
   TABLE_CAMERA,
   ZOOM_WALL_ANCHOR,
   ZOOM_WALL_ANCHOR_Y,
   cameraFor,
   classifyViewport,
+  diceLessonCardH,
   heldHandFrameFor,
+  heldHandParkedBaseline,
+  heldHandTilePx,
   heldHandTopPx,
   landscapeZoomCameraFor,
   portraitCameraAnchored,
   portraitCameraFor,
+  portraitDiceBandShort,
+  portraitDiceDenseH,
+  portraitDiceLessonTop,
+  portraitElevationFor,
+  portraitMetrics,
   projectPreset,
+  resultCaptionNeed,
+  resultPanelPinsTop,
   riverZoomCameraFor,
   sheetCameraFor,
 } from './cameraPresets';
@@ -297,7 +312,7 @@ describe('heldHandFrameFor', () => {
     const nearWallTop = px(0, 2 * TILE_D, WALL_D - TILE_H / 2).y;
     expect(nearWallTop - riverRow1Bottom).toBeGreaterThanOrEqual(58);
   });
-  test('landscape river zoom frames the river block between the chrome and the footer at 50°', () => {
+  test('landscape river zoom frames the river block between the chrome and the footer at 62°', () => {
     const w = 915;
     const h = 412;
     const yTop = 8 + 38 + 6;
@@ -362,5 +377,196 @@ describe('heldHandFrameFor', () => {
       centred.position[2] - centred.target[2],
       6,
     );
+  });
+});
+
+describe('short phones (a phone in a browser)', () => {
+  // 1080×1830 device px of browser viewport ≈ 412×700 CSS px; 360×640 is
+  // the budget-phone floor. The tall 412×915 is the installed / fullscreen case.
+  const px = (preset: ReturnType<typeof cameraFor>, w: number, h: number) => {
+    const cam = new PerspectiveCamera(preset.fov, w / h, 0.1, 200);
+    cam.position.set(...preset.position);
+    cam.lookAt(...preset.target);
+    cam.updateMatrixWorld();
+    return (x: number, y: number, z: number) => {
+      const p = new Vector3(x, y, z).project(cam);
+      return { x: (p.x * 0.5 + 0.5) * w, y: (-p.y * 0.5 + 0.5) * h };
+    };
+  };
+  test('HUD metrics taper from the tall to the short values and stay whole px', () => {
+    const tall = portraitMetrics(915);
+    expect(tall).toEqual({
+      trayH: 96,
+      trayGap: 10,
+      heldBottom: HELD_BOTTOM_PX,
+      rowGap: 0.55,
+      tileMax: 68,
+    });
+    const short = portraitMetrics(700);
+    expect(short.trayH).toBe(84);
+    expect(short.trayGap).toBe(8);
+    expect(short.heldBottom).toBe(12 + 44 + 8 + 84 + 8);
+    expect(short.rowGap).toBeCloseTo(0.3, 6);
+    expect(short.tileMax).toBe(46);
+    expect(portraitMetrics(640)).toEqual(short);
+    const mid = portraitMetrics(780);
+    expect(mid.trayH).toBeGreaterThan(84);
+    expect(mid.trayH).toBeLessThan(96);
+    expect(Number.isInteger(mid.trayH)).toBe(true);
+    expect(portraitMetrics(Number.NaN)).toEqual(tall);
+  });
+  test('the camera pitches down instead of shrinking the table: rails flush, no void column', () => {
+    for (const [w, h] of [
+      [412, 700],
+      [360, 640],
+      [412, 780],
+    ] as const) {
+      const preset = cameraFor(w, h);
+      const p = px(preset, w, h);
+      const elev = portraitElevationFor(w, h);
+      expect(elev).toBeGreaterThanOrEqual(PORTRAIT_ELEV_MIN_DEG);
+      expect(elev).toBeLessThan(PORTRAIT_ELEV_DEG);
+      const elevOf = Math.atan2(
+        preset.position[1] - preset.target[1],
+        preset.position[2] - preset.target[2],
+      );
+      expect((elevOf * 180) / Math.PI).toBeCloseTo(elev, 4);
+      // The near rail's corners sit within 2 px of the viewport edges —
+      // the table fills the width edge to edge, neither cropped nor
+      // floating in a void column.
+      const cornerR = p(FELT_HALF + RAIL_WIDTH, 0.55, FELT_HALF + RAIL_WIDTH).x;
+      const cornerL = p(-(FELT_HALF + RAIL_WIDTH), 0.55, FELT_HALF + RAIL_WIDTH).x;
+      expect(cornerR).toBeGreaterThanOrEqual(w - 3);
+      expect(cornerR).toBeLessThanOrEqual(w + 3);
+      expect(cornerL).toBeLessThanOrEqual(3);
+      expect(cornerL).toBeGreaterThanOrEqual(-3);
+      // Far rail below the seat strip's band top, near rail's bottom
+      // above the held hand by the apron, four walls in between.
+      const bandTop = PORTRAIT_BAND_TOP;
+      const handTop = heldHandTopPx(w, h);
+      expect(p(...PORTRAIT_FAR_RAIL_POINT).y).toBeGreaterThanOrEqual(bandTop - 1);
+      const nearRailBottom = p(0, 0, FELT_HALF + RAIL_WIDTH).y;
+      expect(nearRailBottom).toBeLessThanOrEqual(
+        handTop - PORTRAIT_BAND_GAP - PORTRAIT_APRON_MIN + 1,
+      );
+      expect(p(0, 2 * TILE_D, WALL_D + TILE_H / 2).y).toBeLessThan(nearRailBottom);
+      expect(p(0, 2 * TILE_D, -(WALL_D + TILE_H / 2)).y).toBeGreaterThan(bandTop);
+      // The side seats' melds keep their nearest corner inside the frame.
+      expect(p(-(MELD_Z + TILE_H / 2), TILE_D, 8.0).x).toBeGreaterThanOrEqual(2);
+      // Held hand: ≥ 44 px wide (so ≥ 59 px tall) tiles, two rows above the tray.
+      const tile = heldHandTilePx(w, h);
+      expect(tile).toBeGreaterThanOrEqual(44);
+      expect(tile * TILE_H).toBeGreaterThanOrEqual(40);
+      expect(handTop).toBeGreaterThan(bandTop);
+      expect(handTop + (2 * TILE_H + portraitMetrics(h).rowGap) * tile).toBeLessThanOrEqual(
+        h - portraitMetrics(h).heldBottom + 1,
+      );
+    }
+    // A river tile still reads on the reference short phone.
+    const p = px(cameraFor(412, 700), 412, 700);
+    expect((p(1, 0.3, 0).x - p(0, 0.3, 0).x) * PORTRAIT_RIVER_SCALE).toBeGreaterThanOrEqual(18);
+  });
+  test('the tall phone keeps the 70° width-bound view unchanged', () => {
+    expect(portraitElevationFor(412, 915)).toBe(PORTRAIT_ELEV_DEG);
+    expect(portraitElevationFor(430, 932)).toBe(PORTRAIT_ELEV_DEG);
+    expect(heldHandTilePx(412, 915)).toBeCloseTo(heldHandTilePx(412), 6);
+    expect(heldHandTopPx(412, 915)).toBeCloseTo(
+      915 - HELD_BOTTOM_PX - (2 * TILE_H + 0.55) * heldHandTilePx(412),
+      6,
+    );
+  });
+  test('the river zoom widens only until the near wall clears the held hand', () => {
+    for (const [w, h] of [
+      [412, 700],
+      [360, 640],
+    ] as const) {
+      const zoom = riverZoomCameraFor(w, h);
+      const p = px(zoom, w, h);
+      const bandBottom = heldHandTopPx(w, h) - PORTRAIT_BAND_GAP;
+      // Same elevation as the resting view (a dolly, not a tilt).
+      const elevOf = (q: typeof zoom) =>
+        Math.atan2(q.position[1] - q.target[1], q.position[2] - q.target[2]);
+      expect(elevOf(zoom)).toBeCloseTo(elevOf(cameraFor(w, h)), 5);
+      // Far wall behind the header, near wall's outer edge above the hand.
+      expect(Math.abs(p(...ZOOM_WALL_ANCHOR).y - ZOOM_WALL_ANCHOR_Y)).toBeLessThan(1);
+      const nearWallBottom = p(0, 0, WALL_D + TILE_H / 2).y;
+      expect(nearWallBottom).toBeLessThanOrEqual(bandBottom);
+      expect(nearWallBottom).toBeGreaterThan(bandBottom - 12);
+      // Still a zoom: a river tile grows ≥ 1.35× over the resting view.
+      const full = px(cameraFor(w, h), w, h);
+      const tileZoom = p(1, 0.3, 0).x - p(0, 0.3, 0).x;
+      const tileFull = full(1, 0.3, 0).x - full(0, 0.3, 0).x;
+      expect(tileZoom / tileFull).toBeGreaterThanOrEqual(1.35);
+      // The river block fits the width.
+      expect(p(-7.9, 0, 0).x).toBeGreaterThanOrEqual(0);
+      expect(p(7.9, 0, 0).x).toBeLessThanOrEqual(w);
+    }
+    // The tall phone keeps the round-4 zoom frame (7.9 half-width).
+    const tall = riverZoomCameraFor(412, 915);
+    const p = px(tall, 412, 915);
+    expect(p(7.9, 0, 0).x).toBeLessThanOrEqual(413);
+    expect(p(7.9, 0, 0).x).toBeGreaterThan(395);
+  });
+});
+
+describe('short-phone opening-dice step', () => {
+  test('the dice band is short on a phone in a browser and tall on the fullscreen phone', () => {
+    expect(portraitDiceBandShort(412, 700)).toBe(true);
+    expect(portraitDiceBandShort(360, 640)).toBe(true);
+    expect(portraitDiceBandShort(412, 915)).toBe(false);
+    // The predicate is the band test the dice card uses for its dense layout.
+    const band = heldHandTopPx(412, 915) - (PORTRAIT_STRIP_TOP + PORTRAIT_STRIP_H);
+    expect(band).toBeGreaterThanOrEqual(PORTRAIT_DICE_REGULAR_H + 16);
+  });
+  test('the dice card + lesson card pair is centred in the band under the strip', () => {
+    const strip = PORTRAIT_STRIP_TOP + PORTRAIT_STRIP_H;
+    // A phone in a browser: ~120 px of slack splits above the dice card
+    // and below the caption instead of piling up under a top-pinned stack.
+    const top = portraitDiceLessonTop(412, 700);
+    const pair = portraitDiceDenseH(412) + DICE_LESSON_GAP + diceLessonCardH(412);
+    const above = top - strip;
+    const below = 700 - (top + pair);
+    expect(above).toBeGreaterThan(40);
+    expect(Math.abs(above - below)).toBeLessThanOrEqual(1);
+    // The measured card height replaces the estimate.
+    expect(portraitDiceLessonTop(412, 700, 0, portraitDiceDenseH(412) + 20)).toBe(top - 10);
+    // A 360×640 phone's band is filled by the pair: the card stays 4 px
+    // under the strip (the round-6 pinned-top layout).
+    expect(portraitDiceLessonTop(360, 640)).toBe(strip + 4);
+    // The device inset moves the strip and the card with it.
+    expect(portraitDiceLessonTop(412, 700, 24)).toBe(top + 12);
+  });
+  test('the parked hand lies wholly below the viewport from the same preset', () => {
+    for (const [w, h] of [
+      [412, 700],
+      [360, 640],
+    ] as const) {
+      const preset = cameraFor(w, h);
+      const parked = heldHandFrameFor(preset, w, h, heldHandParkedBaseline(w, h));
+      const held = heldHandFrameFor(preset, w, h);
+      // Same plane, same scale and lean — only the baseline moves.
+      expect(parked.pxPerUnit).toBeCloseTo(held.pxPerUnit, 6);
+      expect(parked.rowPitch).toBeCloseTo(held.rowPitch, 6);
+      expect(parked.right).toEqual(held.right);
+      // The block's top row's top edge projects below the bottom edge.
+      const tile = heldHandTilePx(w, h);
+      const blockPx = (2 * TILE_H + portraitMetrics(h).rowGap) * tile;
+      expect(heldHandParkedBaseline(w, h) - blockPx).toBeGreaterThanOrEqual(h + 24);
+    }
+  });
+});
+
+describe('portrait result card pin (hud/ResultVeil)', () => {
+  test('bottom-pinned where a caption fits above; top-pinned on short, narrow phones', () => {
+    // 412×700 phone in a browser: a ~313 px card leaves 363 px above ≥ 298.
+    expect(resultPanelPinsTop(412, 700, 313)).toBe(false);
+    expect(resultPanelPinsTop(412, 915, 313)).toBe(false);
+    // 360×640 budget phone: a 349 px card leaves 267 px < 342 (seven body lines).
+    expect(resultPanelPinsTop(360, 640, 349)).toBe(true);
+    // Before the card is measured the estimate decides the same way.
+    expect(resultPanelPinsTop(360, 640, null)).toBe(true);
+    expect(resultPanelPinsTop(412, 700, null)).toBe(false);
+    expect(RESULT_PANEL_H_ESTIMATE).toBeGreaterThan(300);
+    expect(resultCaptionNeed(360)).toBeGreaterThan(resultCaptionNeed(412));
   });
 });

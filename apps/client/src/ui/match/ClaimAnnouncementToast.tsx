@@ -36,6 +36,11 @@ interface ClaimAnnouncementToastProps {
   theme?: ClaimToastTheme;
   /** Distance from the shell's top edge, px (default 56). */
   top?: number;
+  /**
+   * Reports the toast mounting / leaving, so a host can clear the slot
+   * it lands in (the 3D shell's portrait seat strip on short phones).
+   */
+  onVisibleChange?: ((visible: boolean) => void) | undefined;
 }
 
 const THEMES = {
@@ -53,13 +58,20 @@ const THEMES = {
     border: 'rgba(255,255,255,0.14)',
     borderWidth: 1,
     glyph: '#e57a63',
-    label: 'rgba(255,255,255,0.62)',
+    // 0.78 alpha (not the HUD's 0.62 secondary tone): the toast can sit in
+    // the portrait seat-strip slot over the warm glow, where the lighter
+    // backdrop pulled the 11 px kind label to 3.9:1 (round-7).
+    label: 'rgba(255,255,255,0.78)',
     text: 'rgba(255,255,255,0.92)',
     shadow: '0px 12px 40px rgba(0,0,0,0.35)',
   },
 } as const;
 
-export function ClaimAnnouncementToast({ theme = 'paper', top = 56 }: ClaimAnnouncementToastProps) {
+export function ClaimAnnouncementToast({
+  theme = 'paper',
+  top = 56,
+  onVisibleChange,
+}: ClaimAnnouncementToastProps) {
   const pal = THEMES[theme];
   const announcement = useGame((s) => s.claimAnnouncement);
   const lobby = useGame((s) => s.lobby);
@@ -106,6 +118,10 @@ export function ClaimAnnouncementToast({ theme = 'paper', top = 56 }: ClaimAnnou
       if (dismissHandle.current !== null) clearTimeout(dismissHandle.current);
     };
   }, [announcement, opacity]);
+
+  useEffect(() => {
+    onVisibleChange?.(visible);
+  }, [visible, onVisibleChange]);
 
   if (!visible || !pinned) return null;
   const seatName = youSeat === pinned.seat ? 'You' : nameForSeat(lobby, pinned.seat);

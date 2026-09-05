@@ -17,6 +17,8 @@ import {
   PORTRAIT_STRIP_H,
   PORTRAIT_STRIP_TOP,
   classifyViewport,
+  portraitDiceBandShort as diceBandShort,
+  portraitDiceLessonTop as diceLessonTop,
   heldHandTopPx,
 } from './table/cameraPresets';
 import { type Lobby3DViewProps, LobbyGlass } from './table/hud/LobbyGlass';
@@ -45,6 +47,18 @@ export const portraitHeldHandTop: ((width: number, height: number) => number | n
   width,
   height,
 ) => (classifyViewport(width, height) === 'phone-portrait' ? heldHandTopPx(width, height) : null);
+/** Short dice band on portrait (see `entry.tsx`). */
+export const portraitDiceBandShort: ((width: number, height: number) => boolean | null) | null = (
+  width,
+  height,
+) => (classifyViewport(width, height) === 'phone-portrait' ? diceBandShort(width, height) : null);
+/** Dice card top while a lesson spotlights it on a short portrait phone (see `entry.tsx`). */
+export const portraitDiceLessonTop:
+  | ((width: number, height: number, topInset: number, diceCardH: number | null) => number | null)
+  | null = (width, height, topInset, diceCardH) =>
+  classifyViewport(width, height) === 'phone-portrait'
+    ? diceLessonTop(width, height, topInset, diceCardH)
+    : null;
 /** Bottom of the portrait seat strip (see `entry.tsx`). */
 export const portraitStripBottom: ((width: number, height: number) => number | null) | null = (
   width,

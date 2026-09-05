@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useGame } from '../../../state/game';
 import { type SceneContext, type SceneHandle, SceneHost } from '../../core/SceneHost';
 import type { CameraPreset } from '../../core/camera';
+import { TILE_H } from '../../tiles/geometry';
 import {
   TABLE_POOL_KEY,
   type TableScene,
@@ -10,7 +11,7 @@ import {
   releaseTableScene,
 } from '../TableScene';
 import { portraitCameraAnchored, projectPreset } from '../cameraPresets';
-import { FELT_HALF, RAIL_H, RAIL_WIDTH } from '../layout';
+import { FELT_HALF, RAIL_H, RAIL_WIDTH, WALL_D } from '../layout';
 
 /**
  * The waiting room's scene: the match table itself, walls built and
@@ -41,28 +42,53 @@ export function waitingTableState(): GameState {
   return { ...emptyState(), wall: buildWall() };
 }
 
+/** The near wall's outer bottom edge (world), on the camera's centre line — the phone lobbies' anchor. */
+export const LOBBY_WALL_POINT: [number, number, number] = [0, 0, WALL_D + TILE_H / 2];
 /** Portrait lobby camera elevation: whole stacks, not slabs (round-4 #4). */
 export const LOBBY_PORTRAIT_ELEV_DEG = 58;
 /** Portrait lobby: margin the near rail's corners keep from the viewport sides, CSS px. */
 const LOBBY_PORTRAIT_SIDE_PX = 8;
 /** Wide lobby with a side column: the rail's outermost corner stays this far inside the right edge (the 24 px desktop safe area + a rounding margin). */
 export const LOBBY_SIDE_SAFE_PX = 28;
+/**
+ * Portrait phones: the glass stack (header, one scrolling panel, the
+ * Start / Leave row) stops this far above the viewport's bottom (safe
+ * inset excluded) so a band of felt and the near wall's row of stacks
+ * stay visible under it — round-6 critique: at 412×700 the stacked
+ * Seats / Bot skill / Rules cards scrolled the page with a 12 px sliver
+ * of wall between them and Start match below the fold; at 360×640 no
+ * table pixel showed at all. Same treatment as the landscape band.
+ */
+export const LOBBY_PORTRAIT_FELT_BAND = 56;
+/** Portrait lobby: the near wall's outer bottom edge sits this far above the viewport's bottom. */
+export const LOBBY_PORTRAIT_WALL_PX = 4;
 
 /**
  * Portrait lobby camera: the whole table, rails included, fitted to the
  * width (the near rail's corners — the widest projected points from a
  * 58° camera — sit `LOBBY_PORTRAIT_SIDE_PX` inside the viewport) and
- * panned so the near rail's outer edge lands 10 px above the bottom. The
- * near wall then shows as a row of whole stacks (~15 CSS px a back) with
- * felt above it in the band under the Start / Leave row, instead of the
- * 45° view's 50 px slabs cropped by the rail (round-4 #4).
+ * panned so the near wall's outer bottom edge lands
+ * `LOBBY_PORTRAIT_WALL_PX` above the bottom. The felt band the glass
+ * stack leaves free (`LOBBY_PORTRAIT_FELT_BAND`) then shows the near
+ * wall as a row of whole stacks (~15 CSS px a back) with felt above it,
+ * the rail leaving the frame below as it does under the match's held
+ * hand; the far half of the table reads dimly through the panel's glass.
+ * (Round-4 #4 fixed the 45° view's 50 px slabs; round-6 moved the
+ * anchor from the rail's outer edge — which left only the rail visible
+ * under a full-height card stack — to the wall.)
  */
 export function lobbyPortraitCameraFor(width: number, height: number): CameraPreset {
   const corner: [number, number, number] = [FELT_HALF + RAIL_WIDTH, RAIL_H, FELT_HALF + RAIL_WIDTH];
-  const anchor: [number, number, number] = [0, 0, FELT_HALF + RAIL_WIDTH];
-  const anchorY = height - 10;
+  const anchorY = height - LOBBY_PORTRAIT_WALL_PX;
   const make = (xHalf: number) =>
-    portraitCameraAnchored(width, height, xHalf, anchor, anchorY, LOBBY_PORTRAIT_ELEV_DEG);
+    portraitCameraAnchored(
+      width,
+      height,
+      xHalf,
+      LOBBY_WALL_POINT,
+      anchorY,
+      LOBBY_PORTRAIT_ELEV_DEG,
+    );
   // A wider frame (larger xHalf) pulls the corner inward — monotonic.
   let lo = 11;
   let hi = 24;
@@ -75,9 +101,59 @@ export function lobbyPortraitCameraFor(width: number, height: number): CameraPre
   return make(hi);
 }
 
+/** Wide viewports shorter than this are phone landscape (the glass panel stops above a felt band). */
+export const LOBBY_LANDSCAPE_PHONE_MAX_H = 600;
+/**
+ * Phone landscape: the glass panel stops this far above the viewport's
+ * bottom (safe inset excluded) so a band of felt and the near wall stay
+ * visible under it — round-5 critique: the panel ran the full height,
+ * hid the waiting table entirely and hard-clipped the gold Bot skill
+ * control at the bottom edge. Together with the 12 px top pad and the
+ * 44 px header row (clearing the root fullscreen prompt) the panel caps
+ * at ~72 % of a 412 px viewport.
+ */
+export const LOBBY_LANDSCAPE_FELT_BAND = 46;
+/** Phone landscape lobby: the near wall's outer bottom edge sits this far above the viewport's bottom. */
+export const LOBBY_LANDSCAPE_WALL_PX = 4;
+/** The near wall's outer bottom edge (world), on the camera's centre line. */
+export const LOBBY_LANDSCAPE_WALL_POINT = LOBBY_WALL_POINT;
+
+/**
+ * Phone-landscape lobby camera: the wide 30° preset panned along z —
+ * camera and target together, so the perspective is unchanged — until
+ * the near wall's outer bottom edge sits `LOBBY_LANDSCAPE_WALL_PX` above
+ * the bottom. The glass panel stops 50 px short of the bottom there
+ * (`LOBBY_LANDSCAPE_FELT_BAND`), and that band now shows the near
+ * wall's row of stacks — tops and front faces, ~28 px of backs — with
+ * felt either side of its ends, instead of the rail's far edge over
+ * void (round-5: the un-panned preset parked the rail at ~y 365 with
+ * nothing but void beneath). The rail and the felt in front of the wall
+ * leave the frame below, as they do under the match's landscape hand.
+ * Pure.
+ */
+export function lobbyLandscapeCameraFor(width: number, height: number): CameraPreset {
+  const make = (dz: number): CameraPreset => ({
+    position: [0, 14.5, 27 + dz],
+    target: [0, 0, 1.5 + dz],
+    fov: 40,
+  });
+  const near = LOBBY_LANDSCAPE_WALL_POINT;
+  const anchorY = height - LOBBY_LANDSCAPE_WALL_PX;
+  // Larger dz carries the rig toward +z, so the table recedes and its
+  // near rail climbs the screen (smaller y) — monotonic.
+  let lo = -10;
+  let hi = 20;
+  for (let i = 0; i < 40; i++) {
+    const mid = (lo + hi) / 2;
+    if (projectPreset(make(mid), width, height, near).y > anchorY) lo = mid;
+    else hi = mid;
+  }
+  return make((lo + hi) / 2);
+}
+
 /**
  * Low three-quarter view. Portrait: `lobbyPortraitCameraFor` — the whole
- * table fitted to the width, near rail at the bottom edge, so the band
+ * table fitted to the width, near wall at the bottom edge, so the band
  * under the Start / Leave row shows whole wall stacks and felt (round-2
  * #8 left a flat void there; round-4 #4 found 50 px slabs). Wide: the
  * whole table in frame; with a
@@ -95,6 +171,7 @@ export function lobbyCameraFor(width: number, height: number, side: boolean): Ca
   if (aspect < 0.9) return lobbyPortraitCameraFor(width, height);
   const fov = 40;
   if (!side) {
+    if (height < LOBBY_LANDSCAPE_PHONE_MAX_H) return lobbyLandscapeCameraFor(width, height);
     return { position: [0, 14.5, 27], target: [0, 0, 1.5], fov };
   }
   // 30° elevation from 37.5 units — far enough that the near rail (the

@@ -163,8 +163,11 @@ Rules:
 ## 4. Performance budget (≥ 60 fps on an average modern phone)
 
 Reference device: 2023 mid-range Android (Snapdragon 7 Gen 1 / Dimensity
-8100 class, Adreno 644 / Mali-G610 GPU), Chrome, 1080×2400 CSS ~ 412×915
-at DPR 2.6 → we clamp DPR to **≤ 2** (≤ 1.5 on `low` tier).
+8100 class, Adreno 644 / Mali-G610 GPU), Chrome, 1080×2400 panel at DPR
+2.625 — of which the browser viewport is ~1080×1830 device px ≈
+**412×700 CSS px** once the address bar and system bars take their share
+(the full 412×915 is the installed / fullscreen case) → we clamp DPR to
+**≤ 2** (≤ 1.5 on `low` tier).
 
 | Metric | Budget (mid tier, in-game) | Where measured |
 | --- | --- | --- |
@@ -226,7 +229,7 @@ loads the exported bundle, drives to a named state, and writes
 {
   "state": "match-my-turn",
   "renderer": "3d",
-  "viewport": { "width": 412, "height": 915, "dpr": 2 },
+  "viewport": { "width": 412, "height": 700, "dpr": 2.625, "name": "phone" },
   "consoleErrors": [],
   "pageErrors": [],
   "perf": { "fps": 58, "frameMsP95": 6.1, "drawCalls": 11, "triangles": 41000,
@@ -240,7 +243,16 @@ settings, settings-skins, tutorial-basics-step0, match-dealt,
 match-my-turn, match-claim, match-result, replay-library, …). Each recipe
 is a list of steps (goto, click, waitFor, evaluate, setSetting). Adding a
 state = adding a recipe. `--renderer classic|3d`, `--viewport
-phone|tablet|desktop`, `--dist <dir>`, `--out <dir>` are the knobs.
+phone|phone-tall|phone-small|phone-landscape|tablet|desktop`, `--dist
+<dir>`, `--out <dir>` are the knobs. `phone` is a phone *in a browser*
+(412×700 CSS px at dpr 2.625, aspect 1.69); `phone-tall` is the 412×915
+fullscreen case and `phone-small` a 360×640 budget phone — portrait
+states are verified at `phone` and `phone-small`, with `phone-tall` as
+the regression check. A recipe that pins `viewport: 'phone'` only fixes
+the orientation: a CLI viewport of the same class wins. Run one
+`shot.mjs` process at a time: SwiftShader shares one CPU, and parallel
+runs have captured a frame with the camera still easing in from the
+lobby preset.
 
 Rule for every agent, feature or critic: **you may not describe what the
 app looks like unless you have run `shot.mjs` for that state and looked

@@ -81,6 +81,22 @@ export const PORTRAIT_ZOOM_X_HALF = 7.9;
  * structural (toast slot above, lit apron + action tray below), not slack.
  */
 export const PORTRAIT_ELEV_DEG = 70;
+/**
+ * Lowest elevation the portrait camera drops to on short phones. A phone
+ * *in a browser* (1080×1830 device px once the address bar and system
+ * bars take their share — ≈ 412×700 CSS px) leaves the table a band of
+ * ~290 px between the seat strip and the held hand, where the 70° view
+ * of a width-bound table (rail to rail ≈ 26 units) needs ~460. Instead
+ * of zooming out until it fits (round-5 feedback: a 280 px table with
+ * 65 px void columns and 13 px river tiles), the camera pitches down
+ * until the near rail's corners just fill the width (`portraitFitFor`):
+ * the table foreshortens into the band, the rails stay flush with the
+ * viewport edges and a river tile keeps ~19 px. 50° is the floor: below
+ * it the far river's glyphs (upside down, foreshortened to sin 50° ≈
+ * 0.77 of their height) stop reading; only the 360×640 class goes
+ * further down by zooming out a little at the floor.
+ */
+export const PORTRAIT_ELEV_MIN_DEG = 50;
 export const PORTRAIT_FOV = 44;
 /**
  * Portrait discards render 36 % larger than the other table tiles: the
@@ -157,9 +173,10 @@ export const ZOOM_WALL_ANCHOR: [number, number, number] = [0, 2 * TILE_D, -(WALL
  * baseline sits `HELD_BOTTOM_PX` above the bottom).
  */
 export function heldHandTopPx(width: number, height: number): number {
-  const tilePx = heldHandTilePx(width);
-  const block = (2 * TILE_H + HELD_ROW_GAP) * tilePx;
-  return height - HELD_BOTTOM_PX - block;
+  const m = portraitMetrics(height);
+  const tilePx = heldHandTilePx(width, height);
+  const block = (2 * TILE_H + m.rowGap) * tilePx;
+  return height - m.heldBottom - block;
 }
 
 /**
@@ -181,11 +198,12 @@ export function portraitCameraFor(
   bandTop: number,
   bandBottom: number,
   xHalf: number = PORTRAIT_X_HALF,
+  elevDeg: number = PORTRAIT_ELEV_DEG,
 ): CameraPreset {
   const ppu = Math.max(1, width) / (2 * xHalf);
   const tanV = Math.tan((PORTRAIT_FOV * Math.PI) / 360);
   const dist = Math.max(1, height) / 2 / (tanV * ppu);
-  const elev = (PORTRAIT_ELEV_DEG * Math.PI) / 180;
+  const elev = (elevDeg * Math.PI) / 180;
   const centreY = bandTop + PORTRAIT_BAND_BIAS * Math.max(0, bandBottom - bandTop);
   const offsetPx = centreY - height / 2;
   const tz = -offsetPx / (Math.sin(elev) * ppu);
@@ -261,12 +279,15 @@ export function portraitCameraAnchored(
 /**
  * Elevation of the phone-landscape river zoom. The resting landscape
  * camera sits at 31°, where a flat far-row river tile foreshortens to
- * ~8 CSS px tall and its upside-down 萬 numerals smear (round-4 #2);
- * 50° shows the river block nearly square-on (tile height × sin 50° ≈
- * 0.77) while the block still fits the 2.2 : 1 frame between the chrome
- * row and the footer.
+ * ~8 CSS px tall and its upside-down 萬 numerals smear (round-4 #2).
+ * Round 4 lifted the zoom to 50°; round-5 feedback ("when zooming in
+ * the view should be more top down to see the discard pile properly")
+ * takes it to 62°: a flat tile keeps sin 62° ≈ 0.88 of its height, so
+ * the four rivers read near plan-view with upright proportions, and the
+ * block still fits the 2.2 : 1 frame between the chrome row and the
+ * footer (the camera backs off a little — ~30 px tiles instead of ~34).
  */
-export const LANDSCAPE_ZOOM_ELEV_DEG = 50;
+export const LANDSCAPE_ZOOM_ELEV_DEG = 62;
 export const LANDSCAPE_ZOOM_FOV = 42;
 /**
  * Half-size of the square the zoom frames: the rivers' third-row far
@@ -364,6 +385,127 @@ export function sheetCameraFor(width: number, height: number): CameraPreset {
  * Camera preset for a viewport. `topInset` is the device safe-area
  * inset the HUD's chrome is pushed down by (portrait only).
  */
+/** The near rail's outer bottom edge (world), on the camera's centre line. */
+export const PORTRAIT_NEAR_RAIL_POINT: [number, number, number] = [0, 0, FELT_HALF + RAIL_WIDTH];
+/** The near rail's right corner, top edge — the widest projected point of the table. */
+const NEAR_RAIL_CORNER: [number, number, number] = [
+  FELT_HALF + RAIL_WIDTH,
+  RAIL_H,
+  FELT_HALF + RAIL_WIDTH,
+];
+/** Margin the near rail's corners may crop past the viewport edges before the elevation drops. */
+const RAIL_FLUSH_PX = 2;
+
+/** Elevation + framed half-width of the portrait full-table camera. */
+export interface PortraitFit {
+  elevDeg: number;
+  xHalf: number;
+}
+
+/** Viewport-bound layout the portrait camera fits into (pure). */
+export function portraitBandFor(
+  width: number,
+  height: number,
+  topInset = 0,
+): { bandTop: number; bandBottom: number } {
+  return {
+    bandTop: PORTRAIT_BAND_TOP + topInset,
+    bandBottom: heldHandTopPx(width, height) - PORTRAIT_BAND_GAP,
+  };
+}
+
+/**
+ * Smallest half-width ≥ `PORTRAIT_X_HALF` at which the table (far rail's
+ * top-back edge to near rail's bottom) fits the band at `elevDeg`, near
+ * rail anchored `PORTRAIT_APRON_MIN` above the band's bottom. Wider
+ * frames span fewer px per unit, so the rail span shrinks monotonically.
+ */
+function portraitXHalfFor(
+  width: number,
+  height: number,
+  bandTop: number,
+  bandBottom: number,
+  elevDeg: number,
+): number {
+  const anchorY = bandBottom - PORTRAIT_APRON_MIN;
+  // Rail-to-rail room once the apron is spent: far rail top at or below
+  // the band's top.
+  const bandH = Math.max(1, anchorY - bandTop);
+  const span = (xHalf: number) => {
+    const p = portraitCameraAnchored(
+      width,
+      height,
+      xHalf,
+      PORTRAIT_NEAR_RAIL_POINT,
+      anchorY,
+      elevDeg,
+    );
+    return anchorY - projectPreset(p, width, height, PORTRAIT_FAR_RAIL_POINT).y;
+  };
+  if (span(PORTRAIT_X_HALF) <= bandH) return PORTRAIT_X_HALF;
+  let lo = PORTRAIT_X_HALF;
+  let hi = 60;
+  for (let i = 0; i < 40; i++) {
+    const mid = (lo + hi) / 2;
+    if (span(mid) > bandH) lo = mid;
+    else hi = mid;
+  }
+  return hi;
+}
+
+/**
+ * Portrait fit: the elevation and half-width for a viewport. At
+ * `PORTRAIT_ELEV_DEG` the width-bound table (`PORTRAIT_X_HALF`, rails
+ * cropping off-screen) either fits the band — tall phones, done — or
+ * the camera pitches down (never below `PORTRAIT_ELEV_MIN_DEG`) to the
+ * steepest angle at which the fitted frame still keeps the near rail's
+ * corners within `RAIL_FLUSH_PX` of the viewport edges: the table
+ * shortens on screen without shrinking, so no void column opens beside
+ * it. Only when the floor is reached does the frame widen further (the
+ * rails then show whole with a little void either side). Pure.
+ */
+export function portraitFitFor(
+  width: number,
+  height: number,
+  bandTop: number,
+  bandBottom: number,
+): PortraitFit {
+  const fitAt = (elevDeg: number): PortraitFit => ({
+    elevDeg,
+    xHalf: portraitXHalfFor(width, height, bandTop, bandBottom, elevDeg),
+  });
+  // Rail corner's screen x for a fit: inside the viewport when ≤ width.
+  const cornerX = (fit: PortraitFit) => {
+    const p = portraitCameraAnchored(
+      width,
+      height,
+      fit.xHalf,
+      PORTRAIT_NEAR_RAIL_POINT,
+      bandBottom - PORTRAIT_APRON_MIN,
+      fit.elevDeg,
+    );
+    return projectPreset(p, width, height, NEAR_RAIL_CORNER).x;
+  };
+  const top = fitAt(PORTRAIT_ELEV_DEG);
+  // Width-bound at the default elevation (rails crop): the tall-phone view.
+  if (top.xHalf <= PORTRAIT_X_HALF + 1e-6 || cornerX(top) >= width + RAIL_FLUSH_PX) return top;
+  const floor = fitAt(PORTRAIT_ELEV_MIN_DEG);
+  if (cornerX(floor) <= width + RAIL_FLUSH_PX) return floor;
+  // Lower elevation → the fitted frame narrows → the corner moves out.
+  let lo = PORTRAIT_ELEV_MIN_DEG;
+  let hi = PORTRAIT_ELEV_DEG;
+  for (let i = 0; i < 32; i++) {
+    const mid = (lo + hi) / 2;
+    if (cornerX(fitAt(mid)) > width + RAIL_FLUSH_PX) lo = mid;
+    else hi = mid;
+  }
+  return fitAt(hi);
+}
+
+/**
+ * Camera preset for a viewport. `topInset` is the device safe-area
+ * inset the HUD's chrome is pushed down by (portrait only).
+ */
 export function cameraFor(rawWidth: number, rawHeight: number, topInset = 0): CameraPreset {
   // A host measured before layout (0×0) must still yield a *finite*
   // preset: the rig's springs would otherwise hold NaN forever, and the
@@ -372,40 +514,48 @@ export function cameraFor(rawWidth: number, rawHeight: number, topInset = 0): Ca
   const height = Number.isFinite(rawHeight) && rawHeight >= 2 ? rawHeight : 915;
   const cls = classifyViewport(width, height);
   if (cls === 'phone-portrait') {
-    const bandTop = PORTRAIT_BAND_TOP + topInset;
-    const bandBottom = heldHandTopPx(width, height) - PORTRAIT_BAND_GAP;
-    let fit = portraitCameraFor(width, height, bandTop, bandBottom);
-    // Short phones: when the width-bound table is taller than the band
-    // (rail to rail), zoom out until it fits — the side rows crop a
-    // little rather than the near rail running under the hand.
-    const railSpan = () =>
-      projectPreset(fit, width, height, [0, 0, FELT_HALF + RAIL_WIDTH]).y -
-      projectPreset(fit, width, height, PORTRAIT_FAR_RAIL_POINT).y;
-    let xHalf = PORTRAIT_X_HALF;
-    const bandH = Math.max(1, bandBottom - bandTop - 6);
-    for (let i = 0; i < 3 && railSpan() > bandH; i++) {
-      const k = (railSpan() / bandH) * 1.01;
-      if (!Number.isFinite(k) || k <= 1) break;
-      xHalf *= k;
-      fit = portraitCameraFor(width, height, bandTop, bandBottom, xHalf);
-    }
+    const { bandTop, bandBottom } = portraitBandFor(width, height, topInset);
+    const { elevDeg, xHalf } = portraitFitFor(width, height, bandTop, bandBottom);
     // Slack in the band: pin the far rail `PORTRAIT_FAR_RAIL_GAP` under
     // the seat strip (toasts sit on the rail; the slack collects as the
     // lit apron above the hand) whenever the near rail then still clears
     // the hand by the minimum apron. A taller table (wide phones, short
     // phones) pins the near rail just above the hand instead and lets
-    // the far rail rise toward the strip — the height fit above keeps it
-    // below the strip.
-    const nearRail: [number, number, number] = [0, 0, FELT_HALF + RAIL_WIDTH];
+    // the far rail rise toward the strip — the fit above keeps it below
+    // the strip.
     const railY = PORTRAIT_STRIP_TOP + PORTRAIT_STRIP_H + topInset + PORTRAIT_FAR_RAIL_GAP;
-    const anchored = portraitCameraAnchored(width, height, xHalf, PORTRAIT_FAR_RAIL_POINT, railY);
-    if (projectPreset(anchored, width, height, nearRail).y <= bandBottom - PORTRAIT_APRON_MIN) {
-      return anchored;
-    }
-    return portraitCameraAnchored(width, height, xHalf, nearRail, bandBottom - PORTRAIT_APRON_MIN);
+    const anchored = portraitCameraAnchored(
+      width,
+      height,
+      xHalf,
+      PORTRAIT_FAR_RAIL_POINT,
+      railY,
+      elevDeg,
+    );
+    const nearY = projectPreset(anchored, width, height, PORTRAIT_NEAR_RAIL_POINT).y;
+    if (nearY <= bandBottom - PORTRAIT_APRON_MIN) return anchored;
+    return portraitCameraAnchored(
+      width,
+      height,
+      xHalf,
+      PORTRAIT_NEAR_RAIL_POINT,
+      bandBottom - PORTRAIT_APRON_MIN,
+      elevDeg,
+    );
   }
   return TABLE_CAMERA[cls];
 }
+
+/** Elevation (degrees) of the portrait full-table camera for a viewport. */
+export function portraitElevationFor(width: number, height: number, topInset = 0): number {
+  const { bandTop, bandBottom } = portraitBandFor(width, height, topInset);
+  return portraitFitFor(width, height, bandTop, bandBottom).elevDeg;
+}
+
+/** World point the river zoom keeps above the held hand: the near wall's outer bottom edge. */
+export const ZOOM_NEAR_WALL_POINT: [number, number, number] = [0, 0, WALL_D + TILE_H / 2];
+/** Least gap between the near wall's outer edge and the band's bottom while zoomed. */
+export const ZOOM_NEAR_WALL_GAP = 4;
 
 /**
  * Portrait river-zoom preset: same elevation as `cameraFor` at the
@@ -414,16 +564,30 @@ export function cameraFor(rawWidth: number, rawHeight: number, topInset = 0): Ca
  * behind the zoom header bar and the free felt between the near wall
  * and the held hand becomes the toast slot. Because the held-hand
  * frame is derived from whichever preset is active, the hand stays put
- * on screen while the table eases in underneath it.
+ * on screen while the table eases in underneath it. Short phones widen
+ * the frame past `PORTRAIT_ZOOM_X_HALF` until the near wall's outer
+ * edge clears the band's bottom (round-5: at 412×700 the wall's stacks
+ * showed between the hand's rows).
  */
 export function riverZoomCameraFor(width: number, height: number, topInset = 0): CameraPreset {
-  return portraitCameraAnchored(
-    width,
-    height,
-    PORTRAIT_ZOOM_X_HALF,
-    ZOOM_WALL_ANCHOR,
-    ZOOM_WALL_ANCHOR_Y + topInset,
-  );
+  const { bandBottom } = portraitBandFor(width, height, topInset);
+  const elevDeg = portraitElevationFor(width, height, topInset);
+  const anchorY = ZOOM_WALL_ANCHOR_Y + topInset;
+  const make = (xHalf: number) =>
+    portraitCameraAnchored(width, height, xHalf, ZOOM_WALL_ANCHOR, anchorY, elevDeg);
+  const nearY = (xHalf: number) =>
+    projectPreset(make(xHalf), width, height, ZOOM_NEAR_WALL_POINT).y;
+  const limit = bandBottom - ZOOM_NEAR_WALL_GAP;
+  if (nearY(PORTRAIT_ZOOM_X_HALF) <= limit) return make(PORTRAIT_ZOOM_X_HALF);
+  // A wider frame spans fewer px per unit: the near wall rises (monotonic).
+  let lo = PORTRAIT_ZOOM_X_HALF;
+  let hi = 40;
+  for (let i = 0; i < 40; i++) {
+    const mid = (lo + hi) / 2;
+    if (nearY(mid) > limit) lo = mid;
+    else hi = mid;
+  }
+  return make(hi);
 }
 
 // ─── Held hand (phone portrait) ────────────────────────────────────
@@ -434,12 +598,62 @@ export function riverZoomCameraFor(width: number, height: number, topInset = 0):
  * reservation keeps the hand from jumping when the strip appears, and
  * the two HUD rows under the hand are what closes the band between the
  * near rail and the hand (round-3 critique: 140 px of void there).
+ * Tall-phone value; see `portraitMetrics` for the short-phone taper.
  */
 export const PORTRAIT_TRAY_H = 96;
-/** Gap between the hand's baseline and the tray, and the tray and the footer. */
+/** Gap between the hand's baseline and the tray, and the tray and the footer (tall phones). */
 export const PORTRAIT_TRAY_GAP = 10;
-/** Safe-area inset + footer row + tray + gaps, CSS px (matches the shell). */
+/** Safe-area inset + footer row + tray + gaps, CSS px (tall phones; matches the shell). */
 export const HELD_BOTTOM_PX = 12 + 44 + PORTRAIT_TRAY_GAP + PORTRAIT_TRAY_H + PORTRAIT_TRAY_GAP;
+
+/**
+ * Portrait HUD metrics that give ground on short phones. Everything
+ * under the table competes with it for height: at 412×915 the tray
+ * (96), its gaps (10 + 10) and a two-row hand at 49.5 px per tile with
+ * a 0.55-tile row gap leave a 467 px band; at 412×700 the same stack
+ * would leave 254. The metrics taper linearly from the tall values
+ * (≥ `PORTRAIT_TALL_H`) to the short ones (≤ `PORTRAIT_SHORT_H`): the
+ * tray shrinks to the 84 px its content needs (turn chip + table chip,
+ * or the 78 px claim strip), the gaps to 8, the row gap to 0.3 tiles
+ * and the tile width caps at 46 px (still ≥ 44 wide, 62 tall) — which
+ * buys the table ~40 px, the rest coming from the lower camera
+ * (`portraitFitFor`). Pure, rounded to whole px.
+ */
+export interface PortraitMetrics {
+  /** Action tray height, CSS px. */
+  trayH: number;
+  /** Gap above and below the tray, CSS px. */
+  trayGap: number;
+  /** Safe pad + footer row + tray + gaps: the held hand's baseline offset from the bottom. */
+  heldBottom: number;
+  /** Gap between the held hand's two rows, tile widths. */
+  rowGap: number;
+  /** Own-hand tile width cap on screen, CSS px. */
+  tileMax: number;
+}
+/** Viewport height at (and above) which the tall-phone metrics apply. */
+export const PORTRAIT_TALL_H = 860;
+/** Viewport height at (and below) which the short-phone metrics apply. */
+export const PORTRAIT_SHORT_H = 700;
+const PORTRAIT_TRAY_H_SHORT = 84;
+const PORTRAIT_TRAY_GAP_SHORT = 8;
+const HELD_ROW_GAP_SHORT = 0.3;
+const HELD_TILE_MAX_PX_SHORT = 46;
+
+export function portraitMetrics(height: number): PortraitMetrics {
+  const h = Number.isFinite(height) ? height : PORTRAIT_TALL_H;
+  const t = Math.min(1, Math.max(0, (h - PORTRAIT_SHORT_H) / (PORTRAIT_TALL_H - PORTRAIT_SHORT_H)));
+  const lerp = (a: number, b: number) => a + (b - a) * t;
+  const trayH = Math.round(lerp(PORTRAIT_TRAY_H_SHORT, PORTRAIT_TRAY_H));
+  const trayGap = Math.round(lerp(PORTRAIT_TRAY_GAP_SHORT, PORTRAIT_TRAY_GAP));
+  return {
+    trayH,
+    trayGap,
+    heldBottom: 12 + 44 + trayGap + trayH + trayGap,
+    rowGap: lerp(HELD_ROW_GAP_SHORT, HELD_ROW_GAP),
+    tileMax: Math.round(lerp(HELD_TILE_MAX_PX_SHORT, HELD_TILE_MAX_PX)),
+  };
+}
 /** Side margin the hand keeps from the viewport edges, CSS px (the phone safe area). */
 export const HELD_SIDE_PX = 12;
 /** Own-hand tile width bounds on screen, CSS px. */
@@ -462,12 +676,85 @@ const norm = (a: V3): V3 => {
 };
 
 /** On-screen width of one held tile for a viewport, CSS px. */
-export function heldHandTilePx(width: number): number {
+export function heldHandTilePx(width: number, height: number = PORTRAIT_TALL_H): number {
   // The widest row is the front one: HELD_ROW_MAX − 1 tiles + the
   // drawn tile with its gap (7.84 tile widths at the default metrics).
   const rowUnits = (HELD_ROW_MAX - 1) * HAND_PITCH + 1 + DRAWN_GAP;
   const px = (width - HELD_SIDE_PX * 2) / rowUnits;
-  return Math.min(HELD_TILE_MAX_PX, Math.max(HELD_TILE_MIN_PX, px));
+  return Math.min(portraitMetrics(height).tileMax, Math.max(HELD_TILE_MIN_PX, px));
+}
+
+/**
+ * Screen-space baseline (CSS px from the top) of the held hand while it
+ * is *parked* below the viewport: the whole two-row block plus a margin
+ * past the bottom edge, so no tile top peeks in. The tutorial's opening-
+ * dice step parks the hand on short phones (`portraitDiceBandShort`):
+ * the dense dice card and the lesson card together need ~500 px under
+ * the seat strip, and a 412×700 phone has ~300 before the hand — the
+ * card would otherwise sit on the dimmed tiles (round-6). The frame is
+ * derived from the same preset, so the hand springs up into place when
+ * the step advances and the camera never moves.
+ */
+export function heldHandParkedBaseline(width: number, height: number): number {
+  const m = portraitMetrics(height);
+  const tilePx = heldHandTilePx(width, height);
+  // 40 px past the block: the leaned top row projects a few px above
+  // the flat estimate and the DOM hit-targets pad their rects.
+  return height + (2 * TILE_H + m.rowGap) * tilePx + PARKED_HAND_MARGIN;
+}
+/** Margin the parked hand's block keeps below the viewport's bottom edge, CSS px. */
+export const PARKED_HAND_MARGIN = 40;
+
+/** Height of the regular (48 px dice, 2×2, stacked totals) opening-rolls glass card, CSS px. */
+export const PORTRAIT_DICE_REGULAR_H = 434;
+/**
+ * Whether the band between the portrait seat strip and the held hand is
+ * too short for the regular opening-rolls card: the dense card (40 px
+ * dice, inline totals) takes over, and a tutorial step that spotlights
+ * the dice parks the hand (`heldHandParkedBaseline`). A phone in a
+ * browser (412×700) has ~300 px there; the tall 412×915 has ~490. Pure.
+ */
+export function portraitDiceBandShort(width: number, height: number, topInset = 0): boolean {
+  const stripBottom = PORTRAIT_STRIP_TOP + PORTRAIT_STRIP_H + topInset;
+  return heldHandTopPx(width, height) - stripBottom < PORTRAIT_DICE_REGULAR_H + 16;
+}
+
+/**
+ * Height of the dense opening-rolls card (40 px dice, 2×2, inline totals)
+ * before it has been measured, CSS px: the footer's dealer line and
+ * dismiss hint share a row at ≥ 400 px wide and stack on a 360 px phone.
+ */
+export function portraitDiceDenseH(width: number): number {
+  return width >= 400 ? 229 : 248;
+}
+/**
+ * Height of the basics lesson's dice caption card, CSS px: four body
+ * lines at ≥ 400 px wide, five on a 360 px phone (the body wraps).
+ */
+export function diceLessonCardH(width: number): number {
+  return width >= 400 ? 236 : 270;
+}
+/** Air the tutorial overlay leaves between the dice card and the caption docked under it, CSS px. */
+export const DICE_LESSON_GAP = 16;
+/**
+ * Top edge of the dice card on a short portrait phone while the lesson
+ * spotlights it (`portraitDiceBandShort`, hand parked): the dice card and
+ * the caption docked under it share the band between the seat strip and
+ * the viewport bottom, so the slack splits equally above the dice and
+ * below the caption instead of piling up as scrim under a top-pinned
+ * stack (round-7). Never closer than 4 px to the strip; a phone whose
+ * band the pair fills (360×640) keeps the pinned-top layout. Pure.
+ */
+export function portraitDiceLessonTop(
+  width: number,
+  height: number,
+  topInset = 0,
+  diceCardH: number | null = null,
+): number {
+  const stripBottom = PORTRAIT_STRIP_TOP + PORTRAIT_STRIP_H + topInset;
+  const pair = (diceCardH ?? portraitDiceDenseH(width)) + DICE_LESSON_GAP + diceLessonCardH(width);
+  const slack = height - stripBottom - pair;
+  return stripBottom + Math.max(4, Math.round(slack / 2));
 }
 
 /**
@@ -487,16 +774,18 @@ export function heldHandFrameFor(
   preset: CameraPreset,
   width: number,
   height: number,
+  baselineY: number = height - portraitMetrics(height).heldBottom,
 ): HeldHandFrame {
   const tanV = Math.tan((preset.fov * Math.PI) / 360);
-  const tilePx = heldHandTilePx(width);
+  const m = portraitMetrics(height);
+  const tilePx = heldHandTilePx(width, height);
   // Distance along the view axis where one world unit is `tilePx`.
   const d = height / 2 / (tanV * tilePx);
   const pos = preset.position;
   const fwd = norm(sub(preset.target, pos));
   const right = norm(cross(fwd, [0, 1, 0]));
   const up = norm(cross(right, fwd));
-  const baseY = height - HELD_BOTTOM_PX;
+  const baseY = baselineY;
   const ny = 1 - (2 * baseY) / height;
   const k = ny * tanV;
   const origin: V3 = [
@@ -511,6 +800,33 @@ export function heldHandFrameFor(
     forward: [-fwd[0], -fwd[1], -fwd[2]],
     lean: HELD_LEAN,
     pxPerUnit: tilePx,
-    rowPitch: TILE_H + HELD_ROW_GAP,
+    rowPitch: TILE_H + m.rowGap,
   };
+}
+
+// ─── Portrait result card (`hud/ResultVeil`) ──────────────────────
+/** Compact glass result card height assumed before it has been measured, CSS px. */
+export const RESULT_PANEL_H_ESTIMATE = 350;
+/**
+ * Room a scoring-lesson caption card needs above a bottom-pinned result
+ * card: the card's height (six body lines at ≥ 400 px wide, seven on a
+ * 360 px phone — the body wraps) plus the overlay's 14 px dock gap and
+ * 12 px safe inset.
+ */
+export function resultCaptionNeed(width: number): number {
+  return (width >= 400 ? 272 : 316) + 14 + 12;
+}
+/**
+ * Whether the portrait result card pins to the top of the veil. When
+ * the band above a bottom-pinned card is shorter than a caption card
+ * (`resultCaptionNeed`), the tutorial overlay's only option is its
+ * overlap fallback — at 360×640 the card sat over the whole panel and
+ * only the faan header peeked out (round-6). Pinned to the top, the
+ * spotlit header + winning hand stay clear and the card docks below
+ * them over the dimmed rules / buttons, as on the tall phone. Pure.
+ */
+export function resultPanelPinsTop(width: number, height: number, panelH: number | null): boolean {
+  const pad = 12;
+  const panel = panelH ?? RESULT_PANEL_H_ESTIMATE;
+  return height - 2 * pad - panel < resultCaptionNeed(width);
 }
