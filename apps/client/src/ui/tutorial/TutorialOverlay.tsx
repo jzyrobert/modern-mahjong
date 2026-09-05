@@ -366,7 +366,14 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
   // to fit above it the body scrolls instead of the card sitting on the
   // tiles (landscape phone, 3D table). The result panel is the same kind
   // of region for a card that is not about it (a lesson-complete card).
-  const handRect = useTutorialTargetRect(targetId === 'own-hand' ? null : 'own-hand');
+  // While a result-panel step is up the whole table sits under the
+  // result veil and the hand is not interactive, so it is not a keep-out
+  // there: on a 360x640 phone the scoring card docks under the pinned
+  // result card, over the dimmed hand, instead of falling through to the
+  // bottom strip.
+  const handRect = useTutorialTargetRect(
+    targetId === 'own-hand' || targetId === 'result-panel' ? null : 'own-hand',
+  );
   const panelRect = useTutorialTargetRect(targetId === 'result-panel' ? null : 'result-panel');
   const hardKeepOut = useMemo(() => {
     const out: HaloRect[] = [];
