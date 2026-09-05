@@ -1,5 +1,13 @@
 import { useRouter } from 'expo-router';
-import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   Animated,
   Easing,
@@ -24,7 +32,8 @@ import {
   useActiveTutorialStep,
   useTutorial,
 } from '../../state/tutorial';
-import { Tutorial3D } from '../../three/entry';
+import { Tutorial3D, tutorialSceneRects } from '../../three/entry';
+import { resolveRenderer } from '../../three/renderer';
 import { COLORS } from '../colors';
 import { HaloRing, PulseRing, SCRIM_ALPHA, SCRIM_RGB, SpotlightScrim } from './SpotlightScrim';
 import {
@@ -36,12 +45,19 @@ import {
 import { OVERLAY_ATTR, isChromeCandidate } from './chromeRects';
 import { focusFor } from './focus';
 import {
+  CARD_GAP,
+  CARD_MAX_WIDTH,
   CENTRE_CHROME_GAP,
   type CaptionPlacement,
   HALO_RADIUS,
   type HaloRect,
+  NARROW_STRIP_MAX_WIDTH,
+  SHORT_VIEWPORT_MAX_HEIGHT,
+  SIDE_CARD_MIN_WIDTH,
+  SIDE_GAP,
   type SideMask,
   centredRoom,
+  clearGrazers,
   encloseStraddlers,
   featherFor,
   haloFor,
@@ -133,9 +149,75 @@ export function TutorialOverlay() {
   const active = useActiveTutorialStep();
   const justCompleted = useTutorial((s) => s.justCompleted);
 
+  // The 3D table eases its camera in as the lesson opens; hold the
+  // lesson's first card (and the scrim) until the rig has come to rest so
+  // the opening coach-mark never sits over a table caught mid-dolly.
+  const is3d = resolveRenderer(useGame((s) => s.settings.renderer)) === '3d';
+  const sceneSettled = useCameraSettled(
+    active ? active.lesson.id : null,
+    is3d && (active?.stepIndex ?? 0) === 0,
+  );
+
   if (!active && justCompleted) return <CompletionPrompt lessonId={justCompleted} />;
   if (!active) return null;
+  if (!sceneSettled) return null;
   return <ActiveStep lesson={active.lesson} step={active.step} stepIndex={active.stepIndex} />;
+}
+
+/** Quiet the rig must hold before its motion counts as over. */
+const CAMERA_QUIET_MS = 160;
+/** Longest the first card waits for the rig — a stuck camera never hides a lesson. */
+const CAMERA_WAIT_MAX_MS = 3500;
+/** Grace for a rig that has not stepped yet: the shell can retarget the
+ *  camera a beat after mount (inset / size settle), so an idle rig at
+ *  mount is not yet proof it will stay put. */
+const CAMERA_FIRST_TICK_GRACE_MS = 240;
+
+/**
+ * True once the 3D camera rig has been at rest for `CAMERA_QUIET_MS`
+ * (or `CAMERA_WAIT_MAX_MS` has elapsed) since `lessonId` changed. Opens
+ * once per lesson and stays open; always true when `enabled` is false
+ * (classic renderer, later steps) or no scene publishes camera motion.
+ */
+function useCameraSettled(lessonId: string | null, enabled: boolean): boolean {
+  const rects = tutorialSceneRects;
+  const [openFor, setOpenFor] = useState<string | null>(null);
+  useEffect(() => {
+    if (!enabled || !rects || lessonId === null || openFor === lessonId) return;
+    const startedAt = performance.now();
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let done = false;
+    const open = () => {
+      if (done) return;
+      done = true;
+      setOpenFor(lessonId);
+    };
+    const check = () => {
+      if (done) return;
+      const now = performance.now();
+      const m = rects.getCameraMotion();
+      if (now - startedAt >= CAMERA_WAIT_MAX_MS) return open();
+      if (timer !== null) clearTimeout(timer);
+      if (m.live) {
+        timer = setTimeout(check, CAMERA_QUIET_MS);
+        return;
+      }
+      const quietSince = m.ticks === 0 ? startedAt : Math.max(m.lastLiveAt, startedAt);
+      const need = m.ticks === 0 ? CAMERA_FIRST_TICK_GRACE_MS : CAMERA_QUIET_MS;
+      const wait = need - (now - quietSince);
+      if (wait <= 0) return open();
+      timer = setTimeout(check, wait);
+    };
+    const unsub = rects.subscribeCamera(check);
+    check();
+    return () => {
+      done = true;
+      unsub();
+      if (timer !== null) clearTimeout(timer);
+    };
+  }, [enabled, rects, lessonId, openFor]);
+  if (!enabled || !rects || lessonId === null) return true;
+  return openFor === lessonId;
 }
 
 interface ActiveStepProps {
@@ -144,7 +226,14 @@ interface ActiveStepProps {
   stepIndex: number;
 }
 
-const GLASS_BG = 'rgba(14,20,17,0.74)';
+/** Coach-card glass. Deep enough that the felt, walls and tiles behind
+ *  the header and action rows read as a tint, not as geometry through
+ *  the card: at 0.86 the dice, the plate glyph and the near-wall stacks
+ *  were still identifiable through the header and action rows, so the
+ *  fill sits just under opaque and the blur only softens the tint. */
+const GLASS_BG = 'rgba(12,16,14,0.94)';
+/** Backdrop blur behind a glass card (px). */
+const GLASS_BLUR_PX = 18;
 /** Opaque card for the docks that land over chrome or the spotlit
  *  target itself (the portrait result-panel fallback, a card flush to
  *  the top HUD). Glass has nothing worth showing through there, and a
@@ -153,6 +242,9 @@ const GLASS_BG = 'rgba(14,20,17,0.74)';
  *  backdrop-filter. */
 const GLASS_BG_SOLID = 'rgb(16,22,19)';
 const GLASS_BORDER = 'rgba(255,255,255,0.12)';
+/** Card frame on a short (landscape-phone) viewport — see `dense`. */
+const DENSE_CARD_PAD = 12;
+const DENSE_CARD_GAP = 6;
 const TEXT_PRIMARY = 'rgba(255,255,255,0.92)';
 const TEXT_SECONDARY = 'rgba(255,255,255,0.64)';
 const INK_ON_GOLD = '#2a2418';
@@ -195,7 +287,7 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
     originNode,
   );
   const focused = liveRect !== null && liveRect !== registeredRect;
-  const haloRect = useFollowedRect(liveRect, reducedMotion);
+  const haloRect = useFollowedRect(liveRect, reducedMotion, stepKey);
   const cardRect = useSettledRect(liveRect, stepKey);
 
   // Chrome the card must not bisect and the feather must not un-dim:
@@ -225,20 +317,38 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
   // previous step (or a previous viewport) is never used for this one.
   // On web the measurement lands synchronously before the first paint
   // (layout effect below); native shows the card once it has landed.
-  // `mode` records which layout was measured — the regular card or the
-  // landscape bottom strip — so a strip's ~90 px never stands in for the
-  // card height in the fits checks (and flips the dock back and forth).
+  // Both layouts are measured separately — the regular card and the
+  // landscape bottom strip — and *both* heights are kept for the step:
+  // the strip's ~90 px never stands in for the card height in the fits
+  // checks, and the card's height survives a strip render. Keeping only
+  // the last measured mode ping-ponged on a landscape phone whose
+  // own-hand card fits above the hand at the estimate but not at its
+  // real height: card measured → strip chosen → strip measured → card
+  // height forgotten → estimate fits → card chosen → … a synchronous
+  // layout-effect loop React aborts with "maximum update depth".
   const measureKey = `${stepKey}|${window.width}x${window.height}`;
   const [measured, setMeasured] = useState<{
     key: string;
-    height: number;
-    mode: 'card' | 'strip';
+    card: number | null;
+    strip: number | null;
   } | null>(null);
-  const cardHeight =
-    measured?.key === measureKey && measured.mode === 'card' ? measured.height : null;
-  const stripHeight =
-    measured?.key === measureKey && measured.mode === 'strip' ? measured.height : null;
+  const cardHeight = measured?.key === measureKey ? measured.card : null;
+  const stripHeight = measured?.key === measureKey ? measured.strip : null;
+  const recordMeasure = useCallback(
+    (mode: 'card' | 'strip', height: number) => {
+      setMeasured((prev) => {
+        const base = prev?.key === measureKey ? prev : { key: measureKey, card: null, strip: null };
+        if (base[mode] === height) return base;
+        return { ...base, [mode]: height };
+      });
+    },
+    [measureKey],
+  );
   const cardRef = useRef<View | null>(null);
+  /** The strip's content block: a stretched strip (`placement.height`)
+   *  is measured here so its natural height, not the stretched one,
+   *  feeds the placement. */
+  const stripRef = useRef<View | null>(null);
   /** Layout the card is currently rendered in (read by the measurers). */
   const modeRef = useRef<'card' | 'strip'>('card');
   // Body (ScrollView) height, same keying — `cardHeight - bodyHeight` is
@@ -249,11 +359,23 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
    *  viewport (see below). */
   const chromeRef = useRef<{ key: string; chrome: number }>({ key: '', chrome: 0 });
 
-  // A centred (no-target) card keeps clear of the user's hand row: the
-  // registered `own-hand` rect is a keep-out for its placement, and when
-  // the card is too tall to fit above it the body scrolls instead of
-  // the card sitting on the tiles (landscape phone, 3D table).
+  // Every card keeps clear of the user's hand row: the registered
+  // `own-hand` rect is a keep-out for its placement (the two-row portrait
+  // hand is taller than the chrome scan admits, and a card that landed
+  // on it hid a whole row of tiles), and when a centred card is too tall
+  // to fit above it the body scrolls instead of the card sitting on the
+  // tiles (landscape phone, 3D table). The result panel is the same kind
+  // of region for a card that is not about it (a lesson-complete card).
   const handRect = useTutorialTargetRect(targetId === 'own-hand' ? null : 'own-hand');
+  const panelRect = useTutorialTargetRect(targetId === 'result-panel' ? null : 'result-panel');
+  const hardKeepOut = useMemo(() => {
+    const out: HaloRect[] = [];
+    const hand = toHalo(handRect);
+    const panel = toHalo(panelRect);
+    if (hand) out.push(hand);
+    if (panel) out.push(panel);
+    return out;
+  }, [handRect, panelRect]);
 
   // Web: measure synchronously before paint. RNW's `onLayout` goes
   // through ResizeObserver + setTimeout, i.e. it waits for a frame — on a
@@ -263,12 +385,12 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
   useLayoutEffect(() => {
     if (Platform.OS !== 'web') return;
     if ((modeRef.current === 'strip' ? stripHeight : cardHeight) !== null) return;
-    const node = cardRef.current as unknown as {
+    const node = (modeRef.current === 'strip' ? stripRef.current : cardRef.current) as unknown as {
       getBoundingClientRect?: () => { height: number };
     } | null;
     const h = node?.getBoundingClientRect?.().height ?? 0;
-    if (h > 0) setMeasured({ key: measureKey, height: h, mode: modeRef.current });
-  }, [cardHeight, stripHeight, measureKey]);
+    if (h > 0) recordMeasure(modeRef.current, h + (modeRef.current === 'strip' ? STRIP_FRAME : 0));
+  }, [cardHeight, stripHeight, recordMeasure]);
 
   // The ring grows to enclose any small control it would otherwise
   // bisect (the wall counter under the dice modal) and is cut back from
@@ -276,20 +398,69 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
   // landscape dice modal — that side then opens: straight scrim edge,
   // no stroke); the card is placed against the same adjusted halo so
   // the two never disagree.
-  const shapeHalo = (rect: TargetRect | null) =>
-    trimStraddlers(encloseStraddlers(haloFor(rect, window), avoid, window), avoid);
+  // Chrome that only grazes the padding band (the landscape footer under
+  // the hand row) nudges the edge off it last, so the stroke never lands
+  // on a control's edge.
+  const shapeHalo = (rect: TargetRect | null) => {
+    const trimmed = trimStraddlers(encloseStraddlers(haloFor(rect, window), avoid, window), avoid);
+    return { halo: clearGrazers(trimmed.halo, avoid), open: trimmed.open };
+  };
   const { halo, open } = shapeHalo(haloRect);
   const feather = halo ? featherFor(halo, avoid) : undefined;
   const cardHalo = shapeHalo(cardRect).halo;
   const keepOut = cardHalo === null ? toHalo(handRect) : null;
   const avoidForCard = keepOut ? [...avoid, keepOut] : avoid;
+  // Real chrome (everything but the body), taken once per step from the
+  // first pair of measurements — before any cap has moved the body, so
+  // the two agree. Later pairs can be a render apart (the body reports
+  // its new height before the card does) and would inflate the chrome
+  // by exactly the amount the body just shrank. `modeRef` still holds
+  // the layout those measurements came from; a strip's chrome must never
+  // size a card's body.
+  if (
+    cardHeight !== null &&
+    bodyHeight !== null &&
+    modeRef.current === 'card' &&
+    chromeRef.current.key !== measureKey
+  )
+    chromeRef.current = { key: measureKey, chrome: cardHeight - bodyHeight };
+  const chromeKnown = chromeRef.current.key === measureKey;
+  // Docked card with no side slot to fall back on (a landscape phone's
+  // own-hand step: the hand spans the width, the side gutters are ~100
+  // px): cap the body to the larger vertical slot so the card docks
+  // there with a scrolling body instead of falling through to the
+  // bottom strip — which lies over the spotlit hand itself. The cap
+  // depends only on the halo and the measured chrome, never on the
+  // card's height or dock, so it cannot oscillate; it applies only when
+  // the capped card still shows three lines, so the tall-target
+  // fallbacks (result panel) are kept. Placement sees the *capped*
+  // height, otherwise the uncapped card would already have chosen the
+  // strip and the body would never re-render shorter.
+  const safe = safeInset(window.width);
+  const dockLine = Math.min(CARD_MAX_WIDTH, window.width - safe * 2) < 260 ? 17 : 21;
+  let slotBodyCap = Number.POSITIVE_INFINITY;
+  if (cardHalo && chromeKnown) {
+    const sideRoom =
+      Math.max(cardHalo.left, window.width - cardHalo.left - cardHalo.width) - SIDE_GAP - safe;
+    if (sideRoom < SIDE_CARD_MIN_WIDTH) {
+      const vertical = Math.max(cardHalo.top, window.height - cardHalo.top - cardHalo.height);
+      const room = vertical - CARD_GAP - safe - chromeRef.current.chrome;
+      const lines = Math.floor(room / dockLine);
+      if (lines >= 3) slotBodyCap = lines * dockLine;
+    }
+  }
+  const placedCardHeight =
+    cardHeight !== null && chromeKnown
+      ? Math.min(cardHeight, chromeRef.current.chrome + slotBodyCap)
+      : cardHeight;
   const placement = placeCaption({
     viewport: { width: window.width, height: window.height },
     halo: cardHalo,
-    cardHeight,
+    cardHeight: placedCardHeight,
     stripHeight,
     avoid: avoidForCard,
     keepClear,
+    keepOut: hardKeepOut,
   });
   const strip = placement.kind === 'strip';
   modeRef.current = strip ? 'strip' : 'card';
@@ -348,6 +519,12 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
   const lessonLabel =
     lessonIndex >= 0 ? `Lesson ${lessonIndex + 1}/${LESSON_ORDER.length}` : 'Tutorial';
   const compact = placement.width < 260;
+  // Short viewport (landscape phone): the card lives in the ~215 px
+  // band between the top HUD and the hand row, where the regular
+  // frame (18 px pad, 10 px gaps, 26 px title) left two body lines and
+  // a scroll for a three-sentence intro. Trim the frame — never the 44
+  // px CTA — so a third line fits.
+  const dense = !compact && window.height <= SHORT_VIEWPORT_MAX_HEIGHT;
   // Below this width the header stacks (lesson + step labels on one
   // row, dots beneath) — a single row would wrap the labels.
   const stackedHeader = placement.width < 380;
@@ -356,14 +533,8 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
   // phone beside the result panel). `CHROME` approximates everything in
   // the card that is not body text; overflow scrolls inside the card.
   const chromeEstimate = compact ? 220 : 236;
-  let bodyMaxHeight = Math.max(64, window.height - safeInset(window.width) * 2 - chromeEstimate);
-  // Real chrome (everything but the body), taken once per step from the
-  // first pair of measurements — before any cap has moved the body, so
-  // the two agree. Later pairs can be a render apart (the body reports
-  // its new height before the card does) and would inflate the chrome
-  // by exactly the amount the body just shrank.
-  if (cardHeight !== null && bodyHeight !== null && chromeRef.current.key !== measureKey)
-    chromeRef.current = { key: measureKey, chrome: cardHeight - bodyHeight };
+  let bodyMaxHeight = Math.max(64, window.height - safe * 2 - chromeEstimate);
+  const chromeNow = chromeKnown ? chromeRef.current.chrome : chromeEstimate;
   // Centred card: room between the chrome above it and the hand row.
   // The cap depends only on those rects — never on the card's own
   // height or dock — so it follows the 3D camera easing in without
@@ -374,16 +545,22 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
   // kind depends on the card height, and a cap keyed to the dock
   // oscillated between an above dock and a side dock every frame.)
   if (keepOut) {
-    const chromeNow =
-      chromeRef.current.key === measureKey ? chromeRef.current.chrome : chromeEstimate;
-    const room = centredRoom(keepOut, avoidForCard, window, placement.width);
+    const room = centredRoom(keepOut, avoidForCard, window, placement.width, placement.left);
     bodyMaxHeight = Math.min(bodyMaxHeight, room - chromeNow);
   }
-  // Snap a capped body to whole lines so the scroll edge falls between
-  // lines instead of slicing one in half; never below three lines.
+  // Snap a capped body to whole lines *plus* the overflow cue's gutter:
+  // `ScrollBody` takes the gutter off the cap before it snaps the scroll
+  // area to whole lines, so a cap snapped to bare lines handed it one
+  // line less than the room held (a 75 px cap floored to 63 showed two
+  // lines and a chevron where three fitted). Never below three lines.
   const lineHeight = strip ? STRIP_LINE_HEIGHT : compact ? 17 : 21;
+  // The vertical-slot cap decided above (docked card, no side slot).
+  bodyMaxHeight = Math.min(bodyMaxHeight, slotBodyCap);
   if (strip) bodyMaxHeight = STRIP_LINE_HEIGHT * STRIP_BODY_LINES;
-  bodyMaxHeight = Math.max(lineHeight * 3, Math.floor(bodyMaxHeight / lineHeight) * lineHeight);
+  bodyMaxHeight = Math.max(
+    lineHeight * 3,
+    Math.floor((bodyMaxHeight - BODY_CUE_H) / lineHeight) * lineHeight + BODY_CUE_H,
+  );
   const ctaLabel = step.ctaLabel ?? 'Got it';
   const canRestart = stepIndex > 0 && lesson.id !== '_stub';
 
@@ -486,15 +663,10 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
           // scrim. Also the CTA's grandparent — the scoring specs
           // measure the card via `xpath=ancestor::*[2]` of "Got it".
           ref={cardRef}
+          testID="tutorial-card"
           pointerEvents="auto"
           onLayout={(e) => {
-            const { height } = e.nativeEvent.layout;
-            const mode = modeRef.current;
-            setMeasured((prev) =>
-              prev?.key === measureKey && prev.height === height && prev.mode === mode
-                ? prev
-                : { key: measureKey, height, mode },
-            );
+            if (!strip) recordMeasure('card', e.nativeEvent.layout.height);
           }}
           style={[
             {
@@ -503,47 +675,57 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
               borderRadius: 16,
               borderWidth: 1,
               borderColor: GLASS_BORDER,
-              padding: strip ? 10 : compact ? 12 : 18,
+              padding: strip ? STRIP_PAD : compact ? 12 : dense ? DENSE_CARD_PAD : 18,
               paddingHorizontal: strip ? 14 : undefined,
-              gap: strip ? 6 : compact ? 6 : 10,
+              gap: strip ? 6 : compact ? 6 : dense ? DENSE_CARD_GAP : 10,
               boxShadow: '0 12px 40px rgba(0,0,0,0.35)',
+              // A stretched strip covers the chrome beneath it whole; the
+              // content sits centred in the extra height.
+              height: strip ? placement.height : undefined,
+              justifyContent: strip ? 'center' : undefined,
             },
-            solid ? null : webOnly({ backdropFilter: 'blur(16px) saturate(140%)' }),
+            solid ? null : webOnly({ backdropFilter: `blur(${GLASS_BLUR_PX}px) saturate(140%)` }),
           ]}
         >
           {strip ? (
-            <StripBody
-              lessonLabel={lessonLabel}
-              ids={lesson.steps.map((st) => st.id)}
-              index={stepIndex}
-              title={step.caption.title}
-              body={step.caption.body}
-              bodyMaxHeight={bodyMaxHeight}
-              fill={glassBg}
-              onBodyLayout={(height) =>
-                setBodyMeasured((prev) =>
-                  prev?.key === measureKey && prev.height === height
-                    ? prev
-                    : { key: measureKey, height },
-                )
-              }
-              cta={
-                step.completedWhen ? null : (
-                  <PrimaryButton label={ctaLabel} onPress={advance} testID="tutorial-next" />
-                )
-              }
-              skip={<QuietButton label="Skip lesson" onPress={dismiss} compact />}
-              restart={
-                canRestart ? (
-                  <QuietButton
-                    label="Restart"
-                    accessibilityLabel="Restart lesson"
-                    onPress={() => transport.joinSoloTutorial(lesson.id)}
-                    compact
-                  />
-                ) : null
-              }
-            />
+            <View
+              ref={stripRef}
+              style={{ gap: 6 }}
+              onLayout={(e) => recordMeasure('strip', e.nativeEvent.layout.height + STRIP_FRAME)}
+            >
+              <StripBody
+                narrow={placement.width < NARROW_STRIP_MAX_WIDTH}
+                lessonLabel={lessonLabel}
+                ids={lesson.steps.map((st) => st.id)}
+                index={stepIndex}
+                title={step.caption.title}
+                body={step.caption.body}
+                bodyMaxHeight={bodyMaxHeight}
+                onBodyLayout={(height) =>
+                  setBodyMeasured((prev) =>
+                    prev?.key === measureKey && prev.height === height
+                      ? prev
+                      : { key: measureKey, height },
+                  )
+                }
+                cta={
+                  step.completedWhen ? null : (
+                    <PrimaryButton label={ctaLabel} onPress={advance} testID="tutorial-next" />
+                  )
+                }
+                skip={<QuietButton label="Skip lesson" onPress={dismiss} compact />}
+                restart={
+                  canRestart ? (
+                    <QuietButton
+                      label="Restart"
+                      accessibilityLabel="Restart lesson"
+                      onPress={() => transport.joinSoloTutorial(lesson.id)}
+                      compact
+                    />
+                  ) : null
+                }
+              />
+            </View>
           ) : (
             <>
               <CardHeader
@@ -557,8 +739,8 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
                 accessibilityRole="header"
                 accessibilityLabel={`Tutorial step: ${step.caption.title}`}
                 style={{
-                  fontSize: compact ? 15 : 20,
-                  lineHeight: compact ? 19 : 26,
+                  fontSize: compact ? 15 : dense ? 18 : 20,
+                  lineHeight: compact ? 19 : dense ? 22 : 26,
                   fontWeight: '800',
                   letterSpacing: -0.3,
                   color: TEXT_PRIMARY,
@@ -572,7 +754,6 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
                 maxHeight={bodyMaxHeight}
                 fontSize={compact ? 12.5 : 14}
                 lineHeight={compact ? 17 : 21}
-                fill={glassBg}
                 onLayout={(height) =>
                   setBodyMeasured((prev) =>
                     prev?.key === measureKey && prev.height === height
@@ -587,7 +768,7 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
                   justifyContent: 'space-between',
                   alignItems: compact ? 'stretch' : 'center',
                   gap: compact ? 0 : 10,
-                  marginTop: compact ? 0 : 2,
+                  marginTop: compact || dense ? 0 : 2,
                 }}
               >
                 <View
@@ -682,39 +863,53 @@ function otherTargetRects(
 
 /** Body copy in the landscape bottom strip: one size, up to three lines. */
 const STRIP_LINE_HEIGHT = 18;
+/** Vertical padding of the strip card, and the card frame around the
+ *  strip's content block (padding + 1 px borders) — the content is what
+ *  gets measured, so a stretched strip reports its natural height. */
+const STRIP_PAD = 10;
+const STRIP_FRAME = STRIP_PAD * 2 + 2;
 const STRIP_BODY_LINES = 3;
-/** Height of the bottom fade that marks a capped, scrollable body. */
-const BODY_FADE_H = 24;
+/** Gutter under a capped, scrollable body that holds the "more below"
+ *  chevron — its own row, never painted over the last visible line. */
+const BODY_CUE_H = 12;
 
 /**
  * Scrolling body copy with an overflow cue. When the text is taller than
- * the cap, a bottom gradient in the card colour plus a small chevron say
+ * the cap, a small chevron in a gutter *below* the visible lines says
  * "more below" — web shows no scrollbar for an overlay ScrollView, so a
- * capped paragraph otherwise reads as truncated mid-sentence. The cue
- * hides once the user has scrolled to the end.
+ * capped paragraph otherwise reads as truncated mid-sentence. The scroll
+ * area gives up the gutter's height (rounded down to whole lines, so the
+ * scroll edge still falls between lines) and the whole block stays inside
+ * `maxHeight`; the cue fades once the user has scrolled to the end, and
+ * the gutter stays so the card never changes height on scroll.
  */
 function ScrollBody({
   text,
   maxHeight,
   fontSize,
   lineHeight,
-  fill,
   onLayout,
 }: {
   text: string;
   maxHeight: number;
   fontSize: number;
   lineHeight: number;
-  fill: string;
   onLayout?: (height: number) => void;
 }) {
   const [contentH, setContentH] = useState(0);
   const [atEnd, setAtEnd] = useState(false);
   const overflow = contentH > maxHeight + 1;
+  const scrollMax = overflow
+    ? Math.max(lineHeight * 2, Math.floor((maxHeight - BODY_CUE_H) / lineHeight) * lineHeight)
+    : maxHeight;
   return (
-    <View style={{ flexGrow: 0, flexShrink: 1, minHeight: 0 }}>
+    <View
+      testID="tutorial-body"
+      style={{ flexGrow: 0, flexShrink: 1, minHeight: 0 }}
+      onLayout={(e) => onLayout?.(e.nativeEvent.layout.height)}
+    >
       <ScrollView
-        style={{ maxHeight, flexGrow: 0 }}
+        style={{ maxHeight: scrollMax, flexGrow: 0 }}
         showsVerticalScrollIndicator
         nestedScrollEnabled
         scrollEventThrottle={32}
@@ -723,7 +918,6 @@ function ScrollBody({
           const { contentOffset, layoutMeasurement, contentSize } = e.nativeEvent;
           setAtEnd(contentOffset.y + layoutMeasurement.height >= contentSize.height - 2);
         }}
-        onLayout={(e) => onLayout?.(e.nativeEvent.layout.height)}
       >
         <Text
           style={{
@@ -736,26 +930,18 @@ function ScrollBody({
           {text}
         </Text>
       </ScrollView>
-      {overflow && !atEnd ? (
+      {overflow ? (
         <View
           testID="tutorial-body-more"
           pointerEvents="none"
           accessibilityElementsHidden
           importantForAccessibility="no-hide-descendants"
-          style={[
-            {
-              position: 'absolute',
-              left: 0,
-              right: 0,
-              bottom: 0,
-              height: BODY_FADE_H,
-              alignItems: 'center',
-              justifyContent: 'flex-end',
-            },
-            webOnly({
-              backgroundImage: `linear-gradient(to bottom, rgba(14,20,17,0) 0%, ${fill} 100%)`,
-            }),
-          ]}
+          style={{
+            height: BODY_CUE_H,
+            alignItems: 'center',
+            justifyContent: 'flex-end',
+            opacity: atEnd ? 0 : 1,
+          }}
         >
           <Svg width={14} height={8} viewBox="0 0 14 8">
             <Path
@@ -774,36 +960,105 @@ function ScrollBody({
 }
 
 /**
- * Landscape bottom-strip layout (`placement.kind === 'strip'`): one row
+ * Bottom-strip layout (`placement.kind === 'strip'`). Landscape: one row
  * of title + lesson / step labels, then the body beside the buttons —
  * ~90 px tall, so it sits over the dimmed hand row under a wide modal
- * target instead of covering the modal.
+ * target instead of covering the modal. `narrow` (a portrait phone's
+ * band between the hand rows and the footer, ~150 px): title and step
+ * label stack beside the buttons, the body runs the full width beneath
+ * — the landscape row would leave the body ~150 px wide there.
  */
 function StripBody({
+  narrow = false,
   lessonLabel,
   ids,
   index,
   title,
   body,
   bodyMaxHeight,
-  fill,
   onBodyLayout,
   cta,
   skip,
   restart,
 }: {
+  narrow?: boolean;
   lessonLabel: string;
   ids: string[];
   index: number;
   title: string;
   body: string;
   bodyMaxHeight: number;
-  fill: string;
   onBodyLayout: (height: number) => void;
   cta: ReactNode;
   skip: ReactNode;
   restart: ReactNode;
 }) {
+  const titleText = (
+    <Text
+      accessibilityRole="header"
+      accessibilityLabel={`Tutorial step: ${title}`}
+      numberOfLines={1}
+      style={{
+        fontSize: 15,
+        lineHeight: 19,
+        fontWeight: '800',
+        letterSpacing: -0.2,
+        color: TEXT_PRIMARY,
+        fontFamily: TITLE_FONT,
+        flexShrink: 1,
+      }}
+    >
+      {title}
+    </Text>
+  );
+  const stepLabel =
+    ids.length > 1 ? (
+      <Text
+        testID="tutorial-step-label"
+        numberOfLines={1}
+        accessibilityLabel={`Step ${index + 1} of ${ids.length}`}
+        style={[MICRO_LABEL, { color: TEXT_SECONDARY }]}
+      >
+        {`Step ${index + 1} of ${ids.length}`}
+      </Text>
+    ) : null;
+  const buttons = (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+      {skip}
+      {restart}
+      {cta}
+    </View>
+  );
+  const scrollBody = (
+    <ScrollBody
+      text={body}
+      maxHeight={bodyMaxHeight}
+      fontSize={13}
+      lineHeight={STRIP_LINE_HEIGHT}
+      onLayout={onBodyLayout}
+    />
+  );
+  if (narrow) {
+    return (
+      <>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+          }}
+        >
+          <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+            {titleText}
+            {stepLabel}
+          </View>
+          {buttons}
+        </View>
+        {scrollBody}
+      </>
+    );
+  }
   return (
     <>
       <View
@@ -814,22 +1069,7 @@ function StripBody({
           gap: 12,
         }}
       >
-        <Text
-          accessibilityRole="header"
-          accessibilityLabel={`Tutorial step: ${title}`}
-          numberOfLines={1}
-          style={{
-            fontSize: 15,
-            lineHeight: 19,
-            fontWeight: '800',
-            letterSpacing: -0.2,
-            color: TEXT_PRIMARY,
-            fontFamily: TITLE_FONT,
-            flexShrink: 1,
-          }}
-        >
-          {title}
-        </Text>
+        {titleText}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 0 }}>
           <Text numberOfLines={1} style={[MICRO_LABEL, { color: COLORS.gold }]}>
             {lessonLabel}
@@ -837,34 +1077,14 @@ function StripBody({
           {ids.length > 1 ? (
             <>
               <StepDots ids={ids} index={index} />
-              <Text
-                testID="tutorial-step-label"
-                numberOfLines={1}
-                accessibilityLabel={`Step ${index + 1} of ${ids.length}`}
-                style={[MICRO_LABEL, { color: TEXT_SECONDARY }]}
-              >
-                {`Step ${index + 1} of ${ids.length}`}
-              </Text>
+              {stepLabel}
             </>
           ) : null}
         </View>
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <ScrollBody
-            text={body}
-            maxHeight={bodyMaxHeight}
-            fontSize={13}
-            lineHeight={STRIP_LINE_HEIGHT}
-            fill={fill}
-            onLayout={onBodyLayout}
-          />
-        </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-          {skip}
-          {restart}
-          {cta}
-        </View>
+        <View style={{ flex: 1, minWidth: 0 }}>{scrollBody}</View>
+        {buttons}
       </View>
     </>
   );
@@ -1239,7 +1459,7 @@ function CompletionPrompt({ lessonId }: { lessonId: string }) {
             opacity,
             transform: [{ translateY: slide }],
           },
-          webOnly({ backdropFilter: 'blur(16px) saturate(140%)' }),
+          webOnly({ backdropFilter: `blur(${GLASS_BLUR_PX}px) saturate(140%)` }),
         ]}
       >
         <Text

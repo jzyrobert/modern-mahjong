@@ -7,16 +7,24 @@ import {
   CHROME_GAP,
   FEATHER_OUT,
   FEATHER_TIGHT,
+  GRAZE_MIN_PAD,
+  GRAZE_PAD,
   HALO_OVERHANG,
   HALO_PAD,
+  MAX_KEEPOUT_SHIFT,
+  NARROW_STRIP_HEIGHT_ESTIMATE,
   NOTCH_DEPTH,
   NOTCH_MAX_GAP,
   NO_OPEN_SIDES,
+  RING_EDGE_MARGIN,
   SIDE_GUTTER,
+  SIDE_REDOCK_MIN_WIDTH,
   STRADDLE_MAX,
   STRADDLE_PAD,
   STRIP_HEIGHT_ESTIMATE,
+  STRIP_STRETCH_MAX,
   centredRoom,
+  clearGrazers,
   encloseStraddlers,
   featherFor,
   focusRect,
@@ -52,17 +60,21 @@ describe('haloFor', () => {
     expect(haloFor(null)).toBeNull();
   });
 
-  test('opens onto the viewport edge where the target itself reaches the safe line', () => {
-    // Result panel taller than a landscape phone: the ring overhangs
-    // top and bottom (clipped by the overlay) so no stroke is drawn
-    // across the panel's header or action row; the sides stay padded.
+  test('opens onto the viewport edge only where no ring can fit before it', () => {
+    // Result panel taller than a landscape phone: the bottom runs past
+    // the screen edge, so that side overhangs (clipped by the overlay)
+    // and no stroke is drawn across the panel's action row; the top,
+    // 4 px in, keeps a closed ring at the edge margin; the sides stay
+    // padded.
     const h = haloFor({ x: 220, y: 4, w: 480, h: 460 }, landscape);
     expect(h).toEqual({
       left: 212,
-      top: -HALO_OVERHANG,
+      top: RING_EDGE_MARGIN,
       width: 496,
-      height: 412 + HALO_OVERHANG * 2,
+      height: 412 + HALO_OVERHANG - RING_EDGE_MARGIN,
     });
+    // A panel flush with the top edge opens there.
+    expect(haloFor({ x: 220, y: 0, w: 480, h: 460 }, landscape)?.top).toBe(-HALO_OVERHANG);
     // Horizontal sides never open: the hand container spans a phone
     // edge to edge but its tiles sit inside the shell padding, so the
     // side clamp frames them.
@@ -70,15 +82,27 @@ describe('haloFor', () => {
     expect(wide?.left).toBe(12);
     expect((wide?.left ?? 0) + (wide?.width ?? 0)).toBe(400);
     expect((wide?.top ?? 0) + (wide?.height ?? 0)).toBe(915 + HALO_OVERHANG);
-    // Hand tiles running to 3 px past the safe line: bottom opens, the
-    // three other sides keep their pad.
+    // Hand tiles ending 10 px above the bottom edge: the bottom keeps a
+    // closed, full-pad ring inside the edge margin.
     const hand = haloFor({ x: 195, y: 335, w: 595, h: 67 }, landscape);
     expect(hand?.top).toBe(335 - HALO_PAD);
     expect(hand?.left).toBe(195 - HALO_PAD);
-    expect((hand?.top ?? 0) + (hand?.height ?? 0)).toBe(412 + HALO_OVERHANG);
+    expect((hand?.top ?? 0) + (hand?.height ?? 0)).toBe(412 - RING_EDGE_MARGIN);
     // Padding alone poking past the safe line is still clamped.
     const inset = haloFor({ x: 100, y: 20, w: 40, h: 20 }, phone);
     expect(inset?.top).toBe(12);
+    // The desktop claim strip ends inside the 24 px safe inset with room
+    // for a full ring below it: the bottom stays closed and padded.
+    const strip = haloFor({ x: 557, y: 802, w: 325, h: 74 }, desktop);
+    expect((strip?.top ?? 0) + (strip?.height ?? 0)).toBe(876 + HALO_PAD);
+    // The landscape claim strip ends 8 px above the screen edge: the
+    // ring closes with a reduced 6 px pad instead of its side strokes
+    // running off the bottom of the screen.
+    const flush = haloFor({ x: 338, y: 367, w: 244, h: 37 }, landscape);
+    expect((flush?.top ?? 0) + (flush?.height ?? 0)).toBe(412 - RING_EDGE_MARGIN);
+    // …but with less than MIN_RING_PAD of room the side still opens.
+    const tight = haloFor({ x: 338, y: 372, w: 244, h: 37 }, landscape);
+    expect((tight?.top ?? 0) + (tight?.height ?? 0)).toBe(412 + HALO_OVERHANG);
     // A well-inset target is untouched.
     expect(haloFor({ x: 100, y: 100, w: 40, h: 20 }, phone)).toEqual({
       left: 92,
@@ -589,6 +613,16 @@ describe('centredRoom', () => {
   });
   test('falls back to the safe inset with nothing above, and ignores lower-half chrome', () => {
     const low = [{ left: 300, top: 250, width: 100, height: 30 }];
+    // A column card beside a keep-out region measures its own column,
+    // not the centre: chrome under the centre (the result panel's title)
+    // does not bound a card docked in the free column to its right.
+    const centreChrome = { left: 300, top: 120, width: 200, height: 40 };
+    expect(centredRoom(hand, [...hud, centreChrome, hand], landscape, 400, 500)).toBe(
+      centredRoom(hand, [...hud, hand], landscape, 400, 500),
+    );
+    expect(centredRoom(hand, [...hud, centreChrome, hand], landscape, 400)).toBeLessThan(
+      centredRoom(hand, [...hud, hand], landscape, 400),
+    );
     expect(centredRoom(hand, [...low, hand], landscape, 440)).toBe(
       300 - CENTRE_CHROME_GAP - safeInset(915),
     );
@@ -819,5 +853,296 @@ describe('placeCaption: centred card width on a short viewport', () => {
   test('portrait and desktop keep CARD_MAX_WIDTH', () => {
     expect(placeCaption({ viewport: desktop, halo: null, cardHeight: 200 }).width).toBe(440);
     expect(placeCaption({ viewport: phone, halo: null, cardHeight: 200 }).width).toBe(412 - 24);
+  });
+});
+
+describe('clearGrazers: chrome reaching into the padding band nudges the edge off it', () => {
+  // The landscape 3D hand row: tiles y 300..362, footer badge + sort pill
+  // 5 px under them — the padded halo (…370) crossed their top edges.
+  const hand = haloFor({ x: 110, y: 300, w: 700, h: 62 }, landscape)!;
+  const badge = { left: 12, top: 367, width: 140, height: 40 };
+  const pill = { left: 700, top: 367, width: 200, height: 40 };
+
+  test('the bottom edge pulls back to GRAZE_PAD above the grazing controls', () => {
+    const out = clearGrazers(hand, [badge, pill])!;
+    expect(out.top).toBe(hand.top);
+    expect(out.left).toBe(hand.left);
+    expect(out.left + out.width).toBe(hand.left + hand.width);
+    expect(out.top + out.height).toBe(367 - GRAZE_PAD);
+    // …while still padding the target itself.
+    expect(out.top + out.height).toBeGreaterThanOrEqual(362 + GRAZE_MIN_PAD);
+  });
+
+  test('a graze deeper than the padding allows keeps GRAZE_MIN_PAD to the target', () => {
+    const close = { left: 12, top: 363, width: 140, height: 40 };
+    const out = clearGrazers(hand, [close])!;
+    expect(out.top + out.height).toBe(362 + GRAZE_MIN_PAD);
+  });
+
+  test('chrome reaching into the target proper is left to trimStraddlers', () => {
+    const deep = { left: 12, top: 355, width: 700, height: 60 };
+    expect(clearGrazers(hand, [deep])).toBe(hand);
+  });
+
+  test('a control mostly inside the ring (a bisected label) is not backed away from', () => {
+    const label = { left: 400, top: 350, width: 60, height: 24 };
+    expect(clearGrazers(hand, [label])).toBe(hand);
+  });
+
+  test('a neighbour clear of the halo leaves it untouched', () => {
+    const far = { left: 12, top: 380, width: 140, height: 30 };
+    expect(clearGrazers(hand, [far])).toBe(hand);
+  });
+
+  test('works on every side', () => {
+    const halo = { left: 100, top: 100, width: 200, height: 100 };
+    const above = { left: 120, top: 40, width: 60, height: 64 }; // bottom 104, 4 px into band
+    const leftC = { left: 40, top: 120, width: 64, height: 40 }; // right 104
+    const rightC = { left: 296, top: 120, width: 60, height: 40 }; // left 296, 4 px in
+    const out = clearGrazers(halo, [above, leftC, rightC])!;
+    expect(out.top).toBe(104 + GRAZE_PAD);
+    expect(out.left).toBe(104 + GRAZE_PAD);
+    expect(out.left + out.width).toBe(296 - GRAZE_PAD);
+    expect(out.top + out.height).toBe(200);
+  });
+});
+
+describe('placeCaption: a lifted vertical dock does not redock beside the halo over chrome', () => {
+  // Landscape 3D win lesson: the tsumo button sits under the hand row at
+  // the bottom edge (ring open below), the card above it is pushed up
+  // over the hand row's height, and a 300 px side slot exists on both
+  // sides. The side card would cover the last four hand tiles whole —
+  // the vertical dock must stay.
+  const halo = { left: 330, top: 361, width: 259, height: 412 + HALO_OVERHANG - 361 };
+  const tiles = Array.from({ length: 14 }, (_, i) => ({
+    left: 125 + i * 47.5,
+    top: 295,
+    width: 46,
+    height: 62,
+  }));
+  test('keeps the above dock instead of covering the hand', () => {
+    const p = placeCaption({ viewport: landscape, halo, cardHeight: 230, avoid: tiles });
+    expect(p.kind).toBe('above');
+    for (const t of tiles) expect(intersectionArea({ ...p, height: 230 }, t)).toBe(0);
+  });
+  test('still redocks beside the halo when the side slot is clear', () => {
+    const p = placeCaption({ viewport: landscape, halo, cardHeight: 230, avoid: [tiles[6]!] });
+    expect(['left', 'right']).toContain(p.kind);
+  });
+});
+
+describe('keepOut regions: the card never lands on the hand rows', () => {
+  // 3D portrait phone: two rows of hand tiles (registered own-hand rect
+  // incl. its 6 px pad), the claim strip below them, the footer under
+  // that. Numbers from the phone probe on the claims lesson.
+  const hand = { left: 40, top: 571, width: 332, height: 177 };
+  const footer = [
+    { left: 12, top: 862, width: 358, height: 40 },
+    { left: 206, top: 866, width: 194, height: 32 },
+  ];
+  const strip = haloFor({ x: 101.5, y: 761, w: 209, h: 80 }, phone)!;
+
+  test('a bottom target docks the card above both hand rows, notch dropped', () => {
+    const p = placeCaption({
+      viewport: phone,
+      halo: strip,
+      cardHeight: 195,
+      avoid: footer,
+      keepOut: [hand],
+    });
+    expect(p.kind).toBe('above');
+    expect(p.top + 195 + NOTCH_DEPTH).toBeLessThanOrEqual(hand.top - CHROME_GAP + 1);
+    expect(p.overlapsChrome).toBe(false);
+    expect(p.notch).toBeNull();
+    expect(p.top).toBeGreaterThanOrEqual(safeInset(phone.width));
+    // The dodge is longer than a chrome dodge may be.
+    expect(strip.top - CARD_GAP - 195 - p.top).toBeGreaterThan(140);
+    expect(strip.top - CARD_GAP - 195 - p.top).toBeLessThanOrEqual(MAX_KEEPOUT_SHIFT);
+  });
+
+  test('without the keep-out the same card covered the upper row (the regression)', () => {
+    const p = placeCaption({ viewport: phone, halo: strip, cardHeight: 195, avoid: footer });
+    expect(
+      intersectionArea({ left: p.left, top: p.top, width: p.width, height: 195 }, hand),
+    ).toBeGreaterThan(0);
+  });
+
+  test('the dice modal card falls back to a strip in the band under the hand, footer covered whole', () => {
+    // Dice modal spans 132-543; below it only the 34 px gap to the hand
+    // and the 155 px band under the hand are free.
+    const modal = haloFor({ x: 12, y: 132, w: 388, h: 411 }, phone)!;
+    const p = placeCaption({
+      viewport: phone,
+      halo: modal,
+      cardHeight: 250,
+      avoid: footer,
+      keepOut: [hand],
+    });
+    expect(p.kind).toBe('strip');
+    expect(p.left).toBe(safeInset(phone.width));
+    expect(p.width).toBe(phone.width - safeInset(phone.width) * 2);
+    // Clear of the hand, inside the safe area…
+    expect(p.top).toBeGreaterThanOrEqual(hand.top + hand.height + CHROME_GAP);
+    expect(p.top + NARROW_STRIP_HEIGHT_ESTIMATE).toBeLessThanOrEqual(
+      phone.height - safeInset(phone.width),
+    );
+    // …and over the footer whole (solid card), never bisecting it.
+    const card = { left: p.left, top: p.top, width: p.width, height: NARROW_STRIP_HEIGHT_ESTIMATE };
+    for (const f of footer) {
+      const a = intersectionArea(card, f);
+      if (a > 0) expect(a).toBeCloseTo(f.width * f.height, 0);
+    }
+    expect(p.overlapsChrome).toBe(true);
+    // A measured strip height repositions it inside the same band.
+    const measured = placeCaption({
+      viewport: phone,
+      halo: modal,
+      cardHeight: 250,
+      stripHeight: 134,
+      avoid: footer,
+      keepOut: [hand],
+    });
+    expect(measured.kind).toBe('strip');
+    expect(measured.top).toBeGreaterThanOrEqual(hand.top + hand.height + CHROME_GAP);
+    expect(measured.top + 134).toBeLessThanOrEqual(phone.height - safeInset(phone.width));
+  });
+
+  test('a keep-out mostly inside the halo is the spotlit content, not a region to dodge', () => {
+    const own = haloFor({ x: 40, y: 571, w: 332, h: 177 }, phone)!;
+    const p = placeCaption({ viewport: phone, halo: own, cardHeight: 195, keepOut: [hand] });
+    expect(p.kind).toBe('above');
+    expect(p.gap).toBe(CARD_GAP);
+  });
+
+  test('desktop: the hand row as a keep-out changes nothing for a card that already clears it', () => {
+    const handRow = { left: 344, top: 707, width: 752, height: 89 };
+    const desk = haloFor({ x: 557, y: 802, w: 325, h: 74 }, desktop)!;
+    const a = placeCaption({ viewport: desktop, halo: desk, cardHeight: 195, avoid: [handRow] });
+    const b = placeCaption({
+      viewport: desktop,
+      halo: desk,
+      cardHeight: 195,
+      avoid: [handRow],
+      keepOut: [handRow],
+    });
+    expect(b).toEqual(a);
+    expect(
+      intersectionArea({ left: b.left, top: b.top, width: b.width, height: 195 }, handRow),
+    ).toBe(0);
+  });
+});
+
+describe('centred card: keep-out regions and the side column', () => {
+  // Landscape phone, drawn-game lesson-complete card: the result panel
+  // fills the left 12-490 column; the free right column is ~400 wide.
+  const panel = { left: 12, top: 8, width: 478, height: 396 };
+  const seat = { left: 812, top: 85, width: 91, height: 36 };
+
+  test('docks into the free column beside the panel, no wider than the column', () => {
+    const p = placeCaption({
+      viewport: landscape,
+      halo: null,
+      cardHeight: 200,
+      avoid: [seat],
+      keepOut: [panel],
+    });
+    expect(p.kind).toBe('center');
+    const card = { left: p.left, top: p.top, width: p.width, height: 200 };
+    expect(intersectionArea(card, panel)).toBe(0);
+    expect(p.left).toBe(panel.left + panel.width + CENTRE_CHROME_GAP);
+    expect(p.width).toBeGreaterThanOrEqual(SIDE_REDOCK_MIN_WIDTH);
+    expect(p.left + p.width).toBeLessThanOrEqual(landscape.width - safeInset(landscape.width));
+    // The seat badge in that column is dodged, not bisected.
+    expect(intersectionArea(card, seat)).toBe(0);
+    expect(p.overlapsChrome).toBe(false);
+  });
+
+  test('a phone-portrait panel leaving no column keeps the centred, solid fallback', () => {
+    const tall = { left: 12, top: 60, width: 388, height: 700 };
+    const p = placeCaption({ viewport: phone, halo: null, cardHeight: 220, keepOut: [tall] });
+    expect(p.kind).toBe('center');
+    expect(p.width).toBe(388);
+    expect(p.overlapsChrome).toBe(true);
+  });
+
+  test('a card that already clears every keep-out is unchanged', () => {
+    const a = placeCaption({ viewport: desktop, halo: null, cardHeight: 200 });
+    const b = placeCaption({
+      viewport: desktop,
+      halo: null,
+      cardHeight: 200,
+      keepOut: [{ left: 344, top: 707, width: 752, height: 89 }],
+    });
+    expect(b).toEqual(a);
+  });
+});
+
+describe('clearGrazers: two grazers on one edge keep the tightest pull', () => {
+  // Landscape 3D probe: own-hand rect 285-363.4, footer badge at 371,
+  // sort pill at 369 (2 px higher, listed *after* the badge).
+  const hand = haloFor({ x: 116.3, y: 285, w: 682.4, h: 78.4 }, landscape)!;
+  const badge = { left: 12, top: 371, width: 166, height: 34 };
+  const pill = { left: 703, top: 369, width: 200, height: 38 };
+
+  test('the pill (tighter) wins whatever order the scan lists them in', () => {
+    const a = clearGrazers(hand, [badge, pill])!;
+    const b = clearGrazers(hand, [pill, badge])!;
+    expect(a.top + a.height).toBeCloseTo(369 - GRAZE_PAD, 5);
+    expect(b.top + b.height).toBeCloseTo(369 - GRAZE_PAD, 5);
+    // ≥ 2 px of clear felt between a 1.5 px stroke centred on the edge
+    // and the pill's border.
+    expect(369 - (a.top + a.height) - 0.75).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('band strip: stretches to swallow the chrome under it whole', () => {
+  // Phone dice step, probe numbers: hand rows 571-749, then the turn chip
+  // (760-800) and table chip (808-842) in the (paint-less, unscanned)
+  // action tray, the footer (863-903). No natural-height strip fits the
+  // 146 px band without cutting a chip; stretched from the chips' top to
+  // the safe line it covers every one of them whole.
+  const hand = { left: 14, top: 570.7, width: 384, height: 178.7 };
+  const chrome = [
+    { left: 99.5, top: 760, width: 213, height: 40 },
+    { left: 98, top: 808, width: 216, height: 34 },
+    { left: 12, top: 864, width: 180, height: 38 },
+    { left: 200, top: 863, width: 200, height: 40 },
+  ];
+  const modal = haloFor({ x: 12, y: 132, w: 388, h: 411 }, phone)!;
+
+  test('the strip covers the chips and the footer whole, never a chip in two', () => {
+    const p = placeCaption({
+      viewport: phone,
+      halo: modal,
+      cardHeight: 250,
+      stripHeight: 120,
+      avoid: chrome,
+      keepOut: [hand],
+    });
+    expect(p.kind).toBe('strip');
+    expect(p.height).toBeDefined();
+    expect(p.height! - 120).toBeLessThanOrEqual(STRIP_STRETCH_MAX);
+    const card = { left: p.left, top: p.top, width: p.width, height: p.height! };
+    expect(intersectionArea(card, hand)).toBe(0);
+    expect(p.top + p.height!).toBeLessThanOrEqual(phone.height - safeInset(phone.width));
+    // Every chip / footer control it touches is covered whole.
+    for (const r of chrome) {
+      const a = intersectionArea(card, r);
+      expect(a === 0 || Math.abs(a - r.width * r.height) < 1, JSON.stringify(r)).toBe(true);
+    }
+  });
+
+  test('a band with room for a clean natural strip keeps the natural height', () => {
+    const p = placeCaption({
+      viewport: phone,
+      halo: modal,
+      cardHeight: 250,
+      stripHeight: 120,
+      avoid: [],
+      keepOut: [hand],
+    });
+    expect(p.kind).toBe('strip');
+    expect(p.height).toBeUndefined();
+    expect(p.top).toBe(hand.top + hand.height + CHROME_GAP);
   });
 });
