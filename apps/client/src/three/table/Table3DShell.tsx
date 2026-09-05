@@ -62,6 +62,7 @@ import {
   SIDE_MELD_SCALE_PORTRAIT,
   SIDE_SEAT_OUT_DESKTOP,
   SIDE_SEAT_OUT_LOW,
+  orderOwnHand,
   toWorld,
 } from './layout';
 import { type ScreenRect, padRect, rectsClose, unionRects } from './picking';
@@ -404,11 +405,12 @@ export function Table3DShell(props: Table3DShellProps) {
           if (!s) continue;
           if (s.zone === 'hand') {
             const r = scene.tileRect(s.id);
-            hitRef.current?.setTileRect(s.id, r);
             // The tutorial's `own-hand` rect unions the *settled* poses,
             // so it is stable from the first frame of the deal (the
-            // tap targets above still follow the visible tiles).
+            // tap targets still follow the visible tiles; the settled
+            // rect is the slot drag-to-reorder resolves against).
             const settled = scene.settledTileRect(s.id);
+            hitRef.current?.setTileRect(s.id, r, settled);
             if (settled) handRects.push({ ...settled });
             else if (r) handRects.push({ ...r });
           } else if ((s.zone === 'wall' || s.zone === 'deadWall') && s.rel === 0) {
@@ -674,23 +676,15 @@ export function Table3DShell(props: Table3DShellProps) {
   const badgeAt = (pos: Position) => badges.find((b) => b.position === pos);
   const activeSeat: Seat | null =
     state.phase === 'turn' && state.turn !== seat ? (state.turn as Seat) : null;
-  // biome-ignore lint/correctness/useExhaustiveDependencies: the scene layout is read imperatively; sort mode / manual order / drawn tile drive its order
-  const ownHand = useMemo(() => {
-    const scene = sceneRef.current;
-    const layout = scene?.layout;
-    const ids = layout
-      ? layout.filter((s) => s !== null && s.zone === 'hand').map((s) => s!.id)
-      : state.hands[seat].map(tileId);
-    const byId = new Map(state.hands[seat].map((t) => [tileId(t), t] as const));
-    const ordered: MTile[] = [];
-    for (const id of ids) {
-      const t = byId.get(id);
-      if (t) ordered.push(t);
-    }
-    // Any tile the layout didn't list yet (first render) still needs a button.
-    for (const t of state.hands[seat]) if (!ids.includes(tileId(t))) ordered.push(t);
-    return ordered;
-  }, [state, seat, sortMode, manualOrder, props.drawnTileId]);
+  // Display order of the user's hand — the same rule `computeLayout`
+  // applies, evaluated at render time so the hit-target buttons' DOM
+  // order (tab order, screen readers, the e2e order assertions) matches
+  // the row in the same commit instead of trailing the scene's last sync.
+  const ownHand = useMemo(
+    () =>
+      orderOwnHand(state.hands[seat], { sortMode, manualOrder, drawnTileId: props.drawnTileId }),
+    [state, seat, sortMode, manualOrder, props.drawnTileId],
+  );
   const nextDrawTile = state.wall.length > 0 ? state.wall[state.wall.length - 1]! : null;
   // Newest discard of the hand (the engine's `lastDiscard` only lives
   // through the claim window; `discardOrder` is the hand's full log).
@@ -903,6 +897,10 @@ export function Table3DShell(props: Table3DShellProps) {
             canDiscard={canDiscard}
             onTileTap={props.onTileTap}
             onHover={(id) => sceneRef.current?.setHover(id)}
+            sortMode={sortMode}
+            onSortModeChange={props.onSortModeChange ?? (() => {})}
+            onReorder={(ids) => useGame.getState().setManualOrder([...ids])}
+            onDrag={(id, x, y) => sceneRef.current?.setDraggedTile(id, x, y)}
             nextDrawTile={nextDrawTile}
             needsDraw={props.needsDraw}
             onDraw={() => props.onAction({ t: 'draw', seat })}
