@@ -3,7 +3,7 @@ import { type LayoutChangeEvent, Pressable, Text, View } from 'react-native';
 import { type PlaybackPov, usePlayback } from '../../replay/playback';
 import type { ReplayBookmark, ReplayBookmarkKind } from '../../replay/types';
 import { COLORS } from '../colors';
-import type { ReplayChapter } from './ReplayPlayer';
+import type { ReplayChapter } from './chapters';
 
 const PIP_COLOR: Record<ReplayBookmarkKind, string> = {
   'hand-start': COLORS.ink2,

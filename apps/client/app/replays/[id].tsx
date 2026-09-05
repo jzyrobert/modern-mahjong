@@ -1,13 +1,21 @@
+import '@/src/replay/fixture';
+
 import { exportRecordToClipboard } from '@/src/replay/exportImport';
 import { PlaybackProvider } from '@/src/replay/playback';
 import { deleteRecord, loadRecord } from '@/src/replay/storage';
 import type { ReplayRecord } from '@/src/replay/types';
-import { PrimaryButton } from '@/src/ui/buttons';
+import { useGame } from '@/src/state/game';
+import { hasWebGL2, resolveRenderer } from '@/src/three/renderer';
 import { COLORS } from '@/src/ui/colors';
+import { GlassCard } from '@/src/ui/menu/GlassCard';
+import { LobbyBackdrop } from '@/src/ui/menu/LobbyBackdrop';
+import { GoldButton } from '@/src/ui/menu/MenuButtons';
+import { MENU, TYPE, heading } from '@/src/ui/menu/theme';
+import { ConfirmDeleteSheet } from '@/src/ui/replay/ConfirmDeleteSheet';
 import { ReplayPlayer } from '@/src/ui/replay/ReplayPlayer';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Platform, Pressable, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 /**
@@ -15,48 +23,25 @@ import { SafeAreaView } from 'react-native-safe-area-context';
  * `<ReplayPlayer>` inside a `PlaybackProvider`. Loading is synchronous
  * (it's just a localStorage read) so a missing-record fallback covers
  * the only failure mode: deep-linking to an id that no longer exists.
+ *
+ * Under the 3D renderer (web, WebGL2) the player is the glass one: the
+ * page sits on the parlour void and the route's actions (back / export
+ * / delete) ride in the player's chrome row. The classic renderer keeps
+ * the paper shell and its header unchanged. `?frame=<n>` (or
+ * `frame=end`) opens on a visible frame — the screenshot recipes use it.
  */
 export default function ReplayDetail() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const id = typeof params.id === 'string' ? params.id : null;
   const record = useMemo<ReplayRecord | null>(() => (id ? loadRecord(id) : null), [id]);
+  const initialCursor = useMemo(() => parseFrameParam(params.frame), [params.frame]);
   const [exportLabel, setExportLabel] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const rendererSetting = useGame((s) => s.settings.renderer);
+  const glass = Platform.OS === 'web' && resolveRenderer(rendererSetting) === '3d' && hasWebGL2();
 
-  if (!record) {
-    return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.cream }} edges={['top', 'bottom']}>
-        <View
-          style={{
-            flex: 1,
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 24,
-            gap: 12,
-          }}
-        >
-          <Text
-            accessibilityRole="header"
-            style={{ fontSize: 22, fontWeight: '900', color: COLORS.ink }}
-          >
-            Replay not found
-          </Text>
-          <Text
-            style={{
-              color: COLORS.ink3,
-              fontSize: 14,
-              textAlign: 'center',
-              maxWidth: 320,
-            }}
-          >
-            The replay link points at an id that's no longer in your library — it may have been
-            deleted or pruned past your quota.
-          </Text>
-          <PrimaryButton onPress={() => router.replace('/replays')}>Back to library</PrimaryButton>
-        </View>
-      </SafeAreaView>
-    );
-  }
+  if (!record) return <NotFound onBack={() => router.replace('/replays')} />;
 
   const onExport = async () => {
     try {
@@ -68,17 +53,45 @@ export default function ReplayDetail() {
     }
   };
 
-  const onDelete = () => {
-    if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
-      if (!window.confirm('Delete this replay?')) return;
-    }
+  const doDelete = () => {
     deleteRecord(record.header.id);
     router.replace('/replays');
   };
 
+  if (glass) {
+    return (
+      <View style={{ flex: 1, backgroundColor: MENU.void0 }} testID="replay-route-glass">
+        <LobbyBackdrop scene={false} backs={false} glow={{ x: 0.5, y: 0.4 }} />
+        <PlaybackProvider record={record} initialCursor={initialCursor}>
+          <ReplayPlayer
+            theme="glass"
+            actions={{
+              onBack: () => router.replace('/replays'),
+              onExport,
+              onDelete: () => setConfirmDelete(true),
+              exportLabel,
+            }}
+          />
+        </PlaybackProvider>
+        <ConfirmDeleteSheet
+          open={confirmDelete}
+          onCancel={() => setConfirmDelete(false)}
+          onConfirm={doDelete}
+        />
+      </View>
+    );
+  }
+
+  const onDelete = () => {
+    if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
+      if (!window.confirm('Delete this replay?')) return;
+    }
+    doDelete();
+  };
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.cream }} edges={['top', 'bottom']}>
-      <PlaybackProvider record={record}>
+      <PlaybackProvider record={record} initialCursor={initialCursor}>
         <View
           style={{
             flexDirection: 'row',
@@ -152,6 +165,45 @@ export default function ReplayDetail() {
       </PlaybackProvider>
     </SafeAreaView>
   );
+}
+
+/** Glass card on the void — the library's language, whichever renderer. */
+function NotFound({ onBack }: { onBack: () => void }) {
+  return (
+    <View style={{ flex: 1, backgroundColor: MENU.void0 }} testID="replay-not-found">
+      <LobbyBackdrop scene={false} backs={false} glow={{ x: 0.5, y: 0.45 }} />
+      <SafeAreaView
+        style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }}
+        edges={['top', 'bottom']}
+      >
+        <GlassCard
+          hover={false}
+          style={{ padding: 24, gap: 12, alignItems: 'center', maxWidth: 420 }}
+        >
+          <Text style={[TYPE.label, { color: MENU.gold }]}>Replays</Text>
+          <Text accessibilityRole="header" style={heading(26)}>
+            Replay not found
+          </Text>
+          <Text style={[TYPE.body, { textAlign: 'center' }]}>
+            The replay link points at an id that's no longer in your library — it may have been
+            deleted or pruned past your quota.
+          </Text>
+          <GoldButton onPress={onBack} style={{ marginTop: 4 }}>
+            Back to library
+          </GoldButton>
+        </GlassCard>
+      </SafeAreaView>
+    </View>
+  );
+}
+
+/** `?frame=12` → 11 (1-based in the URL, like the counter); `frame=end` → the last frame. */
+export function parseFrameParam(raw: unknown): number | undefined {
+  const v = Array.isArray(raw) ? raw[0] : raw;
+  if (typeof v !== 'string' || v.length === 0) return undefined;
+  if (v === 'end' || v === 'last') return Number.POSITIVE_INFINITY;
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.max(0, Math.floor(n) - 1) : undefined;
 }
 
 function formatBytes(n: number): string {

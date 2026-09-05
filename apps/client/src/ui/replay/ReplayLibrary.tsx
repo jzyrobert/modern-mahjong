@@ -20,6 +20,7 @@ import { WindEmblem } from '../menu/WindEmblem';
 import { ChevronLeftIcon, ImportIcon, PlayIcon, TrashIcon } from '../menu/icons';
 import { HOVER_TRANSITION, MENU, TYPE, glass, heading } from '../menu/theme';
 import { SEAT_WIND_GLYPH } from '../winds';
+import { ConfirmDeleteSheet } from './ConfirmDeleteSheet';
 import { ReplayImportModal } from './ReplayImportModal';
 import { summarise, summaryLine } from './summary';
 
@@ -460,119 +461,126 @@ function ReplayRow({
   const { width } = useWindowDimensions();
   const narrow = width < 560;
 
-  const onDelete = () => {
-    if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
-      if (!window.confirm('Delete this replay?')) return;
-    }
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const onDelete = () => setConfirmDelete(true);
+  const doDelete = () => {
+    setConfirmDelete(false);
     deleteRecord(header.id);
     onDeleted();
   };
 
   return (
-    <Pressable
-      onPress={onOpen}
-      accessibilityRole="button"
-      accessibilityLabel={`Open replay from ${dateLabel}`}
-      onHoverIn={() => setHovered(true)}
-      onHoverOut={() => setHovered(false)}
-      style={({ pressed }) => ({
-        ...glass({ radius: 16 }),
-        borderColor: localWon ? MENU.goldEdge : MENU.hairline,
-        flexDirection: 'row',
-        gap: 14,
-        alignItems: 'stretch',
-        padding: 14,
-        marginBottom: 10,
-        ...(pressed ? { backgroundColor: 'rgba(24,34,28,0.75)' } : {}),
-        ...HOVER_TRANSITION,
-        transform: [{ translateY: hovered && !pressed ? -2 : 0 }, { scale: pressed ? 0.99 : 1 }],
-      })}
-    >
-      <View style={{ width: 60, flexShrink: 0, alignItems: 'center', gap: 6 }}>
-        {winner ? (
-          <WindEmblem wind={SEAT_WIND_GLYPH[winner.seat]} size={38} />
-        ) : (
-          <View
-            style={{
-              width: 38,
-              height: 38 * 1.32,
-              borderRadius: 6,
-              alignItems: 'center',
-              justifyContent: 'center',
-              backgroundColor: MENU.fill,
-              borderColor: MENU.hairline,
-              borderWidth: 1,
-            }}
-          >
-            <Text style={{ fontSize: 20, fontWeight: '800', color: MENU.text4 }}>—</Text>
-          </View>
-        )}
-        {localWon ? <Pill tone="gold">★ WON</Pill> : isDraw ? <Pill>DRAW</Pill> : null}
-      </View>
-      <View style={{ flex: 1, minWidth: 0, gap: 10 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <Pill tone={badge.tone}>{badge.label}</Pill>
-          <Text style={{ fontSize: 13, fontWeight: '800', color: MENU.text }}>{dateLabel}</Text>
-          <View style={{ flex: 1 }} />
-          <Text style={TYPE.small}>
-            {header.handsPlayed} hand{header.handsPlayed === 1 ? '' : 's'} · {durationLabel}
-          </Text>
-        </View>
-        <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
-          {SEATS.map((seat) => (
-            <ScoreChip
-              key={seat}
-              seat={seat}
-              header={header}
-              position={positions[seat]}
-              isWinner={winner !== null && seat === winner.seat}
-            />
-          ))}
-        </View>
-      </View>
-      <View
-        style={{
-          flexDirection: narrow ? 'column' : 'row',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 8,
-          flexShrink: 0,
-        }}
+    <>
+      <ConfirmDeleteSheet
+        open={confirmDelete}
+        onCancel={() => setConfirmDelete(false)}
+        onConfirm={doDelete}
+      />
+      <Pressable
+        onPress={onOpen}
+        accessibilityRole="button"
+        accessibilityLabel={`Open replay from ${dateLabel}`}
+        onHoverIn={() => setHovered(true)}
+        onHoverOut={() => setHovered(false)}
+        style={({ pressed }) => ({
+          ...glass({ radius: 16 }),
+          borderColor: localWon ? MENU.goldEdge : MENU.hairline,
+          flexDirection: 'row',
+          gap: 14,
+          alignItems: 'stretch',
+          padding: 14,
+          marginBottom: 10,
+          ...(pressed ? { backgroundColor: 'rgba(24,34,28,0.75)' } : {}),
+          ...HOVER_TRANSITION,
+          transform: [{ translateY: hovered && !pressed ? -2 : 0 }, { scale: pressed ? 0.99 : 1 }],
+        })}
       >
-        <Pressable
-          onPress={onDelete}
-          accessibilityRole="button"
-          accessibilityLabel="Delete replay"
-          hitSlop={6}
-          style={({ pressed }) => ({
-            width: 32,
-            height: 32,
-            borderRadius: 999,
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderWidth: 1,
-            borderColor: pressed ? MENU.redEdge : MENU.hairlineSoft,
-            backgroundColor: pressed ? MENU.redTint : 'transparent',
-          })}
-        >
-          <TrashIcon size={14} color={MENU.text3} />
-        </Pressable>
+        <View style={{ width: 60, flexShrink: 0, alignItems: 'center', gap: 6 }}>
+          {winner ? (
+            <WindEmblem wind={SEAT_WIND_GLYPH[winner.seat]} size={38} />
+          ) : (
+            <View
+              style={{
+                width: 38,
+                height: 38 * 1.32,
+                borderRadius: 6,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: MENU.fill,
+                borderColor: MENU.hairline,
+                borderWidth: 1,
+              }}
+            >
+              <Text style={{ fontSize: 20, fontWeight: '800', color: MENU.text4 }}>—</Text>
+            </View>
+          )}
+          {localWon ? <Pill tone="gold">★ WON</Pill> : isDraw ? <Pill>DRAW</Pill> : null}
+        </View>
+        <View style={{ flex: 1, minWidth: 0, gap: 10 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <Pill tone={badge.tone}>{badge.label}</Pill>
+            <Text style={{ fontSize: 13, fontWeight: '800', color: MENU.text }}>{dateLabel}</Text>
+            <View style={{ flex: 1 }} />
+            <Text style={TYPE.small}>
+              {header.handsPlayed} hand{header.handsPlayed === 1 ? '' : 's'} · {durationLabel}
+            </Text>
+          </View>
+          <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+            {SEATS.map((seat) => (
+              <ScoreChip
+                key={seat}
+                seat={seat}
+                header={header}
+                position={positions[seat]}
+                isWinner={winner !== null && seat === winner.seat}
+              />
+            ))}
+          </View>
+        </View>
         <View
           style={{
-            width: 32,
-            height: 32,
-            borderRadius: 999,
-            backgroundColor: MENU.goldTint,
-            borderColor: MENU.goldEdge,
-            borderWidth: 1,
+            flexDirection: narrow ? 'column' : 'row',
             alignItems: 'center',
             justifyContent: 'center',
+            gap: 8,
+            flexShrink: 0,
           }}
         >
-          <PlayIcon size={14} color={MENU.goldHi} />
+          <Pressable
+            onPress={onDelete}
+            accessibilityRole="button"
+            accessibilityLabel="Delete replay"
+            hitSlop={6}
+            style={({ pressed }) => ({
+              width: 32,
+              height: 32,
+              borderRadius: 999,
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderWidth: 1,
+              borderColor: pressed ? MENU.redEdge : MENU.hairlineSoft,
+              backgroundColor: pressed ? MENU.redTint : 'transparent',
+            })}
+          >
+            <TrashIcon size={14} color={MENU.text3} />
+          </Pressable>
+          <View
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 999,
+              backgroundColor: MENU.goldTint,
+              borderColor: MENU.goldEdge,
+              borderWidth: 1,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <PlayIcon size={14} color={MENU.goldHi} />
+          </View>
         </View>
-      </View>
-    </Pressable>
+      </Pressable>
+    </>
   );
 }
 
