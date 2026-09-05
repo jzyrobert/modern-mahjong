@@ -22,8 +22,14 @@ import {
   PORTRAIT_X_HALF,
   RESULT_PANEL_H_ESTIMATE,
   TABLE_CAMERA,
-  ZOOM_WALL_ANCHOR,
-  ZOOM_WALL_ANCHOR_Y,
+  ZOOM_ELEV_DEG,
+  ZOOM_FAR_RIVER_GAP,
+  ZOOM_FAR_RIVER_POINT,
+  ZOOM_FAR_RIVER_Y,
+  ZOOM_HEADER_BOTTOM,
+  ZOOM_NEAR_RIVER_GAP,
+  ZOOM_NEAR_RIVER_POINT,
+  ZOOM_X_HALF_MIN,
   cameraFor,
   classifyViewport,
   diceLessonCardH,
@@ -43,9 +49,19 @@ import {
   resultCaptionNeed,
   resultPanelPinsTop,
   riverZoomCameraFor,
+  riverZoomFrameFor,
   sheetCameraFor,
 } from './cameraPresets';
-import { FELT_HALF, HAND_Z, MELD_Z, OWN_HAND_Z, RAIL_WIDTH, STAND_Y, WALL_D } from './layout';
+import {
+  FELT_HALF,
+  HAND_Z,
+  MELD_Z,
+  OWN_HAND_Z,
+  RAIL_WIDTH,
+  STAND_Y,
+  WALL_D,
+  riverMetrics,
+} from './layout';
 
 function ndc(
   preset: { position: number[]; target: number[]; fov: number },
@@ -249,43 +265,75 @@ describe('heldHandFrameFor', () => {
       expect(handNear.x).toBeGreaterThanOrEqual(6);
     }
   });
-  test('river zoom frames the river block ≥ 25 px per tile and keeps the hand off the table', () => {
-    const w = 412;
-    const h = 915;
-    const preset = riverZoomCameraFor(w, h);
-    const cam = new PerspectiveCamera(preset.fov, w / h, 0.1, 200);
-    cam.position.set(...preset.position);
-    cam.lookAt(...preset.target);
-    cam.updateMatrixWorld();
-    const px = (x: number, y: number, z: number) => {
-      const p = new Vector3(x, y, z).project(cam);
-      return { x: (p.x * 0.5 + 0.5) * w, y: (-p.y * 0.5 + 0.5) * h };
-    };
-    expect((px(1, 0.3, 0).x - px(0, 0.3, 0).x) * PORTRAIT_RIVER_SCALE).toBeGreaterThanOrEqual(26);
-    // Every river's furthest row (z ≈ ±7.6 in its owner's frame) is inside.
-    expect(px(7.9, 0, 0).x).toBeLessThanOrEqual(w + 1);
-    expect(px(0, 0, 7.9).y).toBeLessThan(heldHandTopPx(w, h) - PORTRAIT_BAND_GAP);
-    // The far wall's near-top edge is pinned to the strip's bottom edge
-    // so the whole far wall row hides behind the zoom header bar, and
-    // the far river's last row clears the strip.
-    const anchor = px(...ZOOM_WALL_ANCHOR);
-    expect(Math.abs(anchor.y - ZOOM_WALL_ANCHOR_Y)).toBeLessThan(1);
-    expect(px(0, 2 * TILE_D, -(WALL_D + TILE_H / 2)).y).toBeGreaterThan(PORTRAIT_STRIP_TOP - 14);
-    expect(px(0, TILE_D, -7.6).y).toBeGreaterThan(PORTRAIT_STRIP_TOP + PORTRAIT_STRIP_H + 2);
-    // The near wall's front edge leaves a toast's height (52 px) of free
-    // felt above the held hand for the zoom-mode toast slot.
-    const nearWallBottom = px(0, 0, WALL_D + TILE_H / 2).y;
-    expect(heldHandTopPx(w, h) - PORTRAIT_BAND_GAP - nearWallBottom).toBeGreaterThanOrEqual(52);
-    // Same elevation as the full view, so the held hand only translates.
-    const full = cameraFor(w, h);
-    const elev = (p: typeof preset) =>
-      Math.atan2(p.position[1] - p.target[1], p.position[2] - p.target[2]);
-    expect(elev(preset)).toBeCloseTo(elev(full), 5);
-    // The held hand's ray still misses the table.
-    const f = heldHandFrameFor(preset, w, h);
-    const dir = new Vector3(...f.origin).sub(cam.position).normalize();
-    const t = -cam.position.y / dir.y;
-    expect(cam.position.z + dir.z * t).toBeGreaterThan(14);
+  test('river zoom is an 84° plan view over the four rivers, header to held hand', () => {
+    // Round-FB4: "zooming into the table should present a more top-down
+    // close-up view of the discard tiles". Every phone gets the same
+    // view; only the distance gives ground (see the short-phone suite).
+    const farEdge = riverMetrics(PORTRAIT_RIVER_SCALE).farEdge;
+    for (const [w, h] of [
+      [412, 915],
+      [412, 700],
+      [360, 640],
+    ] as const) {
+      const { preset, xHalf } = riverZoomFrameFor(w, h);
+      expect(riverZoomCameraFor(w, h)).toEqual(preset);
+      const cam = new PerspectiveCamera(preset.fov, w / h, 0.1, 200);
+      cam.position.set(...preset.position);
+      cam.lookAt(...preset.target);
+      cam.updateMatrixWorld();
+      const px = (x: number, y: number, z: number) => {
+        const p = new Vector3(x, y, z).project(cam);
+        return { x: (p.x * 0.5 + 0.5) * w, y: (-p.y * 0.5 + 0.5) * h };
+      };
+      const elev = Math.atan2(
+        preset.position[1] - preset.target[1],
+        preset.position[2] - preset.target[2],
+      );
+      expect((elev * 180) / Math.PI).toBeCloseTo(ZOOM_ELEV_DEG, 4);
+      // The far river's last row sits just under the zoom header (its top
+      // face a px or two higher than its felt edge, never under the glass
+      // by more than the gap), the far seat's rack behind the glass.
+      expect(Math.abs(px(...ZOOM_FAR_RIVER_POINT).y - ZOOM_FAR_RIVER_Y)).toBeLessThan(1);
+      expect(px(0, TILE_D, -farEdge).y).toBeGreaterThan(ZOOM_HEADER_BOTTOM - 3);
+      expect(px(0, TILE_H, -HAND_Z).y).toBeLessThan(ZOOM_HEADER_BOTTOM - 20);
+      // The near river's last row clears the held hand's band.
+      const bandBottom = heldHandTopPx(w, h) - PORTRAIT_BAND_GAP;
+      expect(px(...ZOOM_NEAR_RIVER_POINT).y).toBeLessThanOrEqual(
+        bandBottom - ZOOM_NEAR_RIVER_GAP + 0.5,
+      );
+      // The side rivers' outer corners (nearest the camera, so the widest
+      // projection) stay inside the viewport with a little felt.
+      expect(px(farEdge, TILE_D, farEdge).x).toBeLessThanOrEqual(w - 4);
+      expect(px(-farEdge, TILE_D, farEdge).x).toBeGreaterThanOrEqual(4);
+      expect(xHalf).toBeGreaterThanOrEqual(ZOOM_X_HALF_MIN - 1e-9);
+      // Face-on glyphs: a river tile projects at ≥ 0.97 of its 1.36 : 1
+      // proportions (sin 84° ≈ 0.99 less a little perspective; the resting
+      // 50–70° views foreshorten to 0.77–0.94).
+      const tileW = px(1, TILE_D, 0).x - px(0, TILE_D, 0).x;
+      const tileH = px(0, TILE_D, TILE_H / 2).y - px(0, TILE_D, -TILE_H / 2).y;
+      expect(tileH / tileW).toBeGreaterThanOrEqual(TILE_H * 0.97);
+      // The held hand's ray still misses the table, and the hand stays
+      // behind the key light so it casts nothing onto the felt.
+      const f = heldHandFrameFor(preset, w, h);
+      const dir = new Vector3(...f.origin).sub(cam.position).normalize();
+      const t = -cam.position.y / dir.y;
+      expect(cam.position.z + dir.z * t).toBeGreaterThan(14);
+      const light = new Vector3(7, 18, 9);
+      const depth = new Vector3(...f.origin).sub(light).dot(light.clone().normalize().negate());
+      expect(depth).toBeLessThan(4);
+    }
+    // The tall phone takes the tight frame: ≈ 33 px river tiles, 1.4× the
+    // resting view (the round-4 frame at 70° gave 33.5 px at 0.94 height).
+    const tall = riverZoomFrameFor(412, 915);
+    expect(tall.xHalf).toBeCloseTo(ZOOM_X_HALF_MIN, 9);
+    const tile = (p: ReturnType<typeof cameraFor>) =>
+      (projectPreset(p, 412, 915, [1, 0.3, 0]).x - projectPreset(p, 412, 915, [0, 0.3, 0]).x) *
+      PORTRAIT_RIVER_SCALE;
+    expect(tile(tall.preset)).toBeGreaterThanOrEqual(32);
+    expect(tile(tall.preset) / tile(cameraFor(412, 915))).toBeGreaterThanOrEqual(1.4);
+    // Header geometry the solve assumes matches the shell's zoom bar.
+    expect(ZOOM_HEADER_BOTTOM).toBe(PORTRAIT_STRIP_TOP + PORTRAIT_STRIP_H + 6);
+    expect(ZOOM_FAR_RIVER_Y).toBe(ZOOM_HEADER_BOTTOM + ZOOM_FAR_RIVER_GAP);
   });
   test('landscape hand tiles meet the 44 px touch guideline', () => {
     const w = 915;
@@ -475,37 +523,37 @@ describe('short phones (a phone in a browser)', () => {
       6,
     );
   });
-  test('the river zoom widens only until the near wall clears the held hand', () => {
-    for (const [w, h] of [
-      [412, 700],
-      [360, 640],
+  test('the river zoom backs off on short phones until the block clears the held hand', () => {
+    // A plan view of the ±7.92 block is ~395 px tall at the tight scale;
+    // a phone in a browser has ~290 px between the zoom header and the
+    // hand, so the zoom is height-bound there: same 84° view, farther.
+    for (const [w, h, minTile, minRatio] of [
+      [412, 700, 25, 1.3],
+      [360, 640, 20, 1.2],
     ] as const) {
-      const zoom = riverZoomCameraFor(w, h);
+      const { preset: zoom, xHalf } = riverZoomFrameFor(w, h);
       const p = px(zoom, w, h);
       const bandBottom = heldHandTopPx(w, h) - PORTRAIT_BAND_GAP;
-      // Same elevation as the resting view (a dolly, not a tilt).
-      const elevOf = (q: typeof zoom) =>
-        Math.atan2(q.position[1] - q.target[1], q.position[2] - q.target[2]);
-      expect(elevOf(zoom)).toBeCloseTo(elevOf(cameraFor(w, h)), 5);
-      // Far wall behind the header, near wall's outer edge above the hand.
-      expect(Math.abs(p(...ZOOM_WALL_ANCHOR).y - ZOOM_WALL_ANCHOR_Y)).toBeLessThan(1);
-      const nearWallBottom = p(0, 0, WALL_D + TILE_H / 2).y;
-      expect(nearWallBottom).toBeLessThanOrEqual(bandBottom);
-      expect(nearWallBottom).toBeGreaterThan(bandBottom - 12);
-      // Still a zoom: a river tile grows ≥ 1.35× over the resting view.
+      expect(xHalf).toBeGreaterThan(ZOOM_X_HALF_MIN + 1);
+      // Height-bound: the near river's last row sits exactly at the gap.
+      expect(
+        Math.abs(p(...ZOOM_NEAR_RIVER_POINT).y - (bandBottom - ZOOM_NEAR_RIVER_GAP)),
+      ).toBeLessThan(1);
+      expect(Math.abs(p(...ZOOM_FAR_RIVER_POINT).y - ZOOM_FAR_RIVER_Y)).toBeLessThan(1);
+      // Still a zoom, and face-on: a river tile grows over the resting view
+      // and keeps its upright proportions where the resting 50–55° view
+      // foreshortened it.
       const full = px(cameraFor(w, h), w, h);
-      const tileZoom = p(1, 0.3, 0).x - p(0, 0.3, 0).x;
-      const tileFull = full(1, 0.3, 0).x - full(0, 0.3, 0).x;
-      expect(tileZoom / tileFull).toBeGreaterThanOrEqual(1.35);
-      // The river block fits the width.
-      expect(p(-7.9, 0, 0).x).toBeGreaterThanOrEqual(0);
-      expect(p(7.9, 0, 0).x).toBeLessThanOrEqual(w);
+      const tileZoom = (p(1, 0.3, 0).x - p(0, 0.3, 0).x) * PORTRAIT_RIVER_SCALE;
+      const tileFull = (full(1, 0.3, 0).x - full(0, 0.3, 0).x) * PORTRAIT_RIVER_SCALE;
+      expect(tileZoom).toBeGreaterThanOrEqual(minTile);
+      expect(tileZoom / tileFull).toBeGreaterThanOrEqual(minRatio);
+      // Why the shell lays out no wall while zoomed: the near wall's outer
+      // edge would land inside the held hand's band (round-5's regression
+      // — stacks between the hand's rows); keeping it above the band at
+      // 84° would leave ~1.2× (see `riverZoomFrameFor`).
+      expect(p(0, 0, WALL_D + TILE_H / 2).y).toBeGreaterThan(bandBottom);
     }
-    // The tall phone keeps the round-4 zoom frame (7.9 half-width).
-    const tall = riverZoomCameraFor(412, 915);
-    const p = px(tall, 412, 915);
-    expect(p(7.9, 0, 0).x).toBeLessThanOrEqual(413);
-    expect(p(7.9, 0, 0).x).toBeGreaterThan(395);
   });
 });
 

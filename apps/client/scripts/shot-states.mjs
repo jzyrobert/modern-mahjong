@@ -1408,12 +1408,17 @@ export const STATES = {
   },
   'match-river-zoom': {
     owner: 'table',
-    // Phone portrait: tapping the discards eases the camera into the
-    // river block (~26 px tiles); the ✕ in the chrome row brings the
-    // full table back. The region is inert on desktop (its rivers already
-    // read at 38–40 px), so the recipe pins the phone viewport rather
-    // than producing duplicate mid-hand evidence; the landscape variant
-    // is `match-river-zoom-landscape`.
+    // Phone portrait: tapping the discards eases the camera into an 84°
+    // plan view of the four rivers (round-FB4: "more top-down close-up"),
+    // framed between the zoom header and the held hand — the tight
+    // river-block frame on the tall phone (~33 px tiles), backed off on a
+    // phone in a browser until the near river clears the hand (~25 px at
+    // 412×700, ~20 at 360×640); no wall and no side seat is laid out
+    // while zoomed. The ✕ in the chrome row brings the full table back.
+    // The region is inert on desktop (its rivers already read at 38–40
+    // px), so the recipe pins the phone viewport rather than producing
+    // duplicate mid-hand evidence; the landscape variant is
+    // `match-river-zoom-landscape`, the own-draw moment `match-river-zoom-draw`.
     viewport: 'phone',
     steps: [
       ...START_SOLO,
@@ -1424,7 +1429,29 @@ export const STATES = {
       {
         evaluate: `document.querySelector('[data-testid="shared-discards-region"]')?.click()`,
       },
-      { waitMs: 1400 },
+      { waitForCameraSettled: true },
+      { waitMs: 400 },
+    ],
+  },
+  'match-river-zoom-draw': {
+    owner: 'table',
+    // Phone portrait, zoomed at the user's draw cue: the plan view lays
+    // out no wall, so the action tray's turn row carries the gold Draw
+    // pill (`wall-draw-next`) beside the turn chip; the toast slot is the
+    // felt under the block on the tall phone and the header on short ones.
+    // Three turns, not six: the rivers have discards by then and the hand
+    // is less likely to have ended on a bot's call before the cue comes.
+    viewport: 'phone',
+    steps: [
+      ...START_SOLO,
+      { waitForOwnHand: true },
+      { playTurns: 3 },
+      { waitForDrawCue: true },
+      { waitMs: 400 },
+      { evaluate: `document.querySelector('[data-testid="shared-discards-region"]')?.click()` },
+      { waitFor: '[data-testid="action-tray"] [data-testid="wall-draw-next"]', timeout: 10000 },
+      { waitForCameraSettled: true },
+      { waitMs: 400 },
     ],
   },
   'match-river-zoom-landscape': {
@@ -1436,17 +1463,19 @@ export const STATES = {
     // through the player's own turn: the footer's hand rail shows the
     // hand as face thumbnails (tap → the table returns) and carries the
     // gold Draw pill while the player has to draw; the side seats' rows
-    // leave the frame's edges. Shot at the user's draw cue, six turns in.
+    // leave the frame's edges. Shot at the user's draw cue, three turns in
+    // (six outlasted the hand on a loaded runner — a bot's ron ended it).
     viewport: 'phone-landscape',
     steps: [
       ...START_SOLO,
       { waitForOwnHand: true },
-      { playTurns: 6 },
+      { playTurns: 3 },
       { waitForDrawCue: true },
       { waitMs: 400 },
       { evaluate: `document.querySelector('[data-testid="shared-discards-region"]')?.click()` },
       { waitFor: '[data-testid="hand-rail"]', timeout: 10000 },
-      { waitMs: 1400 },
+      { waitForCameraSettled: true },
+      { waitMs: 400 },
     ],
   },
   'match-dealt-jade-plum': {

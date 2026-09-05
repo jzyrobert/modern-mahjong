@@ -483,6 +483,26 @@ CC0-only asset policy, verifier rules. Operational notes:
   `__MAHJONG_TEST_GET_STATE__`) instead of hoping `match-claim` catches
   one. Shoot with one `shot.mjs` process at a time — three in parallel on SwiftShader once
   produced a frame with the camera still easing in from the lobby.
+- **The portrait river zoom is a plan view of the four rivers, not a
+  dolly of the resting camera** (`cameraPresets.riverZoomFrameFor`,
+  84°): the far river's last row pins 4 px under the zoom header, the
+  frame is the tight river block (`ZOOM_X_HALF_MIN`) where the block
+  then clears the held hand (the tall phone) and backs off until it
+  does on short phones — a 412×700 band cannot hold a plan-view block
+  and a wall, so the zoom lays out no wall and no side seat
+  (`LayoutOptions.hideWalls` / `hideSideSeats`) and the tray's turn row
+  carries the `wall-draw-next` pill (`hud/HandRail.DrawPill`). Do not
+  re-introduce a near-wall-in-frame constraint: at 84° it caps the
+  short phone at 1.2× (round-FB4).
+- **Table pointer parallax is a drift, not a follow**
+  (`cameraPresets.TABLE_PARALLAX`: 0.08 units, 0.5 s half-life via
+  `CameraRig.parallaxHalfLife`) on the match table and the replay.
+  Round-FB4 desktop feedback called the old 0.45 / 0.15 s sway
+  nauseating. The rig's default stays 0.35 / 0.15 for the menu; the
+  lobby backdrop keeps its own gentler value. The gold turn cue under
+  the standing hand is a contact glow at the tiles' feet
+  (`TableScene` `CUE_HALO_HAND_FRONT` / `CUE_HALO_BAND_OPACITY`), never
+  a bar on the felt behind the row.
 - **Sandboxed containers**: `pnpm install --offline --frozen-lockfile`
   works in a fresh worktree (store is warm). Point
   `PW_CHROMIUM_PATH=/opt/pw-browsers/chromium` at the pre-installed

@@ -23,6 +23,12 @@ export class CameraRig {
   private parallaxGoal = new Vector3();
   parallaxEnabled = true;
   parallaxStrength = 0.35;
+  /**
+   * Half-life (s) of the parallax offset's ease toward the pointer's
+   * goal. 0.15 tracks a moving pointer closely (the menu's rack);
+   * scenes that want a drift rather than a follow set it longer.
+   */
+  parallaxHalfLife = 0.15;
   halfLife = 0.22;
   private lastNow = 0;
 
@@ -105,7 +111,7 @@ export class CameraRig {
     live = springStep(this.fov, g.fov, dt, this.halfLife) || live;
     if (this.parallaxEnabled) {
       const before = this.parallax.distanceToSquared(this.parallaxGoal);
-      this.parallax.lerp(this.parallaxGoal, 1 - 2 ** (-dt / 0.15));
+      this.parallax.lerp(this.parallaxGoal, 1 - 2 ** (-dt / this.parallaxHalfLife));
       if (before > 1e-6) live = true;
     }
     if (live) this.apply();

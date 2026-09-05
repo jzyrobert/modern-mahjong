@@ -32,7 +32,9 @@ import {
   PORTRAIT_FAR_RAIL_POINT,
   PORTRAIT_RIVER_SCALE,
   PORTRAIT_STRIP_H,
+  TABLE_PARALLAX,
   type ViewportClass,
+  ZOOM_NEAR_RIVER_POINT,
   cameraFor,
   classifyViewport,
   heldHandFrameFor,
@@ -51,7 +53,7 @@ import {
   ReadyBadgeCta,
   hasActionCtas,
 } from './hud/ActionRow';
-import { HandRail } from './hud/HandRail';
+import { DrawPill, HandRail } from './hud/HandRail';
 import { HitTargets, type HitTargetsHandle, type HudRects } from './hud/HitTargets';
 import { MenuButtons } from './hud/MenuButtons';
 import { ResultVeil } from './hud/ResultVeil';
@@ -204,25 +206,26 @@ function portraitVoidBg(
   );
 }
 /**
- * Portrait river zoom: side-seat tiles cropped by the frame fade out
+ * Landscape river zoom: tiles cropped by the frame's side edges fade out
  * under these — opaque for the first 12 px so a wall column at the very
- * edge is hidden, not merely darkened.
+ * edge is hidden, not merely darkened. The portrait zoom lays out no
+ * wall and no side seat (`hideWalls` / `hideSideSeats`), so nothing
+ * reaches its edges and the veils would only dim the side rivers' far
+ * rows.
  */
 const ZOOM_EDGE_W = 28;
 const ZOOM_EDGE_SOLID = 12;
-/** River zoom: side-wall stacks beyond this world z (far side) are hidden. */
-const ZOOM_HIDE_SIDE_WALLS_Z = -6.5;
 
 const EMPTY_RECTS: HudRects = {
   ownHand: null,
   wallDraw: null,
   river: null,
-  nearWall: null,
   discards: null,
   plateBottom: null,
   farRailTop: null,
   farRowTop: null,
   nearRailBottom: null,
+  riverBlockBottom: null,
 };
 const POSITIONS: Position[] = ['bottom', 'right', 'top', 'left'];
 const REL_OF_POSITION: Record<Position, Rel> = { bottom: 0, right: 1, top: 2, left: 3 };
@@ -427,9 +430,11 @@ export function Table3DShell(props: Table3DShellProps) {
         shuffling: sh,
         heldHand: heldRef.current,
         riverScale: heldRef.current ? PORTRAIT_RIVER_SCALE : 1,
-        // River zoom: the side walls' far thirds would fold back in under
-        // the header bar (perspective) — drop them while zoomed.
-        hideSideWallsBeyondZ: riverZoomRef.current ? ZOOM_HIDE_SIDE_WALLS_Z : undefined,
+        // Portrait river zoom: the plan view frames the four rivers between
+        // the header and the held hand; every wall would land under HUD or
+        // between the hand's rows, so none is laid out (the tray hosts the
+        // draw control meanwhile — `trayDraw`).
+        hideWalls: riverZoomRef.current && !ls,
         // Landscape: the hand stands right in front of the near wall, so
         // the wall steps back a shade and the hand reads in front of it.
         nearWallDim: ls ? 0.85 : 1,
@@ -440,9 +445,9 @@ export function Table3DShell(props: Table3DShellProps) {
         // itself and the wall's top-face overhang (`SIDE_SEAT_OUT_DESKTOP`).
         sideSeatOut: ls ? SIDE_SEAT_OUT_LOW : cp ? 0 : SIDE_SEAT_OUT_DESKTOP,
         farMeldsOnRail: ls,
-        // Landscape zoom: the side seats' rows would show as slivers at
-        // the frame's edges — the rivers are what the zoom is for.
-        hideSideSeats: ls && riverZoomRef.current,
+        // River zoom (both phone classes): the side seats' rows would show
+        // as slivers at the frame's edges — the rivers are what the zoom is for.
+        hideSideSeats: riverZoomRef.current,
         // Every preset: both side seats' melds at the corners nearest the
         // camera (the largest projection on all three cameras), and 1.15×
         // on the width-bound portrait table.
@@ -470,11 +475,9 @@ export function Table3DShell(props: Table3DShellProps) {
       if (!force && !camMoved && settleFrames.current > 2) return;
       const { props: p } = inputRef.current;
       const handRects: ScreenRect[] = [];
-      // Projected extents the HUD anchors to: the near wall's stacks
-      // (rel 0) and every river, so toasts / the landscape claim strip
-      // land on free felt instead of a fixed offset that only held for
-      // one break position.
-      const nearWallRects: ScreenRect[] = [];
+      // Projected extents the HUD anchors to: every river, so toasts /
+      // the landscape claim strip land on free felt instead of a fixed
+      // offset that only held for one break position.
       const discardRects: ScreenRect[] = [];
       if (scene.layout) {
         for (const s of scene.layout) {
@@ -489,9 +492,6 @@ export function Table3DShell(props: Table3DShellProps) {
             hitRef.current?.setTileRect(s.id, r, settled);
             if (settled) handRects.push({ ...settled });
             else if (r) handRects.push({ ...r });
-          } else if ((s.zone === 'wall' || s.zone === 'deadWall') && s.rel === 0) {
-            const r = scene.tileRect(s.id);
-            if (r) nearWallRects.push({ ...r });
           } else if (s.zone === 'discard') {
             const r = scene.tileRect(s.id);
             if (r) discardRects.push({ ...r });
@@ -524,12 +524,13 @@ export function Table3DShell(props: Table3DShellProps) {
         ownHand: clampRect(unionRects(handRects) ? padRect(unionRects(handRects)!, 6) : null),
         wallDraw: clampRect(wallRect ? padRect(wallRect, 8) : null),
         river: clampRect(river),
-        nearWall: unionRects(nearWallRects),
         discards: unionRects(discardRects),
         plateBottom: scene.projectPoint(0, 0.3, CENTRE_PLATE_RADIUS + 0.4).y,
         farRailTop: scene.projectPoint(...PORTRAIT_FAR_RAIL_POINT).y,
         farRowTop: scene.projectPoint(0, TILE_H, -HAND_Z).y,
         nearRailBottom: scene.projectPoint(0, 0, FELT_HALF + RAIL_WIDTH).y,
+        // Portrait river scale: the point the zoom keeps above the hand.
+        riverBlockBottom: scene.projectPoint(...ZOOM_NEAR_RIVER_POINT).y,
       };
 
       // Desktop: seat badges follow their seat's hand row. Phones pin
@@ -572,12 +573,12 @@ export function Table3DShell(props: Table3DShellProps) {
         !rectsClose(next.ownHand, lastRects.current.ownHand) ||
         !rectsClose(next.wallDraw, lastRects.current.wallDraw) ||
         !rectsClose(next.river, lastRects.current.river) ||
-        !rectsClose(next.nearWall, lastRects.current.nearWall) ||
         !rectsClose(next.discards, lastRects.current.discards) ||
         Math.abs((next.plateBottom ?? 0) - (lastRects.current.plateBottom ?? 0)) > 0.75 ||
         Math.abs((next.farRailTop ?? 0) - (lastRects.current.farRailTop ?? 0)) > 0.75 ||
         Math.abs((next.farRowTop ?? 0) - (lastRects.current.farRowTop ?? 0)) > 0.75 ||
-        Math.abs((next.nearRailBottom ?? 0) - (lastRects.current.nearRailBottom ?? 0)) > 0.75;
+        Math.abs((next.nearRailBottom ?? 0) - (lastRects.current.nearRailBottom ?? 0)) > 0.75 ||
+        Math.abs((next.riverBlockBottom ?? 0) - (lastRects.current.riverBlockBottom ?? 0)) > 0.75;
       if (changed) {
         settleFrames.current = 0;
         if (force || now - lastRectPush.current > 140) {
@@ -616,7 +617,8 @@ export function Table3DShell(props: Table3DShellProps) {
           : presetFor(ctx.size.width, ctx.size.height, inset, zoom),
       );
       ctx.rig.halfLife = ctx.reducedMotion ? 0.04 : 0.24;
-      ctx.rig.parallaxStrength = 0.45;
+      ctx.rig.parallaxStrength = TABLE_PARALLAX.strength;
+      ctx.rig.parallaxHalfLife = TABLE_PARALLAX.halfLife;
       heldRef.current = tileSheet
         ? null
         : heldFrameFor(ctx.size.width, ctx.size.height, inset, zoom, handParkedRef.current);
@@ -781,10 +783,11 @@ export function Table3DShell(props: Table3DShellProps) {
   // except a landscape claim window / declare moment (see
   // `landscapeDecides`).
   const zoomAvailable = compact && !resolved && !landscapeDecides;
-  // Projected near-wall extent the zoomed portrait toast drops below.
-  const nearWallBottom = hudRects.nearWall
-    ? hudRects.nearWall.top + hudRects.nearWall.height
-    : null;
+  // Zoomed portrait: the felt under the river block, where the toast
+  // goes when it fits above the held hand.
+  const zoomSlotTop = hudRects.riverBlockBottom !== null ? hudRects.riverBlockBottom + 8 : null;
+  const zoomSlotFits =
+    zoomSlotTop !== null && zoomSlotTop + TOAST_H <= heldHandTopPx(width, height) - 6;
   // Toasts. Portrait (full table): over the far rail (glass on wood —
   // the rail is the one table surface that never holds a tile), sitting
   // as low as the far rack's tops allow (6 px clear) and never closer
@@ -805,6 +808,9 @@ export function Table3DShell(props: Table3DShellProps) {
   // Landscape zoom: the hand rail takes the footer's centre slot (the
   // sort control is moot while the hand is out of frame).
   const landscapeRail = landscape && zoomed && !landscapeFooterClaim;
+  // Portrait zoom: no wall is laid out, so the tray's turn row carries
+  // the draw pill under the `wall-draw-next` id.
+  const trayDraw = portrait && zoomed && props.needsDraw && nextDrawTile !== null;
   const desktopStrip = !compact && props.hasClaimOption;
   // Wide presets: the footer's centre slot — directly under the hand —
   // carries the turn chip while it is the user's move (draw → discard),
@@ -844,10 +850,10 @@ export function Table3DShell(props: Table3DShellProps) {
   // chrome row (see `toastSlot`), the one void that never holds a tile
   // or a discard-to-be.
   const farRowTop = hudRects.farRowTop;
-  // Zoomed short phones: the near wall's outer edge sits right above the
-  // hand (`riverZoomCameraFor` widens the frame only until it clears),
-  // so the toast is capped to stay off the hand and lands on the wall's
-  // backs instead — the one zoomed surface that carries no glyph.
+  // Zoomed: the toast drops to the felt between the river block and the
+  // held hand (the tall phone leaves ~80 px there). A phone in a browser
+  // has no such felt — the block is height-bound to the hand's band — so
+  // the toast takes the zoom header's badge row instead.
   // Short phones (full table): the pitched camera parks the far rail
   // ~10 px under the strip, so the rail slot cannot hold a toast — it
   // would land on the far rack + wall (round-6). The toast takes the
@@ -858,13 +864,13 @@ export function Table3DShell(props: Table3DShellProps) {
   // was derived for a 6 px clearance that rounds to a 2 px tie).
   const stripBottom = stripTop + PORTRAIT_STRIP_H;
   const railSlotFits = farRowTop !== null && stripBottom + 6 + TOAST_H <= farRowTop - 4;
-  const toastInStrip = portrait && !zoomed && !railSlotFits;
+  const toastInStrip = portrait && (zoomed ? !zoomSlotFits : !railSlotFits);
   const toastTop = portrait
-    ? zoomed && nearWallBottom !== null
-      ? Math.min(nearWallBottom + 10, heldHandTopPx(width, height) - TOAST_H - 6)
-      : toastInStrip
-        ? stripTop + Math.round((PORTRAIT_STRIP_H - TOAST_H) / 2)
-        : farRowTop !== null && !zoomed
+    ? toastInStrip
+      ? stripTop + Math.round((PORTRAIT_STRIP_H - TOAST_H) / 2)
+      : zoomed && zoomSlotTop !== null
+        ? zoomSlotTop
+        : farRowTop !== null
           ? Math.max(stripBottom + 6, farRowTop - 6 - TOAST_H)
           : stripTop + 40
     : 0;
@@ -946,7 +952,7 @@ export function Table3DShell(props: Table3DShellProps) {
       data-viewport-class={vpClass}
       data-river-zoom={compact && riverZoom ? 'true' : 'false'}
       data-hand-parked={handParked ? 'true' : 'false'}
-      data-toast-slot={portrait ? (toastInStrip ? 'strip' : 'rail') : 'chrome'}
+      data-toast-slot={portrait ? (toastInStrip ? 'strip' : zoomed ? 'felt' : 'rail') : 'chrome'}
       onPointerMove={onPointerMove}
       onPointerLeave={onPointerLeave}
       style={{
@@ -980,9 +986,10 @@ export function Table3DShell(props: Table3DShellProps) {
         testID="table-3d-scene"
         {...(portrait && width <= PORTRAIT_SHARP_MAX_WIDTH ? { maxDpr: 2 } : {})}
       />
-      {zoomed
-        ? // The zoom frames the river block; the side seats' melds and
-          // rows would otherwise show as slivers at the viewport edges.
+      {zoomed && landscape
+        ? // The landscape zoom frames the river block; the side seats'
+          // melds and rows would otherwise show as slivers at the viewport
+          // edges (the portrait zoom lays none of them out).
           (['left', 'right'] as const).map((side) => (
             <div
               key={side}
@@ -1038,8 +1045,9 @@ export function Table3DShell(props: Table3DShellProps) {
             nextDrawTile={nextDrawTile}
             needsDraw={props.needsDraw}
             onDraw={() => props.onAction({ t: 'draw', seat })}
-            // Landscape zoom: the rail's draw pill is the draw control.
-            wallHidden={landscapeRail}
+            // Zoomed: the landscape rail's / the portrait tray's draw pill
+            // is the draw control (the wall is off-frame or not laid out).
+            wallHidden={landscapeRail || trayDraw}
             rects={hudRects}
             onRiverTap={zoomAvailable ? toggleRiverZoom : undefined}
             riverZoomed={compact && riverZoom}
@@ -1112,9 +1120,10 @@ export function Table3DShell(props: Table3DShellProps) {
                 gap: 6,
                 pointerEvents: 'none',
                 zIndex: 2,
-                // River zoom: the strip becomes a full-bleed glass header
-                // and the camera parks the far wall row behind it (see
-                // `ZOOM_WALL_ANCHOR_Y`), so no tile peeks out under HUD.
+                // River zoom: the strip becomes a full-bleed glass header;
+                // the plan-view camera pins the far river's last row just
+                // under it (`ZOOM_FAR_RIVER_Y`) and the far seat's rack sits
+                // behind the glass, so no tile peeks out under HUD.
                 // The header runs from y = 0 so the chrome row sits on
                 // glass too: nothing of the wall or rail shows between
                 // the pills.
@@ -1231,16 +1240,21 @@ export function Table3DShell(props: Table3DShellProps) {
                     height: trayH,
                   }}
                 >
-                  <TurnChip
-                    isMyTurn={props.myTurn && !shuffling}
-                    needsDraw={props.needsDraw}
-                    turnCountdown={props.turnCountdown}
-                    activeName={activeSeat !== null ? nameForSeat(lobby, activeSeat) : null}
-                    activeColour={
-                      activeSeat !== null ? SEAT_COLOR[seatToPosition[activeSeat]] : null
-                    }
-                    claimsOpen={state.pendingClaims !== undefined && state.pendingClaims !== null}
-                  />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, maxWidth: '100%' }}>
+                    <TurnChip
+                      isMyTurn={props.myTurn && !shuffling}
+                      needsDraw={props.needsDraw}
+                      turnCountdown={props.turnCountdown}
+                      activeName={activeSeat !== null ? nameForSeat(lobby, activeSeat) : null}
+                      activeColour={
+                        activeSeat !== null ? SEAT_COLOR[seatToPosition[activeSeat]] : null
+                      }
+                      claimsOpen={state.pendingClaims !== undefined && state.pendingClaims !== null}
+                    />
+                    {trayDraw ? (
+                      <DrawPill onDraw={() => props.onAction({ t: 'draw', seat })} />
+                    ) : null}
+                  </div>
                   {/* The tray's resting readout: who pitched the newest
                       discard and what it was, at a size the far river
                       cannot offer; before the first discard, who opens. */}

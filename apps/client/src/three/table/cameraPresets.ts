@@ -8,6 +8,7 @@ import {
   RAIL_H,
   RAIL_WIDTH,
   WALL_D,
+  riverMetrics,
 } from './layout';
 
 /**
@@ -59,14 +60,6 @@ export const TABLE_CAMERA: Record<Exclude<ViewportClass, 'phone-portrait'>, Came
  * (see `PORTRAIT_TRAY_H`).
  */
 export const PORTRAIT_X_HALF = 11.6;
-/**
- * Half-width framed by the portrait *river zoom* (tap the discards):
- * the four rivers' furthest rows (RIVER_Z0 + 3 rows ≈ 7.6) plus a
- * flat tile's half-depth. At 412 px this puts a river tile at ~26 CSS
- * px (vs ~18 in the full-table view); walls and hands crop off-screen
- * until the user taps again.
- */
-export const PORTRAIT_ZOOM_X_HALF = 7.9;
 /**
  * Camera elevation, degrees. 70° (round-2: down from 76°) shows the
  * walls' front faces, the rail bevels and the side rows' tops-vs-sides
@@ -151,18 +144,62 @@ export const PORTRAIT_FAR_RAIL_POINT: [number, number, number] = [
   RAIL_H,
   -(FELT_HALF + RAIL_WIDTH),
 ];
+// ─── Portrait river zoom ───────────────────────────────────────────
 /**
- * River zoom: the far wall's near-top edge is pinned this far below the
- * strip's top — 20 px *above* the zoom header's bottom edge (strip +
- * 6 px pad), so the whole far wall row (~25 px tall on screen), the
- * dead-wall stacks that wrap onto it and the row's nearer right end
- * (perspective) sit behind the header bar the shell draws across the
- * strip; no tile top peeks out under HUD (round-3: a 5 px sliver did at
- * −6).
+ * Elevation of the portrait *river zoom* (tap the discards): a near
+ * plan view. Round-FB4 feedback ("zooming into the table should present
+ * a more top-down close-up view of the discard tiles") — the resting
+ * view's 50–70° pitch read the far river upside down and foreshortened
+ * (sin 55° ≈ 0.82 of a tile's height at 412×700) with a visible
+ * keystone across the block. At 84° every river's glyphs are face-on
+ * (≥ 0.99 of their height) and the block projects as a square; the
+ * last 6° keep a hint of the tiles' front faces so the rivers still
+ * read as objects, and keep the look-at's up vector off the pole.
+ * Fixed across phone sizes: the frame (`riverZoomFrameFor`) gives
+ * ground on short phones instead of the pitch, so the zoom is the same
+ * view everywhere, only nearer or farther.
  */
-export const ZOOM_WALL_ANCHOR_Y = PORTRAIT_STRIP_TOP + PORTRAIT_STRIP_H - 14;
-/** World point pinned by the river zoom: the far wall's near-top edge. */
-export const ZOOM_WALL_ANCHOR: [number, number, number] = [0, 2 * TILE_D, -(WALL_D - TILE_H / 2)];
+export const ZOOM_ELEV_DEG = 84;
+/**
+ * Tightest half-width the zoom frames at the target depth: the four
+ * rivers' furthest rows (`riverMetrics(PORTRAIT_RIVER_SCALE).farEdge`
+ * ≈ 7.92 — the third row's far edge at the portrait river scale) plus
+ * half a unit of felt, so the side rivers' outer corners (which
+ * project ~2 % larger than the target plane, being nearer the camera)
+ * land 4–8 px inside a 412 px viewport. Nothing else is in the frame:
+ * the zoom hides the walls and the side seats (`LayoutOptions.hideWalls`
+ * / `hideSideSeats`), so there is no wall column or rack sliver to veil
+ * at the edges.
+ */
+export const ZOOM_X_HALF_MIN = riverMetrics(PORTRAIT_RIVER_SCALE).farEdge + 0.5;
+/**
+ * World points the zoom frames between: the far river's last row's far
+ * edge (its bottom, on the felt — the top face projects ~1 px higher)
+ * and the near river's last row's far edge, on the camera's centre line.
+ */
+export const ZOOM_FAR_RIVER_POINT: [number, number, number] = [
+  0,
+  0,
+  -riverMetrics(PORTRAIT_RIVER_SCALE).farEdge,
+];
+export const ZOOM_NEAR_RIVER_POINT: [number, number, number] = [
+  0,
+  0,
+  riverMetrics(PORTRAIT_RIVER_SCALE).farEdge,
+];
+/**
+ * Bottom edge of the zoom header — the seat strip grown into a
+ * full-bleed glass band from y = 0 through the strip plus a 6 px pad
+ * (mirrors `Table3DShell`'s zoom bar). Everything the plan view puts
+ * above it — the far seat's rack — sits behind glass.
+ */
+export const ZOOM_HEADER_BOTTOM = PORTRAIT_STRIP_TOP + PORTRAIT_STRIP_H + 6;
+/** Felt the far river's last row keeps under the zoom header, CSS px. */
+export const ZOOM_FAR_RIVER_GAP = 4;
+/** Felt the near river's last row keeps above the held hand's band, CSS px. */
+export const ZOOM_NEAR_RIVER_GAP = 4;
+/** Screen y the zoom pins `ZOOM_FAR_RIVER_POINT` to (before the device inset). */
+export const ZOOM_FAR_RIVER_Y = ZOOM_HEADER_BOTTOM + ZOOM_FAR_RIVER_GAP;
 
 /**
  * Screen-space top of the held hand block (two rows), CSS px from the
@@ -550,43 +587,74 @@ export function portraitElevationFor(width: number, height: number, topInset = 0
   return portraitFitFor(width, height, bandTop, bandBottom).elevDeg;
 }
 
-/** World point the river zoom keeps above the held hand: the near wall's outer bottom edge. */
-export const ZOOM_NEAR_WALL_POINT: [number, number, number] = [0, 0, WALL_D + TILE_H / 2];
-/** Least gap between the near wall's outer edge and the band's bottom while zoomed. */
-export const ZOOM_NEAR_WALL_GAP = 4;
+/** The portrait river zoom's camera and the half-width it frames. */
+export interface RiverZoomFrame {
+  preset: CameraPreset;
+  xHalf: number;
+}
 
 /**
- * Portrait river-zoom preset: same elevation as `cameraFor` at the
- * river-block scale, panned so the far wall's near-top edge sits at
- * the strip's bottom edge (`ZOOM_WALL_ANCHOR_Y`) — the far wall hides
- * behind the zoom header bar and the free felt between the near wall
- * and the held hand becomes the toast slot. Because the held-hand
- * frame is derived from whichever preset is active, the hand stays put
- * on screen while the table eases in underneath it. Short phones widen
- * the frame past `PORTRAIT_ZOOM_X_HALF` until the near wall's outer
- * edge clears the band's bottom (round-5: at 412×700 the wall's stacks
- * showed between the hand's rows).
+ * Portrait river-zoom frame: a `ZOOM_ELEV_DEG` plan view over the four
+ * rivers, panned so the far river's last row sits `ZOOM_FAR_RIVER_GAP`
+ * under the zoom header, and as near as the viewport allows — the
+ * tight `ZOOM_X_HALF_MIN` frame (a river tile ≈ 34 CSS px on a 412 px
+ * phone, 1.46× the resting view) wherever the block then also clears
+ * the held hand, else backed off until the near river's last row sits
+ * `ZOOM_NEAR_RIVER_GAP` above the hand's band (a phone in a browser,
+ * 412×700, has ~290 px between the header and the hand for a block
+ * that is ~395 px tall at the tight scale: ~26 px tiles, 1.36×). The
+ * walls leave the frame: the far wall would be under the header on
+ * every phone, the near wall would land between the hand's rows on the
+ * short ones (round-5's regression) or cost the zoom itself — keeping
+ * it in frame at 84° leaves 1.2× at 412×700 — so the shell hides all
+ * four (`LayoutOptions.hideWalls`) and hosts the draw control in the
+ * tray. Because the held-hand frame is derived from whichever preset
+ * is active, the hand stays put on screen while the table eases in
+ * underneath it. Pure.
  */
-export function riverZoomCameraFor(width: number, height: number, topInset = 0): CameraPreset {
+export function riverZoomFrameFor(width: number, height: number, topInset = 0): RiverZoomFrame {
   const { bandBottom } = portraitBandFor(width, height, topInset);
-  const elevDeg = portraitElevationFor(width, height, topInset);
-  const anchorY = ZOOM_WALL_ANCHOR_Y + topInset;
+  const farY = ZOOM_FAR_RIVER_Y + topInset;
   const make = (xHalf: number) =>
-    portraitCameraAnchored(width, height, xHalf, ZOOM_WALL_ANCHOR, anchorY, elevDeg);
+    portraitCameraAnchored(width, height, xHalf, ZOOM_FAR_RIVER_POINT, farY, ZOOM_ELEV_DEG);
   const nearY = (xHalf: number) =>
-    projectPreset(make(xHalf), width, height, ZOOM_NEAR_WALL_POINT).y;
-  const limit = bandBottom - ZOOM_NEAR_WALL_GAP;
-  if (nearY(PORTRAIT_ZOOM_X_HALF) <= limit) return make(PORTRAIT_ZOOM_X_HALF);
-  // A wider frame spans fewer px per unit: the near wall rises (monotonic).
-  let lo = PORTRAIT_ZOOM_X_HALF;
+    projectPreset(make(xHalf), width, height, ZOOM_NEAR_RIVER_POINT).y;
+  const limit = bandBottom - ZOOM_NEAR_RIVER_GAP;
+  if (nearY(ZOOM_X_HALF_MIN) <= limit)
+    return { preset: make(ZOOM_X_HALF_MIN), xHalf: ZOOM_X_HALF_MIN };
+  // A wider frame spans fewer px per unit: the near edge rises (monotonic).
+  let lo = ZOOM_X_HALF_MIN;
   let hi = 40;
   for (let i = 0; i < 40; i++) {
     const mid = (lo + hi) / 2;
     if (nearY(mid) > limit) lo = mid;
     else hi = mid;
   }
-  return make(hi);
+  return { preset: make(hi), xHalf: hi };
 }
+
+/** Portrait river-zoom preset — see `riverZoomFrameFor`. */
+export function riverZoomCameraFor(width: number, height: number, topInset = 0): CameraPreset {
+  return riverZoomFrameFor(width, height, topInset).preset;
+}
+
+// ─── Pointer parallax ──────────────────────────────────────────────
+/**
+ * Pointer parallax for the match table (and the replay, which mounts
+ * the same scene): a barely-there drift, not a hand-tracking sway.
+ * Round-FB4 desktop feedback ("when moving the mouse left and right the
+ * table constantly rotates a little, this can be a bit nauseating") was
+ * the 0.45-unit offset easing with a 0.15 s half-life — it followed
+ * every pass of the pointer across the hand. 0.08 units at the
+ * desktop camera's ~33-unit distance is ≈ 5 px of drift edge to edge
+ * (a 0.14° swing), and a 0.5 s half-life means it settles over ~2 s
+ * instead of chasing the pointer, so the view still breathes as a 3D
+ * scene when the mouse crosses the table but never moves *with* the
+ * hand. Disabled outright would read as a flat render; this keeps the
+ * depth cue at a level below what a moving hand notices. The lobby's
+ * waiting-table backdrop keeps its own gentler setting.
+ */
+export const TABLE_PARALLAX = { strength: 0.08, halfLife: 0.5 } as const;
 
 // ─── Held hand (phone portrait) ────────────────────────────────────
 /**

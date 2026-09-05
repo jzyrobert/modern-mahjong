@@ -238,6 +238,23 @@ async function runStep(page, step, ctx) {
       timeout: scaled(step.timeout ?? 15_000),
       polling: 100,
     });
+  if (step.waitForCameraSettled) {
+    // The 3D camera rig has eased to rest since this step began
+    // (`three/core/sceneRects` publishes the rig's liveness): a preset
+    // change such as the river zoom is a ~30-unit move, and on
+    // SwiftShader at 1–2 fps a fixed sleep can capture it 5 % short —
+    // the held hand (laid out for the goal camera) then sits tens of px
+    // off. Waits for at least one live step after `t0`, then rest.
+    const t0 = await page.evaluate(() => performance.now());
+    return page.waitForFunction(
+      (since) => {
+        const m = globalThis.__MAHJONG_TEST_CAMERA_MOTION__?.();
+        return !!m && !m.live && m.lastLiveAt >= since - 50;
+      },
+      t0,
+      { timeout: scaled(step.timeout ?? 20_000), polling: 100 },
+    );
+  }
   if (step.waitForSettled) {
     // Every element matching the selector has finished its CSS
     // animations / transitions and is fully opaque — i.e. an entrance
