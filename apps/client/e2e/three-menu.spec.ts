@@ -43,8 +43,28 @@ interface MenuDebug {
   rackGoal: { x: number; y: number; w: number; h: number } | null;
   /** Hero camera `setViewOffset` re-applies since build (resize only). */
   viewOffsetApplies: number;
+  /** Hero re-fits (camera ease + tile tweens) since build. */
+  heroRelayouts: number;
+  /** Drift field re-fits (eased camera, field re-projected) since build. */
+  driftRelayouts: number;
   /** Hero scenes built on the page (1 = never remounted). */
   heroBuilds: number;
+}
+
+/** The two menu canvases' CSS boxes and drawing-buffer sizes. */
+async function canvasSizes(page: import('@playwright/test').Page) {
+  return page.evaluate(() => {
+    const box = (sel: string) => {
+      const c = document.querySelector<HTMLCanvasElement>(sel);
+      if (!c) throw new Error(`missing ${sel}`);
+      const r = c.getBoundingClientRect();
+      return { w: r.width, h: r.height, bufW: c.width, bufH: c.height };
+    };
+    return {
+      hero: box('[data-testid="menu-3d-hero"] canvas'),
+      drift: box('[data-testid="menu-3d"] canvas'),
+    };
+  });
 }
 
 type Rect = { x: number; y: number; w: number; h: number };
@@ -748,6 +768,90 @@ test.describe('three: menu backdrop', () => {
     expect(heroCanvas.y + heroCanvas.height).toBeLessThanOrEqual(online.y + 1.5);
     // The ground stays the void after the resize + scroll.
     expect((await pageGround(page)).body).toBe(VOID_RGB);
+    expect(errors()).toEqual([]);
+  });
+
+  test('url bar mid-scroll: a height-only viewport change re-fits neither canvas, a width change does', async ({
+    page,
+  }) => {
+    // Android Chrome retracts its URL bar *while* the page scrolls: the
+    // viewport grows by 56–100 px, `resize` fires, every 100 %-height
+    // box grows. Round-4 feedback ("the tiles flicker when scrolling")
+    // was three things riding that event: the hero band re-sized from
+    // the live height (a hero canvas resize + rack re-fit), the hero
+    // frame re-fitted on the new innerHeight, and the drift canvas
+    // (the root's box) re-fitted the field — each with a cleared
+    // canvas presented before the next rAF redrew it.
+    const errors = collectErrors(page);
+    await page.setViewportSize({ width: 412, height: 700 });
+    await page.goto('/');
+    await expect(page.getByRole('heading', { name: 'Modern Mahjong' })).toBeVisible();
+    await expect(page.getByTestId('menu-3d').locator('canvas')).toBeAttached({ timeout: 15_000 });
+    await expect(page.getByTestId('menu-3d-hero').locator('canvas')).toBeAttached({
+      timeout: 15_000,
+    });
+    await page.waitForFunction(
+      () =>
+        (globalThis as { __MAHJONG_MENU_INTRO__?: string }).__MAHJONG_MENU_INTRO__ === 'settled',
+      null,
+      { timeout: 8000 },
+    );
+    await page.waitForTimeout(400);
+    const before = await readMenuDebug(page);
+    const sizes0 = await canvasSizes(page);
+    if (!before?.band) throw new Error('menu debug never published');
+    expect(before.heroBuilds).toBe(1);
+    expect(sizes0.drift.h).toBe(700);
+
+    // Scroll a little, the URL bar retracts (+100 px), scroll on.
+    await scrollLobbyTo(page, 60);
+    await page.waitForTimeout(150);
+    await page.setViewportSize({ width: 412, height: 800 });
+    await scrollLobbyTo(page, 120);
+    await page.waitForTimeout(700);
+    const after = await readMenuDebug(page);
+    const sizes1 = await canvasSizes(page);
+    if (!after?.band) throw new Error('menu debug lost');
+    // Nothing re-fitted: no hero re-layout, no camera re-aim, no drift
+    // re-fit, no remount.
+    expect(after.heroRelayouts).toBe(before.heroRelayouts);
+    expect(after.viewOffsetApplies).toBe(before.viewOffsetApplies);
+    expect(after.driftRelayouts).toBe(before.driftRelayouts);
+    expect(after.heroBuilds).toBe(1);
+    // The hero band (and so the hero canvas) kept its size — it is keyed
+    // on the width-latched viewport height, not the live one.
+    expect(after.band.h).toBe(before.band.h);
+    expect(sizes1.hero).toEqual(sizes0.hero);
+    // The drift canvas is the root's box and does grow — the field keeps
+    // its fit and shows the frame extended into the new strip.
+    expect(sizes1.drift.w).toBe(412);
+    expect(sizes1.drift.h).toBe(800);
+    // The rack is still where the layout maths puts it.
+    expect(Math.abs(after.rack.y - (after.rackGoal?.y ?? Number.NaN))).toBeLessThan(2);
+    const perf = await readPerf(page);
+    expect(perf.drawCalls).toBeLessThanOrEqual(MENU_BUDGET.drawCalls);
+
+    // The bar comes back on the way up: still nothing.
+    await page.setViewportSize({ width: 412, height: 700 });
+    await scrollLobbyTo(page, 0);
+    await page.waitForTimeout(700);
+    const back = await readMenuDebug(page);
+    if (!back) throw new Error('menu debug lost');
+    expect(back.heroRelayouts).toBe(before.heroRelayouts);
+    expect(back.viewOffsetApplies).toBe(before.viewOffsetApplies);
+    expect(back.driftRelayouts).toBe(before.driftRelayouts);
+    expect((await canvasSizes(page)).drift.h).toBe(700);
+
+    // A real resize — the width moves — still re-fits both scenes (the
+    // counters are live, and the frame follows the viewport).
+    await page.setViewportSize({ width: 390, height: 700 });
+    await page.waitForTimeout(900);
+    const widthChanged = await readMenuDebug(page);
+    if (!widthChanged) throw new Error('menu debug lost');
+    expect(widthChanged.heroRelayouts).toBeGreaterThan(before.heroRelayouts);
+    expect(widthChanged.driftRelayouts).toBeGreaterThan(before.driftRelayouts);
+    expect(widthChanged.heroBuilds).toBe(1);
+    expect((await canvasSizes(page)).drift.w).toBe(390);
     expect(errors()).toEqual([]);
   });
 

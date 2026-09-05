@@ -521,6 +521,20 @@ CC0-only asset policy, verifier rules. Operational notes:
   page. A scene frame that writes poses must return `live` even when its
   last tween just finished, or the final frame never renders (the hero
   was captured "settled" half-way through its drop-in on SwiftShader).
+  Both menu frames are **keyed on the viewport width**: Android Chrome
+  fires `resize` (innerHeight +56–100 px) as the URL bar retracts
+  *mid-scroll*, so a height-only change with the same width re-fits
+  nothing — the hero frame (`HeroScene.onWindowResize`), the drift fit
+  (`DriftScene.resize` just extends the view offset over the taller
+  canvas) and the portrait band height (`useStableViewportHeight`)
+  all hold; a width change / band resize re-fits. `SceneHost` redraws
+  **synchronously** after a real `setSize` (`Loop.renderNow`) — the
+  re-allocated buffer is cleared, and waiting for the next rAF presents
+  an empty canvas for a frame (round-4 "tiles flicker when scrolling").
+  `__MAHJONG_MENU_DEBUG__.heroRelayouts` / `driftRelayouts` count re-fits
+  for the spec. Menu parallax strengths live in `three/menu/parallax.ts`
+  (40 % of the rig default, smoothed over 0.42 s) — never retune the
+  `CameraRig` default for the menu's sake.
 - **Overlays that hug a tile use the face rect**: `TableScene.tileRect`
   is the projection of the whole tile box (top bevel + back edge
   included, then floored to 44 px for the tap target).

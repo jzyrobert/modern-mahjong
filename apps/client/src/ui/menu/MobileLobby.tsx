@@ -12,6 +12,7 @@ import { LESSON_ORDER } from '../../state/tutorial';
 import { BrowseLobbyModal } from '../BrowseLobbyModal';
 import { JoinLanModal } from '../JoinLanModal';
 import { useIsLandscape } from '../useOrientation';
+import { useStableViewportHeight } from '../useStableViewportHeight';
 import { GlassCard } from './GlassCard';
 import { GlassSheet } from './GlassSheet';
 import { HeroBandSlot } from './HeroBandSlot';
@@ -64,7 +65,10 @@ const LANDSCAPE_CHIP_W = 220;
  * fifth of the viewport, floored so a 640 px phone still shows the
  * rack at a readable size (the scene scales down to fit rather than
  * overlap the title or the first card) and capped so a tall phone
- * keeps its first card above the fold.
+ * keeps its first card above the fold. Fed the *width-latched* height
+ * (`useStableViewportHeight`): Android Chrome's URL bar retracting on
+ * scroll grows `innerHeight` by 56–100 px, and a band that followed it
+ * resized the hero canvas — a re-fit of the rack — under the finger.
  */
 export function portraitHeroBandHeight(viewportHeight: number): number {
   return Math.min(220, Math.max(130, Math.round(viewportHeight * 0.2)));
@@ -77,7 +81,9 @@ interface MobileLobbyProps {
 export function MobileLobby({ isLandscape }: MobileLobbyProps) {
   const router = useRouter();
   const transport = useTransport();
-  const { height } = useWindowDimensions();
+  // Width-latched: the URL bar retracting mid-scroll must not resize
+  // the hero band (and with it the hero canvas and the card stack).
+  const height = useStableViewportHeight();
   const lobby = useGame((s) => s.lobby);
   const lessons = useLessonItems();
   const completedCount = lessons.filter((l) => l.done).length;

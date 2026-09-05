@@ -32,6 +32,7 @@ import {
   wrapUnit,
 } from './layout';
 import { publishDriftDebug } from './menuDebug';
+import { MENU_PARALLAX, PointerSmoother, normalisePointer } from './parallax';
 
 /**
  * Menu drift field: a sparse field of tiles drifting very slowly in
@@ -48,6 +49,17 @@ import { publishDriftDebug } from './menuDebug';
  * keep-out and the rack keep-out (the rack's footprint, tracked through
  * the live band rect so the fade keeps clearing it while the page
  * scrolls).
+ *
+ * The frame the field is fitted to is keyed on the canvas's *width*,
+ * like the hero's. The canvas is the app root, which Android Chrome
+ * grows by the URL bar's height as the page scrolls; a re-fit on that
+ * (eased camera, every tile re-projected) moved the whole field under
+ * the user's finger (round-4 feedback: "the tiles flicker when
+ * scrolling"). A height-only resize keeps the fit and renders the
+ * taller canvas as the frame's sub-rectangle extended downwards
+ * (`setViewOffset`): the rows already on screen stay pixel-identical
+ * and the field — which spans ~1.6 frame heights — simply continues
+ * into the strip the URL bar exposed. A width change re-fits.
  *
  * Motion budget (ARCHITECTURE.md §2): an intro settle of ~1.2 s, then
  * the field drifts at a throttled ~11 fps cadence (render-on-demand —
@@ -159,17 +171,20 @@ export function buildDriftScene(ctx: SceneContext, opts: DriftSceneOptions): Sce
    * scroll moves the band, and must never re-aim this camera.
    */
   let fitBand: HeroBand | null = getHeroBand();
-  const driftView = (width: number, height: number): MenuView => ({
-    width,
-    height,
+  /** The frame the field is fitted to — the canvas at the last *width*
+   *  change (see the header); `ctx.size` is the live canvas. */
+  let frame = { width: ctx.size.width, height: Math.max(1, ctx.size.height) };
+  const driftView = (): MenuView => ({
+    width: frame.width,
+    height: frame.height,
     band: fitBand,
   });
-  let layout: MenuLayout = menuLayout(
-    ctx.size.width / Math.max(1, ctx.size.height),
-    driftView(ctx.size.width, ctx.size.height),
-  );
+  const fit = (): MenuLayout => menuLayout(frame.width / frame.height, driftView());
+  let layout: MenuLayout = fit();
   rig.snap(layout.camera);
   rig.halfLife = 0.28;
+  // Menu-tuned (the rig default is the table's): see `parallax.ts`.
+  rig.parallaxStrength = MENU_PARALLAX.cameraStrength;
 
   // ── Lights ─────────────────────────────────────────────────────────
   const lights = buildLights(
@@ -283,7 +298,9 @@ export function buildDriftScene(ctx: SceneContext, opts: DriftSceneOptions): Sce
   /** Exact screen position (CSS px) + projected radius of a disc of
    *  `worldRadius` at a world point through the live camera (view
    *  offset included). The canvas is the viewport, so canvas px are
-   *  window px. */
+   *  window px. The pixel scale is the *frame's* — the camera's
+   *  vertical fov spans the fitted frame, of which the canvas shows a
+   *  (possibly taller) slice. */
   const projectPoint = (
     world: Vector3,
     worldRadius: number,
@@ -295,7 +312,7 @@ export function buildDriftScene(ctx: SceneContext, opts: DriftSceneOptions): Sce
     _vNdc.copy(world).project(camera);
     out.x = ((_vNdc.x + 1) / 2) * ctx.size.width;
     out.y = ((1 - _vNdc.y) / 2) * ctx.size.height;
-    const pxPerUnit = ctx.size.height / (2 * depth * Math.tan((camera.fov * Math.PI) / 360));
+    const pxPerUnit = frame.height / (2 * depth * Math.tan((camera.fov * Math.PI) / 360));
     out.r = worldRadius * pxPerUnit;
   };
 
@@ -447,17 +464,15 @@ export function buildDriftScene(ctx: SceneContext, opts: DriftSceneOptions): Sce
   };
 
   // ── Pointer parallax ───────────────────────────────────────────────
+  // The rig follows the *smoothed* pointer (fed from `update`), so its
+  // own lerp chains after the menu's slower smoothing.
   const parallaxOn = quality.parallax && !reducedMotion;
-  const pointer = { x: 0, y: 0 };
-  const pointerSmooth = { x: 0, y: 0 };
+  const pointer = new PointerSmoother();
   let lastPointerAt = Number.NEGATIVE_INFINITY;
   const onPointer = (e: PointerEvent) => {
-    const w = window.innerWidth || 1;
-    const h = window.innerHeight || 1;
-    pointer.x = (e.clientX / w) * 2 - 1;
-    pointer.y = -((e.clientY / h) * 2 - 1);
+    const n = normalisePointer(e.clientX, e.clientY, window.innerWidth, window.innerHeight);
+    pointer.set(n.x, n.y);
     lastPointerAt = performance.now();
-    rig.setPointer(pointer.x, pointer.y);
   };
   if (parallaxOn) window.addEventListener('pointermove', onPointer, { passive: true });
 
@@ -498,12 +513,14 @@ export function buildDriftScene(ctx: SceneContext, opts: DriftSceneOptions): Sce
       // (`layout.keepOut`) means what it says. Mapping the normalised
       // field onto the (off-centre) frustum covers the whole viewport,
       // not just the region around the hero.
-      const par = parallaxOn ? 0.35 + d.depth * 1.1 : 0;
+      const par = parallaxOn
+        ? MENU_PARALLAX.driftShiftBase + d.depth * MENU_PARALLAX.driftShiftPerDepth
+        : 0;
       const e = tweenProgress(d.scaleTween, now);
       if (e < 1) live = true;
       const p = pool.pose(j);
       p.visible = j < layout.driftVisible && !d.parked;
-      driftWorldPos(d, d.ux, d.uy, pointerSmooth.x * par, pointerSmooth.y * par * 0.5, p.position);
+      driftWorldPos(d, d.ux, d.uy, pointer.x * par, pointer.y * par * 0.5, p.position);
       p.quaternion.setFromEuler(_euler.set(d.ax, d.ay, d.rz, 'XYZ'));
       // Shrink to nothing while straddling a glass edge / crossing copy
       // (or the rack), and to a faint depth cue while fully behind glass.
@@ -527,33 +544,46 @@ export function buildDriftScene(ctx: SceneContext, opts: DriftSceneOptions): Sce
       parked,
       fades: debugFades.slice(0, layout.driftVisible),
       tiles: debugTiles.slice(0, layout.driftVisible),
+      driftRelayouts: relayouts,
     });
     return live;
   };
 
-  /** Off-axis frustum so the field's centre lands at `layout.viewCenter`. */
-  const applyViewOffset = (width: number, height: number) => {
+  /**
+   * Off-axis frustum so the field's centre lands at `layout.viewCenter`:
+   * the camera's aspect is the fitted frame's, and the canvas renders
+   * the frame's sub-rectangle at its origin — the whole frame when the
+   * two agree, the frame extended downwards when the URL bar has handed
+   * the canvas extra rows (SceneHost has just reset the rig's aspect to
+   * the canvas's; this puts the frame's back).
+   */
+  const applyViewOffset = () => {
     const vc = layout.viewCenter;
-    rig.camera.setViewOffset(
-      width,
-      height,
-      Math.round((0.5 - vc.x) * width),
-      Math.round((0.5 - vc.y) * height),
-      width,
-      height,
+    const cam = rig.camera;
+    cam.aspect = frame.width / frame.height;
+    cam.setViewOffset(
+      frame.width,
+      frame.height,
+      Math.round((0.5 - vc.x) * frame.width),
+      Math.round((0.5 - vc.y) * frame.height),
+      ctx.size.width,
+      ctx.size.height,
     );
-    rig.camera.updateProjectionMatrix();
+    cam.updateProjectionMatrix();
   };
 
-  const applyLayout = (width: number, height: number) => {
-    const aspect = width / Math.max(1, height);
-    layout = menuLayout(aspect, driftView(width, height));
+  /** Re-fits (eased camera, field re-projected) — the debug seam's proof
+   *  that a scroll re-laid nothing out. */
+  let relayouts = 0;
+  const applyLayout = () => {
+    relayouts++;
+    layout = fit();
     refreshRackLocal();
     refreshOccluders();
     if (snap) rig.snap(layout.camera);
     else rig.setPreset(layout.camera);
     (scene.fog as FogExp2).density = layout.fogDensity;
-    applyViewOffset(width, height);
+    applyViewOffset();
     // A rotation moves the title block — keep the field out from under it.
     for (const d of drift) {
       const moved = placeOutsideKeepOut(d, layout.keepOut);
@@ -563,7 +593,7 @@ export function buildDriftScene(ctx: SceneContext, opts: DriftSceneOptions): Sce
   };
 
   // Initial view offset (SceneHost sizes the renderer right after build).
-  applyViewOffset(ctx.size.width, ctx.size.height);
+  applyViewOffset();
 
   /**
    * The lobby re-measures its hero band on scroll, on resize, when the
@@ -576,7 +606,7 @@ export function buildDriftScene(ctx: SceneContext, opts: DriftSceneOptions): Sce
     const band = getHeroBand();
     if (bandSizeChanged(fitBand, band)) {
       fitBand = band;
-      applyLayout(ctx.size.width, ctx.size.height);
+      applyLayout();
       return;
     }
     bandMoved = true;
@@ -592,16 +622,11 @@ export function buildDriftScene(ctx: SceneContext, opts: DriftSceneOptions): Sce
   return {
     update(dt, now) {
       let live = false;
-      // Pointer smoothing — exponential, frame-rate independent.
-      if (parallaxOn) {
-        const k = 1 - 2 ** (-dt / 0.16);
-        const dx = pointer.x - pointerSmooth.x;
-        const dy = pointer.y - pointerSmooth.y;
-        if (Math.abs(dx) > 1e-4 || Math.abs(dy) > 1e-4) {
-          pointerSmooth.x += dx * k;
-          pointerSmooth.y += dy * k;
-          live = true;
-        }
+      // Pointer smoothing — exponential, frame-rate independent; the
+      // camera rig gets the smoothed value.
+      if (parallaxOn && pointer.step(dt)) {
+        rig.setPointer(pointer.x, pointer.y);
+        live = true;
       }
       const pointerHot = now - lastPointerAt < POINTER_HOT_MS;
 
@@ -634,7 +659,17 @@ export function buildDriftScene(ctx: SceneContext, opts: DriftSceneOptions): Sce
       return live;
     },
     resize(width, height) {
-      applyLayout(width, height);
+      if (width === frame.width) {
+        // Height-only (the URL bar): keep the fit, show the frame's
+        // sub-rectangle over the new canvas. SceneHost renders this
+        // synchronously right after — no cleared frame reaches the
+        // compositor.
+        applyViewOffset();
+        loop.requestRender();
+        return;
+      }
+      frame = { width, height: Math.max(1, height) };
+      applyLayout();
     },
     dispose() {
       publishDriftDebug(null);

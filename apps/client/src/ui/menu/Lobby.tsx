@@ -10,6 +10,7 @@ import { useGame } from '../../state/game';
 import { LESSON_ORDER } from '../../state/tutorial';
 import { BrowseLobbyModal } from '../BrowseLobbyModal';
 import { JoinLanModal } from '../JoinLanModal';
+import { useStableViewportHeight } from '../useStableViewportHeight';
 import { HeroBandSlot } from './HeroBandSlot';
 import { LessonGrid, LessonProgress, lessonProgressLabel, useLessonItems } from './LessonPicker';
 import { LobbyBackdrop } from './LobbyBackdrop';
@@ -45,7 +46,10 @@ export function Lobby() {
 function DesktopLobby() {
   const router = useRouter();
   const transport = useTransport();
-  const { width, height } = useWindowDimensions();
+  const { width } = useWindowDimensions();
+  // Width-latched: a tablet's URL bar retracting mid-scroll must not
+  // resize the hero column (and with it the hero canvas).
+  const height = useStableViewportHeight();
   const lobby = useGame((s) => s.lobby);
   const lessons = useLessonItems();
   const completedCount = lessons.filter((l) => l.done).length;

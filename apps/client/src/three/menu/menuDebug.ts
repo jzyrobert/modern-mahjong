@@ -29,6 +29,10 @@ export interface MenuDebug {
   parked: number;
   fades: number[];
   tiles: { x: number; y: number; r: number; fade: number; parked: boolean }[];
+  /** How many times the drift field has re-fitted (eased camera, every
+   *  tile re-projected) since build. A scroll — including the URL bar
+   *  retracting and growing the canvas — must leave this alone. */
+  driftRelayouts: number;
   /** Keep-out factor per die (1 = clear of every rect). */
   dice: number[];
   /** How many times the dice keep-out pass ran, and how many DOM rects
@@ -48,6 +52,10 @@ export interface MenuDebug {
    *  re-applied since build. Only a resize / band re-fit may bump it:
    *  a scroll moves the canvas itself and must leave this alone. */
   viewOffsetApplies: number;
+  /** How many times the hero has re-laid its rack out (camera ease +
+   *  tile tweens) since build. A viewport height change with the same
+   *  width — the URL bar — must not bump it. */
+  heroRelayouts: number;
   /** How many hero scenes this page has built (1 = never remounted). */
   heroBuilds: number;
 }
@@ -59,7 +67,14 @@ declare global {
 
 export type DriftDebug = Pick<
   MenuDebug,
-  'occluders' | 'occluderRects' | 'reseeded' | 'visible' | 'parked' | 'fades' | 'tiles'
+  | 'occluders'
+  | 'occluderRects'
+  | 'reseeded'
+  | 'visible'
+  | 'parked'
+  | 'fades'
+  | 'tiles'
+  | 'driftRelayouts'
 >;
 
 /** What the hero scene exposes; rects are *canvas-local* CSS px. */
@@ -72,6 +87,7 @@ export interface HeroDebugProvider {
   dicePlaceRuns(): number;
   dicePlaceRects(): number;
   viewOffsetApplies(): number;
+  relayouts(): number;
   heroBuilds(): number;
 }
 
@@ -86,6 +102,7 @@ const EMPTY_DRIFT: DriftDebug = {
   parked: 0,
   fades: [],
   tiles: [],
+  driftRelayouts: 0,
 };
 
 function shifted(r: ScreenRect, by: ScreenRect): ScreenRect {
@@ -129,6 +146,9 @@ function rebuild(): void {
     },
     get viewOffsetApplies() {
       return h ? h.viewOffsetApplies() : 0;
+    },
+    get heroRelayouts() {
+      return h ? h.relayouts() : 0;
     },
     get heroBuilds() {
       return h ? h.heroBuilds() : 0;
