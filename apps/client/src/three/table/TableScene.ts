@@ -26,8 +26,8 @@ import { type LightRig, buildLights } from '../core/lights';
 import type { QualityProfile } from '../core/quality';
 import { publishRiverInterior } from '../core/sceneRects';
 import { getSpotlightTiles, spotlightPulse, spotlightVersion } from '../core/spotlight';
-import { TilePool } from '../tiles/TilePool';
-import { TILE_D, TILE_H, TILE_W } from '../tiles/geometry';
+import { TilePool, type TilePose } from '../tiles/TilePool';
+import { TILE_D, TILE_H, TILE_RADIUS, TILE_W } from '../tiles/geometry';
 import { feltColors, setTileBackFinish, setTileBackGradient } from '../tiles/materials';
 import { Choreographer, type TileMotionState, slotPose } from './choreography';
 import { DRAG_LIFT, DRAG_TILT } from './dragReorder';
@@ -48,7 +48,7 @@ import {
   tileSheetLayout,
   toWorld,
 } from './layout';
-import { type ScreenRect, projectTileFaceRect, projectTileRect } from './picking';
+import { type ScreenRect, projectPlaneRect, projectTileFaceRect, projectTileRect } from './picking';
 import { buildRailGeometry } from './rail';
 import {
   buildCueBandTexture,
@@ -57,6 +57,7 @@ import {
   buildDiceTexture,
   buildFeltNormalMap,
   buildFeltShadeMap,
+  buildHintFrameTexture,
   buildPlateTexture,
   buildWoodMap,
   drawPlate,
@@ -70,7 +71,8 @@ import {
  * pool. Nothing here touches React.
  *
  * Draw calls: felt 1, rail 1, plate 2 (side + top), marker 1, dice 1,
- * cue halo 1, tiles 1 (+ shadow pass casters). ≈ 11 per frame.
+ * cue halo 1, discard-hint frame 1, tiles 1 (+ shadow pass casters).
+ * ≈ 12 per frame.
  */
 export interface SyncInput {
   state: GameState;
@@ -138,10 +140,19 @@ export interface TableDebugTile {
   flight: { kind: string; startsIn: number; ms: number } | null;
 }
 
+/** The discard hint as rendered: the hinted tile's projected face and
+ *  the frame's projected stroke (null while the frame is faded out). */
+export interface TableDebugHint {
+  tileId: number;
+  faceRect: ScreenRect | null;
+  markerRect: ScreenRect | null;
+}
+
 export interface TableDebugSnapshot {
   now: number;
   tiles: TableDebugTile[];
   flights: number;
+  hint: TableDebugHint | null;
 }
 
 function round2(v: number): number {
@@ -206,6 +217,25 @@ const CUE_HALO_HAND_PAD = 2.6;
 const CUE_HALO_HAND_BACK = 0.85;
 /** Cue halo opacity at rest (pulses a little above and below it). */
 const CUE_HALO_OPACITY = 0.78;
+/**
+ * Discard-hint frame (see `hintFrame`), world units: glow margin past
+ * the face on each side, stroke bleed past the face edge as a fraction
+ * of the face size, the hinted tile's steady lift along its up axis,
+ * the frame's gap in front of the printed face, and how long the frame
+ * breathes after the hint lands before holding steady (so a still
+ * table idles, as the cue halo does).
+ */
+const HINT_PAD = 0.18;
+const HINT_BLEED = 0.025;
+const HINT_LIFT = 0.08;
+const HINT_GAP = 0.012;
+const HINT_OPACITY = 0.95;
+const HINT_BREATHE_MS = 6000;
+/** Outer size of the frame's stroke — what `TableDebugHint.markerRect` projects. */
+const HINT_FRAME_W = TILE_W * (1 + 2 * HINT_BLEED);
+const HINT_FRAME_H = TILE_H * (1 + 2 * HINT_BLEED);
+const HINT_QUAD_W = TILE_W + 2 * HINT_PAD;
+const HINT_QUAD_H = TILE_H + 2 * HINT_PAD;
 const _m = new Matrix4();
 const _obj = new Object3D();
 const _q = new Quaternion();
@@ -266,6 +296,19 @@ export class TableScene {
   /** Disc (draw cue) and band (hand row) alphas — one material, the map swaps. */
   private cueHaloTex: Texture;
   private cueBandTex: Texture;
+  /**
+   * Discard hint: a gold rounded-rect frame quad a hair in front of the
+   * hinted tile's printed face, placed from the tile's pool pose every
+   * `writePoses` (same quaternion, +Z offset, scaled with the tile) so
+   * it is aligned by construction from every camera and rides the tile
+   * through drags, re-sorts and the draw / discard springs. Replaces
+   * the DOM ring the HUD used to re-project a frame late.
+   */
+  private hintFrame: Mesh;
+  private hintMat: MeshBasicMaterial;
+  private hintPhase = 0;
+  /** Breathe until this timestamp, then hold steady (see `HINT_BREATHE_MS`). */
+  private hintUntil = 0;
   private textures: Texture[] = [];
   private geometries: BufferGeometry[] = [];
   private disposed = false;
@@ -481,6 +524,28 @@ export class TableScene {
     this.cueHalo.name = 'cue-halo';
     scene.add(this.cueHalo);
 
+    // Discard-hint frame (see `hintFrame`). Same material class + map
+    // slot as the cue halo, so it shares that compiled program; the
+    // polygon offset plus the +Z gap keep it clear of the face's depth.
+    const hintTex = buildHintFrameTexture(TILE_W, TILE_H, HINT_PAD, HINT_BLEED, TILE_RADIUS);
+    hintTex.anisotropy = Math.max(1, Math.min(renderer.capabilities.getMaxAnisotropy(), 8));
+    this.textures.push(hintTex);
+    this.hintMat = new MeshBasicMaterial({
+      map: hintTex,
+      color: 0xe9ac3c,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
+    });
+    this.hintFrame = new Mesh(haloGeo, this.hintMat);
+    this.hintFrame.visible = false;
+    this.hintFrame.renderOrder = 2;
+    this.hintFrame.name = 'hint-frame';
+    scene.add(this.hintFrame);
+
     // Tiles. River glyphs are minified 3–4× and seen at 30–45° on the
     // wide presets, so the atlas takes the strongest anisotropy the GPU
     // offers (mid / high tiers; low keeps the profile's value) — the
@@ -538,6 +603,10 @@ export class TableScene {
     this.cueHalo.visible = false;
     this.cueHaloMat.opacity = 0;
     this.cueHaloTarget = { x: 0, z: 0, sx: 0, sz: 0, on: false, band: false };
+    this.hintFrame.visible = false;
+    this.hintMat.opacity = 0;
+    this.hintPhase = 0;
+    this.hintUntil = 0;
     this.lastWaiting = false;
     this.dice.visible = false;
     this.diceValues = null;
@@ -703,7 +772,10 @@ export class TableScene {
     }
     this.latestDiscardId = input.latestDiscardId;
     this.drawnTileId = input.drawnTileId;
-    this.hintTileId = input.hintTileId;
+    if (input.hintTileId !== this.hintTileId) {
+      this.hintTileId = input.hintTileId;
+      this.hintUntil = now + HINT_BREATHE_MS;
+    }
     this.needsDraw = input.needsDraw;
     this.nearWallDim = input.nearWallDim ?? 1;
     const next = state.wall[state.wall.length - 1];
@@ -888,9 +960,9 @@ export class TableScene {
       if (DRAG_LIFT - this.dragLift < 0.002) this.dragLift = DRAG_LIFT;
       live = true;
     }
-    // Hover lift eases in/out.
+    // Hover lift eases in/out; the hinted tile holds a small steady lift.
     for (let id = 0; id < 136; id++) {
-      const target = id === this.hoverId ? 0.14 : 0;
+      const target = (id === this.hoverId ? 0.14 : 0) + (id === this.hintTileId ? HINT_LIFT : 0);
       const cur = this.lift[id]!;
       if (Math.abs(cur - target) > 0.001) {
         this.lift[id] = cur + (target - cur) * Math.min(1, dt * 14);
@@ -917,6 +989,28 @@ export class TableScene {
         if (this.cueHaloMat.map !== map) this.cueHaloMat.map = map;
       }
       this.cueHalo.visible = this.cueHaloMat.opacity > 0.004;
+    }
+    // Discard-hint frame: ease opacity toward its target; breathe for a
+    // while after the hint lands, then hold (static under reduced motion).
+    {
+      const on = this.hintActive();
+      const breathing = on && !this.choreo.reducedMotion && now < this.hintUntil;
+      if (breathing) {
+        this.hintPhase += dt;
+        live = true;
+      } else if (this.hintPhase !== 0) {
+        this.hintPhase = 0;
+        live = true;
+      }
+      const breathe = this.hintPhase === 0 ? 0.5 : 0.5 + 0.5 * Math.sin(this.hintPhase * 2.8);
+      const want = on ? HINT_OPACITY * (0.8 + 0.2 * breathe) : 0;
+      const cur = this.hintMat.opacity;
+      if (Math.abs(cur - want) > 0.004) {
+        const k = this.choreo.reducedMotion ? 1 : Math.min(1, dt * 10);
+        this.hintMat.opacity = cur + (want - cur) * k;
+        live = true;
+      } else if (cur !== want) this.hintMat.opacity = want;
+      this.hintFrame.visible = this.hintMat.opacity > 0.004;
     }
     // Tutorial spotlight: the active lesson step publishes the tiles it
     // is about (`three/tutorial/Tutorial3D` → `core/spotlight`); they
@@ -1021,6 +1115,7 @@ export class TableScene {
       if (spotLevel > 0 && this.spotMask[id] === 1) hl = Math.max(hl, spotLevel);
       if (dragged) hl = Math.max(hl, 0.25);
       p.highlight = hl;
+      if (id === this.hintTileId) this.placeHintFrame(p);
       p.tint.setScalar(1);
       const zone = t.slot?.zone;
       // Dead wall reads as a shaded segment of the same set: its backs
@@ -1036,6 +1131,42 @@ export class TableScene {
     }
     this.pool.markDirty();
     this.pool.commit();
+  }
+
+  /** The hint has a tile to frame: in the user's hand, landed, visible. */
+  private hintActive(): boolean {
+    if (this.hintTileId === null) return false;
+    const t = this.choreo.tiles[this.hintTileId];
+    return t?.visible === true && t.slot?.zone === 'hand' && !t.flight;
+  }
+
+  /** Park the hint frame a hair in front of `p`'s printed (+Z) face. */
+  private placeHintFrame(p: TilePose): void {
+    const f = this.hintFrame;
+    _lift
+      .set(0, 0, 1)
+      .applyQuaternion(p.quaternion)
+      .multiplyScalar((TILE_D / 2 + HINT_GAP) * p.scale);
+    f.position.copy(p.position).add(_lift);
+    f.quaternion.copy(p.quaternion);
+    f.scale.set(HINT_QUAD_W * p.scale, HINT_QUAD_H * p.scale, 1);
+  }
+
+  /** Screen rect (CSS px) of the hint frame's stroke, or null while it is faded out. */
+  hintMarkerRect(out?: ScreenRect): ScreenRect | null {
+    if (!this.hintFrame.visible) return null;
+    this.hintFrame.updateMatrixWorld();
+    // The quad is a unit plane scaled to the padded size, so the stroke's
+    // extents are its fraction of the quad.
+    return projectPlaneRect(
+      HINT_FRAME_W / HINT_QUAD_W,
+      HINT_FRAME_H / HINT_QUAD_H,
+      this.hintFrame.matrixWorld,
+      this.ctx.rig.camera,
+      this.ctx.size.width,
+      this.ctx.size.height,
+      out,
+    );
   }
 
   /** Screen rect (CSS px) of a tile instance, or null when hidden. */
@@ -1120,7 +1251,15 @@ export class TableScene {
           : null,
       });
     });
-    return { now, tiles, flights: tiles.filter((t) => t.flight !== null).length };
+    const hint =
+      this.hintTileId === null
+        ? null
+        : {
+            tileId: this.hintTileId,
+            faceRect: this.tileFaceRect(this.hintTileId),
+            markerRect: this.hintMarkerRect(),
+          };
+    return { now, tiles, flights: tiles.filter((t) => t.flight !== null).length, hint };
   }
 
   get layout(): Layout | null {
@@ -1139,6 +1278,7 @@ export class TableScene {
       this.plateTopMesh,
       this.marker,
       this.cueHalo,
+      this.hintFrame,
       this.dice,
       this.pool.mesh,
     );
@@ -1152,6 +1292,7 @@ export class TableScene {
     (this.plateTopMesh.material as MeshPhysicalMaterial).dispose();
     (this.marker.material as MeshPhysicalMaterial).dispose();
     this.cueHaloMat.dispose();
+    this.hintMat.dispose();
     (this.dice.material as MeshPhysicalMaterial).dispose();
     this.dice.dispose();
     this.ctx.renderer.shadowMap.autoUpdate = true;

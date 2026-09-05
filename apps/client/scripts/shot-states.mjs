@@ -960,8 +960,10 @@ export const STATES = {
   },
   'match-discard-hint': {
     owner: 'table',
-    // Discard hint on: the dealer's first discard turn shows the teal
-    // ring on the bot-recommended tile — it must hug that tile's face.
+    // Discard hint on: the dealer's first discard turn frames the
+    // bot-recommended tile in gold — scene geometry riding the tile's
+    // pose (`TableScene.hintFrame`), lifted a hair, so it hugs the
+    // printed face from every camera. The testid is a zero-visual marker.
     steps: [
       { setSettings: { discardHint: true } },
       ...START_SOLO,
