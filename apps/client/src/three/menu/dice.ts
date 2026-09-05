@@ -8,6 +8,7 @@ import {
   SRGBColorSpace,
 } from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { DIE_SIZE } from './layout';
 
 /**
  * Procedural dice for the menu hero (asset policy §5 — nothing is
@@ -15,7 +16,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
  * onto a 3 × 2 pip atlas drawn on a canvas, so both dice render as a
  * single InstancedMesh draw call with one material.
  */
-export const DIE_SIZE = 0.52;
+export { DIE_SIZE };
 export const DICE_ATLAS_COLS = 3;
 export const DICE_ATLAS_ROWS = 2;
 const CELL = 128;

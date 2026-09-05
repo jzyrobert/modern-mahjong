@@ -26,6 +26,7 @@
    { clickTutorialNext: true }            presses the caption card's CTA
    { initScript: 'js source' }            addInitScript — globals the app reads at boot
    { clickLastOwnTile: true }             taps the rightmost own-hand tile (the honour singleton the lessons ask for)
+   { resizeViewport: { width, height } }  grows / shrinks the viewport after load (a URL bar retracting)
  *
  * A recipe may also carry `viewport: 'phone-landscape' | { width, height, dpr }`
  * to pin its own viewport regardless of the CLI `--viewport`.
@@ -194,6 +195,19 @@ const MENU_SETTLED = [
   { waitMs: 450 },
 ];
 
+/** Scroll the tallest scrollable container (the lobby's ScrollView) to its end. */
+const SCROLL_TO_BOTTOM = `
+(() => {
+  let best = null;
+  for (const el of document.querySelectorAll('*')) {
+    if (el.scrollHeight > el.clientHeight + 4 && /auto|scroll/.test(getComputedStyle(el).overflowY)) {
+      if (!best || el.scrollHeight > best.scrollHeight) best = el;
+    }
+  }
+  if (best) best.scrollTop = best.scrollHeight;
+})();
+`;
+
 /** Scroll every scrolled container back to the top (the sheet's ScrollView). */
 const SCROLL_TO_TOP = `
 (() => {
@@ -316,6 +330,35 @@ export const STATES = {
       { click: '[data-testid="mode-tutorial"]' },
       { waitFor: '[data-testid="lesson-basics"]' },
       { waitForSettled: '[data-reveal]' },
+      { waitMs: 500 },
+    ],
+  },
+  'menu-scrolled': {
+    owner: 'menu',
+    // Phone lobby scrolled to its end: the secondary rows and the
+    // credits footer sit on the void gradient (round-1 feedback: a
+    // cream band under the cards once the URL bar had retracted).
+    steps: [
+      { goto: '/' },
+      { waitForText: 'Modern Mahjong' },
+      ...MENU_SETTLED,
+      { evaluate: SCROLL_TO_BOTTOM },
+      { waitMs: 500 },
+    ],
+  },
+  'menu-urlbar': {
+    owner: 'menu',
+    // Android Chrome's URL bar retracting on scroll: the viewport grows
+    // by ~100 px *after* load without a reload. Every newly exposed
+    // pixel along the bottom must be void, and the rack re-fits the
+    // re-measured hero band without leaving the title's clearance.
+    steps: [
+      { goto: '/' },
+      { waitForText: 'Modern Mahjong' },
+      ...MENU_SETTLED,
+      { resizeViewport: { grow: 100 } },
+      { waitMs: 700 },
+      { evaluate: SCROLL_TO_BOTTOM },
       { waitMs: 500 },
     ],
   },

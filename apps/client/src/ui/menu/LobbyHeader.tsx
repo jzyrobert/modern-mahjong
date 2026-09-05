@@ -20,6 +20,20 @@ interface TitleBlockProps {
 const HEADING_SIZE = { lg: 52, md: 34, sm: 24 } as const;
 const MARK_SIZE = { lg: 34, md: 24, sm: 18 } as const;
 
+/**
+ * Legibility for the title copy: the hero is laid out *below* the
+ * measured title block (`HeroBandSlot`) and the drift field keeps out
+ * from under it, so the ground behind the copy is the void; a shadow
+ * under every line covers the exception (a font swap mid-relayout). No
+ * scrim — a gradient block behind the copy read as a rectangle on
+ * desktop and darkened the rack's top rows on phones (round-2 critic).
+ */
+const TITLE_SHADOW = {
+  textShadowColor: 'rgba(11,18,15,0.55)',
+  textShadowOffset: { width: 0, height: 1 },
+  textShadowRadius: 12,
+} as const;
+
 export function TitleBlock({ size = 'lg', align = 'center', tagline = true }: TitleBlockProps) {
   const h = HEADING_SIZE[size];
   const center = align === 'center';
@@ -35,7 +49,7 @@ export function TitleBlock({ size = 'lg', align = 'center', tagline = true }: Ti
         gap: size === 'lg' ? 10 : 6,
       }}
     >
-      <Text style={[TYPE.label, { color: MENU.gold }]}>Hong Kong Mahjong</Text>
+      <Text style={[TYPE.label, TITLE_SHADOW, { color: MENU.gold }]}>Hong Kong Mahjong</Text>
       <View
         style={{
           flexDirection: 'row',
@@ -49,13 +63,14 @@ export function TitleBlock({ size = 'lg', align = 'center', tagline = true }: Ti
           accessibilityRole="header"
           // RN-Web maps `accessibilityRole="header"` to an `<h1>` so
           // `getByRole('heading', { name: 'Modern Mahjong' })` resolves.
-          style={[heading(h), center ? { textAlign: 'center' } : null]}
+          style={[heading(h), TITLE_SHADOW, center ? { textAlign: 'center' } : null]}
         >
           Modern Mahjong
         </Text>
         <Text
           style={[
             TYPE.serif,
+            TITLE_SHADOW,
             {
               fontSize: MARK_SIZE[size],
               lineHeight: MARK_SIZE[size] + 4,
@@ -70,6 +85,7 @@ export function TitleBlock({ size = 'lg', align = 'center', tagline = true }: Ti
         <Text
           style={[
             TYPE.body,
+            TITLE_SHADOW,
             {
               fontSize: size === 'lg' ? 14 : 12,
               lineHeight: size === 'lg' ? 20 : 17,

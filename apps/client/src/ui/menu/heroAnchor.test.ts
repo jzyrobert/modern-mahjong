@@ -1,5 +1,16 @@
 import { describe, expect, test } from 'vitest';
 import { DOM_FAN_TILES, classifyAspect, domFan, heroAnchor } from './heroAnchor';
+import { HERO_GAP_BOTTOM_PX, HERO_GAP_TOP_PX, heroBox } from './heroBand';
+
+/** Bounding box of the fan's slots (unrotated wrappers). */
+function fanBounds(slots: ReturnType<typeof domFan>) {
+  return {
+    top: Math.min(...slots.map((s) => s.top)),
+    bottom: Math.max(...slots.map((s) => s.top + s.height)),
+    left: Math.min(...slots.map((s) => s.left)),
+    right: Math.max(...slots.map((s) => s.left + s.width)),
+  };
+}
 
 describe('hero anchor', () => {
   test('classifyAspect buckets the verifier viewports', () => {
@@ -65,5 +76,48 @@ describe('hero anchor', () => {
     expect(keys.size).toBe(DOM_FAN_TILES.length);
     expect(DOM_FAN_TILES.some((t) => t.kind === 'honor')).toBe(true);
     expect(DOM_FAN_TILES.some((t) => t.kind === 'suit')).toBe(true);
+  });
+
+  test.each([
+    // [viewport, band the lobby measured under its title block]
+    ['phone 412×700', 412, 700, { x: 16, y: 136, w: 380, h: 140 }],
+    ['phone-small 360×640', 360, 640, { x: 16, y: 160, w: 328, h: 130 }],
+    ['phone-tall 412×915', 412, 915, { x: 16, y: 136, w: 380, h: 183 }],
+    ['phone-landscape 915×412', 915, 412, { x: 16, y: 130, w: 260, h: 200 }],
+    ['desktop 1440×900', 1440, 900, { x: 24, y: 182, w: 1072, h: 160 }],
+  ])(
+    'domFan(%s) sits inside the measured band, clear of the title and the first card',
+    (_n, w, h, band) => {
+      const slots = domFan(w, h, { band });
+      const b = fanBounds(slots);
+      const box = heroBox(band)!;
+      // ≥ 16 px under the title block's last line, ≥ 8 px above the cards
+      // (the box is the band inset by those gaps; the ends' rotation is
+      // covered by the fit's slop, so wrappers sit strictly inside).
+      expect(b.top).toBeGreaterThanOrEqual(band.y + HERO_GAP_TOP_PX);
+      expect(b.bottom).toBeLessThanOrEqual(band.y + band.h - HERO_GAP_BOTTOM_PX);
+      expect(b.left).toBeGreaterThanOrEqual(box.x);
+      expect(b.right).toBeLessThanOrEqual(box.x + box.w);
+      // Centred in the box.
+      expect(Math.abs((b.left + b.right) / 2 - (box.x + box.w / 2))).toBeLessThan(2);
+      expect(Math.abs((b.top + b.bottom) / 2 - (box.y + box.h / 2))).toBeLessThan(2);
+      // Still legible: nothing below 28 px, and the band is generous
+      // enough on every verifier viewport for ≥ 40 px tiles.
+      for (const s of slots) expect(s.width).toBeGreaterThanOrEqual(40);
+    },
+  );
+
+  test('a short band shrinks the fan instead of letting it overlap; no band keeps the anchor', () => {
+    const tall = domFan(412, 700, { band: { x: 16, y: 136, w: 380, h: 200 } });
+    const short = domFan(412, 700, { band: { x: 16, y: 136, w: 380, h: 90 } });
+    expect(short[0]!.width).toBeLessThan(tall[0]!.width);
+    expect(short[0]!.width).toBeGreaterThanOrEqual(28);
+    const sb = fanBounds(short);
+    expect(sb.top).toBeGreaterThanOrEqual(136 + HERO_GAP_TOP_PX);
+    expect(sb.bottom).toBeLessThanOrEqual(136 + 90 - HERO_GAP_BOTTOM_PX);
+    // A degenerate band (mid-layout) and a missing one both fall back
+    // to the viewport-fraction anchor.
+    expect(domFan(412, 700, { band: { x: 16, y: 136, w: 380, h: 30 } })).toEqual(domFan(412, 700));
+    expect(domFan(412, 700, { band: null })).toEqual(domFan(412, 700));
   });
 });

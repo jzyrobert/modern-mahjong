@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'vitest';
+import { HERO_GAP_BOTTOM_PX, HERO_GAP_TOP_PX, heroBox } from '../../ui/menu/heroBand';
 import { TILE_D, TILE_H } from '../tiles/geometry';
 import {
+  DIE_R,
   DRIFT_COUNT,
   DRIFT_LIMIT,
   HERO_COUNT,
@@ -12,6 +14,7 @@ import {
   driftCandidates,
   driftField,
   driftKeepOut,
+  driftKeepOutFor,
   driftVisible,
   eulerXYZBasis,
   fanSlots,
@@ -23,10 +26,14 @@ import {
   heroElevation,
   heroVisibility,
   inKeepOut,
+  lookAtBasis,
   menuLayout,
   placeOutsideKeepOut,
+  projectToScreen,
+  rackFootprint,
   rayBoxDistance,
   restingCentre,
+  screenToField,
   seededRandom,
   wrapDriftY,
   wrapUnit,
@@ -345,5 +352,151 @@ describe('menu layout', () => {
       const firstZ = offs.find((o) => o.dx === 0 && o.dz !== 0)!;
       expect(Math.sign(firstZ.dz)).toBe(cls === 'landscape-phone' ? 1 : -1);
     }
+  });
+
+  // ─── Hero band fitting ────────────────────────────────────────────
+
+  test('lookAtBasis matches a three.js lookAt: camera looks down −z at the target, +y up', () => {
+    const [x, y, z] = lookAtBasis([0, 5, 10], [0, 0, 0]);
+    // Back axis points from the target to the camera.
+    expect(z[1]).toBeGreaterThan(0);
+    expect(z[2]).toBeGreaterThan(0);
+    // Right axis is +x for a camera on the +z side looking at the origin.
+    expect(x[0]).toBeCloseTo(1, 9);
+    // Up axis has a positive y component and is orthogonal to both.
+    expect(y[1]).toBeGreaterThan(0);
+    const dot = (a: number[], b: number[]) => a[0]! * b[0]! + a[1]! * b[1]! + a[2]! * b[2]!;
+    expect(dot(x, y)).toBeCloseTo(0, 9);
+    expect(dot(y, z)).toBeCloseTo(0, 9);
+  });
+
+  test('projectToScreen puts the camera target at the view centre and scales with the frustum', () => {
+    const l = menuLayout(412 / 915);
+    const t = l.camera.target;
+    const p = projectToScreen(l, t, 412, 915, { x: 0.5, y: 0.3 });
+    expect(p.x).toBeCloseTo(206, 6);
+    expect(p.y).toBeCloseTo(915 * 0.3, 6);
+    // A point half a frame width to the right lands half a viewport right.
+    const right = projectToScreen(l, [t[0] + l.frameWidth / 4, t[1], t[2]], 412, 915, {
+      x: 0.5,
+      y: 0.3,
+    });
+    // (The target is `distance` away along the tilted axis; frameWidth is
+    // measured there, so a quarter frame is a quarter viewport.)
+    expect(right.x - p.x).toBeCloseTo(412 / 4, 1);
+    expect(p.pxPerUnit).toBeCloseTo(412 / l.frameWidth, 6);
+  });
+
+  test('screenToField inverts the drift mapping and driftKeepOut is its fixed-anchor case', () => {
+    // Portrait: anchor y 0.3, title band ends at ≈ 0.18 → y1 ≈ −0.62.
+    expect(screenToField(0.18, 0.3)).toBeCloseTo(-0.622, 2);
+    expect(driftKeepOutFor('portrait', { x: 0.5, y: 0.3 }, 0.18).y1).toBeCloseTo(
+      driftKeepOut('portrait').y1,
+      1,
+    );
+    // Landscape: x1 for the 0.36 column edge with anchor x 0.16 ≈ −0.3.
+    expect(driftKeepOutFor('landscape-phone', { x: 0.16, y: 0.58 }, 0.36).x1).toBeCloseTo(
+      driftKeepOut('landscape-phone').x1,
+      1,
+    );
+    // A title that ends lower pushes the band down; never past the field.
+    const low = driftKeepOutFor('portrait', { x: 0.5, y: 0.35 }, 0.3);
+    expect(low.y1).toBeGreaterThan(driftKeepOutFor('portrait', { x: 0.5, y: 0.35 }, 0.2).y1);
+    expect(driftKeepOutFor('portrait', { x: 0.5, y: 0.3 }, 0.9).y1).toBeLessThanOrEqual(0);
+  });
+
+  const BANDS = [
+    ['phone', 412, 700, { x: 16, y: 136, w: 380, h: 140 }],
+    ['phone-small', 360, 640, { x: 16, y: 160, w: 328, h: 130 }],
+    ['phone-tall', 412, 915, { x: 16, y: 136, w: 380, h: 183 }],
+    ['phone-landscape', 915, 412, { x: 16, y: 130, w: 260, h: 200 }],
+    ['desktop', 1440, 900, { x: 24, y: 182, w: 1072, h: 160 }],
+  ] as const;
+
+  test.each(BANDS)(
+    'menuLayout(%s) fits the rack + dice inside the measured band, clear of the title and cards',
+    (_n, w, h, band) => {
+      const l = menuLayout(w / h, { width: w, height: h, band });
+      expect(l.band).toEqual(band);
+      const fp = l.footprint!;
+      expect(fp).toBeTruthy();
+      const box = heroBox(band)!;
+      // Whole footprint inside the inset box (≤ 0.5 px of numeric slack).
+      expect(fp.all.y).toBeGreaterThanOrEqual(band.y + HERO_GAP_TOP_PX - 0.5);
+      expect(fp.all.y + fp.all.h).toBeLessThanOrEqual(band.y + band.h - HERO_GAP_BOTTOM_PX + 0.5);
+      expect(fp.all.x).toBeGreaterThanOrEqual(box.x - 0.5);
+      expect(fp.all.x + fp.all.w).toBeLessThanOrEqual(box.x + box.w + 0.5);
+      // Centred: the footprint's middle is the box's middle vertically,
+      // the tiles' middle is the box's middle horizontally (unless the
+      // dice had to be pulled in at the edge).
+      expect(Math.abs(fp.all.y + fp.all.h / 2 - (box.y + box.h / 2))).toBeLessThan(1);
+      const tilesMid = fp.tiles.x + fp.tiles.w / 2;
+      if (fp.all.x > box.x + 0.5 && fp.all.x + fp.all.w < box.x + box.w - 0.5)
+        expect(Math.abs(tilesMid - (box.x + box.w / 2))).toBeLessThan(1);
+      // The footprint is what the pure projection says it is.
+      expect(rackFootprint(l, w, h)).toEqual(fp);
+      // Still a real rack: it uses most of the box on every viewport.
+      expect(fp.all.h).toBeGreaterThan(box.h * 0.6);
+      // Legibility maths still hold after the dolly.
+      for (const v of heroVisibility(l, 0.74)) {
+        expect(v.occluded).toBe(0);
+        expect(v.facing).toBeGreaterThan(0.75);
+      }
+      // The keep-out follows the real title bottom (band top) rather
+      // than the class's assumed one, mapped through the fitted centre.
+      expect(l.keepOut.y1).toBeCloseTo(
+        screenToField(band.y / h + 0.02, l.viewCenter.y) < 0
+          ? Math.max(-DRIFT_LIMIT + 0.05, screenToField(band.y / h + 0.02, l.viewCenter.y))
+          : 0,
+        9,
+      );
+    },
+  );
+
+  test('a short band dollies the camera out (smaller rack) rather than overlapping; a tall one keeps the base framing', () => {
+    const base = menuLayout(412 / 700);
+    const tall = menuLayout(412 / 700, {
+      width: 412,
+      height: 700,
+      band: { x: 16, y: 136, w: 380, h: 260 },
+    });
+    const short = menuLayout(412 / 700, {
+      width: 412,
+      height: 700,
+      band: { x: 16, y: 136, w: 380, h: 90 },
+    });
+    expect(tall.distance).toBeCloseTo(base.distance, 9);
+    expect(short.distance).toBeGreaterThan(base.distance);
+    const fpShort = short.footprint!;
+    expect(fpShort.all.h).toBeLessThanOrEqual(90 - HERO_GAP_TOP_PX - HERO_GAP_BOTTOM_PX + 0.5);
+    expect(fpShort.all.y).toBeGreaterThanOrEqual(136 + HERO_GAP_TOP_PX - 0.5);
+    // The fog keeps the hero ~10 % fogged at the new distance.
+    expect(short.fogDensity).toBeCloseTo(fogDensityFor(short.distance), 9);
+    // The tall band moves the centre only: same frame, same dice slots.
+    expect(tall.frameWidth).toBeCloseTo(base.frameWidth, 9);
+    expect(tall.dice).toEqual(base.dice);
+  });
+
+  test('without a band (or with a degenerate one) menuLayout is the viewport-fraction layout', () => {
+    for (const [, w, h] of BANDS) {
+      const plain = menuLayout(w / h);
+      expect(plain.band).toBeNull();
+      expect(plain.footprint).toBeNull();
+      expect(menuLayout(w / h, { width: w, height: h, band: null })).toEqual(plain);
+      expect(
+        menuLayout(w / h, { width: w, height: h, band: { x: 0, y: 100, w: 400, h: 30 } }),
+      ).toEqual(plain);
+      expect(
+        menuLayout(w / h, { width: 0, height: 0, band: { x: 0, y: 100, w: 400, h: 200 } }),
+      ).toEqual(plain);
+    }
+  });
+
+  test('the dice discs are part of the footprint', () => {
+    const l = menuLayout(1440 / 900);
+    const fp = rackFootprint(l, 1440, 900);
+    expect(fp.all.w).toBeGreaterThan(fp.tiles.w);
+    const die = projectToScreen(l, [l.dice[1].x, l.dice[1].y, l.dice[1].z], 1440, 900);
+    expect(fp.all.x + fp.all.w).toBeCloseTo(die.x + DIE_R * die.pxPerUnit, 6);
   });
 });

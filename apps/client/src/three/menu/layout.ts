@@ -1,4 +1,5 @@
 import { type ViewportClass, classifyAspect, heroAnchor } from '../../ui/menu/heroAnchor';
+import { type HeroBand, heroBox } from '../../ui/menu/heroBand';
 import type { CameraPreset } from '../core/camera';
 import { TILE_D, TILE_H, TILE_W } from '../tiles/geometry';
 
@@ -18,6 +19,11 @@ export const HERO_HAND_CELLS: readonly number[] = [
 ];
 
 export const HERO_COUNT = HERO_HAND_CELLS.length;
+/** Edge length of a die (world units). Lives here, not in `dice.ts`,
+ *  so the footprint maths below stays free of three imports. */
+export const DIE_SIZE = 0.52;
+/** Keep-out disc radius of a die (`MenuScene` uses the same value). */
+export const DIE_R = DIE_SIZE * 0.87;
 export const DRIFT_COUNT = 26;
 /** Pool instances the menu draws (hero + drift). Everything else is
  *  collapsed so the InstancedMesh stays one draw call at ~24 k tris. */
@@ -81,6 +87,19 @@ export interface MenuLayout {
    *  viewports get fewer so the field stays sparse (`driftVisible`). */
   driftVisible: number;
   dice: [Slot, Slot];
+  /** The measured hero band the layout was fitted to (`heroBand.ts`),
+   *  or `null` when the viewport-fraction anchor placed the hero. */
+  band: HeroBand | null;
+  /** Where the settled rack (tiles + dice) projects on screen, CSS px,
+   *  when the layout was fitted to a band (`rackFootprint`). */
+  footprint: RackFootprint | null;
+}
+
+/** Canvas size + the measured band `menuLayout` fits the hero into. */
+export interface MenuView {
+  width: number;
+  height: number;
+  band: HeroBand | null;
 }
 
 /**
@@ -127,6 +146,32 @@ export function driftKeepOut(cls: ViewportClass): DriftKeepOut {
   // Wide (vc 0.5 / 0.33): centred title block, x 0.26..0.74, tagline
   // ends y ≈ 0.21 → y1 −0.5 (≈ 0.28).
   return { x0: -0.44, x1: 0.44, y1: -0.5 };
+}
+
+/**
+ * Field coordinate of a screen fraction along one axis for a given view
+ * centre — the inverse of the mapping in `MenuScene.writeDrift`:
+ * screen ≈ vc + (u + 1 − 2·vc) · 0.54.
+ */
+export function screenToField(frac: number, vc: number): number {
+  return (frac - vc) / 0.54 - 1 + 2 * vc;
+}
+
+/**
+ * Keep-out for a hero placed by the *measured* title block: the band
+ * stretches from the top of the field to `titleBottom` (a screen
+ * fraction) across the same columns `driftKeepOut` uses, but mapped
+ * through the actual view centre instead of the class's default anchor.
+ */
+export function driftKeepOutFor(
+  cls: ViewportClass,
+  vc: { x: number; y: number },
+  titleBottom: number,
+): DriftKeepOut {
+  const y1 = Math.max(-DRIFT_LIMIT + 0.05, Math.min(0, screenToField(titleBottom, vc.y)));
+  if (cls === 'portrait') return { x0: -DRIFT_LIMIT, x1: DRIFT_LIMIT, y1 };
+  if (cls === 'landscape-phone') return { x0: -DRIFT_LIMIT, x1: screenToField(0.36, vc.x), y1 };
+  return { x0: screenToField(0.26, vc.x), x1: screenToField(0.74, vc.x), y1 };
 }
 
 export function inKeepOut(ux: number, uy: number, k: DriftKeepOut): boolean {
@@ -243,7 +288,7 @@ export function heroCells(rows: number): readonly number[] {
  *  three-side callers keep one import. */
 export { classifyAspect, type ViewportClass };
 
-export function menuLayout(aspect: number): MenuLayout {
+export function menuLayout(aspect: number, view?: MenuView): MenuLayout {
   const anchor = heroAnchor(aspect);
   const cls = anchor.cls;
   let fan: FanParams;
@@ -283,38 +328,92 @@ export function menuLayout(aspect: number): MenuLayout {
     fov = 34;
     margin = 9;
   }
-  const viewCenter = { x: anchor.x, y: anchor.y };
   const perRow = Math.ceil(HERO_COUNT / fan.rows);
   const width = fanWidth(perRow, fan.spacing);
-  const distance = fitDistance(width + margin, fov, aspect);
   const elevation = heroElevation(cls);
   const target: [number, number, number] = [0, HERO_BASE_Y + 0.5, fan.rows > 1 ? -0.6 : 0];
-  const position: [number, number, number] = [
-    0,
-    target[1] + distance * Math.sin(elevation),
-    target[2] + distance * Math.cos(elevation),
-  ];
-  const frameWidth = frameWidthAt(distance, fov, aspect);
-  const frameHeight = frameWidth / aspect;
+  const dice = diceSlots(cls, width);
+  const build = (distance: number, viewCenter: { x: number; y: number }): MenuLayout => {
+    const position: [number, number, number] = [
+      0,
+      target[1] + distance * Math.sin(elevation),
+      target[2] + distance * Math.cos(elevation),
+    ];
+    const frameWidth = frameWidthAt(distance, fov, aspect);
+    const frameHeight = frameWidth / aspect;
+    return {
+      aspect,
+      cls,
+      fan,
+      elevation,
+      camera: { position, target, fov },
+      distance,
+      frameWidth,
+      viewCenter,
+      fogDensity: fogDensityFor(distance),
+      drift: {
+        halfW: frameWidth * 0.55,
+        halfH: frameHeight * 0.7,
+        near: 6,
+        far: 28,
+      },
+      keepOut: driftKeepOut(cls),
+      driftVisible: driftVisible(cls),
+      dice,
+      band: null,
+      footprint: null,
+    };
+  };
+  const base = build(fitDistance(width + margin, fov, aspect), { x: anchor.x, y: anchor.y });
+  const box = view && view.width > 0 && view.height > 0 ? heroBox(view.band) : null;
+  if (!box || !view) return base;
+  return fitLayoutToBox(base, box, view, build);
+}
+
+/**
+ * Fit a base layout into the measured hero box: dolly the camera out
+ * until the rack's projected footprint (tiles + dice) fits the box,
+ * then shift the frustum so the tiles are centred on the box
+ * horizontally and the whole footprint is centred vertically. The
+ * view offset is a pure image shift, so the footprint's size does not
+ * depend on the centre and two dolly passes converge to well under a
+ * pixel. The drift keep-out follows the real title bottom (the band's
+ * top edge) instead of the class's assumed one.
+ */
+function fitLayoutToBox(
+  base: MenuLayout,
+  box: HeroBand,
+  view: MenuView,
+  build: (distance: number, viewCenter: { x: number; y: number }) => MenuLayout,
+): MenuLayout {
+  const W = view.width;
+  const H = view.height;
+  const centre = { x: 0.5, y: 0.5 };
+  let layout = base;
+  let fp = rackFootprint(layout, W, H, centre);
+  for (let i = 0; i < 3; i++) {
+    const s = Math.min(1, box.w / fp.all.w, box.h / fp.all.h);
+    if (s > 0.995) break;
+    layout = build(layout.distance / s, centre);
+    fp = rackFootprint(layout, W, H, centre);
+  }
+  // Offsets of the footprint from the image centre (vc = 0.5 / 0.5).
+  const tilesCx = fp.tiles.x + fp.tiles.w / 2 - W / 2;
+  const allTop = fp.all.y - H / 2;
+  const allBot = allTop + fp.all.h;
+  const allLeft = fp.all.x - W / 2;
+  const allRight = allLeft + fp.all.w;
+  let cx = box.x + box.w / 2 - tilesCx;
+  cx = Math.min(Math.max(cx, box.x - allLeft), box.x + box.w - allRight);
+  const cy = box.y + box.h / 2 - (allTop + allBot) / 2;
+  const viewCenter = { x: cx / W, y: cy / H };
+  const fitted = build(layout.distance, viewCenter);
+  const band = view.band as HeroBand;
   return {
-    aspect,
-    cls,
-    fan,
-    elevation,
-    camera: { position, target, fov },
-    distance,
-    frameWidth,
-    viewCenter,
-    fogDensity: fogDensityFor(distance),
-    drift: {
-      halfW: frameWidth * 0.55,
-      halfH: frameHeight * 0.7,
-      near: 6,
-      far: 28,
-    },
-    keepOut: driftKeepOut(cls),
-    driftVisible: driftVisible(cls),
-    dice: diceSlots(cls, width),
+    ...fitted,
+    keepOut: driftKeepOutFor(fitted.cls, viewCenter, band.y / H + 0.02),
+    band: { ...band },
+    footprint: rackFootprint(fitted, W, H, viewCenter),
   };
 }
 
@@ -543,6 +642,128 @@ export function rayBoxDistance(
   }
   if (tMax < 0) return Number.POSITIVE_INFINITY;
   return Math.max(tMin, 0);
+}
+
+function cross(a: Vec3, b: Vec3): Vec3 {
+  return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+}
+function normalize(a: Vec3): Vec3 {
+  const l = len(a) || 1;
+  return [a[0] / l, a[1] / l, a[2] / l];
+}
+
+/** Camera axes (right, up, back) of a three.js `lookAt` with +Y up. */
+export function lookAtBasis(position: Vec3, target: Vec3): [Vec3, Vec3, Vec3] {
+  const z = normalize(sub(position, target));
+  const x = normalize(cross([0, 1, 0], z));
+  const y = cross(z, x);
+  return [x, y, z];
+}
+
+export interface ScreenPoint {
+  x: number;
+  y: number;
+  /** CSS px per world unit at the point's depth. */
+  pxPerUnit: number;
+}
+
+/**
+ * Where a world point lands on a `width` × `height` canvas through the
+ * layout's camera with its frustum shifted so the projection centre
+ * sits at `vc` (the `setViewOffset` MenuScene applies): screen =
+ * (vc.x·W + ndc.x·W/2, vc.y·H − ndc.y·H/2). Pure counterpart of the
+ * scene's live `projectPoint`, exact for the settled camera.
+ */
+export function projectToScreen(
+  layout: MenuLayout,
+  p: Vec3,
+  width: number,
+  height: number,
+  vc: { x: number; y: number } = layout.viewCenter,
+): ScreenPoint {
+  const cam = layout.camera;
+  const [ex, ey, ez] = lookAtBasis(cam.position, cam.target);
+  const rel = sub(p, cam.position);
+  const depth = Math.max(0.01, -dot(rel, ez));
+  const halfTan = Math.tan((cam.fov * Math.PI) / 360);
+  const ndcX = dot(rel, ex) / depth / (halfTan * layout.aspect);
+  const ndcY = dot(rel, ey) / depth / halfTan;
+  return {
+    x: vc.x * width + (ndcX * width) / 2,
+    y: vc.y * height - (ndcY * height) / 2,
+    pxPerUnit: height / (2 * depth * halfTan),
+  };
+}
+
+export interface ScreenRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface RackFootprint {
+  /** The hero tiles alone (every corner of every resting tile). */
+  tiles: ScreenRect;
+  /** Tiles plus the dice pair's discs — everything the hero covers. */
+  all: ScreenRect;
+}
+
+/**
+ * The settled rack's projected footprint in CSS px: the hero tiles'
+ * eight corners each, plus the dice as discs of `DIE_R`. Same maths as
+ * `MenuScene.rackRect` (which projects through the live camera) so the
+ * layout can be fitted to the DOM before the scene exists.
+ */
+export function rackFootprint(
+  layout: MenuLayout,
+  width: number,
+  height: number,
+  vc: { x: number; y: number } = layout.viewCenter,
+): RackFootprint {
+  const bounds = () => ({
+    x0: Number.POSITIVE_INFINITY,
+    y0: Number.POSITIVE_INFINITY,
+    x1: Number.NEGATIVE_INFINITY,
+    y1: Number.NEGATIVE_INFINITY,
+  });
+  const tiles = bounds();
+  const all = bounds();
+  const grow = (b: ReturnType<typeof bounds>, x: number, y: number, r: number) => {
+    b.x0 = Math.min(b.x0, x - r);
+    b.y0 = Math.min(b.y0, y - r);
+    b.x1 = Math.max(b.x1, x + r);
+    b.y1 = Math.max(b.y1, y + r);
+  };
+  for (const s of fanSlots(HERO_COUNT, layout.fan)) {
+    const [ex, ey, ez] = eulerXYZBasis(s.rx, s.ry, s.rz);
+    const centre: Vec3 = [s.x, s.y, s.z];
+    for (const cx of [-1, 1]) {
+      for (const cy of [-1, 1]) {
+        for (const cz of [-1, 1]) {
+          const corner = madd(
+            madd(madd(centre, ex, (cx * TILE_W) / 2), ey, (cy * TILE_H) / 2),
+            ez,
+            (cz * TILE_D) / 2,
+          );
+          const sp = projectToScreen(layout, corner, width, height, vc);
+          grow(tiles, sp.x, sp.y, 0);
+          grow(all, sp.x, sp.y, 0);
+        }
+      }
+    }
+  }
+  for (const d of layout.dice) {
+    const sp = projectToScreen(layout, [d.x, d.y, d.z], width, height, vc);
+    grow(all, sp.x, sp.y, DIE_R * sp.pxPerUnit);
+  }
+  const rect = (b: ReturnType<typeof bounds>): ScreenRect => ({
+    x: b.x0,
+    y: b.y0,
+    w: b.x1 - b.x0,
+    h: b.y1 - b.y0,
+  });
+  return { tiles: rect(tiles), all: rect(all) };
 }
 
 export interface SlotVisibility {

@@ -14,6 +14,7 @@ import { JoinLanModal } from '../JoinLanModal';
 import { useIsLandscape } from '../useOrientation';
 import { GlassCard } from './GlassCard';
 import { GlassSheet } from './GlassSheet';
+import { HeroBandSlot } from './HeroBandSlot';
 import { LessonProgress, LessonRail, useLessonItems } from './LessonPicker';
 import { Footer, InlineHint, OnlineConnectionStatus } from './Lobby';
 import { LobbyBackdrop } from './LobbyBackdrop';
@@ -56,6 +57,18 @@ const PHONE_RADIUS = 12;
 const LANDSCAPE_HEADER_H = 44;
 /** Width of the top-right strip reserved for that chip. */
 const LANDSCAPE_CHIP_W = 220;
+
+/**
+ * Portrait hero band height: the slot under the title block that the
+ * rack + dice are fitted into (`HeroBandSlot` → `heroBand.ts`). A
+ * fifth of the viewport, floored so a 640 px phone still shows the
+ * rack at a readable size (the scene scales down to fit rather than
+ * overlap the title or the first card) and capped so a tall phone
+ * keeps its first card above the fold.
+ */
+export function portraitHeroBandHeight(viewportHeight: number): number {
+  return Math.min(220, Math.max(130, Math.round(viewportHeight * 0.2)));
+}
 
 interface MobileLobbyProps {
   isLandscape: boolean;
@@ -309,11 +322,13 @@ export function MobileLobby({ isLandscape }: MobileLobbyProps) {
                 <IdentityPill name={name} onChangeName={onChangeName} compact grow />
               </View>
             </View>
-            <View
-              style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start', marginTop: 10 }}
-            >
+            <View style={{ flexDirection: 'row', gap: 12, alignItems: 'stretch', marginTop: 10 }}>
+              {/* Title column stretches to the card stack's height; the
+                  slot under the title is the hero band the 3D rack +
+                  dice (or the classic fan) are fitted into. */}
               <View style={{ width: '30%', minWidth: 220, paddingLeft: 4, paddingTop: 6 }}>
                 <TitleBlock size="sm" align="left" tagline={false} />
+                <HeroBandSlot style={{ flex: 1, minHeight: 120 }} />
               </View>
               <View style={{ flex: 1, minWidth: 0, gap: 10 }}>
                 <Reveal index={0}>
@@ -341,8 +356,9 @@ export function MobileLobby({ isLandscape }: MobileLobbyProps) {
     );
   }
 
-  // Portrait: leave the band under the title clear for the 3D hero.
-  const heroMinHeight = Math.max(200, Math.round(height * 0.3));
+  // Portrait: the band under the title is reserved for the hero and
+  // measured for the backdrop (`HeroBandSlot`).
+  const heroBandHeight = portraitHeroBandHeight(height);
   return (
     <View style={{ flex: 1, backgroundColor: MENU.void0 }}>
       <LobbyBackdrop />
@@ -353,8 +369,9 @@ export function MobileLobby({ isLandscape }: MobileLobbyProps) {
           stickyHeaderIndices={[0]}
         >
           <AppBar name={name} onChangeName={onChangeName} />
-          <View style={{ minHeight: heroMinHeight, paddingHorizontal: 16, paddingTop: 18 }}>
+          <View style={{ paddingHorizontal: 16, paddingTop: 18 }}>
             <TitleBlock size="md" align="left" />
+            <HeroBandSlot style={{ height: heroBandHeight }} />
           </View>
           <View style={{ padding: 12, gap: 10 }}>
             <Reveal index={0}>{onlineCard}</Reveal>
@@ -400,12 +417,21 @@ export function MobileLobby({ isLandscape }: MobileLobbyProps) {
 
 // ─── App bar (portrait) ─────────────────────────────────────────────
 
+/**
+ * Sticky app bar. Its ground is the near-opaque void (`MENU.glassSolid`,
+ * 0.94) rather than quiet glass: the hero rack scrolls under it, and at
+ * 0.42 the blurred ivory tinted the whole bar khaki (round-2 critic:
+ * rgb(113,109,93) across the bar for ~140 px of scroll). At 0.94 the
+ * bar stays inside the void family whatever passes beneath — the 6 %
+ * leak of the blur reads as a faint warmth, not a colour.
+ */
 function AppBar({ name, onChangeName }: { name: string; onChangeName: (v: string) => void }) {
   const occluder = useMenuOccluder('glass');
   return (
     <View
       ref={occluder.ref}
       onLayout={occluder.onLayout}
+      testID="lobby-app-bar"
       style={{
         flexDirection: 'row',
         alignItems: 'center',
@@ -413,6 +439,7 @@ function AppBar({ name, onChangeName }: { name: string; onChangeName: (v: string
         paddingHorizontal: 12,
         paddingVertical: 8,
         ...glass({ quiet: true, radius: 0, flat: true }),
+        backgroundColor: MENU.glassSolid,
         borderWidth: 0,
         borderBottomWidth: 1,
         borderBottomColor: MENU.hairlineSoft,

@@ -1,6 +1,7 @@
 import type { Tile as MTile } from '@mahjong/game-logic';
 import { View, useWindowDimensions } from 'react-native';
 import { Tile } from '../Tile';
+import { useHeroBand } from './HeroBandSlot';
 import { DOM_FAN_TILES, classifyAspect, domFan } from './heroAnchor';
 
 // Tile only renders the back when `faceDown`, so the engine value here
@@ -90,10 +91,13 @@ export function ScatteredTiles({
   variant = showFan ? 'menu' : 'library',
 }: { fan?: boolean; variant?: 'menu' | 'library' }) {
   const { width, height } = useWindowDimensions();
+  const band = useHeroBand();
   const tiles = (variant === 'menu' ? MENU_BACKS : LIBRARY_BACKS)[
     classifyAspect(width / Math.max(1, height))
   ];
-  const fan = showFan ? domFan(width, height) : [];
+  // Centred in the lobby's measured hero band when it has one, so the
+  // fan sits under the title's last line like the 3D rack does.
+  const fan = showFan ? domFan(width, height, { band }) : [];
   const first = fan[0];
   const last = fan[fan.length - 1];
   return (
