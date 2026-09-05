@@ -191,8 +191,12 @@ async function runStep(page, step, ctx) {
     // captures the mid-drag frame (the lifted tile under the pointer,
     // the others re-flowed). Without `hold` the pointer is released.
     const targets = page.getByTestId(step.dragTestId);
-    const a = await targets.nth(step.from ?? 0).boundingBox({ timeout: scaled(step.timeout ?? 10_000) });
-    const b = await targets.nth(step.to ?? 0).boundingBox({ timeout: scaled(step.timeout ?? 10_000) });
+    const a = await targets
+      .nth(step.from ?? 0)
+      .boundingBox({ timeout: scaled(step.timeout ?? 10_000) });
+    const b = await targets
+      .nth(step.to ?? 0)
+      .boundingBox({ timeout: scaled(step.timeout ?? 10_000) });
     if (!a || !b) throw new Error(`dragTestId: ${step.dragTestId} target not visible`);
     const x0 = a.x + a.width / 2;
     const y0 = a.y + a.height / 2;
