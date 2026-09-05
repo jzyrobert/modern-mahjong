@@ -1,14 +1,40 @@
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Pressable, ScrollView, Text, View } from 'react-native';
+import {
+  Animated,
+  Easing,
+  Platform,
+  Pressable,
+  ScrollView,
+  Text,
+  View,
+  type ViewStyle,
+} from 'react-native';
 import { COLORS } from '../colors';
 // `EmoteRow` import removed while the reaction system is being reworked
 // (the emote panel is commented out below). Re-add when the new
 // reaction surface lands.
 import { MenuRowsList, type MenuSheetProps } from './MenuSheet';
+import { type SheetTheme, sheetPalette } from './sheetTheme';
 
 const PANEL_WIDTH = 450;
 const SLIDE_MS = 260;
 const SCRIM_MS = 200;
+
+/** Glass panel chrome — same recipe as the `Modal` glass variant. */
+const GLASS_PANEL = {
+  bg: Platform.OS === 'web' ? 'rgba(14,20,17,0.76)' : 'rgba(14,20,17,0.94)',
+  border: 'rgba(255,255,255,0.12)',
+  scrim: 'rgba(4,8,6,0.5)',
+};
+// `backdrop-filter` isn't in RN's style typings but react-native-web
+// forwards it verbatim; native ignores the spread entirely.
+const WEB_BLUR: ViewStyle | null =
+  Platform.OS === 'web'
+    ? ({
+        backdropFilter: 'blur(16px) saturate(140%)',
+        WebkitBackdropFilter: 'blur(16px) saturate(140%)',
+      } as unknown as ViewStyle)
+    : null;
 
 /**
  * Right-anchored slide-in menu panel used by `<DesktopShell>`.
@@ -43,7 +69,9 @@ export function MenuSidePanel({
   onOpenScoring,
   onLeave,
   onSendChat,
+  theme = 'paper',
 }: MenuSheetProps) {
+  const glass = theme === 'glass';
   const [rendered, setRendered] = useState(open);
   // Both `Animated.Value`s start in the closed state so the open
   // animation runs from off-screen → on-screen on first mount.
@@ -116,7 +144,7 @@ export function MenuSidePanel({
           right: 0,
           top: 0,
           bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.25)',
+          backgroundColor: glass ? GLASS_PANEL.scrim : 'rgba(0,0,0,0.25)',
           opacity: scrim,
           zIndex: 10,
         }}
@@ -134,10 +162,11 @@ export function MenuSidePanel({
           right: 0,
           bottom: 0,
           width: PANEL_WIDTH,
-          backgroundColor: COLORS.paper,
+          backgroundColor: glass ? GLASS_PANEL.bg : COLORS.paper,
+          ...(glass && WEB_BLUR),
           borderLeftWidth: 1,
-          borderLeftColor: COLORS.hairline,
-          boxShadow: '-8px 0 32px rgba(0,0,0,0.13)',
+          borderLeftColor: glass ? GLASS_PANEL.border : COLORS.hairline,
+          boxShadow: glass ? '-12px 0 40px rgba(0,0,0,0.35)' : '-8px 0 32px rgba(0,0,0,0.13)',
           transform: [{ translateX }],
           zIndex: 20,
           // The panel column owns its own flex stack: header
@@ -147,7 +176,7 @@ export function MenuSidePanel({
           overflow: 'hidden',
         }}
       >
-        <PanelHeader onClose={onClose} />
+        <PanelHeader onClose={onClose} theme={theme} />
         {/* Emote row temporarily disabled — the reaction system is being
             reworked. Re-enable (or replace with the new reaction surface)
             once the redesign lands. */}
@@ -166,10 +195,10 @@ export function MenuSidePanel({
         <ScrollView
           style={{ flex: 1 }}
           contentContainerStyle={{
-            paddingTop: 7,
-            paddingHorizontal: 11,
+            paddingTop: glass ? 12 : 7,
+            paddingHorizontal: glass ? 14 : 11,
             paddingBottom: 14,
-            gap: 5,
+            gap: glass ? 6 : 5,
           }}
         >
           <MenuRowsList
@@ -179,6 +208,7 @@ export function MenuSidePanel({
             onOpenReference={onOpenReference}
             onOpenScoring={onOpenScoring}
             onLeave={onLeave}
+            theme={theme}
           />
         </ScrollView>
       </Animated.View>
@@ -186,34 +216,67 @@ export function MenuSidePanel({
   );
 }
 
-function PanelHeader({ onClose }: { onClose: () => void }) {
+function PanelHeader({ onClose, theme }: { onClose: () => void; theme: SheetTheme }) {
+  const glass = theme === 'glass';
+  const P = sheetPalette(theme);
   return (
     <View
       style={{
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingTop: 13,
-        paddingBottom: 10,
-        paddingHorizontal: 13,
+        paddingTop: glass ? 14 : 13,
+        paddingBottom: glass ? 12 : 10,
+        paddingHorizontal: glass ? 18 : 13,
         borderBottomWidth: 1,
-        borderBottomColor: COLORS.hairline,
+        borderBottomColor: glass ? P.hairline : COLORS.hairline,
       }}
     >
-      <Text style={{ fontSize: 14, fontWeight: '900', color: COLORS.ink }}>Menu</Text>
+      <Text
+        style={{
+          fontSize: glass ? 17 : 14,
+          fontWeight: glass ? '800' : '900',
+          letterSpacing: glass ? -0.3 : 0,
+          color: P.text,
+        }}
+      >
+        Menu
+      </Text>
       <Pressable
         onPress={onClose}
         accessibilityLabel="Close menu"
-        style={({ pressed }) => ({
-          paddingVertical: 3,
-          paddingHorizontal: 9,
-          borderRadius: 7,
-          borderWidth: 1,
-          borderColor: COLORS.hairline,
-          backgroundColor: pressed ? COLORS.creamLow : COLORS.paperHi,
-        })}
+        style={({ pressed }) =>
+          glass
+            ? {
+                width: 32,
+                height: 32,
+                borderRadius: 16,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: pressed ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.08)',
+                borderWidth: 1,
+                borderColor: GLASS_PANEL.border,
+              }
+            : {
+                paddingVertical: 3,
+                paddingHorizontal: 9,
+                borderRadius: 7,
+                borderWidth: 1,
+                borderColor: COLORS.hairline,
+                backgroundColor: pressed ? COLORS.creamLow : COLORS.paperHi,
+              }
+        }
       >
-        <Text style={{ fontSize: 13, fontWeight: '700', color: COLORS.ink3 }}>✕</Text>
+        <Text
+          style={{
+            fontSize: glass ? 18 : 13,
+            lineHeight: glass ? 20 : undefined,
+            fontWeight: '700',
+            color: glass ? 'rgba(255,255,255,0.85)' : COLORS.ink3,
+          }}
+        >
+          {glass ? '×' : '✕'}
+        </Text>
       </Pressable>
     </View>
   );

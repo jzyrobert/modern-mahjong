@@ -172,6 +172,27 @@ async function runStep(page, step, ctx) {
       .getByTestId(step.clickTestId)
       .nth(step.nth ?? 0)
       .click({ timeout: step.timeout ?? 10_000 });
+  if (step.dragTestId) {
+    // Pointer drag between two targets sharing a test id: press on the
+    // `from`-th, glide to the `to`-th's centre (offset by `dx` / `dy`
+    // CSS px) and, with `hold`, leave the button down so the shot
+    // captures the mid-drag frame (the lifted tile under the pointer,
+    // the others re-flowed). Without `hold` the pointer is released.
+    const targets = page.getByTestId(step.dragTestId);
+    const a = await targets.nth(step.from ?? 0).boundingBox({ timeout: step.timeout ?? 10_000 });
+    const b = await targets.nth(step.to ?? 0).boundingBox({ timeout: step.timeout ?? 10_000 });
+    if (!a || !b) throw new Error(`dragTestId: ${step.dragTestId} target not visible`);
+    const x0 = a.x + a.width / 2;
+    const y0 = a.y + a.height / 2;
+    const x1 = b.x + b.width / 2 + (step.dx ?? 0);
+    const y1 = b.y + b.height / 2 + (step.dy ?? 0);
+    await page.mouse.move(x0, y0);
+    await page.mouse.down();
+    await page.mouse.move(x0 + 8, y0, { steps: 2 });
+    await page.mouse.move(x1, y1, { steps: step.steps ?? 12 });
+    if (!step.hold) await page.mouse.up();
+    return;
+  }
   if (step.waitFor)
     return page
       .locator(step.waitFor)

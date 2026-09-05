@@ -22,13 +22,17 @@ import { Modal } from '../Modal';
 import { COLORS, SWITCH_TRACK } from '../colors';
 import { HOVER_TRANSITION } from '../menu/theme';
 import {
+  CHIP_METRICS,
   QUALITY_OPTIONS,
   RENDERER_HINT,
   RENDERER_OPTIONS,
   type SegmentOption,
+  chipGrid,
+  chipMinWidth,
   qualityHint,
   rendererDetail,
 } from './settingsOptions';
+import { GLASS_SHEET } from './sheetTheme';
 import { FELT_SKINS, TILE_BACK_SKINS } from './skins';
 
 interface SettingsPanelProps {
@@ -40,21 +44,8 @@ interface SettingsPanelProps {
 const DESKTOP_WIDTH = 768;
 const DESKTOP_HEIGHT = 600;
 
-/** Glass HUD palette — see the render-layer visual language. */
-const G = {
-  text: 'rgba(255,255,255,0.92)',
-  text2: 'rgba(255,255,255,0.62)',
-  // Muted labels — ≥ 5.5:1 on the glass sheet (0.45 sat exactly at the
-  // 4.5:1 floor and dipped under it over a bright blurred felt).
-  text3: 'rgba(255,255,255,0.58)',
-  surface: 'rgba(255,255,255,0.06)',
-  surfaceHi: 'rgba(255,255,255,0.12)',
-  border: 'rgba(255,255,255,0.1)',
-  hairline: 'rgba(255,255,255,0.08)',
-  gold: COLORS.gold,
-  goldTint: 'rgba(216,168,90,0.16)',
-  ink: '#2a2418',
-};
+/** Glass HUD palette — shared with the in-match sheets (`sheetTheme`). */
+const G = GLASS_SHEET;
 
 /**
  * In-match preferences panel — glass sheet (bottom on phone, right-hand
@@ -141,13 +132,24 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
         </Section>
 
         <Section label="Felt">
-          <FeltSwatchRow value={settings.felt} onChange={(felt) => setSettings({ felt })} />
+          <SkinChipRow
+            skins={FELT_SKINS}
+            value={settings.felt}
+            onChange={(felt) => setSettings({ felt })}
+            groupLabel="Felt skin"
+            testIDPrefix="felt"
+            swatch={{ width: 30, height: 30, radius: 15 }}
+          />
         </Section>
 
         <Section label="Tile back">
-          <TileBackSwatchRow
+          <SkinChipRow
+            skins={TILE_BACK_SKINS}
             value={settings.tileBack}
             onChange={(tileBack) => setSettings({ tileBack })}
+            groupLabel="Tile back skin"
+            testIDPrefix="tileback"
+            swatch={{ width: 22, height: 30, radius: 5 }}
           />
         </Section>
 
@@ -396,7 +398,7 @@ function Segment<T extends string>({
         style={{
           fontSize: 13,
           fontWeight: selected ? '800' : '600',
-          color: selected ? G.ink : 'rgba(255,255,255,0.78)',
+          color: selected ? G.goldInk : 'rgba(255,255,255,0.78)',
           letterSpacing: 0.2,
         }}
       >
@@ -413,8 +415,9 @@ interface ChipProps {
   accessibilityLabel: string;
   testID: string;
   swatch: ReactNode;
-  /** Flex basis as a percentage of the row — chips grow to fill it. */
-  basis: `${number}%`;
+  /** Measured chip width from `chipGrid`; `undefined` before the row
+   *  has laid out, when the pill sizes itself from its content. */
+  width: number | undefined;
 }
 
 function SkinChip({
@@ -424,7 +427,7 @@ function SkinChip({
   accessibilityLabel,
   testID,
   swatch,
-  basis,
+  width,
 }: ChipProps) {
   const { hoverProps, hoverStyle } = useHoverLift();
   return (
@@ -437,17 +440,18 @@ function SkinChip({
       testID={testID}
       {...hoverProps}
       style={({ pressed }) => ({
-        flexGrow: 1,
-        flexBasis: basis,
+        // Sized by the row's measured grid, never by a fixed share of
+        // the row: the pill is always at least as wide as its label.
+        ...(width !== undefined ? { width } : { flexGrow: 0 }),
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 10,
+        gap: CHIP_METRICS.gap,
         paddingVertical: 6,
-        paddingLeft: 6,
-        paddingRight: 14,
+        paddingLeft: CHIP_METRICS.padLeft,
+        paddingRight: CHIP_METRICS.padRight,
         borderRadius: 999,
         minHeight: 44,
-        borderWidth: 2,
+        borderWidth: CHIP_METRICS.border,
         borderColor: selected ? G.gold : pressed ? G.surfaceHi : G.border,
         backgroundColor: selected ? G.goldTint : pressed ? G.surfaceHi : G.surface,
         ...hoverStyle(pressed),
@@ -455,9 +459,11 @@ function SkinChip({
     >
       {swatch}
       <Text
+        numberOfLines={1}
         style={{
           fontSize: 13,
           fontWeight: '700',
+          flexShrink: 1,
           color: selected ? G.text : 'rgba(255,255,255,0.78)',
         }}
       >
@@ -514,57 +520,66 @@ function Swatch({
   );
 }
 
-function FeltSwatchRow({ value, onChange }: { value: FeltSkin; onChange: (v: FeltSkin) => void }) {
-  return (
-    <View
-      accessibilityRole="radiogroup"
-      accessibilityLabel="Felt skin"
-      style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}
-    >
-      {(Object.keys(FELT_SKINS) as FeltSkin[]).map((id) => {
-        const skin = FELT_SKINS[id];
-        return (
-          <SkinChip
-            key={id}
-            name={skin.name}
-            selected={value === id}
-            onPress={() => onChange(id)}
-            accessibilityLabel={`Felt skin: ${skin.name}`}
-            testID={`felt-${id}`}
-            basis="44%"
-            swatch={
-              <Swatch top={skin.top} bottom={skin.bottom} width={30} height={30} radius={15} />
-            }
-          />
-        );
-      })}
-    </View>
-  );
+interface SkinChipRowProps<K extends string> {
+  skins: Record<K, { name: string; top: string; bottom: string }>;
+  value: K;
+  onChange: (v: K) => void;
+  groupLabel: string;
+  testIDPrefix: string;
+  swatch: { width: number; height: number; radius: number };
 }
 
-function TileBackSwatchRow({
+const CHIP_ROW_GAP = 8;
+
+/**
+ * Wrapped row of skin chips laid out on a measured grid: `chipGrid`
+ * picks the column count from the row's width and the widest label
+ * (`chipMinWidth`), so every pill holds its text with the full padding
+ * and the rows stay even (2 × 2 on phones, one row of four on wide
+ * sheets). The first frame — before `onLayout` — sizes pills from
+ * their content.
+ */
+function SkinChipRow<K extends string>({
+  skins,
   value,
   onChange,
-}: { value: TileBackSkin; onChange: (v: TileBackSkin) => void }) {
+  groupLabel,
+  testIDPrefix,
+  swatch,
+}: SkinChipRowProps<K>) {
+  const [rowWidth, setRowWidth] = useState(0);
+  const ids = Object.keys(skins) as K[];
+  const minChip = chipMinWidth(
+    ids.map((id) => skins[id].name),
+    { ...CHIP_METRICS, swatchWidth: swatch.width },
+  );
+  const { columns, chipWidth } = chipGrid(rowWidth, ids.length, minChip, CHIP_ROW_GAP);
   return (
     <View
       accessibilityRole="radiogroup"
-      accessibilityLabel="Tile back skin"
-      style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}
+      accessibilityLabel={groupLabel}
+      onLayout={(e) => setRowWidth(Math.floor(e.nativeEvent.layout.width))}
+      style={{ flexDirection: 'row', flexWrap: 'wrap', gap: CHIP_ROW_GAP }}
     >
-      {(Object.keys(TILE_BACK_SKINS) as TileBackSkin[]).map((id) => {
-        const skin = TILE_BACK_SKINS[id];
+      {ids.map((id) => {
+        const skin = skins[id];
         return (
           <SkinChip
             key={id}
             name={skin.name}
             selected={value === id}
             onPress={() => onChange(id)}
-            accessibilityLabel={`Tile back skin: ${skin.name}`}
-            testID={`tileback-${id}`}
-            basis="20%"
+            accessibilityLabel={`${groupLabel}: ${skin.name}`}
+            testID={`${testIDPrefix}-${id}`}
+            width={columns > 0 ? chipWidth : undefined}
             swatch={
-              <Swatch top={skin.top} bottom={skin.bottom} width={22} height={30} radius={5} />
+              <Swatch
+                top={skin.top}
+                bottom={skin.bottom}
+                width={swatch.width}
+                height={swatch.height}
+                radius={swatch.radius}
+              />
             }
           />
         );

@@ -252,6 +252,13 @@ export function ActionRow(props: ActionRowProps) {
   const sort = (
     <SortSegment mode={sortMode} onChange={onSortModeChange} compact={compact} dense={dense} />
   );
+  // Desktop: the CTAs take the footer's centred slot whenever the claim
+  // strip is not in it, level with the sort control, instead of a row
+  // stacked above it. Stacked, the declare-win button's top edge ran
+  // under the projected hand (its top at ~782 CSS px against tile
+  // bottoms at ~790 on 1440×900) and the tutorial ring around it cut
+  // across the tiles' glyphs.
+  const ctasInFooter = !ctasExternal && sortAlign === 'end' && centre === undefined;
   return (
     <div
       style={{
@@ -264,7 +271,7 @@ export function ActionRow(props: ActionRowProps) {
         ...style,
       }}
     >
-      {ctasExternal ? null : <ActionCtas {...props} />}
+      {ctasExternal || ctasInFooter ? null : <ActionCtas {...props} />}
       {sortAlign === 'replace' ? (
         // Landscape claim window: the claim strip *replaces* the sort
         // control (irrelevant while a claim is pending) and sits centred
@@ -316,7 +323,9 @@ export function ActionRow(props: ActionRowProps) {
           }}
         >
           <div style={{ minWidth: 0, display: 'flex', alignItems: 'center' }}>{leading}</div>
-          <div style={{ minWidth: 0, display: 'flex', justifyContent: 'center' }}>{centre}</div>
+          <div style={{ minWidth: 0, display: 'flex', justifyContent: 'center' }}>
+            {ctasInFooter ? <ActionCtas {...props} /> : centre}
+          </div>
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>{sort}</div>
         </div>
       ) : (

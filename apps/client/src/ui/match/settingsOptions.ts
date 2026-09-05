@@ -72,3 +72,68 @@ export function qualityHint(choice: QualityChoice): string {
       return 'Everything on: large shadows, reflections, bloom + vignette.';
   }
 }
+
+/** Geometry of a `SkinChip` (swatch + label pill) in CSS px. */
+export interface ChipMetrics {
+  /** Swatch width inside the pill. */
+  swatchWidth: number;
+  /** Pill padding on the swatch side. */
+  padLeft: number;
+  /** Gap between swatch and label. */
+  gap: number;
+  /** Pill padding on the label side. */
+  padRight: number;
+  /** Pill border, each side. */
+  border: number;
+  /** Conservative advance per label character (13 px / 700 sans). */
+  charWidth: number;
+}
+
+export const CHIP_METRICS: Omit<ChipMetrics, 'swatchWidth'> = {
+  padLeft: 6,
+  gap: 10,
+  padRight: 14,
+  border: 2,
+  charWidth: 8.5,
+};
+
+/**
+ * Narrowest pill that still holds the longest of `labels` on one line
+ * — the chip row never lays chips out below this width, so a label can
+ * never pop out of its pill (the round-1 "Cream" overflow at phone
+ * widths, where a fixed 20 % basis left ~35 px for a 43 px word).
+ */
+export function chipMinWidth(labels: readonly string[], m: ChipMetrics): number {
+  const longest = labels.reduce((n, l) => Math.max(n, l.length), 0);
+  return m.swatchWidth + m.padLeft + m.gap + m.padRight + 2 * m.border + longest * m.charWidth;
+}
+
+/**
+ * Column count + chip width for a wrapped chip row of `count` chips,
+ * each at least `minChip` wide, in a row `rowWidth` wide with `gap`
+ * between chips. Prefers a column count that divides `count` so the
+ * rows stay even (4 chips → 4 / 2 / 1, never 3 + 1); a ragged grid is
+ * only used when nothing even fits and more than one column does.
+ * Returns `columns: 0` before the row has been measured so the caller
+ * can fall back to content sizing.
+ */
+export function chipGrid(
+  rowWidth: number,
+  count: number,
+  minChip: number,
+  gap: number,
+): { columns: number; chipWidth: number } {
+  if (rowWidth <= 0 || count <= 0) return { columns: 0, chipWidth: 0 };
+  const fit = Math.max(1, Math.floor((rowWidth + gap) / (minChip + gap)));
+  const cap = Math.min(fit, count);
+  let columns = 1;
+  for (let c = cap; c >= 1; c--) {
+    if (count % c === 0) {
+      columns = c;
+      break;
+    }
+  }
+  if (columns === 1 && cap > 1) columns = cap;
+  const chipWidth = Math.floor((rowWidth - gap * (columns - 1)) / columns);
+  return { columns, chipWidth };
+}

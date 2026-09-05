@@ -1,5 +1,5 @@
 import type { ComponentType } from 'react';
-import type { ScreenBounds } from './core/sceneRects';
+import type { CameraMotion, ScreenBounds } from './core/sceneRects';
 import type { ReplayShelf3DProps } from './menu/ReplayShelf3D';
 import type { SettingsPreview3DProps } from './settings/SettingsPreview3D';
 import type { Table3DShellProps } from './table/Table3DShell';
@@ -29,6 +29,10 @@ export const ReplayShelf3D: ComponentType<ReplayShelf3DProps> | null = null;
 export interface TutorialSceneRects {
   subscribe(cb: () => void): () => void;
   getRiverInterior(): ScreenBounds | null;
+  /** Camera rig motion (`core/sceneRects`): the overlay holds a lesson's
+   *  first coach card until the rig has come to rest. */
+  subscribeCamera(cb: () => void): () => void;
+  getCameraMotion(): CameraMotion;
 }
 export const tutorialSceneRects: TutorialSceneRects | null = null;
 

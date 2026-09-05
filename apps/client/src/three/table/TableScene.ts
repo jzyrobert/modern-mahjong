@@ -29,7 +29,8 @@ import { getSpotlightTiles, spotlightPulse, spotlightVersion } from '../core/spo
 import { TilePool } from '../tiles/TilePool';
 import { TILE_D, TILE_H, TILE_W } from '../tiles/geometry';
 import { feltColors, setTileBackFinish, setTileBackGradient } from '../tiles/materials';
-import { Choreographer, slotPose } from './choreography';
+import { Choreographer, type TileMotionState, slotPose } from './choreography';
+import { DRAG_LIFT, DRAG_TILT } from './dragReorder';
 import {
   CENTRE_PLATE_RADIUS,
   CHIP_POCKET_NUDGE,
@@ -204,6 +205,10 @@ const _m = new Matrix4();
 const _obj = new Object3D();
 const _q = new Quaternion();
 const _lift = new Vector3();
+const _dragDir = new Vector3();
+const _dragNormal = new Vector3();
+const _dragV = new Vector3();
+const _dragQ = new Quaternion();
 const _settleScale = new Vector3(1, 1, 1);
 const Y_AXIS = new Vector3(0, 1, 0);
 const X_AXIS = new Vector3(1, 0, 0);
@@ -287,6 +292,14 @@ export class TableScene {
   /** Camera matrix at the last frame — a moving camera re-renders the shadow pass too. */
   private readonly frameCam = new Matrix4();
   private lift = new Float32Array(136);
+  /**
+   * Drag-to-reorder (`hud/HitTargets`): the tile the pointer is carrying,
+   * the world point under the pointer on a view-parallel plane through
+   * the tile's settled slot, and the eased lift (0 → `DRAG_LIFT`).
+   */
+  private dragId: number | null = null;
+  private readonly dragPos = new Vector3();
+  private dragLift = 0;
   private pulseT = 0;
   /** Pulses run for a few seconds after each cue, then hold steady so a still table idles. */
   private pulseUntil = 0;
@@ -505,6 +518,8 @@ export class TableScene {
     this.needsDraw = false;
     this.hoverId = null;
     this.lift.fill(0);
+    this.dragId = null;
+    this.dragLift = 0;
     this.pulseT = 0;
     this.pulseUntil = 0;
     this.lastNow = 0;
@@ -554,6 +569,72 @@ export class TableScene {
     if (this.hoverId === id) return;
     this.hoverId = id;
     this.requestFullFrame();
+  }
+
+  /**
+   * Drag-to-reorder feedback (additive). While `id` is set the instance
+   * follows the pointer instead of its slot: `screenX` / `screenY` are
+   * canvas CSS px, unprojected onto the view-parallel plane through the
+   * tile's settled slot so the tile stays at hand depth on every preset
+   * (table-standing rows and the camera-facing held hand alike), then
+   * raised by `DRAG_LIFT` along its own up axis with a slight extra lean.
+   * The other tiles keep re-flowing through the choreographer's springs
+   * as the store order changes. `null` ends the drag: the carried tile's
+   * motion state is seeded from where it was let go so it springs into
+   * its slot (snaps under reduced motion).
+   */
+  setDraggedTile(id: number | null, screenX = 0, screenY = 0): void {
+    const prev = this.dragId;
+    if (id === null) {
+      if (prev === null) return;
+      const t = this.choreo.tiles[prev];
+      // Only a tile with a spring target can carry on from the drop pose;
+      // anything else (mid-flight, reduced motion) snaps to its own motion.
+      if (t?.target && !this.choreo.reducedMotion && t.slot?.zone === 'hand' && !t.flight) {
+        this.dragPose(t, this.dragPos, _m);
+        _m.decompose(t.pos, t.quat, _lift);
+      }
+      this.dragId = null;
+      this.dragLift = 0;
+      this.requestFullFrame();
+      return;
+    }
+    const t = this.choreo.tiles[id];
+    if (!t?.visible) return;
+    if (prev !== id) {
+      this.dragId = id;
+      this.dragLift = this.choreo.reducedMotion ? DRAG_LIFT : 0;
+    }
+    const cam = this.ctx.rig.camera;
+    cam.updateMatrixWorld();
+    const anchor = t.target?.pos ?? t.pos;
+    _dragDir.set(
+      (screenX / Math.max(1, this.ctx.size.width)) * 2 - 1,
+      -(screenY / Math.max(1, this.ctx.size.height)) * 2 + 1,
+      0.5,
+    );
+    _dragDir.unproject(cam).sub(cam.position).normalize();
+    cam.getWorldDirection(_dragNormal);
+    const denom = _dragDir.dot(_dragNormal);
+    if (Math.abs(denom) < 1e-6) return;
+    const dist = _lift.copy(anchor).sub(cam.position).dot(_dragNormal) / denom;
+    this.dragPos.copy(cam.position).addScaledVector(_dragDir, Math.max(0, dist));
+    this.requestFullFrame();
+  }
+
+  /** Whether `id` is the tile a drag is carrying. */
+  get draggedTileId(): number | null {
+    return this.dragId;
+  }
+
+  /** Pose of the carried tile: `at` lifted along its up axis, leaning back a shade. */
+  private dragPose(t: TileMotionState, at: Vector3, out: Matrix4): Matrix4 {
+    const quat = t.target?.quat ?? t.quat;
+    _dragQ.setFromAxisAngle(X_AXIS, -DRAG_TILT).premultiply(quat);
+    _lift.set(0, 1, 0).applyQuaternion(quat).multiplyScalar(this.dragLift);
+    _dragV.copy(at).add(_lift);
+    _settleScale.setScalar(t.slot?.scale ?? 1);
+    return out.compose(_dragV, _dragQ, _settleScale);
   }
 
   /**
@@ -793,6 +874,15 @@ export class TableScene {
       this.pulseT = 0;
       live = true;
     }
+    // Drag lift eases in (the release springs through the choreographer).
+    if (this.dragId !== null && this.dragLift < DRAG_LIFT) {
+      this.dragLift = Math.min(
+        DRAG_LIFT,
+        this.dragLift + (DRAG_LIFT - this.dragLift) * Math.min(1, dt * 18),
+      );
+      if (DRAG_LIFT - this.dragLift < 0.002) this.dragLift = DRAG_LIFT;
+      live = true;
+    }
     // Hover lift eases in/out.
     for (let id = 0; id < 136; id++) {
       const target = id === this.hoverId ? 0.14 : 0;
@@ -911,6 +1001,11 @@ export class TableScene {
       p.quaternion.copy(t.quat);
       p.scale = t.scale * (t.slot?.scale ?? 1);
       let hl = 0;
+      const dragged = id === this.dragId && t.slot?.zone === 'hand';
+      if (dragged) {
+        // Carried tile: under the pointer, lifted, leaning back a shade.
+        this.dragPose(t, this.dragPos, _m).decompose(p.position, p.quaternion, _dragV);
+      }
       if (this.needsDraw && id === this.nextDrawId) {
         // Primary cue: strong gold pulse plus a small lift off the stack.
         hl = 0.85 + 0.15 * pulse;
@@ -919,6 +1014,7 @@ export class TableScene {
       else if (id === this.drawnTileId) hl = 0.22;
       else if (id === this.hintTileId) hl = 0.12;
       if (spotLevel > 0 && this.spotMask[id] === 1) hl = Math.max(hl, spotLevel);
+      if (dragged) hl = Math.max(hl, 0.25);
       p.highlight = hl;
       p.tint.setScalar(1);
       const zone = t.slot?.zone;

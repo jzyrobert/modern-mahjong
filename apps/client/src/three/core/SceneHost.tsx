@@ -13,6 +13,7 @@ import {
   readDeviceHints,
   resolveQuality,
 } from './quality';
+import { publishCameraLive } from './sceneRects';
 
 /**
  * The one React ↔ three bridge. Owns the `<canvas>`, the renderer, the
@@ -265,7 +266,13 @@ function createRuntime(
     pooled: o.pooled,
     onDestroy: new Set(),
   };
-  loop.add((dt, now) => rig.update(dt, now));
+  loop.add((dt, now) => {
+    const live = rig.update(dt, now);
+    // Additive (tutorial): the overlay gates its first card on a settled
+    // preset — parallax excluded, so a moving pointer never holds it.
+    publishCameraLive(!rig.presetSettled(), now);
+    return live;
+  });
   loop.add((dt, now) => rt.handle?.update?.(dt, now) ?? false);
 
   canvas.addEventListener('webglcontextlost', (e: Event) => {
@@ -288,6 +295,18 @@ function createRuntime(
     rt.setVeil?.(null);
   });
   return rt;
+}
+
+/** Give `ctx.size` and the rig's aspect the attached host's size ahead
+ *  of the build (see the mount effect); `applySize` does the rest. */
+function presize(rt: Runtime): void {
+  const host = rt.host;
+  if (!host) return;
+  const w = host.clientWidth || 1;
+  const h = host.clientHeight || 1;
+  rt.size.width = w;
+  rt.size.height = h;
+  rt.rig.setAspect(w / h);
 }
 
 /** Size the renderer to the attached host (no-op when nothing changed). */
@@ -429,6 +448,13 @@ export function SceneHost({
     // The canvas sits under the veil (React's only child of the host).
     host.prepend(runtime.canvas);
 
+    // Size the runtime before the subsystem builds: a scene snaps its
+    // camera to a preset derived from `ctx.size` at build, and a fresh
+    // runtime (1 × 1) or a parked one (the previous host's size) would
+    // otherwise snap to the wrong framing, then ease to the right one
+    // when the first `applySize` lands — the table's opening dolly. The
+    // full `applySize` below still runs (renderer size, dpr, `resize`).
+    presize(runtime);
     runtime.handle = runtime.build(runtime.ctx);
     applySize(runtime);
     runtime.loop.requestRender();

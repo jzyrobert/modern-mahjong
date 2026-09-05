@@ -1,12 +1,15 @@
 import { Pressable, ScrollView, Text, View } from 'react-native';
+import Svg, { Circle, Path, Rect } from 'react-native-svg';
 import { useTransport } from '../../net/transport-context';
 import { useRecorder } from '../../replay/recorder';
 import { useGame } from '../../state/game';
 import { nextLesson, useTutorial } from '../../state/tutorial';
 import { Modal } from '../Modal';
 import { COLORS } from '../colors';
+import { CheckIcon, TrophyIcon, TutorialIcon } from '../menu/icons';
 import { basicsLesson } from '../tutorial/lessons/basics';
 import { EMOTES } from './ChatBar';
+import { type SheetTheme, sheetPalette } from './sheetTheme';
 
 export interface MenuSheetProps {
   open: boolean;
@@ -21,10 +24,39 @@ export interface MenuSheetProps {
    *  chat (e.g. older shells) can omit it; when undefined the emote
    *  row is hidden. */
   onSendChat?: ((text: string) => void) | undefined;
+  /** `paper` (default) is the classic cream sheet; `glass` is the 3D
+   *  HUD's dark frosted panel with inline SVG row icons. */
+  theme?: SheetTheme;
 }
 
+/** Row glyph — emoji on paper, an inline stroke icon on glass. */
+export type MenuIconId =
+  | 'settings'
+  | 'log'
+  | 'reference'
+  | 'scoring'
+  | 'tutorial'
+  | 'save'
+  | 'saved'
+  | 'record-on'
+  | 'record-off'
+  | 'leave';
+
+const PAPER_ICON: Record<MenuIconId, string> = {
+  settings: '⚙',
+  log: '📜',
+  reference: '📖',
+  scoring: '🏆',
+  tutorial: '🎓',
+  save: '💾',
+  saved: '✓',
+  'record-on': '◉',
+  'record-off': '○',
+  leave: '←',
+};
+
 interface MenuRowProps {
-  icon: string;
+  icon: MenuIconId;
   title: string;
   hint: string;
   onPress: () => void;
@@ -32,6 +64,7 @@ interface MenuRowProps {
   /** Optional `data-testid` for rows that scripts / specs drive
    *  directly (e.g. `open-settings`, shared with the 3D HUD). */
   testID?: string;
+  theme?: SheetTheme;
 }
 
 /**
@@ -62,9 +95,18 @@ export function MenuSheet({
   onOpenScoring,
   onLeave,
   onSendChat,
+  theme = 'paper',
 }: MenuSheetProps) {
+  const glass = theme === 'glass';
   return (
-    <Modal open={open} title="Menu" onClose={onClose} placement="bottom" maxWidth={520}>
+    <Modal
+      open={open}
+      title="Menu"
+      onClose={onClose}
+      placement="bottom"
+      maxWidth={520}
+      variant={theme}
+    >
       {/* `ScrollView` so short viewports (iPhone SE in landscape, or
           mobile portrait once Tutorial / Save-match / Auto-record rows
           stack above Leave) can still reach every row. The Modal's
@@ -73,7 +115,10 @@ export function MenuSheet({
           Leave off the bottom. `flexGrow: 0` keeps the ScrollView
           from stealing extra height — it still hugs its content
           when everything fits. */}
-      <ScrollView style={{ flexGrow: 0 }} contentContainerStyle={{ padding: 14, gap: 8 }}>
+      <ScrollView
+        style={{ flexGrow: 0 }}
+        contentContainerStyle={{ padding: 14, gap: glass ? 6 : 8 }}
+      >
         {/* Emote row temporarily disabled — the reaction system is being
             reworked. Re-enable (or replace with the new reaction surface)
             once the redesign lands. */}
@@ -94,6 +139,7 @@ export function MenuSheet({
           onOpenReference={onOpenReference}
           onOpenScoring={onOpenScoring}
           onLeave={onLeave}
+          theme={theme}
         />
       </ScrollView>
     </Modal>
@@ -107,6 +153,7 @@ interface MenuRowsListProps {
   onOpenReference: () => void;
   onOpenScoring: () => void;
   onLeave: () => void;
+  theme?: SheetTheme;
 }
 
 /**
@@ -128,6 +175,7 @@ export function MenuRowsList({
   onOpenReference,
   onOpenScoring,
   onLeave,
+  theme = 'paper',
 }: MenuRowsListProps) {
   const handle = (cb: () => void) => () => {
     onClose();
@@ -167,33 +215,37 @@ export function MenuRowsList({
   return (
     <>
       <MenuRow
-        icon="⚙"
+        icon="settings"
         title="Settings"
         hint="Renderer, quality, felt, tile back, sound, animations."
         onPress={handle(onOpenSettings)}
         testID="open-settings"
+        theme={theme}
       />
       <MenuRow
-        icon="📜"
+        icon="log"
         title="Game log"
         hint="Recent engine events for this hand."
         onPress={handle(onOpenLog)}
+        theme={theme}
       />
       <MenuRow
-        icon="📖"
+        icon="reference"
         title="Tile reference"
         hint="All 136 tiles grouped by suit + honors."
         onPress={handle(onOpenReference)}
+        theme={theme}
       />
       <MenuRow
-        icon="🏆"
+        icon="scoring"
         title="Scoring rules"
         hint="Every fan pattern with worked example hands."
         onPress={handle(onOpenScoring)}
+        theme={theme}
       />
       {showTutorialRow ? (
         <MenuRow
-          icon="🎓"
+          icon="tutorial"
           title={tutorialActive ? 'Restart tutorial' : `Tutorial: ${tutorialTarget.title}`}
           hint={
             tutorialActive
@@ -201,11 +253,12 @@ export function MenuRowsList({
               : `Open the "${tutorialTarget.title}" lesson.`
           }
           onPress={handle(onRestartTutorial)}
+          theme={theme}
         />
       ) : null}
       {draftActive ? (
         <MenuRow
-          icon={savedThisMatch ? '✓' : '💾'}
+          icon={savedThisMatch ? 'saved' : 'save'}
           title={savedThisMatch ? 'Saved · tap to discard' : 'Save this match'}
           hint={
             savedThisMatch
@@ -213,10 +266,11 @@ export function MenuRowsList({
               : 'Records this match to your replay library.'
           }
           onPress={onSaveMatch}
+          theme={theme}
         />
       ) : null}
       <MenuRow
-        icon={autoRecord ? '◉' : '○'}
+        icon={autoRecord ? 'record-on' : 'record-off'}
         title={autoRecord ? 'Auto-record: on' : 'Auto-record: off'}
         hint={
           autoRecord
@@ -224,13 +278,15 @@ export function MenuRowsList({
             : 'Future matches save only if you tap "Save this match".'
         }
         onPress={onToggleAutoRecord}
+        theme={theme}
       />
       <MenuRow
-        icon="←"
+        icon="leave"
         title="Leave match"
         hint="Disconnects and returns to the lobby."
         onPress={handle(onLeave)}
         destructive
+        theme={theme}
       />
     </>
   );
@@ -296,7 +352,17 @@ export function EmoteRow({ onSendChat }: { onSendChat: (emote: string) => void }
   );
 }
 
-export function MenuRow({ icon, title, hint, onPress, destructive, testID }: MenuRowProps) {
+export function MenuRow({
+  icon,
+  title,
+  hint,
+  onPress,
+  destructive,
+  testID,
+  theme = 'paper',
+}: MenuRowProps) {
+  const glass = theme === 'glass';
+  const P = sheetPalette(theme);
   return (
     <Pressable
       onPress={onPress}
@@ -309,9 +375,15 @@ export function MenuRow({ icon, title, hint, onPress, destructive, testID }: Men
         gap: 12,
         paddingVertical: 12,
         paddingHorizontal: 14,
-        borderRadius: 10,
-        backgroundColor: pressed ? COLORS.creamLow : COLORS.paperHi,
-        borderColor: COLORS.hairline,
+        borderRadius: glass ? 12 : 10,
+        backgroundColor: glass
+          ? pressed
+            ? P.surfaceHi
+            : P.surface
+          : pressed
+            ? COLORS.creamLow
+            : COLORS.paperHi,
+        borderColor: glass ? (destructive ? P.redBorder : P.hairline) : COLORS.hairline,
         borderWidth: 1,
       })}
     >
@@ -319,30 +391,129 @@ export function MenuRow({ icon, title, hint, onPress, destructive, testID }: Men
         style={{
           width: 32,
           height: 32,
-          borderRadius: 8,
+          borderRadius: glass ? 10 : 8,
           alignItems: 'center',
           justifyContent: 'center',
-          backgroundColor: destructive ? COLORS.accentSalmonSwatch : '#ede5d3',
-          borderColor: destructive ? COLORS.accentSalmonEdge : COLORS.hairline,
+          backgroundColor: glass
+            ? destructive
+              ? P.redTint
+              : P.surfaceHi
+            : destructive
+              ? COLORS.accentSalmonSwatch
+              : '#ede5d3',
+          borderColor: glass
+            ? destructive
+              ? P.redBorder
+              : P.border
+            : destructive
+              ? COLORS.accentSalmonEdge
+              : COLORS.hairline,
           borderWidth: 1,
         }}
       >
-        <Text style={{ fontSize: 16, color: destructive ? COLORS.red : COLORS.ink }}>{icon}</Text>
+        {glass ? (
+          <MenuGlyph id={icon} color={destructive ? P.red : P.gold} />
+        ) : (
+          <Text style={{ fontSize: 16, color: destructive ? COLORS.red : COLORS.ink }}>
+            {PAPER_ICON[icon]}
+          </Text>
+        )}
       </View>
       <View style={{ flex: 1 }}>
         <Text
           style={{
             fontSize: 14,
-            fontWeight: '900',
-            color: destructive ? COLORS.red : COLORS.ink,
+            fontWeight: glass ? '800' : '900',
+            color: destructive ? P.red : P.text,
           }}
         >
           {title}
         </Text>
-        <Text style={{ fontSize: 11, color: COLORS.ink3, fontWeight: '600', marginTop: 2 }}>
+        <Text
+          style={{
+            fontSize: glass ? 12 : 11,
+            lineHeight: glass ? 16 : undefined,
+            color: glass ? P.text2 : COLORS.ink3,
+            fontWeight: glass ? '500' : '600',
+            marginTop: 2,
+          }}
+        >
           {hint}
         </Text>
       </View>
     </Pressable>
   );
+}
+
+/**
+ * Inline stroke icons for the glass menu rows (asset policy: no emoji
+ * inside the 3D flow). 24-unit viewBox, 2.2 stroke, painted in the
+ * row's accent colour.
+ */
+function MenuGlyph({ id, color }: { id: MenuIconId; color: string }) {
+  const size = 18;
+  const stroke = { stroke: color, strokeWidth: 2.2, strokeLinecap: 'round' as const };
+  switch (id) {
+    case 'settings':
+      return (
+        <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+          <Circle cx={12} cy={12} r={3.4} {...stroke} />
+          <Path
+            d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"
+            {...stroke}
+          />
+        </Svg>
+      );
+    case 'log':
+      return (
+        <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+          <Rect x={5} y={3} width={14} height={18} rx={2} {...stroke} />
+          <Path d="M9 8h6M9 12h6M9 16h4" {...stroke} />
+        </Svg>
+      );
+    case 'reference':
+      return (
+        <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+          <Path
+            d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2V5z"
+            {...stroke}
+            strokeLinejoin="round"
+          />
+          <Path d="M4 19a2 2 0 0 1 2-2h13M8.5 7.5h6" {...stroke} />
+        </Svg>
+      );
+    case 'scoring':
+      return <TrophyIcon size={size} color={color} />;
+    case 'tutorial':
+      return <TutorialIcon size={size} color={color} />;
+    case 'save':
+      return (
+        <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+          <Path d="M4 4h12l4 4v12H4z" {...stroke} strokeLinejoin="round" />
+          <Path d="M8 4v5h6V4M8 20v-5h8v5" {...stroke} strokeLinejoin="round" />
+        </Svg>
+      );
+    case 'saved':
+      return <CheckIcon size={size} color={color} />;
+    case 'record-on':
+      return (
+        <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+          <Circle cx={12} cy={12} r={8.5} {...stroke} />
+          <Circle cx={12} cy={12} r={4} fill={color} />
+        </Svg>
+      );
+    case 'record-off':
+      return (
+        <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+          <Circle cx={12} cy={12} r={8.5} {...stroke} />
+        </Svg>
+      );
+    case 'leave':
+      return (
+        <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+          <Path d="M10 7l-5 5 5 5M5 12h10" {...stroke} strokeLinejoin="round" />
+          <Path d="M15 4h4v16h-4" {...stroke} strokeLinejoin="round" />
+        </Svg>
+      );
+  }
 }

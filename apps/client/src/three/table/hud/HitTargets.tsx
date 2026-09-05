@@ -1,6 +1,16 @@
 import { type Tile as MTile, tileId } from '@mahjong/game-logic';
-import { forwardRef, useImperativeHandle, useRef } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef } from 'react';
+import type { SortMode } from '../../../ui/match/SortPicker';
 import { TutorialTarget } from '../../../ui/tutorial/TargetRegistry';
+import {
+  DRAG_HOLD_MS,
+  type Pt,
+  exceedsDragThreshold,
+  keyboardMoveIndex,
+  moveIndex,
+  nearestSlotIndex,
+  slotsFromRects,
+} from '../dragReorder';
 import type { ScreenRect } from '../picking';
 
 /**
@@ -34,8 +44,13 @@ export interface HudRects {
 }
 
 export interface HitTargetsHandle {
-  /** Write a tile button's rect (CSS px). `null` hides it. */
-  setTileRect(id: number, rect: ScreenRect | null): void;
+  /**
+   * Write a tile button's rect (CSS px). `null` hides it. `settled` is
+   * the rect of the tile's slot (its flight / spring destination) —
+   * drag-to-reorder resolves the pointer against these so the slots
+   * stay put while the tiles are still re-flowing.
+   */
+  setTileRect(id: number, rect: ScreenRect | null, settled?: ScreenRect | null): void;
   setWallRect(rect: ScreenRect | null): void;
 }
 
@@ -46,6 +61,18 @@ interface HitTargetsProps {
   canDiscard: boolean;
   onTileTap: (t: MTile) => void;
   onHover: (id: number | null) => void;
+  /**
+   * Drag-to-reorder. `onReorder` receives the full display order (every
+   * hand tile id) — the classic `Hand.onReorder` → `setManualOrder`
+   * contract. A drag started in SUIT / NUMBER mode first flips the
+   * segment to MANUAL through `onSortModeChange`, then reorders.
+   * `onDrag` mirrors the carried tile into the scene (canvas CSS px;
+   * `null` ends the drag).
+   */
+  sortMode: SortMode;
+  onSortModeChange: (m: SortMode) => void;
+  onReorder: (ids: readonly number[]) => void;
+  onDrag: (id: number | null, x: number, y: number) => void;
   nextDrawTile: MTile | null;
   needsDraw: boolean;
   onDraw: () => void;
@@ -116,6 +143,34 @@ function rectStyle(r: ScreenRect | null) {
     : { position: 'absolute' as const, left: 0, top: 0, width: 0, height: 0 };
 }
 
+/**
+ * One press on a hand tile. Armed on pointerdown; `active` once the
+ * pointer has travelled `DRAG_START_PX` (or a touch has held for
+ * `DRAG_HOLD_MS`), from which point the click that follows the release
+ * is swallowed so a drag never discards. `order` / `centres` are the
+ * slots as they stood when the drag started — the set of slot positions
+ * does not change while a tile is carried (same tile count), so the
+ * pointer is resolved against a stable grid while the tiles re-flow.
+ *
+ * The move / up listeners live on `window`, not the button: every
+ * reorder re-keys the buttons into the new display order, and moving a
+ * node in the DOM releases its pointer capture (and would end a drag
+ * after the first slot).
+ */
+interface DragState {
+  id: number;
+  pointerId: number;
+  startX: number;
+  startY: number;
+  active: boolean;
+  order: readonly number[];
+  centres: Pt[];
+  holdTimer: ReturnType<typeof setTimeout> | null;
+  el: HTMLButtonElement;
+  /** Detach the window listeners the press installed. */
+  detach: () => void;
+}
+
 export const HitTargets = forwardRef<HitTargetsHandle, HitTargetsProps>(function HitTargets(
   {
     hand,
@@ -124,6 +179,10 @@ export const HitTargets = forwardRef<HitTargetsHandle, HitTargetsProps>(function
     canDiscard,
     onTileTap,
     onHover,
+    sortMode,
+    onSortModeChange,
+    onReorder,
+    onDrag,
     nextDrawTile,
     needsDraw,
     onDraw,
@@ -134,16 +193,35 @@ export const HitTargets = forwardRef<HitTargetsHandle, HitTargetsProps>(function
   },
   ref,
 ) {
+  const rootEl = useRef<HTMLDivElement | null>(null);
   const tileEls = useRef(new Map<number, HTMLButtonElement>());
+  const settledRects = useRef(new Map<number, ScreenRect>());
   const wallEl = useRef<HTMLButtonElement | null>(null);
+  const drag = useRef<DragState | null>(null);
+  const suppressClick = useRef(false);
+  // Latest props for the pointer handlers (bound once per render is
+  // fine, but the drag reads them across many events).
+  const live = useRef({
+    hand,
+    drawnTileId,
+    sortMode,
+    onSortModeChange,
+    onReorder,
+    onDrag,
+    onHover,
+  });
+  live.current = { hand, drawnTileId, sortMode, onSortModeChange, onReorder, onDrag, onHover };
   useImperativeHandle(
     ref,
     () => ({
-      setTileRect(id, rect) {
+      setTileRect(id, rect, settled) {
         // Tiles project ≥ 44 px wide on every preset; the floor only
         // kicks in on very narrow phones, where neighbours may overlap
         // by a few px rather than leave a sub-44 px target.
         applyRect(tileEls.current.get(id) ?? null, rect, MIN_TOUCH, MIN_TOUCH);
+        const s = settled ?? rect;
+        if (s) settledRects.current.set(id, s);
+        else settledRects.current.delete(id);
       },
       setWallRect(rect) {
         applyRect(wallEl.current, rect, 0);
@@ -151,8 +229,161 @@ export const HitTargets = forwardRef<HitTargetsHandle, HitTargetsProps>(function
     }),
     [],
   );
+
+  /** Pointer position in canvas CSS px (the space the rects live in). */
+  const toLocal = useCallback((clientX: number, clientY: number): Pt => {
+    const r = rootEl.current?.getBoundingClientRect();
+    return { x: clientX - (r?.left ?? 0), y: clientY - (r?.top ?? 0) };
+  }, []);
+
+  /** Slots of the current hand from their settled rects, display order. */
+  const currentSlots = useCallback(() => {
+    const entries: { id: number; rect: ScreenRect }[] = [];
+    for (const t of live.current.hand) {
+      const id = tileId(t);
+      const rect = settledRects.current.get(id);
+      if (rect) entries.push({ id, rect });
+    }
+    return slotsFromRects(entries);
+  }, []);
+
+  const endDrag = useCallback(() => {
+    const d = drag.current;
+    if (!d) return;
+    if (d.holdTimer !== null) clearTimeout(d.holdTimer);
+    drag.current = null;
+    d.detach();
+    d.el.style.cursor = '';
+    try {
+      if (d.el.hasPointerCapture(d.pointerId)) d.el.releasePointerCapture(d.pointerId);
+    } catch {
+      // Capture already gone (pointercancel / element detached).
+    }
+    if (d.active) live.current.onDrag(null, 0, 0);
+  }, []);
+
+  /** Enter drag mode: MANUAL sort first, then carry the tile. */
+  const activate = useCallback(
+    (d: DragState, p: Pt) => {
+      if (d.active) return;
+      d.active = true;
+      suppressClick.current = true;
+      if (d.holdTimer !== null) {
+        clearTimeout(d.holdTimer);
+        d.holdTimer = null;
+      }
+      if (live.current.sortMode !== 'manual') live.current.onSortModeChange('manual');
+      const slots = currentSlots();
+      d.order = slots.order;
+      d.centres = slots.centres;
+      d.el.style.cursor = 'grabbing';
+      live.current.onDrag(d.id, p.x, p.y);
+    },
+    [currentSlots],
+  );
+
+  const carry = useCallback((d: DragState, p: Pt) => {
+    live.current.onDrag(d.id, p.x, p.y);
+    const from = d.order.indexOf(d.id);
+    const to = nearestSlotIndex(d.centres, p);
+    if (from < 0 || to < 0 || to === from) return;
+    const next = moveIndex(d.order, from, to);
+    if (next !== d.order) {
+      d.order = next;
+      live.current.onReorder(next);
+    }
+  }, []);
+
+  // The carried tile left the hand (claim / hand end) — drop the drag.
+  useEffect(() => {
+    const d = drag.current;
+    if (d && !hand.some((t) => tileId(t) === d.id)) endDrag();
+  }, [hand, endDrag]);
+  useEffect(() => endDrag, [endDrag]);
+
+  const onTilePointerDown = (e: React.PointerEvent<HTMLButtonElement>, id: number) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if (drag.current) endDrag();
+    suppressClick.current = false;
+    // The drawn tile always sits last (with its gap) in the 3D row, so it
+    // has no other slot to be carried to; a press on it stays a tap.
+    if (live.current.hand.length < 2 || id === live.current.drawnTileId) return;
+    const el = e.currentTarget;
+    const p = toLocal(e.clientX, e.clientY);
+    const onMove = (ev: PointerEvent) => {
+      const d = drag.current;
+      if (!d || ev.pointerId !== d.pointerId) return;
+      const q = toLocal(ev.clientX, ev.clientY);
+      if (!d.active) {
+        if (!exceedsDragThreshold(q.x - d.startX, q.y - d.startY)) return;
+        activate(d, q);
+      }
+      carry(d, q);
+    };
+    const onEnd = (ev: PointerEvent) => {
+      const d = drag.current;
+      if (!d || ev.pointerId !== d.pointerId) return;
+      endDrag();
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onEnd);
+    window.addEventListener('pointercancel', onEnd);
+    const d: DragState = {
+      id,
+      pointerId: e.pointerId,
+      startX: p.x,
+      startY: p.y,
+      active: false,
+      order: [],
+      centres: [],
+      holdTimer: null,
+      el,
+      detach: () => {
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onEnd);
+        window.removeEventListener('pointercancel', onEnd);
+      },
+    };
+    drag.current = d;
+    try {
+      // Keeps a mouse drag alive past the window's edge; the drag itself
+      // does not depend on it (see `DragState`).
+      el.setPointerCapture(e.pointerId);
+    } catch {
+      // Synthetic events carry no active pointer.
+    }
+    if (e.pointerType === 'touch') {
+      d.holdTimer = setTimeout(() => {
+        d.holdTimer = null;
+        if (drag.current === d) activate(d, { x: d.startX, y: d.startY });
+      }, DRAG_HOLD_MS);
+    }
+  };
+  const onTileClick = (t: MTile) => {
+    if (suppressClick.current) {
+      suppressClick.current = false;
+      return;
+    }
+    onTileTap(t);
+  };
+  /** Keyboard fallback: Alt / Shift + Arrow moves the focused tile one slot. */
+  const onTileKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>, id: number) => {
+    if (!(e.altKey || e.shiftKey)) return;
+    const key = e.key;
+    if (key !== 'ArrowLeft' && key !== 'ArrowRight' && key !== 'ArrowUp' && key !== 'ArrowDown')
+      return;
+    if (id === live.current.drawnTileId) return;
+    const slots = currentSlots();
+    const from = slots.order.indexOf(id);
+    const to = keyboardMoveIndex(slots.centres, from, key);
+    e.preventDefault();
+    if (to === null) return;
+    if (live.current.sortMode !== 'manual') live.current.onSortModeChange('manual');
+    live.current.onReorder(moveIndex(slots.order, from, to));
+  };
+
   return (
-    <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+    <div ref={rootEl} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
       {/* Tutorial anchors (measured by the registry). */}
       <TutorialTarget id="own-hand" style={rectStyle(rects.ownHand)}>
         <div style={{ width: '100%', height: '100%' }} />
@@ -205,11 +436,21 @@ export const HitTargets = forwardRef<HitTargetsHandle, HitTargetsProps>(function
             }}
             data-testid="own-hand-tile"
             data-tile-id={id}
-            aria-label={`${tileName(t)}${id === drawnTileId ? ', just drawn' : ''}${canDiscard ? ', tap to discard' : ''}`}
+            aria-label={`${tileName(t)}${id === drawnTileId ? ', just drawn' : ''}${canDiscard ? ', tap to discard' : ''}${id === drawnTileId ? '' : ', drag to reorder'}`}
+            aria-keyshortcuts={id === drawnTileId ? undefined : 'Shift+ArrowLeft Shift+ArrowRight'}
             className="mj-hit"
-            onClick={() => onTileTap(t)}
-            onPointerEnter={() => onHover(id)}
-            onPointerLeave={() => onHover(null)}
+            onClick={() => onTileClick(t)}
+            onPointerDown={(e) => onTilePointerDown(e, id)}
+            onContextMenu={(e) => {
+              if (drag.current) e.preventDefault();
+            }}
+            onKeyDown={(e) => onTileKeyDown(e, id)}
+            onPointerEnter={() => {
+              if (!drag.current?.active) onHover(id);
+            }}
+            onPointerLeave={() => {
+              if (!drag.current?.active) onHover(null);
+            }}
             onFocus={() => onHover(id)}
             onBlur={() => onHover(null)}
             style={{
@@ -224,7 +465,13 @@ export const HitTargets = forwardRef<HitTargetsHandle, HitTargetsProps>(function
               cursor: canDiscard ? 'pointer' : 'default',
               pointerEvents: 'auto',
               borderRadius: 6,
-              touchAction: 'manipulation',
+              // The table never scrolls under a hand tile: claim the
+              // gesture outright so a touch drag reorders instead of
+              // panning, and no long-press callout / text selection.
+              touchAction: 'none',
+              userSelect: 'none',
+              WebkitUserSelect: 'none',
+              WebkitTouchCallout: 'none',
               WebkitTapHighlightColor: 'transparent',
             }}
           >

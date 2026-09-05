@@ -8,6 +8,7 @@
  *   { goto: '/path' }                      navigate (query params allowed)
  *   { click: 'role=button[name="…"]' }     any Playwright selector / locator string
  *   { clickTestId: 'own-hand-tile', nth: 0 }
+ *   { dragTestId: 'own-hand-tile', from: 0, to: 3, dx?, dy?, hold?: true }  pointer drag between two targets
  *   { waitFor: selector, state?: 'visible'|'hidden', timeout? }
  *   { waitForText: 'Lobby' }
  *   { waitMs: 400 }                        settle animations (use sparingly)
@@ -218,6 +219,84 @@ const RETINT_ROUNDTRIP = (away, back) => [
   { waitMs: 250 },
 ];
 
+/**
+ * Open the ☰ menu (`aria-label="Open menu"` on every shell's chrome) and
+ * wait for its last row. `OPEN_MENU_ROW` then taps one row by its
+ * accessible name and waits for a string that only the opened sheet
+ * renders.
+ */
+const OPEN_MENU = [
+  { click: '[aria-label="Open menu"]', timeout: 20000 },
+  { waitForText: 'Leave match' },
+];
+const OPEN_MENU_ROW = (row, readyText) => [
+  ...OPEN_MENU,
+  { click: `role=button[name="${row}"]`, timeout: 10000 },
+  { waitForText: readyText },
+];
+
+/**
+ * Scroll the settings sheet so the felt row's label sits at the top and
+ * both skin rows are in frame, then let the scroll settle.
+ */
+const SCROLL_TO_SKINS = [
+  {
+    // Scroll the sheet's own ScrollView (nearest scrollable ancestor) —
+    // `scrollIntoView` may also shift an outer container.
+    evaluate: `(() => {
+      const chip = document.querySelector('[data-testid="felt-sage"]');
+      if (!chip) return;
+      let el = chip.parentElement;
+      while (el && !(el.scrollHeight > el.clientHeight + 4 && /auto|scroll/.test(getComputedStyle(el).overflowY))) el = el.parentElement;
+      if (!el) return;
+      const label = chip.parentElement?.previousElementSibling ?? chip.parentElement;
+      el.scrollTop = label.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop - 10;
+    })()`,
+  },
+  { waitMs: 450 },
+];
+
+/**
+ * A sheet / side panel has finished its entrance: no CSS animation is
+ * still running on the RN-web modal (bottom sheets slide in over ~300
+ * ms, which SwiftShader stretches), and the menu's first row — when
+ * present — sits inside the viewport (the desktop side panel slides on
+ * a JS-driven transform).
+ */
+const SHEET_SETTLED = `(() => {
+  const running = (el) => typeof el.getAnimations === 'function' && el.getAnimations().some((a) => a.playState === 'running' || a.playState === 'pending');
+  for (const d of document.querySelectorAll('[aria-modal="true"]')) {
+    let el = d;
+    for (let i = 0; i < 4 && el; i++, el = el.parentElement) if (running(el)) return false;
+  }
+  const row = document.querySelector('[data-testid="open-settings"]');
+  if (row) {
+    const r = row.getBoundingClientRect();
+    if (r.width === 0 || r.right > innerWidth + 0.5 || r.bottom > innerHeight + 0.5) return false;
+  }
+  return true;
+})()`;
+const SHEET_SETTLED_STEPS = [
+  { waitForFunction: SHEET_SETTLED, timeout: 15000 },
+  { waitMs: 300 },
+  // Two animation frames after the settle so the compositor has
+  // committed the sheet before the capture — under a starved
+  // SwiftShader main thread a screenshot can otherwise return the frame
+  // from before the DOM changed (menu still open, no sheet).
+  { evaluate: 'new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))' },
+];
+
+// Coach-card CTA press that waits for the card first: the opening card
+// holds for the camera rig (≤ 3.5 s) on top of a software rasteriser's
+// first paint, and a bare `clickTutorialNext` (8 s) timed out on a loaded
+// host before the card had even mounted.
+const TUTORIAL_NEXT = [
+  { waitFor: '[data-testid="tutorial-next"]', timeout: 40000 },
+  { clickTutorialNext: true },
+];
+/** Engine state via the test hatch (the zustand store's `state`). */
+const ENGINE = 'globalThis.__MAHJONG_TEST_GET_STATE__?.()?.state';
+
 export const STATES = {
   // ── Menu ─────────────────────────────────────────────────────────────
   menu: {
@@ -319,6 +398,108 @@ export const STATES = {
     ],
   },
 
+  // Skin chips scrolled into view: every felt / tile-back label must sit
+  // inside its pill at the CLI viewport (round-1 feedback: "Cream" popped
+  // out of the pill on phones).
+  'settings-skins': {
+    owner: 'settings',
+    steps: [
+      ...START_SOLO,
+      { waitForOwnHand: true },
+      { openSettings: true },
+      { waitForPerf: true },
+      ...SCROLL_TO_SKINS,
+    ],
+  },
+  // Narrow phone (360 × 640, dpr 3): the same chips at the tightest
+  // width the app supports — the row re-grids instead of squeezing.
+  'settings-phone-small': {
+    owner: 'settings',
+    viewport: { width: 360, height: 640, dpr: 3, mobile: true },
+    steps: [
+      ...START_SOLO,
+      { waitForOwnHand: true },
+      { openSettings: true },
+      { waitForPerf: true },
+      ...SCROLL_TO_SKINS,
+    ],
+  },
+
+  // ── In-match sheets (glass under the 3D renderer) ────────────────────
+  'match-menu': {
+    owner: 'settings',
+    steps: [
+      ...START_SOLO,
+      { waitForOwnHand: true },
+      ...OPEN_MENU,
+      ...SHEET_SETTLED_STEPS,
+      { waitForPerf: true },
+    ],
+  },
+  'match-tile-reference': {
+    owner: 'settings',
+    steps: [
+      ...START_SOLO,
+      { waitForOwnHand: true },
+      ...OPEN_MENU_ROW('Tile reference', 'Characters'),
+      ...SHEET_SETTLED_STEPS,
+      { waitForPerf: true },
+    ],
+  },
+  'match-game-log': {
+    owner: 'settings',
+    // A few turns in so the log carries draws, discards and a claim
+    // window or two — an empty log is only the placeholder line.
+    steps: [
+      ...START_SOLO,
+      { waitForOwnHand: true },
+      { playTurns: 3 },
+      ...OPEN_MENU_ROW('Game log', 'Last actions'),
+      ...SHEET_SETTLED_STEPS,
+      { waitForPerf: true },
+    ],
+  },
+  'match-scoring-rules': {
+    owner: 'settings',
+    steps: [
+      ...START_SOLO,
+      { waitForOwnHand: true },
+      ...OPEN_MENU_ROW('Scoring rules', 'How you won'),
+      ...SHEET_SETTLED_STEPS,
+      { waitForPerf: true },
+    ],
+  },
+  'match-players': {
+    owner: 'settings',
+    // The status pill (top-left chrome) opens the roster.
+    steps: [
+      ...START_SOLO,
+      { waitForOwnHand: true },
+      { click: '[aria-label="Open players panel"]', timeout: 20000 },
+      { waitForText: 'FAAN' },
+      ...SHEET_SETTLED_STEPS,
+      { waitForPerf: true },
+    ],
+  },
+  'match-result-breakdown': {
+    owner: 'settings',
+    // `match-result` (scoring lesson, rigged win) → "View breakdown".
+    steps: [
+      { goto: '/' },
+      { waitForText: 'Modern Mahjong' },
+      { startTutorial: 'scoring-intro' },
+      { waitForOwnHand: true },
+      { waitMs: 900 },
+      { clickTutorialNext: true },
+      { waitFor: '[data-testid="winning-hand"]', timeout: 15000 },
+      { waitMs: 800 },
+      { click: 'role=button[name="View breakdown"]', timeout: 20000 },
+      { waitForText: 'Total' },
+      ...SHEET_SETTLED_STEPS,
+      { waitForPerf: true },
+    ],
+  },
+
   // ── Tutorial ─────────────────────────────────────────────────────────
   'tutorial-basics-0': {
     owner: 'tutorial',
@@ -336,7 +517,7 @@ export const STATES = {
       { waitForText: 'Modern Mahjong' },
       { startTutorial: 'basics' },
       { waitMs: 800 },
-      { clickTutorialNext: true },
+      ...TUTORIAL_NEXT,
       { waitMs: 800 },
     ],
   },
@@ -349,9 +530,9 @@ export const STATES = {
       { waitForText: 'Modern Mahjong' },
       { startTutorial: 'basics' },
       { waitMs: 800 },
-      { clickTutorialNext: true },
+      ...TUTORIAL_NEXT,
       { waitMs: 500 },
-      { clickTutorialNext: true },
+      ...TUTORIAL_NEXT,
       { waitMs: 900 },
     ],
   },
@@ -359,26 +540,31 @@ export const STATES = {
     // `watch-bots` step: the shared discard pool is the target. The user's
     // first discard lands, then the bots start filling the pool — on the
     // 3D table the ring follows the projected river rect and every
-    // discarded tile carries the gold spotlight. Bots are paced to 1.8 s
-    // so the third discard (which completes the step and swaps the card)
-    // lands well after the shot, perf wait included — a shot taken during
-    // that swap catches the next card mid fade-in on SwiftShader.
+    // discarded tile carries the gold spotlight. Bots are paced to 5 s
+    // and the shot waits for the first bot discard, so the third (which
+    // completes the step and swaps the card) lands well after the shot,
+    // perf wait included — a shot taken during that swap catches the
+    // next card mid fade-in on SwiftShader.
     owner: 'tutorial',
     steps: [
-      { initScript: 'globalThis.__MAHJONG_TEST_BOT_PACE_MS__ = 1800;' },
+      { initScript: 'globalThis.__MAHJONG_TEST_BOT_PACE_MS__ = 5000;' },
       { goto: '/' },
       { waitForText: 'Modern Mahjong' },
       { startTutorial: 'basics' },
       { waitMs: 800 },
-      { clickTutorialNext: true },
+      ...TUTORIAL_NEXT,
       { waitMs: 400 },
-      { clickTutorialNext: true },
+      ...TUTORIAL_NEXT,
       { waitMs: 400 },
-      { clickTutorialNext: true },
+      ...TUTORIAL_NEXT,
       { waitForOwnHand: true },
       { waitMs: 600 },
       { clickTestId: 'own-hand-tile', nth: 0 },
-      { waitMs: 3000 },
+      // Shoot once the first bot discard is in the pool (the ring has
+      // something to follow); the second lands 5 s later and the third —
+      // which swaps the card — 10 s later, past the perf wait.
+      { waitForFunction: `(${ENGINE}?.discardOrder?.length ?? 0) >= 2`, timeout: 20000 },
+      { waitMs: 900 },
     ],
   },
   'tutorial-drawn-game-2': {
@@ -388,18 +574,91 @@ export const STATES = {
     // the next wall tile glows gold — and the card's fallback.
     owner: 'tutorial',
     steps: [
-      { initScript: 'globalThis.__MAHJONG_TEST_BOT_PACE_MS__ = 1500;' },
+      { initScript: 'globalThis.__MAHJONG_TEST_BOT_PACE_MS__ = 9000;' },
       { goto: '/' },
       { waitForText: 'Modern Mahjong' },
       { startTutorial: 'drawn-game' },
       { waitMs: 800 },
-      { clickTutorialNext: true },
+      ...TUTORIAL_NEXT,
       { waitForOwnHand: true },
       { waitMs: 600 },
       { clickTestId: 'own-hand-tile', nth: 0 },
-      // The wall holds two tiles; the first bot draws one at once, so
-      // shoot before its paced discard hands the last tile on.
-      { waitMs: 350 },
+      // The wall holds two tiles; the first bot draws one at once and
+      // its paced discard hands the last tile on 9 s later — shoot once
+      // that draw has landed (flight + bounce ≈ 1.2 s), inside the window.
+      { waitForFunction: `(${ENGINE}?.wall?.length ?? 2) === 1`, timeout: 20000 },
+      { waitMs: 1300 },
+    ],
+  },
+  'tutorial-drawn-game-2-draw-flight': {
+    // Same step, caught mid-arc: the first bot's draw stretched 30× (the
+    // choreography's slow-motion seam) so the frame shows the tile
+    // between the wall and the hidden hand under the tutorial veil. It
+    // must read as a flat, back-up tile in transit — not a half-turned
+    // slab — since the veil only dims, it does not hide motion.
+    owner: 'tutorial',
+    steps: [
+      { initScript: 'globalThis.__MAHJONG_TEST_BOT_PACE_MS__ = 30000;' },
+      { initScript: 'globalThis.__MAHJONG_TEST_MOTION_SLOWMO__ = 30;' },
+      { goto: '/' },
+      { waitForText: 'Modern Mahjong' },
+      { startTutorial: 'drawn-game' },
+      { waitMs: 800 },
+      ...TUTORIAL_NEXT,
+      { waitForOwnHand: true },
+      { waitMs: 600 },
+      { waitForPerf: true },
+      { clickTestId: 'own-hand-tile', nth: 0 },
+      { waitForFunction: `(${ENGINE}?.wall?.length ?? 2) === 1`, timeout: 20000 },
+      // 560 ms × 30 = 16.8 s of flight: the frame lands ~30 % in even
+      // after the verifier's own perf wait.
+      { waitMs: 4000 },
+    ],
+  },
+  'tutorial-drawn-game-2-discard-flight': {
+    // …and the first bot's discard mid-arc (same slow-motion seam): the
+    // tile must already be face-up on its way to the river.
+    owner: 'tutorial',
+    steps: [
+      // 12 s pace: the second bot's discard (which empties the wall and
+      // ends the hand under the result panel) lands 24 s in, after the
+      // shot; the first lands at 12 s.
+      { initScript: 'globalThis.__MAHJONG_TEST_BOT_PACE_MS__ = 12000;' },
+      { initScript: 'globalThis.__MAHJONG_TEST_MOTION_SLOWMO__ = 30;' },
+      { goto: '/' },
+      { waitForText: 'Modern Mahjong' },
+      { startTutorial: 'drawn-game' },
+      { waitMs: 800 },
+      ...TUTORIAL_NEXT,
+      { waitForOwnHand: true },
+      { waitMs: 600 },
+      { waitForPerf: true },
+      { clickTestId: 'own-hand-tile', nth: 0 },
+      { waitForFunction: `(${ENGINE}?.discardOrder?.length ?? 0) >= 2`, timeout: 30000 },
+      // 520 ms × 30 = 15.6 s of flight: the frame lands ~30 % in even
+      // after the verifier's own perf wait.
+      { waitMs: 4000 },
+    ],
+  },
+  'tutorial-drawn-game-3': {
+    // `complete` step of `drawn-game` (no target): the wall has run out
+    // and the Drawn game result panel is up. The lesson-complete card
+    // must keep off the panel — beside it on landscape / desktop, where
+    // the panel leaves a free column — instead of sitting over its
+    // rules row and NEXT DEALER line.
+    owner: 'tutorial',
+    steps: [
+      { initScript: 'globalThis.__MAHJONG_TEST_BOT_PACE_MS__ = 300;' },
+      { goto: '/' },
+      { waitForText: 'Modern Mahjong' },
+      { startTutorial: 'drawn-game' },
+      { waitMs: 800 },
+      ...TUTORIAL_NEXT,
+      { waitForOwnHand: true },
+      { waitMs: 600 },
+      { clickTestId: 'own-hand-tile', nth: 0 },
+      { waitForText: 'Lesson complete!', timeout: 25000 },
+      { waitMs: 1200 },
     ],
   },
   'tutorial-scoring-0': {
@@ -424,7 +683,7 @@ export const STATES = {
       { waitForText: 'Modern Mahjong' },
       { startTutorial: 'scoring-intro' },
       { waitMs: 800 },
-      { clickTutorialNext: true },
+      ...TUTORIAL_NEXT,
       { waitMs: 1200 },
     ],
   },
@@ -434,6 +693,42 @@ export const STATES = {
       { goto: '/' },
       { waitForText: 'Modern Mahjong' },
       { startTutorial: 'claims' },
+      { waitMs: 1200 },
+    ],
+  },
+  'tutorial-claims-3': {
+    // `claim` step of `claims`: the claim window is open on seat 3's
+    // scripted chi-completion discard and the coach-mark ring must hug
+    // the CHI / PASS strip. The lesson's passive bots pass every other
+    // window (the force-pass seam keeps a coin-flip peng from hijacking
+    // the turn order), so the strip is the only actionable HUD.
+    owner: 'tutorial',
+    steps: [
+      { initScript: 'globalThis.__MAHJONG_TUTORIAL_FORCE_PASS__ = true;' },
+      { goto: '/' },
+      { waitForText: 'Modern Mahjong' },
+      { startTutorial: 'claims' },
+      { waitMs: 800 },
+      ...TUTORIAL_NEXT,
+      { waitForOwnHand: true },
+      { waitMs: 600 },
+      { clickTestId: 'own-hand-tile', nth: 0 },
+      { waitForText: 'Claim the chi!', timeout: 20000 },
+      { waitMs: 900 },
+    ],
+  },
+  'tutorial-win-1': {
+    // `declare` step of `win`: the dealt hand is already complete, so
+    // the gold "Declare win (tsumo)" CTA is the target from the first
+    // turn and the ring must hug that button, not its flex parent.
+    owner: 'tutorial',
+    steps: [
+      { goto: '/' },
+      { waitForText: 'Modern Mahjong' },
+      { startTutorial: 'win' },
+      { waitMs: 800 },
+      ...TUTORIAL_NEXT,
+      { waitForOwnHand: true },
       { waitMs: 1200 },
     ],
   },
@@ -470,6 +765,25 @@ export const STATES = {
   'match-mid-hand': {
     owner: 'table',
     steps: [...START_SOLO, { waitForOwnHand: true }, { playTurns: 6 }, { waitMs: 600 }],
+  },
+  'match-manual-drag': {
+    owner: 'table',
+    // Manual sort, mid-drag: the first hand tile is pressed and carried
+    // to the fourth slot (a little above the row) and the pointer is
+    // still down when the frame is taken, so the shot shows the lifted
+    // tile under the pointer and the other tiles re-flowed into the
+    // gap. Portrait: slot 3 is on the back row with slot 0, so the
+    // drag stays in-row there too.
+    steps: [
+      ...START_SOLO,
+      { waitForOwnHand: true },
+      { waitMs: 1200 },
+      { click: 'role=button[name="Sort by Manual"]' },
+      { waitMs: 400 },
+      { dragTestId: 'own-hand-tile', from: 0, to: 3, dy: -14, hold: true },
+      { waitMs: 700 },
+      { waitForPerf: true },
+    ],
   },
   'match-late-hand': {
     owner: 'table',
@@ -805,7 +1119,7 @@ export const BUDGETS = {
 };
 
 export const VIEWPORTS = {
-  phone: { width: 412, height: 915, dpr: 2, mobile: true },
+  phone: { width: 412, height: 700, dpr: 2, mobile: true },
   'phone-landscape': { width: 915, height: 412, dpr: 2, mobile: true },
   tablet: { width: 834, height: 1194, dpr: 2, mobile: true },
   desktop: { width: 1440, height: 900, dpr: 1, mobile: false },

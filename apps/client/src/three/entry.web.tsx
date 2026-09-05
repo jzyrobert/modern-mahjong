@@ -1,5 +1,10 @@
 import type { ComponentType } from 'react';
-import { getRiverInterior, subscribeRiverInterior } from './core/sceneRects';
+import {
+  getCameraMotion,
+  getRiverInterior,
+  subscribeCameraMotion,
+  subscribeRiverInterior,
+} from './core/sceneRects';
 import type { TutorialSceneRects } from './entry';
 import { Menu3DBackdrop as MenuBackdrop } from './menu/Menu3DBackdrop';
 import { type ReplayShelf3DProps, ReplayShelf3D as Shelf } from './menu/ReplayShelf3D';
@@ -32,6 +37,8 @@ export const ReplayShelf3D: ComponentType<ReplayShelf3DProps> | null = Shelf;
 export const tutorialSceneRects: TutorialSceneRects | null = {
   subscribe: subscribeRiverInterior,
   getRiverInterior,
+  subscribeCamera: subscribeCameraMotion,
+  getCameraMotion,
 };
 /** Top of the held hand on phone portrait (see `entry.tsx`). */
 export const portraitHeldHandTop: ((width: number, height: number) => number | null) | null = (
