@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
 import { Platform, View, type ViewStyle } from 'react-native';
+import { useGame } from '../../state/game';
+import { Menu3DHero } from '../../three/entry';
+import { resolveMenuBackdrop } from '../../three/renderer';
 import { type HeroBand, getHeroBand, setHeroBand, subscribeHeroBand } from './heroBand';
 
 let scheduled = false;
@@ -25,26 +28,35 @@ function ensureListeners(): void {
 }
 
 /**
- * The empty band the lobby reserves under its title block for the hero
- * (the 3D rack + dice, or the classic DOM fan). Renders nothing
- * visible; on web it measures itself and publishes the rect through
- * `heroBand.ts` so the backdrop can place the hero *below the measured
- * title* instead of at a viewport fraction — the fix for the title text
- * running across the tile tops on short phones.
+ * The band the lobby reserves under its title block for the hero.
  *
- * The rect is the slot's live window rect, re-measured on scroll: the
- * backdrop itself never scrolls, so this is what makes the hero travel
- * with the title it belongs to instead of staying put while the glass
- * cards slide over it (round-1 feedback: the ivory rack ghosting
- * through the Online card's form). Also re-measured on layout, on
- * resize, once the web fonts have landed (the heading reflows) and once
- * more after the entrance choreography.
+ * Under the 3D renderer it *hosts* the hero: the rack + dice render
+ * into a canvas mounted here (`Menu3DHero` → `HeroSceneView`), sized
+ * to the band. The band is ScrollView content, so the compositor moves
+ * the rack with the title — no scroll listener re-aims a camera, which
+ * is what had the rack redrawn a frame behind the title on Android
+ * Chrome (round-3 feedback: "the background tiles jitter when
+ * scrolling"). Under the classic renderer the slot stays empty and the
+ * DOM fan in the backdrop centres itself in it.
+ *
+ * On web it also measures itself and publishes its live window rect
+ * through `heroBand.ts`: the classic fan reads it, and the fixed drift
+ * field behind the page (`DriftScene`) reads it for its scale (band
+ * size) and for the rack keep-out that must keep following the rack
+ * as it scrolls. Re-measured on layout, on scroll, on resize, once the
+ * web fonts have landed (the heading reflows) and once more after the
+ * entrance choreography.
  */
 export function HeroBandSlot({
   style,
   testID = 'hero-band',
 }: { style?: ViewStyle; testID?: string }) {
   const ref = useRef<View>(null);
+  const rendererSetting = useGame((s) => s.settings.renderer);
+  // Same gate as `LobbyBackdrop`: under `auto` the low quality tier
+  // keeps the DOM-only menu — see `resolveMenuBackdrop`.
+  const use3d =
+    Platform.OS === 'web' && Menu3DHero !== null && resolveMenuBackdrop(rendererSetting);
   const measure = useCallback(() => {
     if (Platform.OS !== 'web') return;
     const node = ref.current as unknown as HTMLElement | null;
@@ -72,7 +84,11 @@ export function HeroBandSlot({
     };
   }, [measure]);
 
-  return <View ref={ref} onLayout={measure} pointerEvents="none" testID={testID} style={style} />;
+  return (
+    <View ref={ref} onLayout={measure} pointerEvents="none" testID={testID} style={style}>
+      {use3d && Menu3DHero ? <Menu3DHero /> : null}
+    </View>
+  );
 }
 
 const getServerBand = () => null;

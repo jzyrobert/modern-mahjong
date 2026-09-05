@@ -65,11 +65,21 @@ apps/client/src/three/
 │   └── hud/               Match HUD (turn pill, claim bar, result panel,
 │                          menu). Re-uses the existing ClaimBar /
 │                          ResultPanel logic; restyles them.
-├── menu/          Main menu subsystem (`/`).
-│   ├── MenuScene.ts       Hero backdrop: drifting tiles, dice, depth fog,
-│   │                      pointer parallax.
-│   ├── Menu3D.tsx         Lobby screen composed over the backdrop.
-│   └── hud/
+├── menu/          Main menu subsystem (`/`). Two canvases:
+│   ├── HeroScene.ts       The rack + dice, in a canvas mounted *inside the
+│   │                      lobby's hero band* (`ui/menu/HeroBandSlot`) —
+│   │                      ScrollView content, so it scrolls with the title
+│   │                      on the compositor. Renders the band's sub-frame
+│   │                      of a viewport-sized frame (`setViewOffset`).
+│   ├── DriftScene.ts      The drift field in the fixed full-viewport
+│   │                      backdrop (`ui/menu/LobbyBackdrop`): depth fog,
+│   │                      pointer parallax, DOM-occluder fades. Never
+│   │                      follows scroll.
+│   ├── layout.ts          Pure fit maths shared by both (unit-tested).
+│   ├── menuDebug.ts       `__MAHJONG_MENU_DEBUG__`, merged from both.
+│   ├── MenuSceneView.tsx  The two SceneHost views; Menu3DBackdrop.tsx
+│   │                      lazy-loads them after first paint + idle.
+│   └── ShelfScene.ts      Replay library's empty-state shelf.
 ├── settings/      Settings subsystem (panel + live preview).
 │   ├── PreviewScene.ts    One tile + felt swatch, orbiting slowly; skin
 │   │                      changes re-tint live.
@@ -141,6 +151,13 @@ Rules:
   the loop idles (`needsRender=false`) — a still table costs 0 GPU
   frames. Menu backdrop idles to 30 fps when the tab is not focused and
   pauses entirely on `visibilitychange: hidden`.
+- **Anything that must move with scrolled DOM is DOM.** A canvas that
+  chases scroll events (re-aiming a camera from a scroll listener) is
+  redrawn a frame or more behind the compositor-scrolled page on a real
+  phone and reads as jitter. The menu hero therefore renders into a
+  canvas that *is* scroll content (inside the hero band) and only the
+  fixed drift field stays in the backdrop; `__MAHJONG_PERF__` sums the
+  live canvases so the budget still covers the page.
 - **Reduced motion** (`settings.animations === false` or the OS query)
   collapses every tween to ≤ 120 ms and disables parallax and post-fx.
 

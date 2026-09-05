@@ -195,8 +195,8 @@ const MENU_SETTLED = [
   { waitMs: 450 },
 ];
 
-/** Scroll the tallest scrollable container (the lobby's ScrollView) to its end. */
-const SCROLL_TO_BOTTOM = `
+/** Scroll the tallest scrollable container (the lobby's ScrollView) to `top` (a JS expression). */
+const SCROLL_LOBBY_TO = (top) => `
 (() => {
   let best = null;
   for (const el of document.querySelectorAll('*')) {
@@ -204,9 +204,11 @@ const SCROLL_TO_BOTTOM = `
       if (!best || el.scrollHeight > best.scrollHeight) best = el;
     }
   }
-  if (best) best.scrollTop = best.scrollHeight;
+  if (best) best.scrollTop = ${top};
 })();
 `;
+/** …to its end. */
+const SCROLL_TO_BOTTOM = SCROLL_LOBBY_TO('best.scrollHeight');
 
 /** Scroll every scrolled container back to the top (the sheet's ScrollView). */
 const SCROLL_TO_TOP = `
@@ -392,6 +394,20 @@ export const STATES = {
       { waitMs: 500 },
     ],
   },
+  'menu-scrolled-mid': {
+    owner: 'menu',
+    // Phone lobby scrolled 120 px: the hero rack, which is ScrollView
+    // content in its own canvas, has gone up with the title and passes
+    // under the sticky app bar (round-3 feedback: the rack jittering
+    // against the title while a fixed canvas chased scroll events).
+    steps: [
+      { goto: '/' },
+      { waitForText: 'Modern Mahjong' },
+      ...MENU_SETTLED,
+      { evaluate: SCROLL_LOBBY_TO('120') },
+      { waitMs: 300 },
+    ],
+  },
   'menu-urlbar': {
     owner: 'menu',
     // Android Chrome's URL bar retracting on scroll: the viewport grows
@@ -431,7 +447,13 @@ export const STATES = {
       { waitForText: 'Replays' },
       { waitForSettled: '[data-reveal]' },
       { waitFor: '[data-testid="replay-shelf-3d"] canvas', timeout: 15000 },
-      { waitMs: 900 },
+      // The shelf's drop-in has landed (its debug seam, not a wall-clock
+      // wait — SwiftShader's frame rate made 900 ms catch it mid-drop).
+      {
+        waitForFunction: 'globalThis.__MAHJONG_SHELF_DEBUG__?.settled === true',
+        timeout: 20000,
+      },
+      { waitMs: 450 },
     ],
   },
   'replay-import': {
