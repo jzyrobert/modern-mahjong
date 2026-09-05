@@ -20,6 +20,7 @@
    { dismissDice: true }                  taps the opening-rolls overlay away if it is showing
    { waitForOwnHand: true }               waits for the first own-hand-tile hit target
    { waitForDrawCue: true }               waits for wall-draw-next, passing incidental claims
+   { waitForClaimButton: 'Chi' }          waits for that claim button, passing incidental claims that do not offer it
    { playTurns: n }                       draw + discard n times (bots respond in between)
    { openSettings: true }                 opens the in-match settings surface
    { startTutorial: 'basics' }            launches a lesson from the lobby
@@ -69,6 +70,77 @@ const CLAIM_SETUP = `
   const btn = buttons.find((b) => !(b.getAttribute('aria-label') || '').startsWith(avoid));
   if (!btn) throw new Error('no discardable hit-target');
   btn.click();
+})();
+`;
+
+/**
+ * Two melds (`match-two-melds`): seed 41 deals the user (dealer, seat 0)
+ * a pair bot 1 holds one of (a peng) and two consecutive suit tiles whose
+ * run bot 3 — the seat before the user, the only one a chi can come
+ * from — holds a completing tile of, in exactly one shape. Scripting
+ * both discards leaves the user with 13 − 3 − 3 = 7 concealed tiles,
+ * eight once the next draw lands: the smallest hand the phone-portrait
+ * held hand still has to split across two rows (round-4 feedback: at
+ * 7 + the drawn tile the single row overflowed both edges).
+ */
+const TWO_MELDS_INIT = `
+globalThis.__MAHJONG_TEST_SEED__ = 41;
+globalThis.__MAHJONG_TEST_BOT_SCRIPTS__ = { 1: {}, 2: {}, 3: {} };
+globalThis.__MAHJONG_TEST_BOT_PACE_MS__ = 600;
+// Unscripted bot claims flip a coin (\`passiveBot.pickClaim\`); a bot peng
+// on the user's discard would reorder the turns and the chi feed.
+globalThis.__MAHJONG_TUTORIAL_FORCE_PASS__ = true;
+`;
+const TILE_NAME_JS = `
+  const name = (t) => (t.kind === 'suit' ? t.rank + ' ' + t.suit : ({ E: 'East wind', S: 'South wind', W: 'West wind', N: 'North wind', Z: 'Red dragon', F: 'Green dragon', B: 'White dragon' })[t.honor]);
+  const discardAvoiding = (avoid) => {
+    const buttons = [...document.querySelectorAll('[data-testid="own-hand-tile"]')];
+    const btn = buttons.find((b) => !avoid.some((a) => (b.getAttribute('aria-label') || '').startsWith(a)));
+    if (!btn) throw new Error('no discardable hit-target');
+    btn.click();
+  };
+`;
+const TWO_MELDS_SETUP = `
+(() => {
+  const s = globalThis.__MAHJONG_TEST_GET_STATE__();
+  if (!s.state || s.you === null) throw new Error('no state');
+  const key = (t) => (t.kind === 'suit' ? 's:' + t.suit + ':' + t.rank : 'h:' + t.honor);
+  const mine = s.state.hands[s.you];
+  const counts = new Map();
+  for (const t of mine) counts.set(key(t), (counts.get(key(t)) ?? 0) + 1);
+  const bot1 = new Set(s.state.hands[1].map(key));
+  const bot3 = new Set(s.state.hands[3].map(key));
+  const peng = mine.find((t) => counts.get(key(t)) === 2 && bot1.has(key(t)));
+  if (!peng) throw new Error('no peng-able pair in the dealt hand');
+  // A run r, r+1 the user holds singly, completed by a tile bot 3 holds,
+  // with no other neighbour held (so the claim bar offers one Chi).
+  let chi = null;
+  for (const suit of ['man', 'pin', 'sou']) {
+    const has = (r) => counts.get('s:' + suit + ':' + r) ?? 0;
+    for (let r = 1; r <= 8 && !chi; r++) {
+      if (has(r) !== 1 || has(r + 1) !== 1) continue;
+      for (const x of [r - 1, r + 2]) {
+        if (x < 1 || x > 9 || has(x) > 0 || !bot3.has('s:' + suit + ':' + x)) continue;
+        const neighbours = [x - 2, x - 1, x + 1, x + 2].filter((q) => q >= 1 && q <= 9 && has(q) > 0);
+        if (neighbours.length === 2) { chi = { suit, keep: [r, r + 1], tile: { kind: 'suit', suit, rank: x } }; break; }
+      }
+    }
+  }
+  if (!chi) throw new Error('no single-shape chi bot 3 can feed');
+  if (key(peng).startsWith('s:' + chi.suit + ':') && chi.keep.includes(peng.rank)) throw new Error('peng pair overlaps the chi run');
+  globalThis.__MAHJONG_TEST_BOT_SCRIPTS__[1] = { discards: [peng] };
+  globalThis.__MAHJONG_TEST_BOT_SCRIPTS__[3] = { discards: [chi.tile] };
+  ${TILE_NAME_JS}
+  const avoid = [name(peng), ...chi.keep.map((r) => r + ' ' + chi.suit)];
+  globalThis.__SHOT_TWO_MELDS_AVOID__ = avoid;
+  discardAvoiding(avoid);
+})();
+`;
+/** After the peng: discard again, still keeping the chi run in hand. */
+const TWO_MELDS_DISCARD_KEEP_RUN = `
+(() => {
+  ${TILE_NAME_JS}
+  discardAvoiding(globalThis.__SHOT_TWO_MELDS_AVOID__ ?? []);
 })();
 `;
 
@@ -1083,8 +1155,8 @@ export const STATES = {
     owner: 'table',
     // Seed 33 rolls dealer 0 with an 8 break, so the whole dead wall
     // (7 stacks) stands on the *left* wall (seat 3) from the user's
-    // seat: the gold inlay on the dead stacks must read as a marked
-    // segment beside the left rack — not as a stray line on the felt.
+    // seat: the dead stacks must read as a darker-backed segment of the
+    // same set beside the left rack — no inlay band, no line on the felt.
     steps: [
       { initScript: 'globalThis.__MAHJONG_TEST_SEED__ = 33;' },
       ...START_SOLO,
@@ -1096,8 +1168,8 @@ export const STATES = {
     owner: 'table',
     // The user's peng landed (CLAIM_SETUP + a tap on the gold Peng
     // button): their meld stands upright in the hand row, faces to the
-    // camera, the claimed tile a step toward the camera; the turn chip
-    // under the hand reads DISCARD.
+    // camera, all three tiles on one aligned line (no claimed-tile
+    // step); the turn chip under the hand reads DISCARD.
     steps: [
       { initScript: CLAIM_INIT },
       ...START_SOLO,
@@ -1108,6 +1180,36 @@ export const STATES = {
       { click: 'role=button[name="Peng"]', timeout: 10000 },
       { waitFor: '[data-testid="claim-bar"]', state: 'hidden', timeout: 10000 },
       { waitMs: 1400 },
+    ],
+  },
+  'match-two-melds': {
+    owner: 'table',
+    // Peng (from bot 1) + chi (from bot 3) landed and the next tile has
+    // been drawn: 7 concealed tiles + the drawn one. On phone portrait
+    // the held hand splits them 4 + 4 (the split is decided from the
+    // hand *with* the drawn slot reserved, so it does not flip between
+    // one and two rows every draw / discard) and every tile stays inside
+    // the viewport; on desktop / landscape both melds stand as aligned
+    // rows in the hand row (no tile stepped out of line).
+    steps: [
+      { initScript: TWO_MELDS_INIT },
+      ...START_SOLO,
+      { waitForOwnHand: true },
+      { waitMs: 1600 },
+      { evaluate: TWO_MELDS_SETUP },
+      { waitFor: '[data-testid="claim-bar"]', timeout: 20000 },
+      { click: 'role=button[name="Peng"]', timeout: 10000 },
+      { waitFor: '[data-testid="claim-bar"]', state: 'hidden', timeout: 10000 },
+      { waitMs: 900 },
+      { evaluate: TWO_MELDS_DISCARD_KEEP_RUN },
+      { waitForClaimButton: 'Chi', timeout: 40000 },
+      { click: 'role=button[name="Chi"]', timeout: 10000 },
+      { waitFor: '[data-testid="claim-bar"]', state: 'hidden', timeout: 10000 },
+      { waitMs: 900 },
+      { clickTestId: 'own-hand-tile', nth: 0 },
+      { waitForDrawCue: true, timeout: 40000 },
+      { clickTestId: 'wall-draw-next' },
+      { waitMs: 1600 },
     ],
   },
   'match-claim-toast': {

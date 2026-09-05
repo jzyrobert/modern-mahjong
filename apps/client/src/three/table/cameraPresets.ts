@@ -1,11 +1,9 @@
 import type { CameraPreset } from '../core/camera';
 import { TILE_D, TILE_H } from '../tiles/geometry';
 import {
-  DRAWN_GAP,
   FELT_HALF,
-  HAND_PITCH,
   HELD_ROW_GAP,
-  HELD_ROW_MAX,
+  HELD_ROW_UNITS,
   type HeldHandFrame,
   RAIL_H,
   RAIL_WIDTH,
@@ -677,10 +675,10 @@ const norm = (a: V3): V3 => {
 
 /** On-screen width of one held tile for a viewport, CSS px. */
 export function heldHandTilePx(width: number, height: number = PORTRAIT_TALL_H): number {
-  // The widest row is the front one: HELD_ROW_MAX − 1 tiles + the
-  // drawn tile with its gap (7.84 tile widths at the default metrics).
-  const rowUnits = (HELD_ROW_MAX - 1) * HAND_PITCH + 1 + DRAWN_GAP;
-  const px = (width - HELD_SIDE_PX * 2) / rowUnits;
+  // The widest row is the front one: HELD_ROW_MAX − 1 tiles at pitch +
+  // the drawn tile with its gap (7.78 tile widths at the default
+  // metrics). `heldRowSplit` never lets a row exceed it.
+  const px = (width - HELD_SIDE_PX * 2) / HELD_ROW_UNITS;
   return Math.min(portraitMetrics(height).tileMax, Math.max(HELD_TILE_MIN_PX, px));
 }
 

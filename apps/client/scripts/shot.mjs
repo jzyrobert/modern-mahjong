@@ -320,6 +320,23 @@ async function runStep(page, step, ctx) {
     }
     throw new Error('draw cue never appeared');
   }
+  if (step.waitForClaimButton) {
+    // A claim window that offers the named button (e.g. 'Chi'); solo has
+    // no claim-window alarm, so an incidental window that does not offer
+    // it (a peng on a bot's fallback discard) is passed, or the recipe
+    // would wait on it forever.
+    const start = Date.now();
+    while (Date.now() - start < scaled(step.timeout ?? 30_000)) {
+      const want = page.getByRole('button', { name: step.waitForClaimButton, exact: true }).first();
+      if (await want.isVisible().catch(() => false)) return;
+      const pass = page.getByRole('button', { name: 'Pass' }).first();
+      if (await pass.isVisible().catch(() => false)) {
+        await pass.click({ timeout: scaled(2000) }).catch(() => {});
+      }
+      await page.waitForTimeout(250);
+    }
+    throw new Error(`claim button ${step.waitForClaimButton} never appeared`);
+  }
   if (step.playTurns) {
     for (let i = 0; i < step.playTurns; i++) {
       await runStep(page, { waitForDrawCue: true }, ctx).catch(() => {});

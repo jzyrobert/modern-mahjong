@@ -1025,12 +1025,10 @@ export class TableScene {
       const zone = t.slot?.zone;
       // Dead wall reads as a shaded segment of the same set: its backs
       // take the skin's darker shade (`uDeadBack*`, derived from the skin
-      // in `materials.deadBackColors`) with a gold inlay along the inner
-      // edge (`materials.ts`). No positional step (see `wallSlotPosition`).
+      // in `materials.deadBackColors`) and nothing else — no inlay band
+      // (round-4: it read as stray yellow stripes on the stacks) and no
+      // positional step (see `wallSlotPosition`).
       p.backVariant = zone === 'deadWall' ? 1 : 0;
-      // The inlay's side band belongs to the exposed top tile only (see
-      // `TileSlot.stackTop`); everything off the walls counts as a top.
-      p.stackTop = t.slot?.stackTop === false ? 0 : 1;
       if ((zone === 'wall' || zone === 'deadWall') && t.slot?.rel === 0 && this.nearWallDim !== 1)
         p.tint.setScalar(this.nearWallDim);
     }

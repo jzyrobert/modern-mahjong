@@ -5,14 +5,15 @@ import {
   CHIP_POCKET_NUDGE,
   CHIP_POCKET_REACH,
   DEAD_WALL_OFFSET,
+  DRAWN_GAP,
   FELT_HALF,
   FLAT_Y,
   HAND_PITCH,
   HAND_TILT,
   HAND_Z,
+  HELD_ROW_UNITS,
   MELD_Z,
   OWN_HAND_Z,
-  OWN_MELD_CLAIM_STEP,
   OWN_MELD_RIGHT,
   OWN_MELD_SCALE_HELD,
   RAIL_MELD_Z,
@@ -341,7 +342,7 @@ describe('computeLayout', () => {
       expect(placed.filter((sl) => sl!.zone === 'discard')).toHaveLength(32);
     }
   });
-  test("ownMeldsStanding stands the user's melds in the hand row, claimed tile stepped forward", () => {
+  test("ownMeldsStanding stands the user's melds in the hand row as aligned rows", () => {
     const s = dealt();
     const st: GameState = {
       ...s,
@@ -373,16 +374,17 @@ describe('computeLayout', () => {
       expect(sl!.tilt).toBeCloseTo(HAND_TILT, 6);
       // Same yaw as the hand: no tile turned sideways.
       expect(sl!.yaw).toBeCloseTo(0, 6);
-      // To the right of the hand, in its row (or one step toward the camera).
+      // To the right of the hand, on the hand's own line: no tile — the
+      // claimed one included — steps out of the row (round-4: under the
+      // desktop camera a stepped tile read as misplaced).
       expect(sl!.x).toBeGreaterThan(handRight + TILE_W / 2);
-      expect(
-        sl!.z === OWN_HAND_Z || Math.abs(sl!.z - (OWN_HAND_Z + OWN_MELD_CLAIM_STEP)) < 1e-6,
-      ).toBe(true);
+      expect(sl!.z).toBeCloseTo(OWN_HAND_Z, 6);
     }
-    // Exactly the peng's middle tile (from the seat across) steps forward.
-    const stepped = up.filter((sl) => sl!.z > OWN_HAND_Z + 1e-6);
-    expect(stepped).toHaveLength(1);
-    expect(stepped[0]!.id).toBe(tileId(s.hands[0][1]!));
+    // Each meld is one row at HAND_PITCH, in the meld's own tile order.
+    const peng = up.filter((sl) => sl!.index < 4).sort((a, b) => a!.index - b!.index);
+    expect(peng.map((sl) => sl!.id)).toEqual(s.hands[0].slice(0, 3).map((t) => tileId(t)));
+    for (let i = 1; i < peng.length; i++)
+      expect(peng[i]!.x - peng[i - 1]!.x).toBeCloseTo(HAND_PITCH, 6);
     // The concealed gang shows its backs.
     const gang = up.filter((sl) => sl!.index >= 4);
     expect(gang).toHaveLength(4);
@@ -397,18 +399,22 @@ describe('computeLayout', () => {
     }).filter((sl) => sl?.zone === 'meld' && sl.seat === 0);
     expect(held.every((sl) => sl!.base === 'flatUp' || sl!.base === 'flatDown')).toBe(true);
   });
-  test('layoutMeldStanding: one tile per pitch, claimed flag follows the seat rule', () => {
+  test('layoutMeldStanding: one tile per pitch in meld order, whichever seat fed it', () => {
     const s = dealt();
     const tiles = s.hands[0].slice(0, 4);
-    const fromPrev = layoutMeldStanding({ kind: 'gang-exposed', tiles, from: 3 }, 0);
-    expect(fromPrev.tiles.map((t) => t.claimed)).toEqual([true, false, false, false]);
+    const fromPrev = layoutMeldStanding({ kind: 'gang-exposed', tiles, from: 3 });
     expect(fromPrev.width).toBeCloseTo(4 * HAND_PITCH - (HAND_PITCH - TILE_W), 6);
+    expect(fromPrev.tiles.map((t) => t.tile)).toEqual(tiles);
     for (let i = 1; i < 4; i++)
       expect(fromPrev.tiles[i]!.dx - fromPrev.tiles[i - 1]!.dx).toBeCloseTo(HAND_PITCH, 6);
-    const fromNext = layoutMeldStanding({ kind: 'peng', tiles: tiles.slice(0, 3), from: 1 }, 0);
-    expect(fromNext.tiles.map((t) => t.claimed)).toEqual([false, false, true]);
-    const own = layoutMeldStanding({ kind: 'gang-concealed', tiles }, 0);
-    expect(own.tiles.every((t) => !t.claimed && t.faceDown)).toBe(true);
+    // A chi from the seat before (the only chi source) lays out exactly
+    // like a peng from the seat after: the feeder leaves no mark.
+    const chi = layoutMeldStanding({ kind: 'chi', tiles: tiles.slice(0, 3), from: 3 });
+    const peng = layoutMeldStanding({ kind: 'peng', tiles: tiles.slice(0, 3), from: 1 });
+    expect(chi.tiles.map((t) => t.dx)).toEqual(peng.tiles.map((t) => t.dx));
+    expect(chi.tiles.every((t) => !t.faceDown)).toBe(true);
+    const own = layoutMeldStanding({ kind: 'gang-concealed', tiles });
+    expect(own.tiles.every((t) => t.faceDown)).toBe(true);
   });
   test("the user's hand stands in a centred row at the near edge", () => {
     const st = dealt();
@@ -660,12 +666,54 @@ describe('fullWallLayout / tileSheetLayout', () => {
 });
 
 describe('held hand (phone portrait)', () => {
-  test('heldRowSplit keeps ≤ 8 tiles on one row and halves larger hands', () => {
-    expect(heldRowSplit(0)).toEqual([]);
-    expect(heldRowSplit(8)).toEqual([8]);
-    expect(heldRowSplit(13)).toEqual([7, 6]);
-    expect(heldRowSplit(14)).toEqual([7, 7]);
-    expect(heldRowSplit(11)).toEqual([6, 5]);
+  test('heldRowSplit reserves the drawn slot: one row up to 6 + drawn, halves above', () => {
+    expect(heldRowSplit(0, false)).toEqual([]);
+    expect(heldRowSplit(6, false)).toEqual([6]);
+    expect(heldRowSplit(7, true)).toEqual([7]);
+    // Two melds out: 7 concealed tiles split even before the draw, so
+    // the drawn tile joins the front row instead of overflowing one row.
+    expect(heldRowSplit(7, false)).toEqual([4, 3]);
+    expect(heldRowSplit(8, true)).toEqual([4, 4]);
+    // 8 without a drawn tile (the discard right after a claim) also splits.
+    expect(heldRowSplit(8, false)).toEqual([4, 4]);
+    expect(heldRowSplit(13, false)).toEqual([7, 6]);
+    expect(heldRowSplit(14, true)).toEqual([7, 7]);
+    expect(heldRowSplit(14, false)).toEqual([7, 7]);
+    expect(heldRowSplit(11, true)).toEqual([5, 6]);
+    expect(heldRowSplit(10, false)).toEqual([5, 5]);
+  });
+  test('held rows never exceed the frame and keep their back row across a draw', () => {
+    const rowWidth = (len: number, drawn: boolean) =>
+      len * HAND_PITCH - (HAND_PITCH - TILE_W) + (drawn ? DRAWN_GAP : 0);
+    // A concealed base hand is at most 13 tiles (14 is 13 + the drawn one).
+    for (let base = 4; base <= 13; base++) {
+      const before = heldRowSplit(base, false);
+      const after = heldRowSplit(base + 1, true);
+      expect(before.reduce((a, b) => a + b, 0)).toBe(base);
+      expect(after.reduce((a, b) => a + b, 0)).toBe(base + 1);
+      // Every row fits the frame's row capacity (`HELD_ROW_UNITS`); the
+      // drawn tile — last in display order — always lands on the front row.
+      for (const len of before)
+        expect(rowWidth(len, false)).toBeLessThanOrEqual(HELD_ROW_UNITS + 1e-9);
+      for (const [r, len] of after.entries())
+        expect(rowWidth(len, r === after.length - 1)).toBeLessThanOrEqual(HELD_ROW_UNITS + 1e-9);
+      // Same row count and same back row before and after the draw: the
+      // hand does not re-flow between one and two rows every turn.
+      expect(after.length).toBe(before.length);
+      if (before.length === 2) expect(after[0]).toBe(before[0]);
+    }
+    // The 7-tile hand (two melds out) is the case round-4 reported.
+    const slots = heldHandSlots(dealt().hands[0].slice(0, 8), 7, FRAME, 0);
+    const rows = new Map<number, number[]>();
+    for (const sl of slots) {
+      const k = Math.round(sl.y * 100);
+      rows.set(k, [...(rows.get(k) ?? []), sl.x]);
+    }
+    expect(rows.size).toBe(2);
+    for (const xs of rows.values()) {
+      const span = Math.max(...xs) - Math.min(...xs) + TILE_W;
+      expect(span).toBeLessThanOrEqual(HELD_ROW_UNITS + 1e-9);
+    }
   });
   test('quatFromBasis round-trips the identity and a 90° yaw', () => {
     expect(quatFromBasis([1, 0, 0], [0, 1, 0], [0, 0, 1])).toEqual([0, 0, 0, 1]);
@@ -1076,43 +1124,5 @@ describe('dealer chip pocket', () => {
     expect(WALL_D - TILE_H / 2 - 0.22 - (local[1] - CHIP_POCKET_NUDGE + chipR)).toBeGreaterThan(
       0.45,
     );
-  });
-});
-
-describe('wall stack tops', () => {
-  test('the upper tile of every stack is the top; a lower tile becomes the top once the upper is drawn', () => {
-    const st = dealt();
-    const layout = computeLayout(st, 0, OPTS);
-    const walls = layout.filter((sl) => sl?.zone === 'wall' || sl?.zone === 'deadWall');
-    const key = (sl: { x: number; z: number }) => `${sl.x.toFixed(3)},${sl.z.toFixed(3)}`;
-    const upper = new Set(walls.filter((sl) => sl!.y > FLAT_Y + TILE_D / 2).map((sl) => key(sl!)));
-    for (const sl of walls) {
-      const isUpper = sl!.y > FLAT_Y + TILE_D / 2;
-      expect(sl!.stackTop, `tile ${sl!.id}`).toBe(isUpper || !upper.has(key(sl!)));
-    }
-    // Draw through the next upper live tile (the deal leaves a lone lower
-    // tile at the drawing end, so it is the second draw on this seed):
-    // its partner below is then exposed and flagged as the top.
-    const from = walls
-      .filter((sl) => sl!.zone === 'wall' && sl!.y > FLAT_Y + TILE_D / 2)
-      .sort((a, b) => a!.index - b!.index)[0]!;
-    expect(from.stackTop).toBe(true);
-    const partnerBefore = layout.find(
-      (sl) => sl && sl.zone === 'wall' && key(sl) === key(from) && sl.id !== from.id,
-    );
-    expect(partnerBefore?.stackTop).toBe(false);
-    const next: GameState = { ...st, wall: st.wall.slice(0, st.wall.length - 1 - from.index) };
-    const after = computeLayout(next, 0, OPTS);
-    expect(after[from.id]).toBeNull();
-    expect(after[partnerBefore!.id]?.stackTop).toBe(true);
-    // A gang replacement (`deadWall.shift()`) exposes the dead stack's lower tile the same way.
-    const deadTop = layout[tileId(st.deadWall[0]!)]!;
-    expect(deadTop.zone).toBe('deadWall');
-    expect(deadTop.stackTop).toBe(true);
-    const afterGang = computeLayout({ ...st, deadWall: st.deadWall.slice(1) }, 0, OPTS);
-    const deadLower = afterGang[tileId(st.deadWall[1]!)]!;
-    expect(deadLower.zone).toBe('deadWall');
-    expect(key(deadLower)).toBe(key(deadTop));
-    expect(deadLower.stackTop).toBe(true);
   });
 });

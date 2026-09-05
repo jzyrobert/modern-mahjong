@@ -33,11 +33,13 @@ export interface TileMaterialUniforms {
   uBackRoughness: { value: number };
   /**
    * Second back colour, selected per instance by `aBackVariant` (1):
-   * the shade the table marks its dead-wall stacks with. Derived from
-   * the skin (`deadBackColors`): the same hue a step darker and a touch
-   * less saturated, so the block reads as a shaded segment of the *same*
-   * set — round-3 critique: an independent ivory-tan read as mixed tile
-   * sets.
+   * the shade the table marks its dead-wall stacks with — the *only*
+   * marker the dead wall carries. Derived from the skin
+   * (`deadBackColors`): the same hue a step darker, so the block reads
+   * as a shaded segment of the *same* set — round-3 critique: an
+   * independent ivory-tan read as mixed tile sets; round-4: a gold
+   * inlay band along the stacks' inner edge read as a rendering defect
+   * ("extra yellow stripes"), so the shade alone does the job.
    */
   uDeadBack: { value: Color };
   uDeadBack2: { value: Color };
@@ -51,8 +53,6 @@ export interface TileMaterialUniforms {
    * neighbours (round-4 #5).
    */
   uBackGradAmount: { value: number };
-  /** Gold of the dead-wall inlay band (`aBackVariant` 1). */
-  uDeadInlay: { value: Color };
 }
 
 /** Body roughness shared by the tile faces and, by default, the back. */
@@ -64,16 +64,20 @@ export function tileBackColors(skin: TileBackSkin): { top: Color; bottom: Color 
 }
 
 /**
- * Dead-wall back shade for a skin: same hue, lightness × 0.68,
- * saturation × 0.8 — unmistakably darker beside the live stacks under
- * the same key light, never a different colour.
+ * Dead-wall back shade for a skin: same hue, lightness × 0.6,
+ * saturation × 0.9 — unmistakably darker beside the live stacks under
+ * the same key light, never a different colour. Round-4: this shade is
+ * the dead wall's only marker (the gold inlay band is gone), so it
+ * stepped down from × 0.68 / × 0.8 — on the desktop near wall the
+ * dead tops measured 0.85 of the live tops' luminance, a step the eye
+ * had to hunt for; the deeper shade keeps the hue and the gradient.
  */
 export function deadBackColors(skin: TileBackSkin): { top: Color; bottom: Color } {
   const back = tileBackColors(skin);
   const shade = (c: Color) => {
     const hsl = { h: 0, s: 0, l: 0 };
     c.getHSL(hsl);
-    return new Color().setHSL(hsl.h, hsl.s * 0.8, hsl.l * 0.68);
+    return new Color().setHSL(hsl.h, Math.min(1, hsl.s * 0.9), hsl.l * 0.6);
   };
   return { top: shade(back.top), bottom: shade(back.bottom) };
 }
@@ -103,7 +107,6 @@ export function createTileMaterial(
     uDeadBack: { value: dead.top },
     uDeadBack2: { value: dead.bottom },
     uBackGradAmount: { value: 1 },
-    uDeadInlay: { value: new Color('#d8a85a') },
   };
   const mat = new MeshPhysicalMaterial({
     color: 0xffffff,
@@ -132,7 +135,6 @@ export function createTileMaterial(
         attribute vec3 aTint;
         attribute float aHighlight;
         attribute float aBackVariant;
-        attribute float aStackTop;
         uniform vec2 uCellScale;
         varying vec2 vAtlasUv;
         varying vec3 vTint;
@@ -141,10 +143,7 @@ export function createTileMaterial(
         varying float vBack;
         varying float vBackGrad;
         varying float vBackCell;
-        varying float vBackVariant;
-        varying float vInnerSide;
-        varying float vStackTop;
-        varying vec2 vLocalYZ;`,
+        varying float vBackVariant;`,
       )
       .replace(
         '#include <beginnormal_vertex>',
@@ -159,13 +158,7 @@ export function createTileMaterial(
         vAtlasUv = uv * uCellScale + max(aFaceCell, vec2(0.0));
         vTint = aTint;
         vHighlight = aHighlight;
-        vBackVariant = aBackVariant;
-        // Dead-wall inlay (fragment): the −Y side is the wall stack's
-        // inner long side (face-down tiles keep local −Y toward the
-        // table centre on every wall), local y / z locate the band.
-        vInnerSide = step(0.92, -objectNormal.y);
-        vStackTop = aStackTop;
-        vLocalYZ = vec2(position.y / 1.36, position.z / 0.62);`,
+        vBackVariant = aBackVariant;`,
       );
     shader.fragmentShader = shader.fragmentShader
       .replace(
@@ -188,11 +181,7 @@ export function createTileMaterial(
         varying float vBack;
         varying float vBackGrad;
         varying float vBackCell;
-        varying float vBackVariant;
-        varying float vInnerSide;
-        varying float vStackTop;
-        varying vec2 vLocalYZ;
-        uniform vec3 uDeadInlay;`,
+        varying float vBackVariant;`,
       )
       .replace(
         '#include <color_fragment>',
@@ -210,7 +199,6 @@ export function createTileMaterial(
         // skin, green on plum). Clamp before use.
         float vFaceC = clamp(vFace, 0.0, 1.0);
         float vBackC = clamp(vBack, 0.0, 1.0);
-        float vInnerSideC = clamp(vInnerSide, 0.0, 1.0);
         float backGrad = mix(0.5, clamp(vBackGrad, 0.0, 1.0), uBackGradAmount);
         vec3 backCol = mix(
           mix(uBackColor2, uBackColor, backGrad),
@@ -227,27 +215,8 @@ export function createTileMaterial(
         // back finish below, so a blue rack never wears the ivory gloss.
         float showBack = max(vBackC, vFaceC * vBackCell);
         vec3 body = mix(uBodyColor, backCol, showBack);
-        // Dead-wall inlay: a gold band along the inner edge of the back
-        // (the up-facing side of a face-down stack) and the upper part of
-        // the inner side face, so the segment reads as marked from every
-        // camera — the far wall shows the side band face-on, the near
-        // wall its top edge, the side walls both. Replaces a felt hairline
-        // beside the stacks that read as a stray line on the cloth.
-        // Kept slim (a hairline along the inner edge, the upper third of
-        // the inner side) and blended at 0.8 so seven marked stacks read
-        // as an inlaid trim, not a dashed yellow stripe down the wall.
-        // The side band is drawn on the stack's exposed top tile only
-        // (aStackTop): on both tiles of a two-high stack the 31° and
-        // 44° cameras saw two bars per stack, and a marked segment read
-        // as a ladder of gold dashes instead of one continuous trim.
-        float inlayTop = vBackC * step(vLocalYZ.x, -0.5 + 0.09);
-        float inlaySide = vInnerSideC * vStackTop * step(vLocalYZ.y, -0.5 + 0.36);
-        float inlay = vBackVariant * clamp(inlayTop + inlaySide, 0.0, 1.0) * 0.8;
-        body = mix(body, uDeadInlay, inlay);
         float showFace = vFaceC * (1.0 - vBackCell);
         diffuseColor.rgb = mix(body, faceTexel.rgb, showFace) * vTint;
-        // The inlay is lacquer, not the matte back: keep it glossy.
-        showBack *= 1.0 - inlay;
         // Cue glow: warm the albedo toward gold as well as adding
         // emissive so blue / plum backs read gold, not washed-out white.
         // On a face the warming is masked by the texel's luminance so
@@ -285,15 +254,12 @@ export function createTileMaterial(
         // Backs / sides: flat gold emissive. Faces: a rim glow plus a
         // gentle lift on the ivory body only (masked off the ink).
         float glowAmt = mix(0.55, 0.2 * inkMask + 0.5 * glowRim, showFace);
-        totalEmissiveRadiance += uHighlightColor * vHighlight * glowAmt;
-        // The dead-wall inlay keeps a faint self-glow so it stays gold in
-        // the stacks' shadow instead of dropping to brown.
-        totalEmissiveRadiance += uDeadInlay * inlay * 0.1;`,
+        totalEmissiveRadiance += uHighlightColor * vHighlight * glowAmt;`,
       );
   };
   // Distinct cache key so three doesn't share the program with a stock
   // MeshPhysicalMaterial.
-  mat.customProgramCacheKey = () => 'mahjong-tile-v9';
+  mat.customProgramCacheKey = () => 'mahjong-tile-v10';
   return mat;
 }
 
