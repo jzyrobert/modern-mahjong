@@ -479,7 +479,7 @@ CC0-only asset policy, verifier rules. Operational notes:
   the 360×640 result card pins to the top (`resultPanelPinsTop`) so the
   scoring caption docks below the winning hand. Timing-dependent HUD
   (a bot's claim toast) gets its own store-driven recipe
-  (`match-claim-toast` fires `flashClaimAnnouncement` through
+  (`match-claim-toast-flash` fires `flashClaimAnnouncement` through
   `__MAHJONG_TEST_GET_STATE__`) instead of hoping `match-claim` catches
   one. Shoot with one `shot.mjs` process at a time — three in parallel on SwiftShader once
   produced a frame with the camera still easing in from the lobby.

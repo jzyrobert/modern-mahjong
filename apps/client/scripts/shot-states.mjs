@@ -836,7 +836,7 @@ export const STATES = {
       { waitMs: 700 },
     ],
   },
-  'match-claim-toast': {
+  'match-claim-toast-flash': {
     owner: 'table',
     // A bot's claim announcement (glass toast) fired through the store
     // once the deal has settled — deterministic where `match-claim`'s
