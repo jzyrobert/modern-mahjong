@@ -1374,13 +1374,49 @@ test('a win stamps the glass result card and the next hand shuffles without the 
   expect(errors, 'console / page errors').toEqual([]);
 });
 
+interface HintRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+interface HintDebug {
+  tileId: number;
+  faceRect: HintRect | null;
+  markerRect: HintRect | null;
+}
+
+/** The discard hint as the scene renders it (`TableDebugSnapshot.hint`). */
+function readHint(page: Page): Promise<HintDebug | null> {
+  return page.evaluate(
+    () =>
+      (
+        globalThis as { __MAHJONG_TABLE_3D_DEBUG__?: () => { hint: HintDebug | null } | null }
+      ).__MAHJONG_TABLE_3D_DEBUG__?.()?.hint ?? null,
+  );
+}
+
+/** Every edge of the frame's stroke within `tol` px of the tile's printed face. */
+function hugs(h: HintDebug | null, tol = 4): h is HintDebug & { markerRect: HintRect } {
+  if (!h?.faceRect || !h.markerRect) return false;
+  const f = h.faceRect;
+  const m = h.markerRect;
+  return (
+    Math.abs(m.left - f.left) <= tol &&
+    Math.abs(m.top - f.top) <= tol &&
+    Math.abs(m.left + m.width - (f.left + f.width)) <= tol &&
+    Math.abs(m.top + m.height - (f.top + f.height)) <= tol
+  );
+}
+
 for (const vp of [
   { name: 'phone', width: 412, height: 700 },
   { name: 'desktop', width: 1440, height: 900 },
 ]) {
-  test(`the discard-hint ring hugs the hinted tile face on ${vp.name}, not the taller tap target`, async ({
+  test(`the discard-hint frame hugs the hinted tile face on ${vp.name} and follows it through a drag`, async ({
     page,
   }) => {
+    test.slow();
     await page.setViewportSize({ width: vp.width, height: vp.height });
     // Settings live in localStorage before boot (the shot verifier seeds
     // them the same way).
@@ -1394,25 +1430,61 @@ for (const vp of [
     const errors: string[] = [];
     await startSolo(page, errors);
     await waitForDealSettled(page);
-    const ring = page.getByTestId('hand-tile-recommended');
-    await expect(ring).toHaveCount(1, { timeout: 15_000 });
-    await page.waitForTimeout(400);
-    const ringBox = (await ring.boundingBox())!;
-    const button = (await ring.locator('..').boundingBox())!;
-    // The button is the tile *box*'s projection: for a hand tile leaning
-    // toward the camera that also spans the top bevel and the back edge.
-    // The ring follows the printed face instead: its bottom is the tile's
-    // nearest edge (the box bottom, where the old ring stopped 10 px
-    // short), its top never rides above the box and, from the shallower
-    // desktop camera, sits below the back edge.
-    expect(Math.abs(ringBox.y + ringBox.height - (button.y + button.height))).toBeLessThanOrEqual(
-      6,
-    );
-    expect(ringBox.y).toBeGreaterThanOrEqual(button.y - 3);
-    expect(ringBox.y).toBeLessThan(button.y + button.height * 0.4);
-    expect(ringBox.height).toBeGreaterThan(button.height * 0.55);
-    expect(ringBox.x).toBeGreaterThanOrEqual(button.x - 4);
-    expect(ringBox.x + ringBox.width).toBeLessThanOrEqual(button.x + button.width + 4);
+    // The hint is scene geometry (`TableScene.hintFrame`); the HUD keeps
+    // only a zero-visual marker under the shared testid.
+    const marker = page.getByTestId('hand-tile-recommended');
+    await expect(marker).toHaveCount(1, { timeout: 15_000 });
+    await expect(marker).toHaveCSS('border-style', 'none');
+    // The frame fades in once the hinted tile has landed, then hugs the
+    // printed face — not the taller box the tap target projects.
+    await expect.poll(() => readHint(page).then((h) => hugs(h)), POLL).toBe(true);
+    const before = await readHint(page);
+    if (!hugs(before)) throw new Error('hint frame missing');
+    const canvas = (await page.getByTestId('table-3d').locator('canvas').first().boundingBox())!;
+    const button = (await page
+      .locator(`[data-testid="own-hand-tile"][data-tile-id="${before.tileId}"]`)
+      .boundingBox())!;
+    // …and sits inside that tile's tap target (canvas px → page px).
+    const m = before.markerRect;
+    expect(canvas.x + m.left).toBeGreaterThanOrEqual(button.x - 4);
+    expect(canvas.x + m.left + m.width).toBeLessThanOrEqual(button.x + button.width + 4);
+    expect(canvas.y + m.top).toBeGreaterThanOrEqual(button.y - 4);
+    expect(canvas.y + m.top + m.height).toBeLessThanOrEqual(button.y + button.height + 4);
+
+    // Carry the hinted tile five slots along (across the held rows on
+    // the phone): the frame rides the tile's pose, so it hugs the face
+    // at the new slot without a re-projection lag.
+    const order = await domHandOrder(page);
+    const from = order.indexOf(before.tileId);
+    expect(from).toBeGreaterThanOrEqual(0);
+    const to = from < 7 ? from + 5 : from - 5;
+    await dragHandTile(page, from, to);
+    await expect.poll(() => domHandOrder(page), POLL).toEqual(moved(order, from, to));
+    await expect
+      .poll(
+        () =>
+          readHint(page).then(
+            (h) =>
+              h?.tileId === before.tileId &&
+              hugs(h) &&
+              Math.abs(h.markerRect.left - before.markerRect.left) > 10,
+          ),
+        POLL,
+      )
+      .toBe(true);
+
+    // Perf: the frame's material shares the cue halo's compiled program,
+    // so once the discard round-trips to the draw cue (the halo's first
+    // frame on this table) nothing new compiles — and the hint is gone
+    // while the user has yet to draw.
+    const withHint = await readPerf(page);
+    await page
+      .locator(`[data-testid="own-hand-tile"][data-tile-id="${before.tileId}"]`)
+      .dispatchEvent('click');
+    await expect(page.getByTestId('wall-draw-next')).toBeVisible({ timeout: 45_000 });
+    await expect.poll(() => readHint(page), POLL).toBeNull();
+    await page.waitForTimeout(600);
+    expect((await readPerf(page)).programs).toBe(withHint.programs);
     expect(errors, 'console / page errors').toEqual([]);
   });
 }

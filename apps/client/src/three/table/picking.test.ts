@@ -1,6 +1,15 @@
 import { Matrix4, PerspectiveCamera, Quaternion, Vector3 } from 'three';
 import { describe, expect, test } from 'vitest';
-import { padRect, projectTileRect, rectsClose, tileMatrix, unionRects } from './picking';
+import { TILE_D, TILE_H, TILE_W } from '../tiles/geometry';
+import {
+  padRect,
+  projectPlaneRect,
+  projectTileFaceRect,
+  projectTileRect,
+  rectsClose,
+  tileMatrix,
+  unionRects,
+} from './picking';
 
 function camera(): PerspectiveCamera {
   const cam = new PerspectiveCamera(50, 412 / 915, 0.1, 100);
@@ -78,5 +87,29 @@ describe('rect helpers', () => {
     expect([p.x, p.y, p.z]).toEqual([1, 2, 3]);
     const v = new Vector3(0, 0, 1).transformDirection(m);
     expect(v.x).toBeCloseTo(1);
+  });
+});
+
+describe('projectPlaneRect', () => {
+  test('a face-sized plane on the +Z face projects onto the face rect', () => {
+    // The discard-hint frame: a quad in the tile's XY plane, pushed out to
+    // the printed face. Projected through the same camera, its bounds are
+    // the face's bounds (the frame's stroke bleeds a hair past them).
+    const cam = camera();
+    const quat = new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), -0.4);
+    const tile = tileMatrix({ x: 1.5, y: 0.7, z: 6 }, quat, 1, new Matrix4());
+    const face = projectTileFaceRect(tile, cam, 412, 915)!;
+    const out = new Vector3(0, 0, TILE_D / 2).applyQuaternion(quat);
+    const plane = tileMatrix(
+      { x: 1.5 + out.x, y: 0.7 + out.y, z: 6 + out.z },
+      quat,
+      1,
+      new Matrix4(),
+    );
+    const r = projectPlaneRect(TILE_W, TILE_H, plane, cam, 412, 915)!;
+    expect(rectsClose(r, face, 0.01)).toBe(true);
+    const bled = projectPlaneRect(TILE_W * 1.05, TILE_H * 1.05, plane, cam, 412, 915)!;
+    expect(bled.left).toBeLessThan(face.left);
+    expect(bled.width).toBeGreaterThan(face.width);
   });
 });

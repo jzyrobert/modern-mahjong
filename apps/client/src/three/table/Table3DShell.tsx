@@ -486,7 +486,7 @@ export function Table3DShell(props: Table3DShellProps) {
             // tap targets still follow the visible tiles; the settled
             // rect is the slot drag-to-reorder resolves against).
             const settled = scene.settledTileRect(s.id);
-            hitRef.current?.setTileRect(s.id, r, settled, r ? scene.tileFaceRect(s.id) : null);
+            hitRef.current?.setTileRect(s.id, r, settled);
             if (settled) handRects.push({ ...settled });
             else if (r) handRects.push({ ...r });
           } else if ((s.zone === 'wall' || s.zone === 'deadWall') && s.rel === 0) {

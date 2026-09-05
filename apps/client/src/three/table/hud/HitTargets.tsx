@@ -50,12 +50,7 @@ export interface HitTargetsHandle {
    * drag-to-reorder resolves the pointer against these so the slots
    * stay put while the tiles are still re-flowing.
    */
-  setTileRect(
-    id: number,
-    rect: ScreenRect | null,
-    settled?: ScreenRect | null,
-    face?: ScreenRect | null,
-  ): void;
+  setTileRect(id: number, rect: ScreenRect | null, settled?: ScreenRect | null): void;
   setWallRect(rect: ScreenRect | null): void;
 }
 
@@ -143,33 +138,6 @@ function applyRect(
   return { left, top, width: w, height: h };
 }
 
-/** Bleed of the discard-hint ring past the tile's projected face. */
-const HINT_RING_BLEED = 2;
-
-/**
- * Place the hint ring over the tile's *face* (not the ≥ 44 px button,
- * which also spans the top bevel and back edge of the leaning tile — a
- * ring on the button rect floats above the visible face on phones).
- * Coordinates are relative to the button's applied rect.
- */
-function applyHintRing(
-  ring: HTMLElement,
-  face: ScreenRect | null,
-  button: ScreenRect | null,
-): void {
-  if (!face || !button) {
-    ring.style.inset = `${-HINT_RING_BLEED}px`;
-    ring.style.width = '';
-    ring.style.height = '';
-    return;
-  }
-  ring.style.inset = 'auto';
-  ring.style.left = `${(face.left - button.left - HINT_RING_BLEED).toFixed(1)}px`;
-  ring.style.top = `${(face.top - button.top - HINT_RING_BLEED).toFixed(1)}px`;
-  ring.style.width = `${(face.width + HINT_RING_BLEED * 2).toFixed(1)}px`;
-  ring.style.height = `${(face.height + HINT_RING_BLEED * 2).toFixed(1)}px`;
-}
-
 function rectStyle(r: ScreenRect | null) {
   return r
     ? { position: 'absolute' as const, left: r.left, top: r.top, width: r.width, height: r.height }
@@ -229,10 +197,6 @@ export const HitTargets = forwardRef<HitTargetsHandle, HitTargetsProps>(function
   const rootEl = useRef<HTMLDivElement | null>(null);
   const tileEls = useRef(new Map<number, HTMLButtonElement>());
   const settledRects = useRef(new Map<number, ScreenRect>());
-  // Per-tile face + applied button rects, so the hint ring can be placed
-  // the moment it mounts (the loop only writes rects while rendering).
-  const faceRects = useRef(new Map<number, { face: ScreenRect | null; button: ScreenRect }>());
-  const hintRingEl = useRef<HTMLSpanElement | null>(null);
   const wallEl = useRef<HTMLButtonElement | null>(null);
   const drag = useRef<DragState | null>(null);
   const suppressClick = useRef(false);
@@ -241,7 +205,6 @@ export const HitTargets = forwardRef<HitTargetsHandle, HitTargetsProps>(function
   const live = useRef({
     hand,
     drawnTileId,
-    hintTileId,
     sortMode,
     onSortModeChange,
     onReorder,
@@ -251,7 +214,6 @@ export const HitTargets = forwardRef<HitTargetsHandle, HitTargetsProps>(function
   live.current = {
     hand,
     drawnTileId,
-    hintTileId,
     sortMode,
     onSortModeChange,
     onReorder,
@@ -261,16 +223,11 @@ export const HitTargets = forwardRef<HitTargetsHandle, HitTargetsProps>(function
   useImperativeHandle(
     ref,
     () => ({
-      setTileRect(id, rect, settled, face) {
+      setTileRect(id, rect, settled) {
         // Tiles project ≥ 44 px wide on every preset; the floor only
         // kicks in on very narrow phones, where neighbours may overlap
         // by a few px rather than leave a sub-44 px target.
-        const button = applyRect(tileEls.current.get(id) ?? null, rect, MIN_TOUCH, MIN_TOUCH);
-        if (button) faceRects.current.set(id, { face: face ?? null, button });
-        else faceRects.current.delete(id);
-        if (id === live.current.hintTileId && hintRingEl.current) {
-          applyHintRing(hintRingEl.current, face ?? null, button);
-        }
+        applyRect(tileEls.current.get(id) ?? null, rect, MIN_TOUCH, MIN_TOUCH);
         const s = settled ?? rect;
         if (s) settledRects.current.set(id, s);
         else settledRects.current.delete(id);
@@ -528,25 +485,14 @@ export const HitTargets = forwardRef<HitTargetsHandle, HitTargetsProps>(function
             }}
           >
             {hinted ? (
+              // Zero-visual marker: the hint itself is scene geometry
+              // (`TableScene.hintFrame`, aligned to the tile's pose by
+              // construction); this span only keeps the shared testid
+              // the classic shell's `HandTile` exposes.
               <span
                 data-testid="hand-tile-recommended"
                 aria-hidden="true"
-                className="mj-pulse"
-                ref={(el) => {
-                  hintRingEl.current = el;
-                  if (!el) return;
-                  const cached = faceRects.current.get(id);
-                  applyHintRing(el, cached?.face ?? null, cached?.button ?? null);
-                }}
-                style={{
-                  position: 'absolute',
-                  inset: -HINT_RING_BLEED,
-                  boxSizing: 'border-box',
-                  borderRadius: 6,
-                  border: '2px solid #2dd4bf',
-                  boxShadow: '0 0 10px rgba(45,212,191,0.75)',
-                  pointerEvents: 'none',
-                }}
+                style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
               />
             ) : null}
           </button>

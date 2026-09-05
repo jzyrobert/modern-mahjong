@@ -392,3 +392,62 @@ export function buildCueBandTexture(w = 256, h = 64): Texture {
   tex.colorSpace = SRGBColorSpace;
   return tex;
 }
+
+/**
+ * The discard-hint frame (`TableScene.hintFrame`): a thin rounded-rect
+ * stroke that hugs the hinted tile's printed face, with a soft glow
+ * bleeding outward into the `pad` margin. White on transparent — the
+ * material colour tints it. Dimensions are world units so the stroke
+ * lands exactly `bleed` past the face edge once the quad is scaled to
+ * `(faceW + 2·pad) × (faceH + 2·pad)`; `ppu` pixels per unit keeps the
+ * stroke crisp at DPR 2.6 (≥ 256 px across the face), and the canvas
+ * texture mipmaps for the minified wide-preset view.
+ */
+export function buildHintFrameTexture(
+  faceW: number,
+  faceH: number,
+  pad: number,
+  bleed: number,
+  radius: number,
+  ppu = 256,
+): Texture {
+  const w = Math.round((faceW + 2 * pad) * ppu);
+  const h = Math.round((faceH + 2 * pad) * ppu);
+  const [c, ctx] = canvas2d(w, h);
+  const fw = faceW * (1 + 2 * bleed) * ppu;
+  const fh = faceH * (1 + 2 * bleed) * ppu;
+  const stroke = 0.04 * ppu;
+  const r = (radius + faceW * bleed) * ppu;
+  const path = (inset: number) => {
+    ctx.beginPath();
+    ctx.roundRect(
+      (w - fw) / 2 + inset,
+      (h - fh) / 2 + inset,
+      fw - 2 * inset,
+      fh - 2 * inset,
+      Math.max(1, r - inset),
+    );
+  };
+  // Outer glow: a few widening strokes at falling alpha, clipped to the
+  // outside of the frame so the face itself stays clean.
+  ctx.save();
+  path(0);
+  ctx.rect(0, 0, w, h);
+  ctx.clip('evenodd');
+  for (let i = 1; i <= 5; i++) {
+    ctx.lineWidth = stroke * (1 + i * 1.6);
+    ctx.strokeStyle = `rgba(255,255,255,${(0.22 * (1 - i / 6)).toFixed(3)})`;
+    path(0);
+    ctx.stroke();
+  }
+  ctx.restore();
+  // The frame: a solid stroke whose outer edge is the bleed line.
+  ctx.lineWidth = stroke;
+  ctx.strokeStyle = 'rgba(255,255,255,1)';
+  path(stroke / 2);
+  ctx.stroke();
+  const tex = new CanvasTexture(c);
+  tex.colorSpace = SRGBColorSpace;
+  tex.minFilter = LinearMipmapLinearFilter;
+  return tex;
+}

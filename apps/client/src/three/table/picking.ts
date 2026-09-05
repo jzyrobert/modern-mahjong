@@ -26,8 +26,9 @@ for (const sx of [-1, 1]) {
 }
 /** The four corners of the +Z face only — the printed side the player
  *  sees. Standing hand tiles lean toward the camera, so the full box's
- *  projection also spans the top bevel and the back edge; overlays that
- *  must hug the visible face (the discard-hint ring) project these. */
+ *  projection also spans the top bevel and the back edge; anything that
+ *  must measure the visible face (the discard-hint frame's debug rect,
+ *  a DOM overlay that hugs a tile) projects these. */
 const FACE_CORNERS: Vector3[] = [];
 for (const sx of [-1, 1]) {
   for (const sy of [-1, 1]) {
@@ -36,6 +37,7 @@ for (const sx of [-1, 1]) {
 }
 const _v = new Vector3();
 const _m = new Matrix4();
+const _quad: Vector3[] = [new Vector3(), new Vector3(), new Vector3(), new Vector3()];
 
 /**
  * Project a tile's object→world matrix through `camera` into CSS
@@ -61,6 +63,27 @@ export function projectTileFaceRect(
   out: ScreenRect = { left: 0, top: 0, width: 0, height: 0 },
 ): ScreenRect | null {
   return projectCorners(FACE_CORNERS, matrixWorld, camera, width, height, out);
+}
+
+/**
+ * 2D bounds of a `w`×`h` rectangle centred on the XY plane of
+ * `matrixWorld` (the discard-hint frame's stroke, which lies a hair in
+ * front of the hinted tile's face). Null when behind the camera.
+ */
+export function projectPlaneRect(
+  w: number,
+  h: number,
+  matrixWorld: Matrix4,
+  camera: Camera,
+  width: number,
+  height: number,
+  out: ScreenRect = { left: 0, top: 0, width: 0, height: 0 },
+): ScreenRect | null {
+  _quad[0]!.set(-w / 2, -h / 2, 0);
+  _quad[1]!.set(w / 2, -h / 2, 0);
+  _quad[2]!.set(-w / 2, h / 2, 0);
+  _quad[3]!.set(w / 2, h / 2, 0);
+  return projectCorners(_quad, matrixWorld, camera, width, height, out);
 }
 
 function projectCorners(

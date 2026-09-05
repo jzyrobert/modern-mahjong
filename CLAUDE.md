@@ -521,13 +521,24 @@ CC0-only asset policy, verifier rules. Operational notes:
   page. A scene frame that writes poses must return `live` even when its
   last tween just finished, or the final frame never renders (the hero
   was captured "settled" half-way through its drop-in on SwiftShader).
-- **Overlays that hug a tile use the face rect**: `TableScene.tileRect`
-  is the projection of the whole tile box (top bevel + back edge
-  included, then floored to 44 px for the tap target).
-  `tileFaceRect` / `projectTileFaceRect` is the +Z printed face only —
-  the discard-hint ring is placed from it (`HitTargets.setTileRect`'s
-  fourth argument). Do not inherit the classic shell's `bottom: 10`
-  lift zone on 3D overlays.
+- **Anything that hugs a tile is scene geometry, not a DOM overlay**:
+  the discard hint is a gold frame quad in `TableScene` (`hintFrame`)
+  placed from the hinted tile's pool pose every `writePoses` — same
+  quaternion, +Z offset of `TILE_D / 2 + HINT_GAP`, scaled with the
+  tile — so it is aligned by construction on every camera and follows
+  the tile through drags, re-sorts and the draw / discard springs (a
+  DOM ring re-projected from the HUD side lagged the desktop camera).
+  The hinted tile also rides `HINT_LIFT` on its up axis through the
+  shared `lift` array. `HitTargets` keeps a zero-visual
+  `data-testid="hand-tile-recommended"` span for the shared count
+  assertion only. `TableScene.tileRect` is the projection of the whole
+  tile box (top bevel + back edge included, then floored to 44 px for
+  the tap target); `tileFaceRect` / `projectTileFaceRect` is the +Z
+  printed face only — the debug snapshot's `hint.faceRect` and any DOM
+  overlay that must still hug a face use it, and
+  `three-table.spec.ts` asserts the frame's projected stroke
+  (`hint.markerRect`) matches it. Do not inherit the classic shell's
+  `bottom: 10` lift zone on 3D overlays.
 - **Glass result card**: the top-right corner belongs to the 和 seal
   (`ResultVeil.WinStamp`); controls (save replay) ride inline in the
   action rows via `SaveReplayButton inline`.
