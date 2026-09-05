@@ -539,3 +539,19 @@ CC0-only asset policy, verifier rules. Operational notes:
   `__MAHJONG_TEST_REPLAY_FIXTURE__` (`src/replay/fixture.ts`) and deep-
   link with `?frame=`. RN-web `nativeEvent` has no `locationX` — use
   `src/ui/replay/timeline.ts`'s `pressX` for any tap-to-seek surface.
+- **Tile finish is satin, not lacquer** (`src/three/tiles/materials.ts`:
+  body roughness 0.5, clearcoat 0.3 / 0.45). The steep phone camera
+  looks at the held hand almost face-on, so a glossy body put the key
+  light's specular lobe across the right-hand faces and greyed their
+  ink (round-FB3 "tiles fade toward the right"). Moving the light only
+  moves the wash; keep the finish and the e2e luminance guard in
+  `three-table.spec.ts` (face spread ≤ 12, darkest-ink spread ≤ 28).
+- **Coach-card body takes the room the placement has**
+  (`src/ui/tutorial/bodyCap.ts`): cap = room − measured chrome, whole
+  text when it fits, dense / tight frames on short phones, strips fill
+  their band — but the hand and seat-strip keep-outs always win (a
+  placement that intersects a tile is invalid; fall back to the strip
+  or a shorter body). The card stays at opacity 0 until measurement,
+  frame choice and hand-at-rest have settled, then reveals once
+  (`revealed` seam; recipes wait on it) — never relayout after first
+  paint.

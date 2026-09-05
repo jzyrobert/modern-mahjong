@@ -160,7 +160,7 @@
       ]
     },
     "menu": {
-      "score": 8.6,
+      "score": 8.9,
       "errors": 0,
       "pass": true,
       "issues": [
@@ -246,20 +246,34 @@
           "pass": true,
           "errors": 0,
           "context": "feedback round 2"
+        },
+        {
+          "round": 2,
+          "at": "2026-09-05T16:15:57Z",
+          "score": 8.9,
+          "pass": true,
+          "errors": 0,
+          "context": "feedback round 3 — hero rack in a scroll-native canvas"
         }
       ],
       "openIssues": [
-        {
-          "severity": "medium",
-          "title": "Replay shelf can freeze mid-intro: tiles clipped at the canvas top with a shadow blob below",
-          "where": "replay-library @ phone and phone-tall (3D) — intermittent",
-          "detail": "shot.mjs captured 2 of 5 replay-library frames with the shelf tiles cut off at the top edge of the empty-state card's canvas and a dark smear under them (apps/client/shots/critic/replay-library.phone.3d.png, replay-library.phone-tall.3d.png; both JSONs show perf.renders=1, idle=true, warmupMs ~900-1100). Re-probing the same viewports (probe-shelf.phone.{300,1500,4000,8000}ms.png, same for phone-tall) showed the settled shelf every time with __MAHJONG_SHELF_DEBUG__ bounds top 12 / bottom 74.7 inside a 122 px canvas — so the render-on-demand loop can go idle after its first (slow) frame without drawing the settled pose. Not touched by this branch's two feedback commits (ShelfScene.ts/ReplayShelf3D.tsx unchanged in them), but it is in the 3D flow being shipped; render one more frame after 'settled' flips."
-        },
         {
           "severity": "low",
           "title": "Fullscreen prompt overlaps LAN card copy on a grown, scrolled landscape phone",
           "where": "menu-urlbar @ phone-landscape (915x512 after +100 px, scrolled to end)",
           "detail": "apps/client/shots/critic/menu-urlbar.phone-landscape.3d.png: the FULLSCREEN / DISMISS chips sit over 'Paste the host's URL ... Hosting needs the Android app.' in the LAN card. Root overlay, not menu-owned, and only in this scrolled state, but it is visible in the 3D lobby flow."
+        },
+        {
+          "severity": "low",
+          "title": "Desktop rack sits 7.8 px above the first card (target >= 8)",
+          "where": "1440x900, apps/client/shots/critic3/menu.desktop.3d.png; __MAHJONG_MENU_DEBUG__.rack vs mode-online boundingBox",
+          "detail": "rack footprint y 207.1..334.2 (rackGoal 207.0), hero band y 191..342, first card y = 342: the band's bottom edge coincides with the card top and the layout leaves 7.8 px of clearance inside the band (tagline clearance is 16.1 px, fine). 0.2 px under the stated bar; the phone sizes are 19.7 / 22.1 / 41.3 px. The footprint includes the dice disc over-bound, so the visible gap is marginally larger, but the layout constant is what should give >= 8."
+        },
+        {
+          "severity": "low",
+          "title": "Portrait drift field is reduced to viewport-edge slivers at the rack's height",
+          "where": "412x700, 360x640, 412x915 menu / menu-tutorials / menu-scrolled-mid shots; __MAHJONG_MENU_DEBUG__.tiles",
+          "detail": "At 412x700 the only shown drift tiles are centred at x = -9 (r 12, fade 0.47), 416 (r 11, fade 0.59) and 417 (r 7, fade 0.35): three half-cut backs at the left/right viewport edge, 11 of 14 visible slots parked. At 412x915 a back centred at x = -13 with r 30 and fade 1.0 shows ~40 % of a fully opaque tile at the left edge (menu.phone-tall.3d.png, device px 0-20 x 450-500), plus x = 420 r 22 / 423 r 19 on the right. They read as debris at the frame edge rather than a field, exactly the sliver the reduced-motion path already parks. Not a regression of this PR (the field's behaviour is unchanged by the split; keep-outs and title clearance hold: no disc crosses the title copy, 0 discs over the rack at any scroll stop), but it is the one thing in every portrait frame that is not deliberate."
         }
       ]
     },
@@ -344,7 +358,7 @@
       ]
     },
     "tutorial": {
-      "score": 8.5,
+      "score": 9.0,
       "errors": 0,
       "pass": true,
       "issues": [
@@ -438,6 +452,38 @@
           "openIssues": 8,
           "notes": "Manual feedback round 1: claim-bar ring hugs the CHI/PASS strip on every viewport; opaque coach cards; first card waits for the camera; landscape ring clear of the footer; chevron in a gutter; flights lit under the veil.",
           "at": "2026-09-05T03:59:09.218Z"
+        }
+      ],
+      "rounds": [
+        {
+          "round": 1,
+          "at": "2026-09-05T16:15:57Z",
+          "score": 7.5,
+          "pass": false,
+          "errors": 0,
+          "context": "feedback round 3 — body room (round 1)"
+        },
+        {
+          "round": 2,
+          "at": "2026-09-05T16:15:57Z",
+          "score": 9.0,
+          "pass": true,
+          "errors": 0,
+          "context": "feedback round 3 — after hand keep-out / reveal gate fixes (3a4a4c7)"
+        }
+      ],
+      "openIssues": [
+        {
+          "severity": "low",
+          "title": "Strip title ellipsised at 360x640",
+          "where": "tutorial-basics-4, phone-small (top strip, 'narrow' strip layout)",
+          "detail": "The strip title reads 'Now watch t…' because the title shares its row with Skip lesson + Restart at 336 px card width. The 412 px strips show the full title. Same lesson's dice strip at 412x915 is fine. Cosmetic, but the step's name is the one thing a learner cannot scroll to."
+        },
+        {
+          "severity": "low",
+          "title": "Cap floor still leaves a scroll on the smallest phone and at the 600 px edge",
+          "where": "basics-4 360x640 (3/4 + chevron), claims-0 / ron-0 360x640 (4/5), scoring-0 360x640 (4/8) and 915x412 (3/5), claims-0 412x600 (3/4)",
+          "detail": "Geometry-limited: the 360x640 top strip band is 132.5 px and the centred room 222 px; the text that does not fit is behind a chevron with ≥ 3 lines visible. No fix expected without shrinking type; recorded so the residual is explicit."
         }
       ]
     },
@@ -1359,6 +1405,72 @@
           "item": "If you win, the 和 character overlaps the save replay icon",
           "status": "fixed",
           "note": "Save-replay control is an inline glass chip in the result card action row; the seal owns the corner. e2e: seal overlaps no control; chip sits in the flow."
+        }
+      ]
+    },
+    {
+      "id": "fb3",
+      "at": "2026-09-05T16:15:57Z",
+      "source": "third manual play-test on the Pages preview (Android phone)",
+      "areas": {
+        "menu": {
+          "rounds": [
+            {
+              "score": 8.9,
+              "pass": true,
+              "errors": 0,
+              "fixed": 1,
+              "total": 1
+            }
+          ],
+          "final": 8.9,
+          "pass": true
+        },
+        "tutorial": {
+          "rounds": [
+            {
+              "score": 7.5,
+              "pass": false,
+              "errors": 0,
+              "fixed": 0,
+              "total": 1
+            },
+            {
+              "score": 9.0,
+              "pass": true,
+              "errors": 0,
+              "fixed": 1,
+              "total": 1
+            }
+          ],
+          "final": 9.0,
+          "pass": true
+        },
+        "table": {
+          "rounds": [],
+          "final": null,
+          "pass": null,
+          "note": "integrator fix (satin tile finish) verified by luminance probe + e2e; no separate critic round"
+        }
+      },
+      "userItems": [
+        {
+          "area": "Mobile",
+          "item": "On the main screen the background tiles do not scroll smoothly with the page; they jitter",
+          "status": "fixed",
+          "note": "The rack was redrawn from scroll events on a fixed canvas (a frame behind the compositor). It now renders in its own canvas inside the scrolling content (HeroScene / HeroBandSlot); the drift field stays fixed. Critic: canvas is a scroller descendant, moves by exactly -N synchronously, no view-offset re-applies during scroll; 6 calls / 17.4k tris."
+        },
+        {
+          "area": "Mobile",
+          "item": "The hand tiles fade in colour towards the right",
+          "status": "fixed",
+          "note": "Key-light specular lobe on the glossy tile body across the near row under the steep phone camera. Satin finish (roughness 0.5, clearcoat 0.3 / 0.45): black-ink spread across the row 39 -> 16 luminance levels, faces flat; e2e luminance guard."
+        },
+        {
+          "area": "Tutorial",
+          "item": "The text reserved for the current step is small vertically, so the user has to scroll a lot",
+          "status": "fixed",
+          "note": "Body cap derived from the room the placement has (bodyCap.ts), whole text when it fits, dense/tight frames on short phones, strips fill their band, card reveals once at final geometry. Critic: whole text on every 412-wide state (claims-0 4/4, scoring-0 7/7, basics-4 4/4); 360x640 >= 3 lines + cue; round 1 regression (basics-4 over the hand) fixed, 210 px clear."
         }
       ]
     }

@@ -33,10 +33,11 @@ Live tracker for queued and out-of-scope work. The full design lives in [`docs/P
 
 ### Three.js rewrite follow-ups (PR #434 gauntlet — see `docs/STATUS.json`)
 
-Every subsystem passed its art-director critic before the manual play-tests; the two play-test feedback rounds (`docs/STATUS.json` → `feedbackRounds[0..1]`) then fixed all 18 + 5 user-reported items, verified per item by the critics. The lists below are the critic residuals still open, ranked; each names the state and viewport where the critic saw it. The next `/loop` iteration resumes from the lowest-scoring subsystem.
+Every subsystem passed its art-director critic before the manual play-tests; the three play-test feedback rounds (`docs/STATUS.json` → `feedbackRounds[0..2]`) then fixed all 18 + 5 + 3 user-reported items, verified per item by the critics. The lists below are the critic residuals still open, ranked; each names the state and viewport where the critic saw it. The next `/loop` iteration resumes from the lowest-scoring subsystem.
 
 - **manual feedback round 1** — 18/18 user items fixed; area critics: mobile 7.9 → 8.4 → 8; table 7.3 → 7.7 → 8.1; tutorial 7.4 → 8.2 → 8.5 pass; settings 8.6 pass; input 8.7 pass. Table and mobile stayed under 8.5 on critic-added residuals (listed under table below).
 - **manual feedback round 2** — 5/5 user items fixed (discard-hint ring on the tile face, menu cream underlay + hero rack under the title, replay player on the 3D table, 和 seal off the save control); area critics: menu 8.6 pass (follow-up fixed the khaki app bar), replay 7.5 → 9.0 pass.
+- **manual feedback round 3** — 3/3 user items fixed (menu rack scrolls natively with the page, satin tile finish so the held hand stays even, tutorial body takes the room it has); critics: menu 8.9 pass, tutorial 7.5 → 9.0 pass.
 - **replay** (latest critic: **9.0/10, pass**; 7.5 → 9.0):
   - [ ] [low] Compact timeline seam ~4 px / 2 frames off the rendered card edge (flex min-content vs weight maths; desktop exact) — _replay-player @ phone, phone-small, phone-landscape (frame 105)_
   - [ ] [low] Chapter result clips its faan on the 360 px strip ("Mei Ling wins · 0 …") — _replay-player-end @ phone-small_
@@ -54,8 +55,10 @@ Every subsystem passed its art-director critic before the manual play-tests; the
   - [ ] [low] [mobile] Result panel winning hand wraps 12 + 2 at 360 wide — _phone-small/match-result_
   - [ ] [low] [mobile] Seat badges vanish for the whole toast hold on short phones — _phone + phone-small: match-claim, match-mid-hand, match-claim-toast_
   - [ ] [low] [mobile] Landscape far-seat melds crowd the chrome row — _phone-landscape/match-mid-hand — 西西西 meld at y≈35-57 CSS directly under the header pills_
-- **tutorial** (latest critic: **8.5/10, pass**; 8.3 → 8.7 → 8.5):
-  - [ ] [high] Regression run: two three-table.spec tests fail under host load (pre-existing, table owner) — _e2e/three-table.spec.ts:402 'landscape river zoom stays through the own turn' and :671 'the discard flight stretches under the slow-motion seam'_
+- **tutorial** (latest critic: **9.0/10, pass**; 8.3 → 8.7 → 8.5 → 7.5 → 9.0):
+  - [x] Two three-table.spec tests failing under host load — _stale: both were reworked (waitForFunction / HOLD_DICE) and pass on CI._
+  - [ ] [low] Strip title ellipsised ("Now watch t…") beside Skip / Restart at 360×640 — _tutorial-basics-4 @ phone-small_
+  - [ ] [low] Geometry floor still leaves a scroll on the smallest phone and at the 600 px edge (basics-4 3/4, scoring-0 4/8, claims-0 3/4 at 412×600) — _phone-small, 412×600_
   - [ ] [medium] 'Now watch the bots' card hides bot seat badges at every viewport — _tutorial-basics-4 @ phone / phone-landscape / desktop_
   - [ ] [medium] Phone and desktop no-target cards park over the centre plate and river — _basics-1, claims-0, scoring-0, drawn-game-2 @ phone and desktop; claims-3 @ phone_
   - [ ] [low] Landscape claim strip and tsumo ring are flush with the viewport bottom — _tutorial-claims-3 and tutorial-win-1 @ phone-landscape_
@@ -63,8 +66,10 @@ Every subsystem passed its art-director critic before the manual play-tests; the
   - [ ] [low] Landscape dice step leaves a sliver of hand tile tops between modal and card — _tutorial-basics-0 @ phone-landscape_
   - [ ] [low] Last live wall tile spotlight reads as a plain cream slab — _tutorial-drawn-game-2 @ desktop (1075-1120 x 640-700) and phone-landscape (1500-1570 x 500-580)_
   - [ ] [low] Phone dice step card hides the footer badge and sort control completely — _tutorial-basics-0 @ phone_
-- **menu** (latest critic: **8.6/10, pass**; 8.5 → 8.6 → 8.6):
-  - [ ] [medium] Replay shelf can freeze mid-intro: tiles clipped at the canvas top with a shadow blob (render-on-demand loop idles before the settled pose; intermittent, 2 of 5 shots) — _replay-library @ phone, phone-tall_
+- **menu** (latest critic: **8.9/10, pass**; 8.5 → 8.6 → 8.6 → 8.9):
+  - [x] Replay shelf could freeze mid-intro (last tween frame never rendered) — _fixed with the hero-canvas round (ShelfScene renders the landing frame)._
+  - [ ] [low] Desktop rack sits 7.8 px above the first card (target ≥ 8) — _menu @ desktop_
+  - [ ] [low] Portrait drift field is reduced to viewport-edge slivers at the rack's height — _menu @ phone, phone-small, phone-tall_
   - [ ] [low] Fullscreen prompt overlaps the LAN card copy on a grown + scrolled landscape phone (915×512 mounts the desktop lobby while the prompt uses its own height rule) — _menu-urlbar @ phone-landscape_
   - [ ] [medium] Desktop: a drift tile back sits on the hero rack's 一萬 corner (rack keep-out is phone-only) — _menu, menu-tutorials @ desktop 1440x900 (3d)_
   - [ ] [medium] Desktop replay shelf reads small and aliased inside a 620 px card — _replay-library @ desktop 1440x900 (3d, dpr 1)_
