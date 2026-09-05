@@ -124,6 +124,12 @@ export const STRIP_HEIGHT_ESTIMATE = 96;
 export const NARROW_STRIP_MAX_WIDTH = 520;
 /** Height assumed for the narrow strip before it has been measured. */
 export const NARROW_STRIP_HEIGHT_ESTIMATE = 128;
+/** Shortest band a strip is placed in even when the strip as last
+ *  measured is taller: the overlay sizes the strip's body to the band
+ *  (`placement.room`, two lines and the cue at the least), so it fits on
+ *  the next pass. Without this a strip a few px over the band fell
+ *  through to a card over the hand. */
+export const STRIP_MIN_BAND = 100;
 /** How far past its natural height a strip may stretch to swallow the
  *  chrome under it whole (see `CaptionPlacement.height`). */
 export const STRIP_STRETCH_MAX = 48;
@@ -585,7 +591,7 @@ export function placeCaption({
    * band edge that faces the halo.
    */
   const bandStrip = (): CaptionPlacement | null => {
-    const hs = stripHeight ?? stripHeightEstimate(W);
+    let hs = stripHeight ?? stripHeightEstimate(W);
     const blocked = [halo, ...hard]
       .map((r) => [r.top, r.top + r.height] as [number, number])
       .sort((a, b) => a[0] - b[0]);
@@ -596,10 +602,18 @@ export function placeCaption({
       cursor = Math.max(cursor, b + CHROME_GAP);
     }
     if (H - safe > cursor) bands.push([cursor, H - safe]);
-    const fit = bands.filter(([a, b]) => b - a >= hs).sort((p, q) => q[1] - q[0] - (p[1] - p[0]));
-    const band = fit[0];
+    const bySize = [...bands].sort((p, q) => q[1] - q[0] - (p[1] - p[0]));
+    // The tallest band that holds the strip as measured — or, failing
+    // that, the tallest band at all when it can take a strip shrunk to
+    // its band (the overlay's job, via `room`).
+    const band =
+      bySize.find(([a, b]) => b - a >= hs) ??
+      bySize.find(([a, b]) => b - a >= Math.min(hs, STRIP_MIN_BAND));
     if (!band) return null;
     const [bandTop, bandBottom] = band;
+    // A strip taller than its band is placed as if it were the band's
+    // height: flush to the band, over nothing outside it once it shrinks.
+    hs = Math.min(hs, bandBottom - bandTop);
     const width = Math.max(120, W - safe * 2);
     // The band edge facing the halo: strip up against the ring when the
     // band lies below it, hanging under it when above.
@@ -772,8 +786,15 @@ export function placeCaption({
   // Tall centred halo on a phone: overlap the bottom of the halo. The
   // pedagogically load-bearing content (winning hand, faan summary)
   // sits at the top of the result panel; the bottom holds buttons the
-  // user already knows.
-  return finish('below', Math.round((W - fullWidth) / 2), maxTop, fullWidth, null);
+  // user already knows. Not when that lands on a keep-out region (the
+  // classic portrait dice modal over the hand rows): a strip in the band
+  // over the header keeps both the modal and the hand whole.
+  const overlap = finish('below', Math.round((W - fullWidth) / 2), maxTop, fullWidth, null);
+  if (hardArea({ left: overlap.left, top: overlap.top, width: overlap.width, height: h }) > 0) {
+    const band = bandStrip();
+    if (band) return band;
+  }
+  return overlap;
 }
 
 /** A side dock aligns with the halo edge nearest the screen edge when

@@ -4,8 +4,10 @@ import {
   DENSE_SAVINGS,
   FRAME_HYSTERESIS,
   MIN_SCROLL_LINES,
+  MIN_STRIP_LINES,
   SCARCE_ROOM,
   STACKED_HEADER_SAVINGS,
+  TIGHT_ROOM,
   bodyCap,
   chooseFrame,
   fitBody,
@@ -55,6 +57,20 @@ describe('fitBody: whole text when it fits, whole lines above the cue when not',
     expect(fitBody(72, cap, 18)).toEqual({ overflow: false, height: 72, lines: 4 });
     expect(fitBody(108, cap, 18)).toEqual({ overflow: true, height: 72, lines: 4 });
   });
+  test('the strip never outgrows its band: two lines and the cue at the least', () => {
+    // basics-4 @ 360×640: the band over the HUD is 132 px, the strip's
+    // chrome 64. A three-line floor made a 140 px strip that missed the
+    // band and the card fell back over the hand.
+    const cap = bodyCap(132 - 4, 64, 18, MIN_STRIP_LINES);
+    expect(cap).toBe(64);
+    expect(64 + fitBody(72, cap, 18).height + BODY_CUE_H).toBeLessThanOrEqual(132 - 4);
+    expect(bodyCap(90, 64, 18, MIN_STRIP_LINES)).toBe(MIN_STRIP_LINES * 18 + BODY_CUE_H);
+  });
+  test('412×700 river-ring strip: a 141.6 px band shows the four dice lines whole', () => {
+    // 44 px header row + 4 px gap + 16 px frame = 64 px of chrome.
+    const cap = bodyCap(141.6 - 4, 64, 18, MIN_STRIP_LINES);
+    expect(fitBody(72, cap, 18).overflow).toBe(false);
+  });
 });
 
 describe('chooseFrame: body lines before decoration', () => {
@@ -85,6 +101,54 @@ describe('chooseFrame: body lines before decoration', () => {
     // Scoring 101: eight lines (168 px) — regular leaves 122 px, dense 150.
     expect(
       chooseFrame({ room: 275, chrome: 153, current: 'regular', contentHeight: 168, ...phone }),
+    ).toBe('dense');
+  });
+  test('a room under the tight threshold is tight; a tight card relaxes to dense first', () => {
+    // 412×600 phone between the seat strip and the hand: 177 px.
+    expect(
+      chooseFrame({ room: 177, chrome: null, current: 'regular', contentHeight: null, ...phone }),
+    ).toBe('tight');
+    expect(TIGHT_ROOM).toBeGreaterThan(177);
+    expect(TIGHT_ROOM).toBeLessThan(SCARCE_ROOM);
+    expect(
+      chooseFrame({ room: 300, chrome: 96, current: 'tight', contentHeight: 84, ...phone }),
+    ).toBe('dense');
+  });
+  test('the lesson frame is kept unless the room forces a tighter one', () => {
+    const dense = { lessonFrame: 'dense' as const };
+    // Roomy docked step of a lesson whose intro went dense: stays dense.
+    expect(
+      chooseFrame({
+        room: Number.POSITIVE_INFINITY,
+        chrome: 153,
+        current: 'regular',
+        contentHeight: 42,
+        ...phone,
+        ...dense,
+      }),
+    ).toBe('dense');
+    // A regular lesson keeps regular even where the content rule would
+    // have gone dense …
+    expect(
+      chooseFrame({
+        room: 275,
+        chrome: 153,
+        current: 'regular',
+        contentHeight: 168,
+        ...phone,
+        lessonFrame: 'regular',
+      }),
+    ).toBe('regular');
+    // … but a scarce room still forces dense.
+    expect(
+      chooseFrame({
+        room: 222,
+        chrome: 153,
+        current: 'regular',
+        contentHeight: 42,
+        ...small,
+        lessonFrame: 'regular',
+      }),
     ).toBe('dense');
   });
   test('an unbounded room (desktop, side dock) stays regular', () => {

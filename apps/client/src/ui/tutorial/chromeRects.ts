@@ -210,3 +210,57 @@ export function findFocusRect(
   }
   return { through, from: toRect(root.firstElementChild) };
 }
+
+/** Elements a *centred* (no-target) card must keep off entirely, like
+ *  the hand: the portrait seat strip (`data-testid="seat-strip"`). It is
+ *  chrome a docked card or a strip may still cover whole (the top strip
+ *  under a river ring has nowhere else to go), but a centred card has
+ *  the whole free band to size itself into and so never sits on it. */
+const KEEP_OUT_SELECTOR = '[data-testid="seat-strip"]';
+
+/** Rects (overlay coordinates) of the keep-out elements on the page —
+ *  visible ones only; a strip faded out for a claim toast is not there. */
+export function collectKeepOutRects(doc: Document, origin: { x: number; y: number }): HaloRect[] {
+  const out: HaloRect[] = [];
+  for (const el of Array.from(doc.querySelectorAll<HTMLElement>(KEEP_OUT_SELECTOR))) {
+    if (el.closest(`[${OVERLAY_ATTR}], [${IGNORE_ATTR}]`)) continue;
+    const visible = (el as { checkVisibility?: (o?: object) => boolean }).checkVisibility;
+    if (typeof visible === 'function' && !visible.call(el, { opacityProperty: true })) continue;
+    const b = el.getBoundingClientRect();
+    if (b.width <= 0 || b.height <= 0) continue;
+    out.push({ left: b.left - origin.x, top: b.top - origin.y, width: b.width, height: b.height });
+  }
+  return out;
+}
+
+/** Slack for a tile that rides above its row: the classic shells lift the
+ *  drawn tile 10 px past the wrapper's 4 px pad. */
+const TILE_IN_PLACE_PAD = 12;
+
+/**
+ * True when every visible `own-hand-tile` hit target lies inside the
+ * registered `own-hand` wrapper (with `TILE_IN_PLACE_PAD` of slack), or
+ * there is no hand. The 3D shell moves its hit targets with the tiles
+ * once per rendered frame, so a scan taken while the deal is still in
+ * flight — or before the shell's first frame after a stall — sees tiles
+ * far above the row and reads a collapsed room; the card waits for a
+ * scan where the tiles sit where the row says they are.
+ */
+export function handTilesInPlace(doc: Document): boolean {
+  const hand = doc.querySelector<HTMLElement>(`[${TARGET_ATTR}="own-hand"]`);
+  if (!hand) return true;
+  const h = hand.getBoundingClientRect();
+  if (h.width <= 0 || h.height <= 0) return true;
+  for (const el of Array.from(doc.querySelectorAll<HTMLElement>('[data-testid="own-hand-tile"]'))) {
+    const b = el.getBoundingClientRect();
+    if (b.width <= 0 || b.height <= 0) continue;
+    if (
+      b.left < h.left - TILE_IN_PLACE_PAD ||
+      b.right > h.right + TILE_IN_PLACE_PAD ||
+      b.top < h.top - TILE_IN_PLACE_PAD ||
+      b.bottom > h.bottom + TILE_IN_PLACE_PAD
+    )
+      return false;
+  }
+  return true;
+}

@@ -35,7 +35,8 @@ declare global {
         avoid?: ReadonlyArray<{ left: number; top: number; width: number; height: number }>;
         solid: boolean;
         room?: number;
-        frame?: 'regular' | 'dense';
+        frame?: 'regular' | 'dense' | 'tight';
+        revealed?: boolean;
       }
     | undefined;
   // Published by `three/core/spotlight`.
@@ -1303,3 +1304,166 @@ for (const [label, viewport] of [
     });
   });
 }
+
+/**
+ * Round-4 critic: the hand keep-out wins over body room every time. On
+ * the `watch-bots` step the river ring sits mid-screen with the hand
+ * under it; the card falls back to the strip in the band over the HUD
+ * and never lands on a tile. At 412×700 the strip shows the four-line
+ * caption whole.
+ */
+for (const [label, viewport, whole] of [
+  ['phone', { width: 412, height: 700 }, true],
+  ['phone-small', { width: 360, height: 640 }, false],
+] as const) {
+  test.describe(`3D coach-marks: river-ring step keeps off the hand (${label})`, () => {
+    test.use({ viewport, isMobile: true, hasTouch: true });
+    test.setTimeout(90_000);
+    test('the strip clears every hand tile by ≥ 8 px', async ({ page }) => {
+      await page.addInitScript(() => {
+        (globalThis as { __MAHJONG_TEST_BOT_PACE_MS__?: number }).__MAHJONG_TEST_BOT_PACE_MS__ =
+          5000;
+      });
+      await page.goto('/');
+      await expect(page.getByRole('heading', { name: 'Modern Mahjong' })).toBeVisible();
+      await page.evaluate(() => {
+        const g = globalThis as { __MAHJONG_TEST_START_TUTORIAL__?: (id: string) => void };
+        g.__MAHJONG_TEST_START_TUTORIAL__?.('basics');
+      });
+      await expect(page.getByText('Opening dice')).toBeVisible({ timeout: 15_000 });
+      for (const title of [
+        'Welcome to mahjong',
+        'These are your 14 tiles',
+        'Pick a tile to discard',
+      ]) {
+        await page.getByTestId('tutorial-next').click();
+        await expect(page.getByText(title)).toBeVisible({ timeout: 15_000 });
+      }
+      await expect(page.getByTestId('own-hand-tile').first()).toBeVisible({ timeout: 15_000 });
+      await page.getByTestId('own-hand-tile').first().click();
+      await expect(page.getByText('Now watch the bots')).toBeVisible({ timeout: 15_000 });
+      // The ring follows the river; wait for the card to reveal in its final frame.
+      await expect
+        .poll(() => page.evaluate(() => globalThis.__MAHJONG_TEST_TUTORIAL_LAYOUT__?.revealed), {
+          timeout: 15_000,
+        })
+        .toBe(true);
+      await expect.poll(() => globalThis_layoutKind(page), { timeout: 5_000 }).toBe('strip');
+      const card = await page.getByTestId('tutorial-card').boundingBox();
+      expect(card).not.toBeNull();
+      const tiles = await ownHandTileBoxes(page);
+      expect(tiles.length).toBeGreaterThan(0);
+      for (const t of tiles) {
+        expect(intersects(card!, t), `card over tile ${JSON.stringify(t)}`).toBe(false);
+        expect(t.y - (card!.y + card!.height)).toBeGreaterThanOrEqual(8);
+      }
+      const halo = await page.getByTestId('tutorial-halo').boundingBox();
+      expect(halo).not.toBeNull();
+      expect(intersects(card!, halo!)).toBe(false);
+      const l = await bodyLines(page);
+      expect(l).not.toBeNull();
+      if (whole) expect(l).toMatchObject({ overflow: false, visible: 4, total: 4 });
+      else expect(l!.visible).toBeGreaterThanOrEqual(3);
+      const cta = await page.getByTestId('tutorial-next').boundingBox();
+      expect(cta!.height).toBeGreaterThanOrEqual(44);
+    });
+  });
+}
+
+/**
+ * Round-4 critic: the card must be first shown in its final geometry.
+ * Once visible, its top and height do not move by more than a pixel for
+ * the next 1.5 s (the entrance is opacity only).
+ */
+for (const [label, viewport] of [
+  ['phone', { width: 412, height: 700 }],
+  ['phone-small', { width: 360, height: 640 }],
+] as const) {
+  test.describe(`3D coach-marks: no relayout after the card is shown (${label})`, () => {
+    test.use({ viewport, isMobile: true, hasTouch: true });
+    test.setTimeout(90_000);
+    for (const [lesson, title] of [
+      ['scoring-intro', 'Scoring 101'],
+      ['claims', 'Claiming a tile'],
+      ['basics', 'Opening dice'],
+    ] as const) {
+      test(`${lesson}: the first card holds its box for 1.5 s`, async ({ page }) => {
+        await page.goto('/');
+        await expect(page.getByRole('heading', { name: 'Modern Mahjong' })).toBeVisible();
+        // Sampler: from the first sample with the card visible, record its
+        // box every 50 ms for 1.5 s.
+        const samples = await page.evaluate(async (id) => {
+          const g = globalThis as {
+            __MAHJONG_TEST_START_TUTORIAL__?: (id: string) => void;
+          };
+          g.__MAHJONG_TEST_START_TUTORIAL__?.(id);
+          const start = performance.now();
+          const out: Array<{ t: number; top: number; height: number }> = [];
+          let visibleAt: number | null = null;
+          while (performance.now() - start < 40_000) {
+            const card = document.querySelector('[data-testid="tutorial-card"]');
+            const wrap = card?.parentElement;
+            if (card && wrap && Number(getComputedStyle(wrap).opacity) > 0.05) {
+              const b = card.getBoundingClientRect();
+              if (visibleAt === null) visibleAt = performance.now();
+              out.push({ t: performance.now() - visibleAt, top: b.top, height: b.height });
+              if (performance.now() - visibleAt >= 1500) break;
+            }
+            await new Promise((r) => setTimeout(r, 50));
+          }
+          return out;
+        }, lesson);
+        await expect(page.getByText(title)).toBeVisible();
+        expect(samples.length, 'card never became visible').toBeGreaterThan(20);
+        const first = samples[0]!;
+        const drift = samples.map((s) =>
+          Math.max(Math.abs(s.top - first.top), Math.abs(s.height - first.height)),
+        );
+        expect(
+          Math.max(...drift),
+          `card moved after reveal: ${JSON.stringify(samples.filter((s, i) => drift[i]! > 1).slice(0, 3))}`,
+        ).toBeLessThanOrEqual(1);
+      });
+    }
+  });
+}
+
+/**
+ * Round-4 critic (low): on a 412×600 phone the centred intro card sat on
+ * the seat strip. The strip is a keep-out for centred cards; the card
+ * drops to the tight frame (three lines and the cue) and keeps ≥ 8 px
+ * off both the strip and the hand.
+ */
+test.describe('3D coach-marks: centred card keeps off the seat strip (412×600)', () => {
+  test.use({ viewport: { width: 412, height: 600 }, isMobile: true, hasTouch: true });
+  test.setTimeout(60_000);
+  test('Claiming a tile: clear of the seat strip and the hand', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.getByRole('heading', { name: 'Modern Mahjong' })).toBeVisible();
+    await page.evaluate(() => {
+      const g = globalThis as { __MAHJONG_TEST_START_TUTORIAL__?: (id: string) => void };
+      g.__MAHJONG_TEST_START_TUTORIAL__?.('claims');
+    });
+    await expect(page.getByText('Claiming a tile')).toBeVisible({ timeout: 15_000 });
+    await expect
+      .poll(() => page.evaluate(() => globalThis.__MAHJONG_TEST_TUTORIAL_LAYOUT__?.revealed), {
+        timeout: 15_000,
+      })
+      .toBe(true);
+    const card = await page.getByTestId('tutorial-card').boundingBox();
+    const strip = await page.getByTestId('seat-strip').boundingBox();
+    expect(card).not.toBeNull();
+    expect(strip).not.toBeNull();
+    expect(intersects(card!, strip!), 'card over the seat strip').toBe(false);
+    expect(card!.y - (strip!.y + strip!.height)).toBeGreaterThanOrEqual(8);
+    for (const t of await ownHandTileBoxes(page)) {
+      expect(intersects(card!, t)).toBe(false);
+      expect(t.y - (card!.y + card!.height)).toBeGreaterThanOrEqual(8);
+    }
+    const l = await bodyLines(page);
+    expect(l!.visible).toBeGreaterThanOrEqual(3);
+    expect((await page.getByTestId('tutorial-next').boundingBox())!.height).toBeGreaterThanOrEqual(
+      44,
+    );
+  });
+});

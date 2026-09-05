@@ -310,6 +310,17 @@ const TUTORIAL_NEXT = [
   { waitFor: '[data-testid="tutorial-next"]', timeout: 40000 },
   { clickTutorialNext: true },
 ];
+/** The coach card has passed its reveal gate (final geometry) and its
+ *  200 ms entrance fade is over — the overlay holds the card at opacity
+ *  0 until its measurements, the chrome scans and the hand have settled,
+ *  which on SwiftShader can take a few seconds. */
+const TUTORIAL_CARD_SHOWN = [
+  {
+    waitForFunction: 'globalThis.__MAHJONG_TEST_TUTORIAL_LAYOUT__?.revealed === true',
+    timeout: 30000,
+  },
+  { waitMs: 500 },
+];
 /** Engine state via the test hatch (the zustand store's `state`). */
 const ENGINE = 'globalThis.__MAHJONG_TEST_GET_STATE__?.()?.state';
 
@@ -665,6 +676,7 @@ export const STATES = {
       { waitForText: 'Modern Mahjong' },
       { startTutorial: 'basics' },
       { waitMs: 1200 },
+      ...TUTORIAL_CARD_SHOWN,
     ],
   },
   'tutorial-basics-1': {
@@ -676,6 +688,7 @@ export const STATES = {
       { waitMs: 800 },
       ...TUTORIAL_NEXT,
       { waitMs: 800 },
+      ...TUTORIAL_CARD_SHOWN,
     ],
   },
   'tutorial-basics-2': {
@@ -691,6 +704,7 @@ export const STATES = {
       { waitMs: 500 },
       ...TUTORIAL_NEXT,
       { waitMs: 900 },
+      ...TUTORIAL_CARD_SHOWN,
     ],
   },
   'tutorial-basics-4': {
@@ -722,6 +736,7 @@ export const STATES = {
       // which swaps the card — 10 s later, past the perf wait.
       { waitForFunction: `(${ENGINE}?.discardOrder?.length ?? 0) >= 2`, timeout: 20000 },
       { waitMs: 900 },
+      ...TUTORIAL_CARD_SHOWN,
     ],
   },
   'tutorial-drawn-game-2': {
@@ -745,6 +760,7 @@ export const STATES = {
       // that draw has landed (flight + bounce ≈ 1.2 s), inside the window.
       { waitForFunction: `(${ENGINE}?.wall?.length ?? 2) === 1`, timeout: 20000 },
       { waitMs: 1300 },
+      ...TUTORIAL_CARD_SHOWN,
     ],
   },
   'tutorial-drawn-game-2-draw-flight': {
@@ -770,6 +786,7 @@ export const STATES = {
       // 560 ms × 30 = 16.8 s of flight: the frame lands ~30 % in even
       // after the verifier's own perf wait.
       { waitMs: 4000 },
+      ...TUTORIAL_CARD_SHOWN,
     ],
   },
   'tutorial-drawn-game-2-discard-flight': {
@@ -795,6 +812,7 @@ export const STATES = {
       // 520 ms × 30 = 15.6 s of flight: the frame lands ~30 % in even
       // after the verifier's own perf wait.
       { waitMs: 4000 },
+      ...TUTORIAL_CARD_SHOWN,
     ],
   },
   'tutorial-drawn-game-3': {
@@ -816,6 +834,7 @@ export const STATES = {
       { clickTestId: 'own-hand-tile', nth: 0 },
       { waitForText: 'Lesson complete!', timeout: 25000 },
       { waitMs: 1200 },
+      ...TUTORIAL_CARD_SHOWN,
     ],
   },
   'tutorial-scoring-0': {
@@ -828,6 +847,7 @@ export const STATES = {
       { startTutorial: 'scoring-intro' },
       { waitForOwnHand: true },
       { waitMs: 1200 },
+      ...TUTORIAL_CARD_SHOWN,
     ],
   },
   'tutorial-scoring-1': {
@@ -842,6 +862,7 @@ export const STATES = {
       { waitMs: 800 },
       ...TUTORIAL_NEXT,
       { waitMs: 1200 },
+      ...TUTORIAL_CARD_SHOWN,
     ],
   },
   'tutorial-claims-0': {
@@ -851,6 +872,7 @@ export const STATES = {
       { waitForText: 'Modern Mahjong' },
       { startTutorial: 'claims' },
       { waitMs: 1200 },
+      ...TUTORIAL_CARD_SHOWN,
     ],
   },
   'tutorial-ron-0': {
@@ -865,6 +887,7 @@ export const STATES = {
       { waitForText: 'Modern Mahjong' },
       { startTutorial: 'ron' },
       { waitMs: 1200 },
+      ...TUTORIAL_CARD_SHOWN,
     ],
   },
   'tutorial-claims-3': {
@@ -886,6 +909,7 @@ export const STATES = {
       { clickTestId: 'own-hand-tile', nth: 0 },
       { waitForText: 'Claim the chi!', timeout: 20000 },
       { waitMs: 900 },
+      ...TUTORIAL_CARD_SHOWN,
     ],
   },
   'tutorial-win-1': {
@@ -901,6 +925,7 @@ export const STATES = {
       ...TUTORIAL_NEXT,
       { waitForOwnHand: true },
       { waitMs: 1200 },
+      ...TUTORIAL_CARD_SHOWN,
     ],
   },
 
@@ -1197,6 +1222,7 @@ export const STATES = {
       { click: 'role=button[name="Start next hand"]', timeout: 10000 },
       { waitFor: '[data-testid="shuffle-pill"]', timeout: 10000 },
       { waitMs: 1200 },
+      ...TUTORIAL_CARD_SHOWN,
     ],
   },
   'tutorial-promoted-gang-before': {
@@ -1217,6 +1243,7 @@ export const STATES = {
       { waitMs: 400 },
       { click: 'role=button[name="Promote gang"]', timeout: 10000 },
       { waitMs: 1600 },
+      ...TUTORIAL_CARD_SHOWN,
     ],
   },
   'tutorial-promoted-gang-flight': {
@@ -1229,6 +1256,7 @@ export const STATES = {
       { waitMs: 400 },
       { click: 'role=button[name="Promote gang"]', timeout: 10000 },
       { waitMs: 1500 },
+      ...TUTORIAL_CARD_SHOWN,
     ],
   },
   'match-lobby': {

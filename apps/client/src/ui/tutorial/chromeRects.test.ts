@@ -5,7 +5,9 @@ import {
   TARGET_ATTR,
   chromeSignature,
   collectChromeRects,
+  collectKeepOutRects,
   findFocusRect,
+  handTilesInPlace,
   isChromeCandidate,
 } from './chromeRects';
 
@@ -197,5 +199,67 @@ describe('findFocusRect', () => {
         { x: 0, y: 0 },
       ),
     ).toBeNull();
+  });
+});
+
+describe('collectKeepOutRects / handTilesInPlace', () => {
+  function el(
+    tag: string,
+    attrs: Record<string, string>,
+    rect: { left: number; top: number; width: number; height: number },
+  ): HTMLElement {
+    const node = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+    node.getBoundingClientRect = () =>
+      ({ ...rect, right: rect.left + rect.width, bottom: rect.top + rect.height }) as DOMRect;
+    return node;
+  }
+
+  test('the portrait seat strip is a keep-out, offset by the overlay origin', () => {
+    document.body.innerHTML = '';
+    document.body.appendChild(
+      el('div', { 'data-testid': 'seat-strip' }, { left: 12, top: 64, width: 388, height: 34 }),
+    );
+    expect(collectKeepOutRects(document, { x: 0, y: 10 })).toEqual([
+      { left: 12, top: 54, width: 388, height: 34 },
+    ]);
+    document.body.innerHTML = '';
+    expect(collectKeepOutRects(document, { x: 0, y: 0 })).toEqual([]);
+  });
+
+  test('hand tiles inside the hand row (with lift slack) are in place; tiles in flight are not', () => {
+    document.body.innerHTML = '';
+    const hand = el(
+      'div',
+      { [TARGET_ATTR]: 'own-hand' },
+      { left: 14, top: 397, width: 384, height: 152 },
+    );
+    const inRow = el(
+      'div',
+      { 'data-testid': 'own-hand-tile' },
+      { left: 20, top: 400, width: 40, height: 60 },
+    );
+    // The classic drawn tile lifted 8 px above the wrapper still counts.
+    const lifted = el(
+      'div',
+      { 'data-testid': 'own-hand-tile' },
+      { left: 70, top: 389, width: 40, height: 60 },
+    );
+    hand.append(inRow, lifted);
+    document.body.appendChild(hand);
+    expect(handTilesInPlace(document)).toBe(true);
+    // A 3D hit target still parked where the deal left it, high on the felt.
+    const flying = el(
+      'div',
+      { 'data-testid': 'own-hand-tile' },
+      { left: 120, top: 300, width: 40, height: 60 },
+    );
+    hand.appendChild(flying);
+    expect(handTilesInPlace(document)).toBe(false);
+  });
+
+  test('no hand on the page counts as in place', () => {
+    document.body.innerHTML = '';
+    expect(handTilesInPlace(document)).toBe(true);
   });
 });

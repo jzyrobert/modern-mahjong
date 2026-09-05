@@ -26,6 +26,11 @@ export const BODY_CUE_H = 12;
  *  them leaves the card to the placement's fallbacks (side dock, strip)
  *  rather than clipping the copy to a sentence fragment. */
 export const MIN_SCROLL_LINES = 3;
+/** …except in the bottom strip, which *is* the fallback: it sits in the
+ *  tallest band the ring and the hand leave free, so it must never
+ *  outgrow that band — a 66 px floor once pushed the strip past a 132 px
+ *  band and the card fell back over the hand. Two lines and the cue. */
+export const MIN_STRIP_LINES = 2;
 
 /** Air kept between a strip grown to its band and the band's far edge,
  *  on top of the band's own `CHROME_GAP` — so the strip sits ≥ 12 px
@@ -83,9 +88,13 @@ export function fitBody(contentHeight: number, cap: number, lineHeight: number):
  * stacked header under 380 px. `dense`: 12 px padding, 6 px gaps, 22 px
  * title line, single-row header — the frame landscape phones always
  * use, and the one a portrait phone drops to when the regular frame
- * would not show the whole step text.
+ * would not show the whole step text. `tight`: dense minus the header
+ * row, 10 px padding, 4 px gaps — for rooms that cannot hold even the
+ * dense frame around three lines (a 412×600 phone between the seat
+ * strip and the hand), so the card keeps off both instead of covering
+ * the strip.
  */
-export type CardFrame = 'regular' | 'dense';
+export type CardFrame = 'regular' | 'dense' | 'tight';
 
 /** Chrome the dense frame saves against the regular one: padding
  *  2 × (18 − 12), three gaps × (10 − 6), the title line (26 − 22) and the
@@ -104,6 +113,9 @@ export const STACKED_HEADER_MAX_WIDTH = 380;
  *  flip on the first paint, and every step of a lesson wears the same
  *  frame on that device. */
 export const SCARCE_ROOM = 250;
+/** Rooms under this cannot hold the dense frame (≈ 123 px of chrome)
+ *  around three lines and the cue (75 px): the card goes `tight`. */
+export const TIGHT_ROOM = 198;
 
 /** Margin a dense card needs before it goes back to regular. The
  *  regular chrome is only *estimated* from a dense measurement
@@ -125,13 +137,19 @@ export interface FrameInput {
   width: number;
   /** Natural height of the body text at this width; `null` until measured. */
   contentHeight: number | null;
+  /** Frame the lesson's first card settled on at this viewport, if any. */
+  lessonFrame?: CardFrame | null;
 }
 
 /**
- * Frame for the card: dense when the room is scarce (`SCARCE_ROOM`) or
- * the regular frame's chrome would not leave the whole text in the
- * room, else regular. A dense card only returns to regular once the
- * regular frame would fit with `FRAME_HYSTERESIS` to spare.
+ * Frame for the card: tight when the room is under `TIGHT_ROOM`, dense
+ * when it is scarce (`SCARCE_ROOM`) or the regular frame's chrome would
+ * not leave the whole text in the room, else regular. A dense card only
+ * returns to regular once the regular frame would fit with
+ * `FRAME_HYSTERESIS` to spare. `lessonFrame` — the frame the lesson's
+ * first card settled on — is kept for the rest of the lesson unless the
+ * room forces a tighter one, so a lesson does not mix frames step to
+ * step.
  */
 export function chooseFrame({
   room,
@@ -139,8 +157,12 @@ export function chooseFrame({
   current,
   width,
   contentHeight,
+  lessonFrame = null,
 }: FrameInput): CardFrame {
+  if (room < TIGHT_ROOM) return 'tight';
   if (room < SCARCE_ROOM) return 'dense';
+  if (lessonFrame !== null) return lessonFrame === 'tight' ? 'dense' : lessonFrame;
+  if (current === 'tight') return 'dense';
   if (chrome === null || contentHeight === null || !Number.isFinite(room)) return current;
   const savings = DENSE_SAVINGS + (width < STACKED_HEADER_MAX_WIDTH ? STACKED_HEADER_SAVINGS : 0);
   const regularChrome = current === 'regular' ? chrome : chrome + savings;

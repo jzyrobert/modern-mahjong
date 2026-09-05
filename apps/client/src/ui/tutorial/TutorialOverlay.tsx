@@ -46,6 +46,7 @@ import {
   BODY_CUE_H,
   type CardFrame,
   MIN_SCROLL_LINES,
+  MIN_STRIP_LINES,
   STACKED_HEADER_MAX_WIDTH,
   STRIP_BREATHING,
   bodyCap,
@@ -112,13 +113,7 @@ const webEntrance =
             animationTimingFunction: CARD_EASE,
             animationFillMode: 'both',
           },
-          reduced: {
-            animationKeyframes: frames,
-            animationDuration: '100ms',
-            animationTimingFunction: CARD_EASE,
-            animationFillMode: 'both',
-          },
-        } as unknown as Record<'normal' | 'reduced', ViewStyle>);
+        } as unknown as Record<'normal', ViewStyle>);
       })()
     : null;
 
@@ -271,6 +266,21 @@ const GLASS_BORDER = 'rgba(255,255,255,0.12)';
 /** Card frame on a short (landscape-phone) viewport — see `dense`. */
 const DENSE_CARD_PAD = 12;
 const DENSE_CARD_GAP = 6;
+/** …and the tight frame (see `bodyCap.CardFrame`). */
+const TIGHT_CARD_PAD = 10;
+const TIGHT_CARD_GAP = 4;
+/** How long the web card waits for the hand to rest and the frame to
+ *  settle before it shows with just its measurements agreed (see the
+ *  reveal gate in `ActiveStep`) — under the readiness budget the specs
+ *  hold the CTA to (1.5 s after the scrim). */
+const REVEAL_MAX_MS = 900;
+/** …and the longest it waits for anything at all (see the fallbacks in
+ *  `ActiveStep`): both this much time and this many rendered frames —
+ *  measurements and chrome scans arrive within the first two or three
+ *  frames, so a card still unsettled after both has something else
+ *  wrong and shows regardless. */
+const REVEAL_HARD_MAX_MS = 2500;
+const REVEAL_HARD_MAX_FRAMES = 12;
 const TEXT_PRIMARY = 'rgba(255,255,255,0.92)';
 const TEXT_SECONDARY = 'rgba(255,255,255,0.64)';
 const INK_ON_GOLD = '#2a2418';
@@ -318,7 +328,12 @@ function ActiveStep({ lesson, step, stepIndex, classic }: ActiveStepProps) {
 
   // Chrome the card must not bisect and the feather must not un-dim:
   // DOM controls / labels on web, plus every other registered target.
-  const domChrome = useChromeRects({
+  const {
+    chrome: domChrome,
+    keepOuts: domKeepOuts,
+    scans: chromeScans,
+    handInPlace,
+  } = useChromeRects({
     active: true,
     targetId,
     stepKey,
@@ -363,13 +378,26 @@ function ActiveStep({ lesson, step, stepIndex, classic }: ActiveStepProps) {
     returns: number;
   }>({ key: '', frame: 'regular', returns: 0 });
   const chosenBefore = frameState.key === frameKey ? frameState.frame : null;
+  // Web reveal gate: the step whose card has passed it (see `layoutSettled`).
+  const [revealedFor, setRevealedFor] = useState('');
+  const revealed = revealedFor === stepKey;
+  // The frame the lesson's first card settled on at this viewport: later
+  // steps start from it and keep it unless their room forces a tighter
+  // one, so a lesson never mixes a dense intro with a regular step.
+  const lessonKey = `${lesson.id}|${window.width}x${window.height}`;
+  const lessonFrameRef = useRef<{ key: string; frame: CardFrame | null }>({
+    key: '',
+    frame: null,
+  });
+  const lessonFrame =
+    lessonFrameRef.current.key === lessonKey ? lessonFrameRef.current.frame : null;
   // Short viewport (landscape phone): the card lives in the ~215 px
   // band between the top HUD and the hand row, where the regular
   // frame (18 px pad, 10 px gaps, 26 px title) left two body lines and
   // a scroll for a three-sentence intro. Always dense there; portrait
   // phones go dense when the room turns out scarce (decided below).
-  const shortViewport = window.height <= SHORT_VIEWPORT_MAX_HEIGHT;
-  const frame: CardFrame = shortViewport ? 'dense' : (chosenBefore ?? 'regular');
+  const shortViewport = window.width > window.height && window.height <= SHORT_VIEWPORT_MAX_HEIGHT;
+  const frame: CardFrame = shortViewport ? 'dense' : (chosenBefore ?? lessonFrame ?? 'regular');
   const measureKey = `${frameKey}|${frame}`;
   const [measured, setMeasured] = useState<{
     key: string;
@@ -540,7 +568,11 @@ function ActiveStep({ lesson, step, stepIndex, classic }: ActiveStepProps) {
     stripHeight,
     avoid: avoidForCard,
     keepClear,
-    keepOut: hardKeepOut,
+    // A centred card also keeps off the page's keep-out elements (the
+    // portrait seat strip): it has the whole free band to size itself
+    // into. A docked card or a strip may still cover them whole — the
+    // top strip under a river ring has nowhere else to go.
+    keepOut: cardHalo === null ? [...hardKeepOut, ...domKeepOuts] : hardKeepOut,
   });
   const strip = placement.kind === 'strip';
   modeRef.current = strip ? 'strip' : 'card';
@@ -557,10 +589,9 @@ function ActiveStep({ lesson, step, stepIndex, classic }: ActiveStepProps) {
   // path below.
   const opacity = useRef(new Animated.Value(0)).current;
   const slide = useRef(new Animated.Value(8)).current;
-  // Web paints the card at once (its measurement lands before the first
-  // paint, and the estimate-placed card is already in the right spot);
+  // Web shows the card once its layout is final (the reveal gate below);
   // native waits for the async measurement so the card never jumps.
-  const ready = Platform.OS === 'web' || (strip ? stripHeight : cardHeight) !== null;
+  const ready = Platform.OS === 'web' ? revealed : (strip ? stripHeight : cardHeight) !== null;
   useEffect(() => {
     if (!ready || Platform.OS === 'web') return;
     opacity.setValue(0);
@@ -615,8 +646,8 @@ function ActiveStep({ lesson, step, stepIndex, classic }: ActiveStepProps) {
   // live rect so the card never lands on a tile in flight. A dense card
   // may return to regular once per step — a hard stop on any flip-flop
   // the estimate in `chooseFrame` could otherwise allow.
-  const contentHeight =
-    contentMeasured?.key === `${frameKey}|${placement.width}` ? contentMeasured.height : null;
+  const contentKey = `${frameKey}|${strip ? 'strip' : 'card'}|${placement.width}`;
+  const contentHeight = contentMeasured?.key === contentKey ? contentMeasured.height : null;
   const returns = frameState.key === frameKey ? frameState.returns : 0;
   let chosenFrame: CardFrame = frame;
   if (!compact && !strip && !shortViewport && handAtRest) {
@@ -626,6 +657,7 @@ function ActiveStep({ lesson, step, stepIndex, classic }: ActiveStepProps) {
       current: frame,
       width: placement.width,
       contentHeight,
+      lessonFrame,
     });
     if (chosenFrame === 'regular' && frame === 'dense' && returns >= 1) chosenFrame = 'dense';
   }
@@ -640,15 +672,16 @@ function ActiveStep({ lesson, step, stepIndex, classic }: ActiveStepProps) {
         returns: (prev.key === frameKey ? prev.returns : 0) + (chosenFrame === 'regular' ? 1 : 0),
       }));
   }, [chosenFrame, frame, frameKey]);
-  const dense = !compact && frame === 'dense';
+  const dense = !compact && frame !== 'regular';
+  const tight = !compact && frame === 'tight';
   // Below this width the regular header stacks (lesson + step labels on
   // one row, dots beneath) — a single row would wrap the labels. The
   // dense header is always one row (labels only, no dots) so the body
-  // gets that row back.
+  // gets that row back; the tight frame drops the row altogether.
   const stackedHeader = placement.width < STACKED_HEADER_MAX_WIDTH && !dense;
   // Everything in the card that is not body text, before it is measured:
   // conservative, so the first paint never overshoots the room.
-  const chromeEstimate = strip ? 74 : compact ? 220 : dense ? 200 : 236;
+  const chromeEstimate = strip ? 70 : compact ? 220 : tight ? 160 : dense ? 200 : 236;
   const chromeNow = strip
     ? stripChromeKnown
       ? stripChromeRef.current.chrome
@@ -662,7 +695,77 @@ function ActiveStep({ lesson, step, stepIndex, classic }: ActiveStepProps) {
   // the text height, so a text that fits shows whole with no cue. A
   // strip keeps `STRIP_BREATHING` off its band's far edge so it never
   // outgrows the band that placed it.
-  const bodyMaxHeight = bodyCap(strip ? room - STRIP_BREATHING : room, chromeNow, lineHeight);
+  const bodyMaxHeight = bodyCap(
+    strip ? room - STRIP_BREATHING : room,
+    chromeNow,
+    lineHeight,
+    strip ? MIN_STRIP_LINES : MIN_SCROLL_LINES,
+  );
+  // Reveal gate (web): the card stays at opacity 0 until its layout is
+  // final — chrome and text measured for this frame, the body at the
+  // height those measurements give it, the frame decision settled and
+  // the hand at rest — then fades in once in its final geometry. A card
+  // shown at the chrome *estimate* grew by a line or two a frame later.
+  // The fallbacks below bound the wait so nothing can hide a lesson.
+  const fitNow = contentHeight !== null ? fitBody(contentHeight, bodyMaxHeight, lineHeight) : null;
+  const expectedBody = fitNow ? fitNow.height + (fitNow.overflow ? BODY_CUE_H : 0) : null;
+  const measurementsSettled =
+    (strip ? stripChromeKnown : chromeKnown) &&
+    bodyHeight !== null &&
+    expectedBody !== null &&
+    Math.abs(bodyHeight - expectedBody) <= 1;
+  // Three chrome scans (mount + the next two frames) with the hand tiles
+  // where the hand row says they are: the room is read from the page as
+  // it is once the deal and any mount-time churn are over, so the frame
+  // the card reveals in is the one it keeps. (A scan taken between two
+  // rendered frames of the 3D shell still saw the tiles' hit targets in
+  // flight and read a 30 px room.)
+  const pageSettled = Platform.OS !== 'web' || (chromeScans >= 3 && handInPlace);
+  const layoutSettled =
+    measurementsSettled &&
+    pageSettled &&
+    chosenFrame === frame &&
+    (handRect === null || handAtRest);
+  useLayoutEffect(() => {
+    if (layoutSettled && !revealed) {
+      setRevealedFor(stepKey);
+      if (!compact && !strip && !shortViewport)
+        lessonFrameRef.current = { key: lessonKey, frame: chosenFrame };
+    }
+  }, [layoutSettled, revealed, stepKey, compact, strip, shortViewport, lessonKey, chosenFrame]);
+  // Fallbacks: past `REVEAL_MAX_MS` the hand and frame gates are waived
+  // once the measurements agree (a deal that never settles must not hide
+  // a lesson); after `REVEAL_HARD_MAX_MS` *and* `REVEAL_HARD_MAX_FRAMES`
+  // rendered frames the card shows regardless. Frames as well as
+  // wall-clock: measurements arrive with frames, so a main thread
+  // stalled for seconds (a software renderer compiling the dealt tiles'
+  // programs) queues no frames and forces nothing out early — a timer
+  // that expired during the stall did, and the card grew a line or two
+  // the moment the measurements landed. Wall-clock as well as frames: at
+  // 60 fps a dozen frames is 200 ms, well inside a deal.
+  const [waived, setWaived] = useState('');
+  useEffect(() => {
+    if (revealed) return;
+    const soft = setTimeout(() => setWaived(stepKey), REVEAL_MAX_MS);
+    const startedAt = performance.now();
+    let frames = 0;
+    let raf = requestAnimationFrame(function tick() {
+      frames += 1;
+      if (frames >= REVEAL_HARD_MAX_FRAMES && performance.now() - startedAt >= REVEAL_HARD_MAX_MS) {
+        setRevealedFor(stepKey);
+        return;
+      }
+      raf = requestAnimationFrame(tick);
+    });
+    return () => {
+      clearTimeout(soft);
+      cancelAnimationFrame(raf);
+    };
+  }, [revealed, stepKey]);
+  useLayoutEffect(() => {
+    if (!revealed && waived === stepKey && measurementsSettled && pageSettled)
+      setRevealedFor(stepKey);
+  }, [revealed, waived, stepKey, measurementsSettled, pageSettled]);
   publishLayout({
     stepKey,
     placement,
@@ -676,6 +779,20 @@ function ActiveStep({ lesson, step, stepIndex, classic }: ActiveStepProps) {
     room,
     frame: chosenFrame,
     bodyMaxHeight,
+    revealed,
+    gate: {
+      chromeKnown: strip ? stripChromeKnown : chromeKnown,
+      bodyHeight,
+      expectedBody,
+      contentHeight,
+      handAtRest,
+      handRect: toHalo(handRect),
+      frame,
+      room,
+      scans: chromeScans,
+      handInPlace,
+      settled: layoutSettled,
+    },
   });
   const ctaLabel = step.ctaLabel ?? 'Got it';
   const canRestart = stepIndex > 0 && lesson.id !== '_stub';
@@ -768,7 +885,7 @@ function ActiveStep({ lesson, step, stepIndex, classic }: ActiveStepProps) {
           webEntrance
             ? ready
               ? reducedMotion
-                ? webEntrance.reduced
+                ? { opacity: 1 }
                 : webEntrance.normal
               : { opacity: 0 }
             : { opacity: ready ? opacity : 0, transform: [{ translateY: slide }] },
@@ -791,9 +908,25 @@ function ActiveStep({ lesson, step, stepIndex, classic }: ActiveStepProps) {
               borderRadius: 16,
               borderWidth: 1,
               borderColor: GLASS_BORDER,
-              padding: strip ? STRIP_PAD : compact ? 12 : dense ? DENSE_CARD_PAD : 18,
+              padding: strip
+                ? STRIP_PAD
+                : compact
+                  ? 12
+                  : tight
+                    ? TIGHT_CARD_PAD
+                    : dense
+                      ? DENSE_CARD_PAD
+                      : 18,
               paddingHorizontal: strip ? 14 : undefined,
-              gap: strip ? 6 : compact ? 6 : dense ? DENSE_CARD_GAP : 10,
+              gap: strip
+                ? STRIP_GAP
+                : compact
+                  ? 6
+                  : tight
+                    ? TIGHT_CARD_GAP
+                    : dense
+                      ? DENSE_CARD_GAP
+                      : 10,
               boxShadow: '0 12px 40px rgba(0,0,0,0.35)',
               // A stretched strip covers the chrome beneath it whole; the
               // content sits centred in the extra height.
@@ -806,7 +939,7 @@ function ActiveStep({ lesson, step, stepIndex, classic }: ActiveStepProps) {
           {strip ? (
             <View
               ref={stripRef}
-              style={{ gap: 6 }}
+              style={{ gap: STRIP_GAP }}
               onLayout={(e) => recordMeasure('strip', e.nativeEvent.layout.height + STRIP_FRAME)}
             >
               <StripBody
@@ -822,6 +955,13 @@ function ActiveStep({ lesson, step, stepIndex, classic }: ActiveStepProps) {
                     prev?.key === measureKey && prev.height === height
                       ? prev
                       : { key: measureKey, height },
+                  )
+                }
+                onContentHeight={(height) =>
+                  setContentMeasured((prev) =>
+                    prev?.key === contentKey && prev.height === height
+                      ? prev
+                      : { key: contentKey, height },
                   )
                 }
                 cta={
@@ -844,14 +984,16 @@ function ActiveStep({ lesson, step, stepIndex, classic }: ActiveStepProps) {
             </View>
           ) : (
             <>
-              <CardHeader
-                lessonLabel={lessonLabel}
-                ids={lesson.steps.map((st) => st.id)}
-                index={stepIndex}
-                compact={compact}
-                stacked={stackedHeader}
-                dots={!dense || placement.width >= STACKED_HEADER_MAX_WIDTH}
-              />
+              {tight ? null : (
+                <CardHeader
+                  lessonLabel={lessonLabel}
+                  ids={lesson.steps.map((st) => st.id)}
+                  index={stepIndex}
+                  compact={compact}
+                  stacked={stackedHeader}
+                  dots={!dense || placement.width >= STACKED_HEADER_MAX_WIDTH}
+                />
+              )}
               <Text
                 accessibilityRole="header"
                 accessibilityLabel={`Tutorial step: ${step.caption.title}`}
@@ -878,12 +1020,13 @@ function ActiveStep({ lesson, step, stepIndex, classic }: ActiveStepProps) {
                       : { key: measureKey, height },
                   )
                 }
-                onContentHeight={(height) => {
-                  const key = `${frameKey}|${placement.width}`;
+                onContentHeight={(height) =>
                   setContentMeasured((prev) =>
-                    prev?.key === key && prev.height === height ? prev : { key, height },
-                  );
-                }}
+                    prev?.key === contentKey && prev.height === height
+                      ? prev
+                      : { key: contentKey, height },
+                  )
+                }
               />
               <View
                 style={{
@@ -955,6 +1098,22 @@ export interface TutorialLayoutSnapshot {
   frame: CardFrame;
   /** Body cap handed to `ScrollBody` (unsnapped). */
   bodyMaxHeight: number;
+  /** The card has passed its reveal gate (web) and is visible. */
+  revealed: boolean;
+  /** Inputs of the reveal gate, for the specs' relayout probes. */
+  gate: {
+    chromeKnown: boolean;
+    bodyHeight: number | null;
+    expectedBody: number | null;
+    contentHeight: number | null;
+    handAtRest: boolean;
+    handRect: HaloRect | null;
+    frame: CardFrame;
+    room: number;
+    scans: number;
+    handInPlace: boolean;
+    settled: boolean;
+  };
 }
 
 function publishLayout(snapshot: TutorialLayoutSnapshot): void {
@@ -996,8 +1155,14 @@ const STRIP_LINE_HEIGHT = 18;
 /** Vertical padding of the strip card, and the card frame around the
  *  strip's content block (padding + 1 px borders) — the content is what
  *  gets measured, so a stretched strip reports its natural height. */
-const STRIP_PAD = 8;
+const STRIP_PAD = 6;
 const STRIP_FRAME = STRIP_PAD * 2 + 2;
+/** Gap between the strip's header row and its body. With the padding
+ *  this is what keeps the four-line dice caption whole in the 141 px
+ *  band over the HUD on a 412×700 phone (44 px header row + 4 + 14 px
+ *  frame + 72 px of text = 134 ≤ 141 − 4) and three lines plus the cue
+ *  in the 132 px band on a 360×640 one (62 + 66 = 128 ≤ 132 − 4). */
+const STRIP_GAP = 4;
 
 /**
  * Scrolling body copy with an overflow cue. When the text is taller than
@@ -1111,6 +1276,7 @@ function StripBody({
   body,
   bodyMaxHeight,
   onBodyLayout,
+  onContentHeight,
   cta,
   skip,
   restart,
@@ -1123,6 +1289,7 @@ function StripBody({
   body: string;
   bodyMaxHeight: number;
   onBodyLayout: (height: number) => void;
+  onContentHeight: (height: number) => void;
   cta: ReactNode;
   skip: ReactNode;
   restart: ReactNode;
@@ -1170,6 +1337,7 @@ function StripBody({
       fontSize={13}
       lineHeight={STRIP_LINE_HEIGHT}
       onLayout={onBodyLayout}
+      onContentHeight={onContentHeight}
     />
   );
   if (narrow) {

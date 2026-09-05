@@ -22,6 +22,7 @@ import {
   STRADDLE_MAX,
   STRADDLE_PAD,
   STRIP_HEIGHT_ESTIMATE,
+  STRIP_MIN_BAND,
   STRIP_STRETCH_MAX,
   centredRoom,
   clearGrazers,
@@ -1213,5 +1214,111 @@ describe('strip placements report the band they may grow into', () => {
     const own = haloFor({ x: 40, y: 571, w: 332, h: 177 }, phone)!;
     expect(placeCaption({ viewport: phone, halo: own, cardHeight: 195 }).room).toBeUndefined();
     expect(placeCaption({ viewport: phone, halo: null, cardHeight: 195 }).room).toBeUndefined();
+  });
+});
+
+describe('basics-4 (river ring, hand below): the strip wins over a card on the hand', () => {
+  // 3D phone probes of the `watch-bots` step: the river ring mid-screen,
+  // the two-row hand under it, the seat strip and HUD over it.
+  const cases = [
+    {
+      name: '360×640',
+      viewport: { width: 360, height: 640 },
+      ring: { left: 97.7, top: 152.5, width: 164.7, height: 109 },
+      hand: { left: 15.3, top: 344.2, width: 329.5, height: 146 },
+      chrome: [
+        { left: 12, top: 64, width: 336, height: 34 },
+        { left: 12, top: 12, width: 120, height: 40 },
+      ],
+      band: 152.5 - CHROME_GAP - safeInset(360),
+    },
+    {
+      name: '412×700',
+      viewport: { width: 412, height: 700 },
+      ring: { left: 109.7, top: 161.5, width: 192.5, height: 142 },
+      hand: { left: 33.9, top: 397.4, width: 344.2, height: 152.5 },
+      chrome: [
+        { left: 12, top: 64, width: 388, height: 34 },
+        { left: 12, top: 12, width: 120, height: 40 },
+      ],
+      band: 161.5 - CHROME_GAP - safeInset(412),
+    },
+  ];
+  for (const c of cases) {
+    test(`${c.name}: a strip too tall for the top band still lands there, never on the hand`, () => {
+      const handRect = {
+        left: c.hand.left,
+        top: c.hand.top,
+        width: c.hand.width,
+        height: c.hand.height,
+      };
+      // 249 px card (regular frame, four lines) and a 140 px strip — the
+      // three-line-floor strip that once missed the 132 px band.
+      for (const stripHeight of [null, 140, 116]) {
+        const p = placeCaption({
+          viewport: c.viewport,
+          halo: c.ring,
+          cardHeight: 249,
+          stripHeight,
+          avoid: c.chrome,
+          keepOut: [handRect],
+        });
+        expect(p.kind, `strip ${stripHeight}`).toBe('strip');
+        expect(p.room).toBeCloseTo(c.band, 5);
+        expect(p.top).toBeGreaterThanOrEqual(safeInset(c.viewport.width));
+        const height = Math.min(stripHeight ?? NARROW_STRIP_HEIGHT_ESTIMATE, p.room ?? 0);
+        const card = { left: p.left, top: p.top, width: p.width, height };
+        expect(intersectionArea(card, handRect)).toBe(0);
+        expect(handRect.top - (card.top + card.height)).toBeGreaterThanOrEqual(CHROME_GAP);
+        expect(intersectionArea(card, c.ring)).toBe(0);
+      }
+    });
+  }
+  test('a band under STRIP_MIN_BAND is not used for an oversize strip', () => {
+    // Ring and hand leave only ~90 px bands.
+    const vp = { width: 360, height: 400 };
+    const ring = { left: 60, top: 110, width: 240, height: 100 };
+    const hand = { left: 10, top: 300, width: 340, height: 60 };
+    const p = placeCaption({
+      viewport: vp,
+      halo: ring,
+      cardHeight: 200,
+      stripHeight: 140,
+      keepOut: [hand],
+    });
+    expect(p.kind).not.toBe('strip');
+    expect(STRIP_MIN_BAND).toBeGreaterThan(90);
+  });
+});
+
+describe('portrait overlap fallback: never onto the hand', () => {
+  // Classic phone (412×700) dice step: the modal fills 175–520, the
+  // two hand rows sit under it from 590, the header row and discards
+  // toggle are above. No slot fits a 237 px card.
+  const vp = { width: 412, height: 700 };
+  const modal = haloFor({ x: 20, y: 183, w: 372, h: 330 }, vp)!;
+  const hand = { left: 12, top: 590, width: 388, height: 100 };
+  const header = [
+    { left: 12, top: 12, width: 340, height: 34 },
+    { left: 300, top: 132, width: 90, height: 24 },
+  ];
+  test('with the hand as a keep-out the card takes the band over the header', () => {
+    const p = placeCaption({
+      viewport: vp,
+      halo: modal,
+      cardHeight: 237,
+      avoid: header,
+      keepOut: [hand],
+    });
+    expect(p.kind).toBe('strip');
+    const height = Math.min(NARROW_STRIP_HEIGHT_ESTIMATE, p.room ?? 0);
+    const card = { left: p.left, top: p.top, width: p.width, height };
+    expect(intersectionArea(card, hand)).toBe(0);
+    expect(intersectionArea(card, modal)).toBe(0);
+  });
+  test('without a keep-out the overlap dock stands (the result-panel steps)', () => {
+    const p = placeCaption({ viewport: vp, halo: modal, cardHeight: 237, avoid: header });
+    expect(p.kind).toBe('below');
+    expect(p.top + 237).toBeLessThanOrEqual(vp.height - safeInset(vp.width));
   });
 });

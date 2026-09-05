@@ -1,7 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 import type { TargetRect } from './TargetRegistry';
-import { chromeSignature, collectChromeRects } from './chromeRects';
+import {
+  chromeSignature,
+  collectChromeRects,
+  collectKeepOutRects,
+  handTilesInPlace,
+} from './chromeRects';
 import type { HaloRect } from './placement';
 import type { TutorialTargetId } from './types';
 
@@ -12,6 +17,8 @@ import type { TutorialTargetId } from './types';
 const RESCAN_MS = 400;
 
 const EMPTY: HaloRect[] = [];
+/** Scans counted before the counter stops (only "at least three" matters). */
+const SCANS_TRACKED = 3;
 
 interface Options {
   active: boolean;
@@ -28,10 +35,25 @@ interface Options {
   originNode: () => { getBoundingClientRect(): { left: number; top: number } } | null;
 }
 
+export interface ChromeScan {
+  /** Chrome rects for `placeCaption`'s `avoid` list. */
+  chrome: HaloRect[];
+  /** Page elements a centred card keeps off (see `collectKeepOutRects`). */
+  keepOuts: HaloRect[];
+  /** Scans completed for the current step — the first runs at mount,
+   *  the next two on the following frames. A card that waits for the
+   *  third has seen the page as it is after any mount-time churn. */
+  scans: number;
+  /** The last scan found every hand tile inside the hand row (see
+   *  `handTilesInPlace`); `true` off web. */
+  handInPlace: boolean;
+}
+
 /**
- * Chrome rects for `placeCaption`'s `avoid` list. Web only — native
- * shells return an empty list (the registry's other targets still
- * feed the avoid list there via `TargetRegistryApi.readAll`).
+ * Chrome rects for `placeCaption`'s `avoid` list, plus the page's
+ * keep-out elements. Web only — native shells return empty lists (the
+ * registry's other targets still feed the avoid list there via
+ * `TargetRegistryApi.readAll`).
  */
 export function useChromeRects({
   active,
@@ -41,9 +63,13 @@ export function useChromeRects({
   settledRect,
   focusBand = null,
   originNode,
-}: Options): HaloRect[] {
+}: Options): ChromeScan {
   const [rects, setRects] = useState<HaloRect[]>(EMPTY);
+  const [keepOuts, setKeepOuts] = useState<HaloRect[]>(EMPTY);
+  const [scans, setScans] = useState(0);
+  const [handInPlace, setHandInPlace] = useState(true);
   const sigRef = useRef('');
+  const keepSigRef = useRef('');
   const originRef = useRef(originNode);
   originRef.current = originNode;
   const bandRef = useRef(focusBand);
@@ -59,6 +85,10 @@ export function useChromeRects({
       if (sigRef.current !== '') {
         sigRef.current = '';
         setRects(EMPTY);
+      }
+      if (keepSigRef.current !== '') {
+        keepSigRef.current = '';
+        setKeepOuts(EMPTY);
       }
       return;
     }
@@ -76,6 +106,14 @@ export function useChromeRects({
         sigRef.current = sig;
         setRects(next);
       }
+      const keep = collectKeepOutRects(document, { x: o?.left ?? 0, y: o?.top ?? 0 });
+      const keepSig = chromeSignature(keep);
+      if (keepSig !== keepSigRef.current) {
+        keepSigRef.current = keepSig;
+        setKeepOuts(keep);
+      }
+      setScans((n) => (n < SCANS_TRACKED ? n + 1 : n));
+      setHandInPlace(handTilesInPlace(document));
     };
     scanRef.current = scan;
     scan();
@@ -98,9 +136,19 @@ export function useChromeRects({
     };
   }, [active, targetId, viewport]);
 
+  // Per step: the count restarts ahead of the step's first scan (both
+  // land in one render) so a new card waits for its own scans.
+  const stepRef = useRef('');
   useEffect(() => {
+    if (stepRef.current !== stepKey) {
+      stepRef.current = stepKey;
+      setScans(0);
+    }
     scanRef.current(stepKey, settledRect, focusBand);
   }, [stepKey, settledRect, focusBand]);
 
-  return rects;
+  return useMemo(
+    () => ({ chrome: rects, keepOuts, scans, handInPlace }),
+    [rects, keepOuts, scans, handInPlace],
+  );
 }
