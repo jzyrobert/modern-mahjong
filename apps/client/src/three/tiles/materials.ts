@@ -56,7 +56,7 @@ export interface TileMaterialUniforms {
 }
 
 /** Body roughness shared by the tile faces and, by default, the back. */
-export const TILE_BODY_ROUGHNESS = 0.32;
+export const TILE_BODY_ROUGHNESS = 0.5; // see the material note below on the satin finish
 
 export function tileBackColors(skin: TileBackSkin): { top: Color; bottom: Color } {
   const s = TILE_BACK_SKINS[skin];
@@ -109,8 +109,14 @@ export function createTileMaterial(
     color: 0xffffff,
     roughness: TILE_BODY_ROUGHNESS,
     metalness: 0.0,
-    clearcoat: 0.55,
-    clearcoatRoughness: 0.22,
+    // Satin, not lacquer: the steep phone camera looks at the held hand
+    // almost face-on, and a glossy body (0.32) + tight clearcoat (0.55 /
+    // 0.22) put the key light's specular lobe across the right-hand
+    // faces — ivory washed out, black ink greyed toward the row's end
+    // (round-FB3 feedback). Rougher body + softer coat keeps the bevel
+    // sheen while the faces stay even across the row.
+    clearcoat: 0.3,
+    clearcoatRoughness: 0.45,
     sheen: 0.15,
     sheenColor: new Color('#fff4dc'),
   }) as MeshPhysicalMaterial & { tileUniforms: TileMaterialUniforms };

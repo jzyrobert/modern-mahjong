@@ -1482,6 +1482,69 @@ test('the glass result card keeps the save-replay chip in the action row, not th
   expect(errors, 'console / page errors').toEqual([]);
 });
 
+test('phone hand row: tile faces and glyph ink stay even across the row (no specular wash)', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 412, height: 700 });
+  const errors: string[] = [];
+  await startSolo(page, errors);
+  await waitForDealSettled(page);
+  await page.waitForTimeout(600);
+  // Near (front) row of the two-row held hand: the tiles the steep phone
+  // camera looks at almost face-on, where the key light's specular lobe
+  // used to wash the right-hand faces and grey their ink (round-FB3
+  // feedback: "the hand tiles fade in colour towards the right").
+  const boxes = await handTileBoxes(page);
+  const rowY = Math.max(...boxes.map((b) => b.y));
+  const near = boxes.filter((b) => Math.abs(b.y - rowY) < 8).sort((a, b) => a.x - b.x);
+  expect(near.length).toBeGreaterThanOrEqual(5);
+  const shot = await page.screenshot({ fullPage: false });
+  const dpr = 2.625;
+  const stats = await page.evaluate(
+    async ({ png, rects, scale }) => {
+      const img = new Image();
+      img.src = `data:image/png;base64,${png}`;
+      await img.decode();
+      const c = document.createElement('canvas');
+      c.width = img.width;
+      c.height = img.height;
+      const ctx = c.getContext('2d');
+      if (!ctx) throw new Error('no 2d context');
+      ctx.drawImage(img, 0, 0);
+      return rects.map((r) => {
+        // Inner face: skip the bevel and the ring/lift margins.
+        const x = Math.round((r.x + r.width * 0.2) * scale);
+        const w = Math.round(r.width * 0.6 * scale);
+        const y = Math.round((r.y + r.height * 0.25) * scale);
+        const h = Math.round(r.height * 0.55 * scale);
+        const d = ctx.getImageData(x, y, w, h).data;
+        const lum: number[] = [];
+        for (let i = 0; i < d.length; i += 4)
+          lum.push(0.2126 * (d[i] ?? 0) + 0.7152 * (d[i + 1] ?? 0) + 0.0722 * (d[i + 2] ?? 0));
+        lum.sort((a, b) => a - b);
+        return {
+          face: lum[Math.floor(lum.length * 0.85)] ?? 0,
+          ink: lum[Math.floor(lum.length * 0.05)] ?? 0,
+        };
+      });
+    },
+    { png: shot.toString('base64'), rects: near, scale: dpr },
+  );
+  const faces = stats.map((s) => s.face);
+  expect(
+    Math.max(...faces) - Math.min(...faces),
+    `face luminance ${faces.join(' ')}`,
+  ).toBeLessThanOrEqual(12);
+  // Ink darkness depends on the glyph colour (bamboo green vs. black
+  // winds), so compare the darkest three tiles — the black-ink ones — to
+  // each other: a specular wash lifts the right-most well above the rest.
+  const inks = stats.map((s) => s.ink).sort((a, b) => a - b);
+  expect((inks[2] ?? 0) - (inks[0] ?? 0), `ink luminance ${inks.join(' ')}`).toBeLessThanOrEqual(
+    28,
+  );
+  expect(errors, 'console / page errors').toEqual([]);
+});
+
 type Box = { x: number; y: number; width: number; height: number };
 const overlaps = (a: Box, b: Box) =>
   a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
