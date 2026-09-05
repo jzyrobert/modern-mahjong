@@ -24,59 +24,93 @@ import type { TargetFocus, TutorialTargetId } from './types';
 const HALF_LIFE_S = 0.06;
 const EPSILON_PX = 0.3;
 
+/**
+ * @param snapKey Step identity. When it changes the displayed rect is
+ *   the live one on that very render — no ease from the previous step's
+ *   target. The ease used to start from wherever the last step's ring
+ *   was and advance on `requestAnimationFrame`; on a starved renderer
+ *   (software GL, a busy tab) the next animation frame is the next
+ *   *painted* frame, up to a second away, and the ring sat on the
+ *   previous target while the card was already placed for the new one.
+ */
 export function useFollowedRect(
   target: TargetRect | null,
   reducedMotion: boolean,
+  snapKey = '',
 ): TargetRect | null {
   const [shown, setShown] = useState<TargetRect | null>(target);
   const shownRef = useRef<TargetRect | null>(target);
   const targetRef = useRef(target);
   targetRef.current = target;
+  const keyRef = useRef(snapKey);
+  const rafRef = useRef(0);
+  const lastRef = useRef(0);
+  // Derived at render time so the first paint of a new step already
+  // rings its target; the effect below then commits the same rect.
+  const snapped = keyRef.current !== snapKey;
 
   useEffect(() => {
-    const from = shownRef.current;
-    if (!target || !from || reducedMotion) {
-      shownRef.current = target;
-      setShown(target);
+    const goal = target;
+    if (snapped || !goal || !shownRef.current || reducedMotion) {
+      keyRef.current = snapKey;
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = 0;
+      if (shownRef.current !== goal) {
+        shownRef.current = goal;
+        setShown(goal);
+      }
       return;
     }
-    if (sameRect(from, target)) return;
-    let raf = 0;
-    let last = performance.now();
-    const cur = { ...from };
+    if (sameRect(shownRef.current, goal)) return;
+    // One loop follows `targetRef` until it lands; a target that moves
+    // again mid-flight only changes the goal. Restarting the loop per
+    // target identity cancelled the pending frame each time, and a
+    // registry re-writing its rect every render could starve it.
+    if (rafRef.current) return;
+    lastRef.current = performance.now();
     const tick = (now: number) => {
-      const goal = targetRef.current;
-      if (!goal) {
-        shownRef.current = null;
-        setShown(null);
+      rafRef.current = 0;
+      const to = targetRef.current;
+      const from = shownRef.current;
+      if (!to || !from) {
+        shownRef.current = to;
+        setShown(to);
         return;
       }
-      // Wall-clock, unclamped: on a starved renderer (software GL, a
-      // busy tab) frames can be 500 ms+ apart, and a clamped step eased
-      // the ring from the previous step's target over several seconds.
+      // Wall-clock, unclamped: on a starved renderer frames can be
+      // 500 ms+ apart, and a clamped step eased the ring over seconds.
       // With the real dt a long gap simply lands the ring on the goal.
-      const dt = Math.max(0, (now - last) / 1000);
-      last = now;
+      const dt = Math.max(0, (now - lastRef.current) / 1000);
+      lastRef.current = now;
       const k = 1 - 2 ** (-dt / HALF_LIFE_S);
-      cur.x += (goal.x - cur.x) * k;
-      cur.y += (goal.y - cur.y) * k;
-      cur.w += (goal.w - cur.w) * k;
-      cur.h += (goal.h - cur.h) * k;
+      const cur = {
+        x: from.x + (to.x - from.x) * k,
+        y: from.y + (to.y - from.y) * k,
+        w: from.w + (to.w - from.w) * k,
+        h: from.h + (to.h - from.h) * k,
+      };
       const done =
-        Math.abs(goal.x - cur.x) < EPSILON_PX &&
-        Math.abs(goal.y - cur.y) < EPSILON_PX &&
-        Math.abs(goal.w - cur.w) < EPSILON_PX &&
-        Math.abs(goal.h - cur.h) < EPSILON_PX;
-      const next = done ? goal : { x: cur.x, y: cur.y, w: cur.w, h: cur.h };
+        Math.abs(to.x - cur.x) < EPSILON_PX &&
+        Math.abs(to.y - cur.y) < EPSILON_PX &&
+        Math.abs(to.w - cur.w) < EPSILON_PX &&
+        Math.abs(to.h - cur.h) < EPSILON_PX;
+      const next = done ? to : cur;
       shownRef.current = next;
       setShown(next);
-      if (!done) raf = requestAnimationFrame(tick);
+      if (!done) rafRef.current = requestAnimationFrame(tick);
     };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [target, reducedMotion]);
+    rafRef.current = requestAnimationFrame(tick);
+  }, [target, reducedMotion, snapKey, snapped]);
 
-  return shown;
+  useEffect(
+    () => () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = 0;
+    },
+    [],
+  );
+
+  return snapped ? target : shown;
 }
 
 export function useSettledRect(

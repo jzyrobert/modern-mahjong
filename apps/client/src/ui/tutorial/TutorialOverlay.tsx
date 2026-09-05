@@ -1,5 +1,13 @@
 import { useRouter } from 'expo-router';
-import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   Animated,
   Easing,
@@ -43,6 +51,7 @@ import {
   type CaptionPlacement,
   HALO_RADIUS,
   type HaloRect,
+  NARROW_STRIP_MAX_WIDTH,
   SIDE_CARD_MIN_WIDTH,
   SIDE_GAP,
   type SideMask,
@@ -272,7 +281,7 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
     originNode,
   );
   const focused = liveRect !== null && liveRect !== registeredRect;
-  const haloRect = useFollowedRect(liveRect, reducedMotion);
+  const haloRect = useFollowedRect(liveRect, reducedMotion, stepKey);
   const cardRect = useSettledRect(liveRect, stepKey);
 
   // Chrome the card must not bisect and the feather must not un-dim:
@@ -330,6 +339,10 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
     [measureKey],
   );
   const cardRef = useRef<View | null>(null);
+  /** The strip's content block: a stretched strip (`placement.height`)
+   *  is measured here so its natural height, not the stretched one,
+   *  feeds the placement. */
+  const stripRef = useRef<View | null>(null);
   /** Layout the card is currently rendered in (read by the measurers). */
   const modeRef = useRef<'card' | 'strip'>('card');
   // Body (ScrollView) height, same keying — `cardHeight - bodyHeight` is
@@ -340,11 +353,23 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
    *  viewport (see below). */
   const chromeRef = useRef<{ key: string; chrome: number }>({ key: '', chrome: 0 });
 
-  // A centred (no-target) card keeps clear of the user's hand row: the
-  // registered `own-hand` rect is a keep-out for its placement, and when
-  // the card is too tall to fit above it the body scrolls instead of
-  // the card sitting on the tiles (landscape phone, 3D table).
+  // Every card keeps clear of the user's hand row: the registered
+  // `own-hand` rect is a keep-out for its placement (the two-row portrait
+  // hand is taller than the chrome scan admits, and a card that landed
+  // on it hid a whole row of tiles), and when a centred card is too tall
+  // to fit above it the body scrolls instead of the card sitting on the
+  // tiles (landscape phone, 3D table). The result panel is the same kind
+  // of region for a card that is not about it (a lesson-complete card).
   const handRect = useTutorialTargetRect(targetId === 'own-hand' ? null : 'own-hand');
+  const panelRect = useTutorialTargetRect(targetId === 'result-panel' ? null : 'result-panel');
+  const hardKeepOut = useMemo(() => {
+    const out: HaloRect[] = [];
+    const hand = toHalo(handRect);
+    const panel = toHalo(panelRect);
+    if (hand) out.push(hand);
+    if (panel) out.push(panel);
+    return out;
+  }, [handRect, panelRect]);
 
   // Web: measure synchronously before paint. RNW's `onLayout` goes
   // through ResizeObserver + setTimeout, i.e. it waits for a frame — on a
@@ -354,11 +379,11 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
   useLayoutEffect(() => {
     if (Platform.OS !== 'web') return;
     if ((modeRef.current === 'strip' ? stripHeight : cardHeight) !== null) return;
-    const node = cardRef.current as unknown as {
+    const node = (modeRef.current === 'strip' ? stripRef.current : cardRef.current) as unknown as {
       getBoundingClientRect?: () => { height: number };
     } | null;
     const h = node?.getBoundingClientRect?.().height ?? 0;
-    if (h > 0) recordMeasure(modeRef.current, h);
+    if (h > 0) recordMeasure(modeRef.current, h + (modeRef.current === 'strip' ? STRIP_FRAME : 0));
   }, [cardHeight, stripHeight, recordMeasure]);
 
   // The ring grows to enclose any small control it would otherwise
@@ -429,6 +454,7 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
     stripHeight,
     avoid: avoidForCard,
     keepClear,
+    keepOut: hardKeepOut,
   });
   const strip = placement.kind === 'strip';
   modeRef.current = strip ? 'strip' : 'card';
@@ -619,8 +645,11 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
           // scrim. Also the CTA's grandparent — the scoring specs
           // measure the card via `xpath=ancestor::*[2]` of "Got it".
           ref={cardRef}
+          testID="tutorial-card"
           pointerEvents="auto"
-          onLayout={(e) => recordMeasure(modeRef.current, e.nativeEvent.layout.height)}
+          onLayout={(e) => {
+            if (!strip) recordMeasure('card', e.nativeEvent.layout.height);
+          }}
           style={[
             {
               width: '100%',
@@ -628,46 +657,57 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
               borderRadius: 16,
               borderWidth: 1,
               borderColor: GLASS_BORDER,
-              padding: strip ? 10 : compact ? 12 : 18,
+              padding: strip ? STRIP_PAD : compact ? 12 : 18,
               paddingHorizontal: strip ? 14 : undefined,
               gap: strip ? 6 : compact ? 6 : 10,
               boxShadow: '0 12px 40px rgba(0,0,0,0.35)',
+              // A stretched strip covers the chrome beneath it whole; the
+              // content sits centred in the extra height.
+              height: strip ? placement.height : undefined,
+              justifyContent: strip ? 'center' : undefined,
             },
             solid ? null : webOnly({ backdropFilter: `blur(${GLASS_BLUR_PX}px) saturate(140%)` }),
           ]}
         >
           {strip ? (
-            <StripBody
-              lessonLabel={lessonLabel}
-              ids={lesson.steps.map((st) => st.id)}
-              index={stepIndex}
-              title={step.caption.title}
-              body={step.caption.body}
-              bodyMaxHeight={bodyMaxHeight}
-              onBodyLayout={(height) =>
-                setBodyMeasured((prev) =>
-                  prev?.key === measureKey && prev.height === height
-                    ? prev
-                    : { key: measureKey, height },
-                )
-              }
-              cta={
-                step.completedWhen ? null : (
-                  <PrimaryButton label={ctaLabel} onPress={advance} testID="tutorial-next" />
-                )
-              }
-              skip={<QuietButton label="Skip lesson" onPress={dismiss} compact />}
-              restart={
-                canRestart ? (
-                  <QuietButton
-                    label="Restart"
-                    accessibilityLabel="Restart lesson"
-                    onPress={() => transport.joinSoloTutorial(lesson.id)}
-                    compact
-                  />
-                ) : null
-              }
-            />
+            <View
+              ref={stripRef}
+              style={{ gap: 6 }}
+              onLayout={(e) => recordMeasure('strip', e.nativeEvent.layout.height + STRIP_FRAME)}
+            >
+              <StripBody
+                narrow={placement.width < NARROW_STRIP_MAX_WIDTH}
+                lessonLabel={lessonLabel}
+                ids={lesson.steps.map((st) => st.id)}
+                index={stepIndex}
+                title={step.caption.title}
+                body={step.caption.body}
+                bodyMaxHeight={bodyMaxHeight}
+                onBodyLayout={(height) =>
+                  setBodyMeasured((prev) =>
+                    prev?.key === measureKey && prev.height === height
+                      ? prev
+                      : { key: measureKey, height },
+                  )
+                }
+                cta={
+                  step.completedWhen ? null : (
+                    <PrimaryButton label={ctaLabel} onPress={advance} testID="tutorial-next" />
+                  )
+                }
+                skip={<QuietButton label="Skip lesson" onPress={dismiss} compact />}
+                restart={
+                  canRestart ? (
+                    <QuietButton
+                      label="Restart"
+                      accessibilityLabel="Restart lesson"
+                      onPress={() => transport.joinSoloTutorial(lesson.id)}
+                      compact
+                    />
+                  ) : null
+                }
+              />
+            </View>
           ) : (
             <>
               <CardHeader
@@ -805,6 +845,11 @@ function otherTargetRects(
 
 /** Body copy in the landscape bottom strip: one size, up to three lines. */
 const STRIP_LINE_HEIGHT = 18;
+/** Vertical padding of the strip card, and the card frame around the
+ *  strip's content block (padding + 1 px borders) — the content is what
+ *  gets measured, so a stretched strip reports its natural height. */
+const STRIP_PAD = 10;
+const STRIP_FRAME = STRIP_PAD * 2 + 2;
 const STRIP_BODY_LINES = 3;
 /** Gutter under a capped, scrollable body that holds the "more below"
  *  chevron — its own row, never painted over the last visible line. */
@@ -896,12 +941,16 @@ function ScrollBody({
 }
 
 /**
- * Landscape bottom-strip layout (`placement.kind === 'strip'`): one row
+ * Bottom-strip layout (`placement.kind === 'strip'`). Landscape: one row
  * of title + lesson / step labels, then the body beside the buttons —
  * ~90 px tall, so it sits over the dimmed hand row under a wide modal
- * target instead of covering the modal.
+ * target instead of covering the modal. `narrow` (a portrait phone's
+ * band between the hand rows and the footer, ~150 px): title and step
+ * label stack beside the buttons, the body runs the full width beneath
+ * — the landscape row would leave the body ~150 px wide there.
  */
 function StripBody({
+  narrow = false,
   lessonLabel,
   ids,
   index,
@@ -913,6 +962,7 @@ function StripBody({
   skip,
   restart,
 }: {
+  narrow?: boolean;
   lessonLabel: string;
   ids: string[];
   index: number;
@@ -924,6 +974,72 @@ function StripBody({
   skip: ReactNode;
   restart: ReactNode;
 }) {
+  const titleText = (
+    <Text
+      accessibilityRole="header"
+      accessibilityLabel={`Tutorial step: ${title}`}
+      numberOfLines={1}
+      style={{
+        fontSize: 15,
+        lineHeight: 19,
+        fontWeight: '800',
+        letterSpacing: -0.2,
+        color: TEXT_PRIMARY,
+        fontFamily: TITLE_FONT,
+        flexShrink: 1,
+      }}
+    >
+      {title}
+    </Text>
+  );
+  const stepLabel =
+    ids.length > 1 ? (
+      <Text
+        testID="tutorial-step-label"
+        numberOfLines={1}
+        accessibilityLabel={`Step ${index + 1} of ${ids.length}`}
+        style={[MICRO_LABEL, { color: TEXT_SECONDARY }]}
+      >
+        {`Step ${index + 1} of ${ids.length}`}
+      </Text>
+    ) : null;
+  const buttons = (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+      {skip}
+      {restart}
+      {cta}
+    </View>
+  );
+  const scrollBody = (
+    <ScrollBody
+      text={body}
+      maxHeight={bodyMaxHeight}
+      fontSize={13}
+      lineHeight={STRIP_LINE_HEIGHT}
+      onLayout={onBodyLayout}
+    />
+  );
+  if (narrow) {
+    return (
+      <>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+          }}
+        >
+          <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+            {titleText}
+            {stepLabel}
+          </View>
+          {buttons}
+        </View>
+        {scrollBody}
+      </>
+    );
+  }
   return (
     <>
       <View
@@ -934,22 +1050,7 @@ function StripBody({
           gap: 12,
         }}
       >
-        <Text
-          accessibilityRole="header"
-          accessibilityLabel={`Tutorial step: ${title}`}
-          numberOfLines={1}
-          style={{
-            fontSize: 15,
-            lineHeight: 19,
-            fontWeight: '800',
-            letterSpacing: -0.2,
-            color: TEXT_PRIMARY,
-            fontFamily: TITLE_FONT,
-            flexShrink: 1,
-          }}
-        >
-          {title}
-        </Text>
+        {titleText}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 0 }}>
           <Text numberOfLines={1} style={[MICRO_LABEL, { color: COLORS.gold }]}>
             {lessonLabel}
@@ -957,33 +1058,14 @@ function StripBody({
           {ids.length > 1 ? (
             <>
               <StepDots ids={ids} index={index} />
-              <Text
-                testID="tutorial-step-label"
-                numberOfLines={1}
-                accessibilityLabel={`Step ${index + 1} of ${ids.length}`}
-                style={[MICRO_LABEL, { color: TEXT_SECONDARY }]}
-              >
-                {`Step ${index + 1} of ${ids.length}`}
-              </Text>
+              {stepLabel}
             </>
           ) : null}
         </View>
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <ScrollBody
-            text={body}
-            maxHeight={bodyMaxHeight}
-            fontSize={13}
-            lineHeight={STRIP_LINE_HEIGHT}
-            onLayout={onBodyLayout}
-          />
-        </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-          {skip}
-          {restart}
-          {cta}
-        </View>
+        <View style={{ flex: 1, minWidth: 0 }}>{scrollBody}</View>
+        {buttons}
       </View>
     </>
   );

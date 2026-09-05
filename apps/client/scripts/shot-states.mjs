@@ -309,6 +309,27 @@ export const STATES = {
       { waitMs: 350 },
     ],
   },
+  'tutorial-drawn-game-3': {
+    // `complete` step of `drawn-game` (no target): the wall has run out
+    // and the Drawn game result panel is up. The lesson-complete card
+    // must keep off the panel — beside it on landscape / desktop, where
+    // the panel leaves a free column — instead of sitting over its
+    // rules row and NEXT DEALER line.
+    owner: 'tutorial',
+    steps: [
+      { initScript: 'globalThis.__MAHJONG_TEST_BOT_PACE_MS__ = 300;' },
+      { goto: '/' },
+      { waitForText: 'Modern Mahjong' },
+      { startTutorial: 'drawn-game' },
+      { waitMs: 800 },
+      { clickTutorialNext: true },
+      { waitForOwnHand: true },
+      { waitMs: 600 },
+      { clickTestId: 'own-hand-tile', nth: 0 },
+      { waitForText: 'Lesson complete!', timeout: 25000 },
+      { waitMs: 1200 },
+    ],
+  },
   'tutorial-scoring-0': {
     // Intro caption of `scoring-intro` (no target): the centred card must
     // stay horizontally centred and clear of the hand row / toggles.

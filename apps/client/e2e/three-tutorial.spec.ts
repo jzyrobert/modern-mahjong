@@ -312,13 +312,17 @@ test.describe('classic coach-marks: chrome avoidance (phone)', () => {
     const ctaBox = (await cta.boundingBox()) as Box;
     expect(ctaBox.height).toBeGreaterThanOrEqual(44);
     // The gold ring's aura and the pulse lean away from the action row
-    // (tight top feather), and the hand halo opens onto the bottom edge
-    // since the tiles run to it.
+    // (tight top feather). The hand runs close to the bottom edge: with
+    // no room for even a slim ring there the halo opens onto the edge;
+    // with a few px of room it closes at the edge margin instead.
     const layout = await page.evaluate(() => globalThis.__MAHJONG_TEST_TUTORIAL_LAYOUT__);
     expect(layout?.placement.kind).toBe('above');
     expect(layout?.placement.overlapsChrome).toBe(false);
     expect(layout?.feather?.top).toBe(3);
-    expect(haloBox.y + haloBox.height).toBeGreaterThanOrEqual(915 + 14);
+    const hand = (await page.locator('[data-tutorial-target="own-hand"]').boundingBox()) as Box;
+    if (hand.y + hand.height > 915 - 4)
+      expect(haloBox.y + haloBox.height).toBeGreaterThanOrEqual(915 + 14);
+    else expect(haloBox.y + haloBox.height).toBe(915 - 2);
     expect(pageErrors, pageErrors.join('\n')).toEqual([]);
   });
 
@@ -760,6 +764,16 @@ test.describe('3D coach-marks: readiness under CPU throttling', () => {
  * "maximum update depth" on the own-hand step before it).
  */
 const RING_SLACK = 12;
+/** Client rects of the own-hand hit targets, read in one evaluate — a
+ *  locator per tile would wait on any hit target the shell re-creates
+ *  mid-assertion. */
+const ownHandTileBoxes = (page: import('@playwright/test').Page): Promise<Box[]> =>
+  page.evaluate(() =>
+    Array.from(document.querySelectorAll('[data-testid="own-hand-tile"]'))
+      .map((el) => el.getBoundingClientRect())
+      .filter((b) => b.width > 0 && b.height > 0)
+      .map((b) => ({ x: b.left, y: b.top, width: b.width, height: b.height })),
+  );
 const clampToViewport = (b: Box, vp: { width: number; height: number }): Box => {
   const x = Math.max(0, b.x);
   const y = Math.max(0, b.y);
@@ -807,6 +821,19 @@ for (const [label, use] of [
       const chi = page.getByRole('button', { name: 'Chi' });
       await expect(chi).toBeVisible();
       const halo = page.getByTestId('tutorial-halo');
+      // No lag: the ring moves with the card, on the render that swaps
+      // the step — not on the next animation frame, which a starved
+      // renderer can hold back for a second while the ring still sits
+      // on the previous step's target (the hand row, the river).
+      const first = await page.evaluate(() => {
+        const h = document.querySelector('[data-testid="tutorial-halo"]')?.getBoundingClientRect();
+        const s = document.querySelector('[data-testid="claim-bar"]')?.getBoundingClientRect();
+        if (!h || !s) return null;
+        return { haloCy: h.top + h.height / 2, stripTop: s.top, stripBottom: s.bottom };
+      });
+      expect(first).not.toBeNull();
+      expect(first!.haloCy).toBeGreaterThan(first!.stripTop - 12);
+      expect(first!.haloCy).toBeLessThan(first!.stripBottom + 12);
       await expect
         .poll(
           async () => {
@@ -830,11 +857,22 @@ for (const [label, use] of [
               ? 'hugging'
               : `loose ${slack.map(Math.round)}`;
           },
-          { timeout: 15_000 },
+          // The strip's own entrance (an 8 px slide) is the only motion
+          // left to settle; SwiftShader paints it within a couple of frames.
+          { timeout: 2_500 },
         )
         .toBe('hugging');
       // Exactly one live registration feeds the ring: one strip in the DOM.
       await expect(strip).toHaveCount(1);
+      // The card never sits on a hand tile: on a portrait phone the hand
+      // is two rows and the card docks above both, not over the upper one.
+      const cardBox = await page.getByTestId('tutorial-card').boundingBox();
+      expect(cardBox).not.toBeNull();
+      for (const b of await ownHandTileBoxes(page))
+        expect(
+          intersects(cardBox!, b),
+          `card ${JSON.stringify(cardBox)} over tile ${JSON.stringify(b)}`,
+        ).toBe(false);
       expect(pageErrors, pageErrors.join('\n')).toEqual([]);
     });
   });
@@ -860,13 +898,35 @@ test.describe('3D coach-marks: first card waits for the camera to settle', () =>
     await expect(page.getByTestId('table-3d')).toBeVisible({ timeout: 15_000 });
     const cta = page.getByTestId('tutorial-next');
     await expect(cta).toBeVisible({ timeout: 15_000 });
-    const waited = Date.now() - startedAt;
-    // Sampled the instant the card is up: the rig is at rest — or, on a
-    // starved rasteriser whose rig steps seconds apart, the gate's hard
-    // cap (3.5 s) released the card rather than the card ignoring the rig.
+    expect(Date.now() - startedAt).toBeGreaterThan(0);
+    // The rig is at rest the instant the card is up — the scene now
+    // snaps to the preset for the host's real size at build, so there is
+    // no lobby → table dolly for the gate to wait out — and stays at
+    // rest: the hand row does not move under the card afterwards.
+    const handBox = async () => {
+      const boxes = await ownHandTileBoxes(page);
+      if (boxes.length === 0) return null;
+      return {
+        x: Math.min(...boxes.map((b) => b.x)),
+        y: Math.min(...boxes.map((b) => b.y)),
+        r: Math.max(...boxes.map((b) => b.x + b.width)),
+        b: Math.max(...boxes.map((b) => b.y + b.height)),
+      };
+    };
     const motion = await page.evaluate(() => globalThis.__MAHJONG_TEST_CAMERA_MOTION__?.() ?? null);
     expect(motion).not.toBeNull();
-    if (motion!.live) expect(waited).toBeGreaterThanOrEqual(3400);
+    expect(motion!.live).toBe(false);
+    const before = await handBox();
+    expect(before).not.toBeNull();
+    for (let i = 0; i < 4; i++) {
+      await page.waitForTimeout(400);
+      const m = await page.evaluate(() => globalThis.__MAHJONG_TEST_CAMERA_MOTION__?.() ?? null);
+      expect(m?.live, `rig live ${i * 400 + 400} ms after the card`).toBe(false);
+    }
+    const after = await handBox();
+    expect(after).not.toBeNull();
+    for (const k of ['x', 'y', 'r', 'b'] as const)
+      expect(Math.abs(after![k] - before![k]), `hand ${k} moved after the card`).toBeLessThan(2);
   });
 });
 
@@ -909,5 +969,124 @@ test.describe('3D coach-marks: tsumo button ring (phone)', () => {
         { timeout: 15_000 },
       )
       .toBe('hugging');
+    // "Your hand is complete" — the card must leave both hand rows visible.
+    const cardBox = await page.getByTestId('tutorial-card').boundingBox();
+    expect(cardBox).not.toBeNull();
+    for (const b of await ownHandTileBoxes(page))
+      expect(intersects(cardBox!, b), `card over tile ${JSON.stringify(b)}`).toBe(false);
+  });
+});
+
+/**
+ * The dice step on a portrait phone: the modal fills the middle of the
+ * screen and the two-row hand sits under it, so no card fits beside or
+ * below the modal. The overlay falls back to the slim strip in the band
+ * under the hand (over the footer, covered whole) rather than a card
+ * over the lower row of tiles.
+ */
+test.describe('3D coach-marks: portrait dice step keeps off the hand', () => {
+  test.use({ viewport: { width: 412, height: 915 }, isMobile: true, hasTouch: true });
+  test.setTimeout(60_000);
+  test('the strip sits under both hand rows and the modal stays whole', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.getByRole('heading', { name: 'Modern Mahjong' })).toBeVisible();
+    await page.evaluate(() => {
+      const g = globalThis as { __MAHJONG_TEST_START_TUTORIAL__?: (id: string) => void };
+      g.__MAHJONG_TEST_START_TUTORIAL__?.('basics');
+    });
+    await expect(page.getByText('Opening dice')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('own-hand-tile').first()).toBeVisible({ timeout: 15_000 });
+    await expect.poll(async () => globalThis_layoutKind(page), { timeout: 5_000 }).toBe('strip');
+    const cardBox = await page.getByTestId('tutorial-card').boundingBox();
+    expect(cardBox).not.toBeNull();
+    const modal = await page.locator('[data-testid^="dice-ceremony-"]').boundingBox();
+    expect(modal).not.toBeNull();
+    expect(intersects(cardBox!, modal!)).toBe(false);
+    for (const b of await ownHandTileBoxes(page))
+      expect(intersects(cardBox!, b), `card over tile ${JSON.stringify(b)}`).toBe(false);
+    // The CTA is on screen and clickable from the strip.
+    const cta = page.getByTestId('tutorial-next');
+    await expect(cta).toBeVisible();
+    const ctaBox = await cta.boundingBox();
+    expect(ctaBox!.y + ctaBox!.height).toBeLessThanOrEqual(915);
+    // Every HUD control under the strip (turn chip, table chip, footer
+    // badge, sort pills) is either clear of it or covered whole — the
+    // strip stretches over the band rather than cutting a chip in two.
+    const bisected = await page.evaluate((card) => {
+      const out: string[] = [];
+      for (const el of Array.from(
+        document.querySelectorAll<HTMLElement>('[data-testid], [role="button"]'),
+      )) {
+        if (el.closest('[data-tutorial-overlay]')) continue;
+        // A paint-less slot holding other controls (the action tray) is
+        // layout, not chrome — the same rule the overlay's scan applies.
+        const cs = getComputedStyle(el);
+        if (
+          el.childElementCount > 0 &&
+          el.querySelector('[data-testid], [role="button"]') !== null &&
+          (cs.backgroundColor === 'rgba(0, 0, 0, 0)' || cs.backgroundColor === 'transparent') &&
+          Number.parseFloat(cs.borderTopWidth) === 0
+        )
+          continue;
+        const b = el.getBoundingClientRect();
+        if (b.width < 8 || b.height < 8 || b.height > 100) continue;
+        const ix = Math.max(0, Math.min(card.x + card.width, b.right) - Math.max(card.x, b.left));
+        const iy = Math.max(0, Math.min(card.y + card.height, b.bottom) - Math.max(card.y, b.top));
+        if (ix * iy === 0) continue;
+        const whole = ix * iy >= b.width * b.height - 1;
+        if (!whole)
+          out.push(
+            `${el.getAttribute('data-testid') ?? el.getAttribute('aria-label')} ${Math.round(b.top)}-${Math.round(b.bottom)}`,
+          );
+      }
+      return out;
+    }, cardBox!);
+    expect(bisected, `strip ${JSON.stringify(cardBox)} bisects ${bisected.join(', ')}`).toEqual([]);
+  });
+});
+
+const globalThis_layoutKind = (page: import('@playwright/test').Page) =>
+  page.evaluate(() => globalThis.__MAHJONG_TEST_TUTORIAL_LAYOUT__?.placement.kind ?? 'none');
+
+/**
+ * Lesson-complete card on a landscape phone with the Drawn game result
+ * panel up: the panel is not the step's target, so the centred card must
+ * not sit over it — it docks into the free column beside the panel.
+ */
+test.describe('3D coach-marks: landscape lesson-complete card keeps off the result panel', () => {
+  test.use({ viewport: { width: 915, height: 412 }, isMobile: true, hasTouch: true });
+  test.setTimeout(90_000);
+  test('the card docks beside the Drawn game panel', async ({ page }) => {
+    await page.addInitScript(() => {
+      (globalThis as { __MAHJONG_TEST_BOT_PACE_MS__?: number }).__MAHJONG_TEST_BOT_PACE_MS__ = 200;
+    });
+    await page.goto('/');
+    await expect(page.getByRole('heading', { name: 'Modern Mahjong' })).toBeVisible();
+    await page.evaluate(() => {
+      const g = globalThis as { __MAHJONG_TEST_START_TUTORIAL__?: (id: string) => void };
+      g.__MAHJONG_TEST_START_TUTORIAL__?.('drawn-game');
+    });
+    await expect(page.getByText('Drawn games')).toBeVisible({ timeout: 15_000 });
+    await page.getByTestId('tutorial-next').click();
+    await expect(page.getByText('Discard to start')).toBeVisible();
+    await page.getByTestId('own-hand-tile').first().click();
+    await expect(page.getByText('Lesson complete!')).toBeVisible({ timeout: 30_000 });
+    const panel = page.locator('[data-tutorial-target="result-panel"]');
+    await expect(panel).toHaveCount(1);
+    const panelBox = await panel.boundingBox();
+    expect(panelBox).not.toBeNull();
+    await expect
+      .poll(
+        async () => {
+          const card = await page.getByTestId('tutorial-card').boundingBox();
+          if (!card) return 'missing';
+          return intersects(card, panelBox!) ? `over panel ${JSON.stringify(card)}` : 'clear';
+        },
+        { timeout: 3_000 },
+      )
+      .toBe('clear');
+    const card = await page.getByTestId('tutorial-card').boundingBox();
+    expect(card!.width).toBeLessThanOrEqual(440);
+    expect(card!.x + card!.width).toBeLessThanOrEqual(915 - 12 + 1);
   });
 });

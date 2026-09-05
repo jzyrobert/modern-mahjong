@@ -114,6 +114,13 @@ export function collectChromeRects({
     if (targetSel !== null && !inTarget && el.querySelector(targetSel) !== null) continue;
     const control =
       el.hasAttribute('role') || el.hasAttribute('data-testid') || el.hasAttribute('aria-label');
+    // A labelled container that paints nothing of its own and holds other
+    // candidates is a layout slot (the portrait action tray around the
+    // turn / table chips, the footer's claim-float row), not a control a
+    // card could bisect — its chips are scanned in their own right. The
+    // tray's 96 px otherwise counted as chrome the card had to clear whole,
+    // which no strip in the 146 px band under the hand could.
+    if (control && isLayoutSlot(el)) continue;
     let text: string | null = null;
     if (!control) {
       if (el.childElementCount !== 0) continue;
@@ -133,6 +140,24 @@ export function collectChromeRects({
     if (isChromeCandidate({ rect, control, text }, viewport)) out.push(rect);
   }
   return out;
+}
+
+/** True for an element with element children, at least one of them a
+ *  scan candidate, whose own box paints nothing: no background, border
+ *  or shadow. Transparent hit targets (leaf buttons over the canvas) have
+ *  no children and stay. */
+export function isLayoutSlot(el: HTMLElement): boolean {
+  if (el.childElementCount === 0 || el.querySelector(SELECTOR) === null) return false;
+  const view = el.ownerDocument.defaultView;
+  if (!view) return false;
+  const cs = view.getComputedStyle(el);
+  const bg = cs.backgroundColor;
+  const transparent = bg === 'transparent' || /^rgba\(\s*\d+,\s*\d+,\s*\d+,\s*0\s*\)$/.test(bg);
+  if (!transparent) return false;
+  if (cs.backgroundImage !== 'none' || (cs.boxShadow !== 'none' && cs.boxShadow !== ''))
+    return false;
+  const widths = [cs.borderTopWidth, cs.borderRightWidth, cs.borderBottomWidth, cs.borderLeftWidth];
+  return widths.every((w) => w === '0px' || w === '' || Number.parseFloat(w) === 0);
 }
 
 export interface FocusRects {
