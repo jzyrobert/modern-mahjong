@@ -36,6 +36,13 @@ interface SeatBadgeProps {
    * dealer chip, so a long name never runs under the sort control.
    */
   fluid?: boolean | undefined;
+  /**
+   * First word of the name only ("Silent Fox" → "Silent"): the portrait
+   * footer on a 360 px phone leaves the fluid badge ~55 px of name after
+   * the disc, wind glyph and dealer chip, where a full name ellipsised
+   * to two or three letters (round-6).
+   */
+  shortName?: boolean | undefined;
   style?: CSSProperties | undefined;
 }
 
@@ -51,11 +58,13 @@ export function SeatBadge({
   compact,
   dense = false,
   fluid = false,
+  shortName = false,
   style,
 }: SeatBadgeProps) {
   const { name, botLabel } = oppIdentity(lobby, model.seat);
-  const displayName = model.isYou ? nameForSeat(lobby, model.seat) : name;
-  const initials = computeInitials(displayName);
+  const fullName = model.isYou ? nameForSeat(lobby, model.seat) : name;
+  const initials = computeInitials(fullName);
+  const displayName = shortName ? (fullName.split(/\s+/)[0] ?? fullName) : fullName;
   const colour = SEAT_COLOR[model.position];
   const cue = !model.isActive && model.aboutToDraw;
   const sub =
@@ -67,7 +76,7 @@ export function SeatBadge({
   return (
     <div
       className="mj-hud-fade"
-      aria-label={`${displayName}, ${model.seatWind} seat, ${model.score} points${model.isDealer ? ', dealer' : ''}${model.isActive ? ', active turn' : ''}`}
+      aria-label={`${fullName}, ${model.seatWind} seat, ${model.score} points${model.isDealer ? ', dealer' : ''}${model.isActive ? ', active turn' : ''}`}
       style={glassStyle({
         position: 'relative',
         display: 'inline-flex',

@@ -12,6 +12,7 @@ import {
   PORTRAIT_STRIP_H,
   PORTRAIT_STRIP_TOP,
   classifyViewport,
+  portraitDiceBandShort as diceBandShort,
   heldHandTopPx,
 } from './table/cameraPresets';
 import { type Lobby3DViewProps, LobbyGlass } from './table/hud/LobbyGlass';
@@ -38,6 +39,11 @@ export const portraitHeldHandTop: ((width: number, height: number) => number | n
   width,
   height,
 ) => (classifyViewport(width, height) === 'phone-portrait' ? heldHandTopPx(width, height) : null);
+/** Short dice band on portrait (see `entry.tsx`). */
+export const portraitDiceBandShort: ((width: number, height: number) => boolean | null) | null = (
+  width,
+  height,
+) => (classifyViewport(width, height) === 'phone-portrait' ? diceBandShort(width, height) : null);
 /** Bottom of the portrait seat strip (see `entry.tsx`). */
 export const portraitStripBottom: ((width: number, height: number) => number | null) | null = (
   width,

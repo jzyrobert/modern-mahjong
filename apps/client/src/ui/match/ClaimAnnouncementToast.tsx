@@ -36,6 +36,11 @@ interface ClaimAnnouncementToastProps {
   theme?: ClaimToastTheme;
   /** Distance from the shell's top edge, px (default 56). */
   top?: number;
+  /**
+   * Reports the toast mounting / leaving, so a host can clear the slot
+   * it lands in (the 3D shell's portrait seat strip on short phones).
+   */
+  onVisibleChange?: ((visible: boolean) => void) | undefined;
 }
 
 const THEMES = {
@@ -59,7 +64,11 @@ const THEMES = {
   },
 } as const;
 
-export function ClaimAnnouncementToast({ theme = 'paper', top = 56 }: ClaimAnnouncementToastProps) {
+export function ClaimAnnouncementToast({
+  theme = 'paper',
+  top = 56,
+  onVisibleChange,
+}: ClaimAnnouncementToastProps) {
   const pal = THEMES[theme];
   const announcement = useGame((s) => s.claimAnnouncement);
   const lobby = useGame((s) => s.lobby);
@@ -106,6 +115,10 @@ export function ClaimAnnouncementToast({ theme = 'paper', top = 56 }: ClaimAnnou
       if (dismissHandle.current !== null) clearTimeout(dismissHandle.current);
     };
   }, [announcement, opacity]);
+
+  useEffect(() => {
+    onVisibleChange?.(visible);
+  }, [visible, onVisibleChange]);
 
   if (!visible || !pinned) return null;
   const seatName = youSeat === pinned.seat ? 'You' : nameForSeat(lobby, pinned.seat);

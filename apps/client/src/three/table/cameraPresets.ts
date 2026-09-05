@@ -685,6 +685,41 @@ export function heldHandTilePx(width: number, height: number = PORTRAIT_TALL_H):
 }
 
 /**
+ * Screen-space baseline (CSS px from the top) of the held hand while it
+ * is *parked* below the viewport: the whole two-row block plus a margin
+ * past the bottom edge, so no tile top peeks in. The tutorial's opening-
+ * dice step parks the hand on short phones (`portraitDiceBandShort`):
+ * the dense dice card and the lesson card together need ~500 px under
+ * the seat strip, and a 412×700 phone has ~300 before the hand — the
+ * card would otherwise sit on the dimmed tiles (round-6). The frame is
+ * derived from the same preset, so the hand springs up into place when
+ * the step advances and the camera never moves.
+ */
+export function heldHandParkedBaseline(width: number, height: number): number {
+  const m = portraitMetrics(height);
+  const tilePx = heldHandTilePx(width, height);
+  // 40 px past the block: the leaned top row projects a few px above
+  // the flat estimate and the DOM hit-targets pad their rects.
+  return height + (2 * TILE_H + m.rowGap) * tilePx + PARKED_HAND_MARGIN;
+}
+/** Margin the parked hand's block keeps below the viewport's bottom edge, CSS px. */
+export const PARKED_HAND_MARGIN = 40;
+
+/** Height of the regular (48 px dice, 2×2, stacked totals) opening-rolls glass card, CSS px. */
+export const PORTRAIT_DICE_REGULAR_H = 434;
+/**
+ * Whether the band between the portrait seat strip and the held hand is
+ * too short for the regular opening-rolls card: the dense card (40 px
+ * dice, inline totals) takes over, and a tutorial step that spotlights
+ * the dice parks the hand (`heldHandParkedBaseline`). A phone in a
+ * browser (412×700) has ~300 px there; the tall 412×915 has ~490. Pure.
+ */
+export function portraitDiceBandShort(width: number, height: number, topInset = 0): boolean {
+  const stripBottom = PORTRAIT_STRIP_TOP + PORTRAIT_STRIP_H + topInset;
+  return heldHandTopPx(width, height) - stripBottom < PORTRAIT_DICE_REGULAR_H + 16;
+}
+
+/**
  * The near-camera frame the user's hand is laid out in on phone
  * portrait. Fourteen tiles cannot reach 44 CSS px each in a single
  * table-scale row at 412 px, so the hand leaves the table and is held
@@ -701,6 +736,7 @@ export function heldHandFrameFor(
   preset: CameraPreset,
   width: number,
   height: number,
+  baselineY: number = height - portraitMetrics(height).heldBottom,
 ): HeldHandFrame {
   const tanV = Math.tan((preset.fov * Math.PI) / 360);
   const m = portraitMetrics(height);
@@ -711,7 +747,7 @@ export function heldHandFrameFor(
   const fwd = norm(sub(preset.target, pos));
   const right = norm(cross(fwd, [0, 1, 0]));
   const up = norm(cross(right, fwd));
-  const baseY = height - m.heldBottom;
+  const baseY = baselineY;
   const ny = 1 - (2 * baseY) / height;
   const k = ny * tanV;
   const origin: V3 = [
@@ -728,4 +764,31 @@ export function heldHandFrameFor(
     pxPerUnit: tilePx,
     rowPitch: TILE_H + m.rowGap,
   };
+}
+
+// ─── Portrait result card (`hud/ResultVeil`) ──────────────────────
+/** Compact glass result card height assumed before it has been measured, CSS px. */
+export const RESULT_PANEL_H_ESTIMATE = 350;
+/**
+ * Room a scoring-lesson caption card needs above a bottom-pinned result
+ * card: the card's height (six body lines at ≥ 400 px wide, seven on a
+ * 360 px phone — the body wraps) plus the overlay's 14 px dock gap and
+ * 12 px safe inset.
+ */
+export function resultCaptionNeed(width: number): number {
+  return (width >= 400 ? 272 : 316) + 14 + 12;
+}
+/**
+ * Whether the portrait result card pins to the top of the veil. When
+ * the band above a bottom-pinned card is shorter than a caption card
+ * (`resultCaptionNeed`), the tutorial overlay's only option is its
+ * overlap fallback — at 360×640 the card sat over the whole panel and
+ * only the faan header peeked out (round-6). Pinned to the top, the
+ * spotlit header + winning hand stay clear and the card docks below
+ * them over the dimmed rules / buttons, as on the tall phone. Pure.
+ */
+export function resultPanelPinsTop(width: number, height: number, panelH: number | null): boolean {
+  const pad = 12;
+  const panel = panelH ?? RESULT_PANEL_H_ESTIMATE;
+  return height - 2 * pad - panel < resultCaptionNeed(width);
 }

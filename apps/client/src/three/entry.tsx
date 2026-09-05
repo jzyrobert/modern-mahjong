@@ -45,3 +45,12 @@ export const portraitHeldHandTop: ((width: number, height: number) => number | n
  * off portrait. Root overlays centre between it and `portraitHeldHandTop`.
  */
 export const portraitStripBottom: ((width: number, height: number) => number | null) | null = null;
+/**
+ * Whether the band between the portrait seat strip and the held hand is
+ * too short for the regular opening-rolls card (a phone in a browser):
+ * the dice ceremony renders its dense card and, while a lesson step
+ * spotlights the dice, the 3D shell parks the hand below the viewport
+ * so the lesson card docks on free scrim. `null` off portrait / off web.
+ */
+export const portraitDiceBandShort: ((width: number, height: number) => boolean | null) | null =
+  null;

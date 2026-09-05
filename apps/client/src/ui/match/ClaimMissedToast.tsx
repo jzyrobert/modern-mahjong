@@ -29,6 +29,8 @@ interface ClaimMissedToastProps {
   theme?: 'paper' | 'glass';
   /** Distance from the shell's top edge, px (default 12). */
   top?: number;
+  /** Reports the toast mounting / leaving (see `ClaimAnnouncementToast`). */
+  onVisibleChange?: ((visible: boolean) => void) | undefined;
 }
 
 const GLASS = {
@@ -37,7 +39,11 @@ const GLASS = {
   text: 'rgba(255,255,255,0.92)',
 };
 
-export function ClaimMissedToast({ theme = 'paper', top = 12 }: ClaimMissedToastProps) {
+export function ClaimMissedToast({
+  theme = 'paper',
+  top = 12,
+  onVisibleChange,
+}: ClaimMissedToastProps) {
   const pal = theme === 'glass' ? GLASS : COLORS;
   const seq = useGame((s) => s.claimMissedSeq);
   const [visible, setVisible] = useState(false);
@@ -68,6 +74,10 @@ export function ClaimMissedToast({ theme = 'paper', top = 12 }: ClaimMissedToast
       if (dismissHandle.current !== null) clearTimeout(dismissHandle.current);
     };
   }, [seq, opacity]);
+
+  useEffect(() => {
+    onVisibleChange?.(visible);
+  }, [visible, onVisibleChange]);
 
   if (!visible) return null;
   return (

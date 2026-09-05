@@ -10,6 +10,7 @@ import {
   PORTRAIT_BAND_BIAS,
   PORTRAIT_BAND_GAP,
   PORTRAIT_BAND_TOP,
+  PORTRAIT_DICE_REGULAR_H,
   PORTRAIT_ELEV_DEG,
   PORTRAIT_ELEV_MIN_DEG,
   PORTRAIT_FAR_RAIL_GAP,
@@ -18,20 +19,25 @@ import {
   PORTRAIT_STRIP_H,
   PORTRAIT_STRIP_TOP,
   PORTRAIT_X_HALF,
+  RESULT_PANEL_H_ESTIMATE,
   TABLE_CAMERA,
   ZOOM_WALL_ANCHOR,
   ZOOM_WALL_ANCHOR_Y,
   cameraFor,
   classifyViewport,
   heldHandFrameFor,
+  heldHandParkedBaseline,
   heldHandTilePx,
   heldHandTopPx,
   landscapeZoomCameraFor,
   portraitCameraAnchored,
   portraitCameraFor,
+  portraitDiceBandShort,
   portraitElevationFor,
   portraitMetrics,
   projectPreset,
+  resultCaptionNeed,
+  resultPanelPinsTop,
   riverZoomCameraFor,
   sheetCameraFor,
 } from './cameraPresets';
@@ -496,5 +502,49 @@ describe('short phones (a phone in a browser)', () => {
     const p = px(tall, 412, 915);
     expect(p(7.9, 0, 0).x).toBeLessThanOrEqual(413);
     expect(p(7.9, 0, 0).x).toBeGreaterThan(395);
+  });
+});
+
+describe('short-phone opening-dice step', () => {
+  test('the dice band is short on a phone in a browser and tall on the fullscreen phone', () => {
+    expect(portraitDiceBandShort(412, 700)).toBe(true);
+    expect(portraitDiceBandShort(360, 640)).toBe(true);
+    expect(portraitDiceBandShort(412, 915)).toBe(false);
+    // The predicate is the band test the dice card uses for its dense layout.
+    const band = heldHandTopPx(412, 915) - (PORTRAIT_STRIP_TOP + PORTRAIT_STRIP_H);
+    expect(band).toBeGreaterThanOrEqual(PORTRAIT_DICE_REGULAR_H + 16);
+  });
+  test('the parked hand lies wholly below the viewport from the same preset', () => {
+    for (const [w, h] of [
+      [412, 700],
+      [360, 640],
+    ] as const) {
+      const preset = cameraFor(w, h);
+      const parked = heldHandFrameFor(preset, w, h, heldHandParkedBaseline(w, h));
+      const held = heldHandFrameFor(preset, w, h);
+      // Same plane, same scale and lean — only the baseline moves.
+      expect(parked.pxPerUnit).toBeCloseTo(held.pxPerUnit, 6);
+      expect(parked.rowPitch).toBeCloseTo(held.rowPitch, 6);
+      expect(parked.right).toEqual(held.right);
+      // The block's top row's top edge projects below the bottom edge.
+      const tile = heldHandTilePx(w, h);
+      const blockPx = (2 * TILE_H + portraitMetrics(h).rowGap) * tile;
+      expect(heldHandParkedBaseline(w, h) - blockPx).toBeGreaterThanOrEqual(h + 24);
+    }
+  });
+});
+
+describe('portrait result card pin (hud/ResultVeil)', () => {
+  test('bottom-pinned where a caption fits above; top-pinned on short, narrow phones', () => {
+    // 412×700 phone in a browser: a ~313 px card leaves 363 px above ≥ 298.
+    expect(resultPanelPinsTop(412, 700, 313)).toBe(false);
+    expect(resultPanelPinsTop(412, 915, 313)).toBe(false);
+    // 360×640 budget phone: a 349 px card leaves 267 px < 342 (seven body lines).
+    expect(resultPanelPinsTop(360, 640, 349)).toBe(true);
+    // Before the card is measured the estimate decides the same way.
+    expect(resultPanelPinsTop(360, 640, null)).toBe(true);
+    expect(resultPanelPinsTop(412, 700, null)).toBe(false);
+    expect(RESULT_PANEL_H_ESTIMATE).toBeGreaterThan(300);
+    expect(resultCaptionNeed(360)).toBeGreaterThan(resultCaptionNeed(412));
   });
 });

@@ -13,7 +13,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { nameForSeat, useGame } from '../state/game';
 import { LESSONS, useActiveTutorialStep, useTutorial } from '../state/tutorial';
-import { portraitHeldHandTop, portraitStripBottom } from '../three/entry';
+import { portraitDiceBandShort, portraitHeldHandTop, portraitStripBottom } from '../three/entry';
 import { resolveRenderer } from '../three/renderer';
 import { useFadeInOut } from './animations';
 import { COLORS } from './colors';
@@ -122,9 +122,6 @@ function writeDismissedSeed(seed: number): void {
  * on the backdrop to dismiss early. Animations are RN core `Animated`
  * (no reanimated) so it works in Expo Go.
  */
-/** Height of the regular (48 px dice, 2×2, stacked totals) glass card, CSS px. */
-const REGULAR_DICE_CARD_H = 434;
-
 export function DiceCeremony() {
   const seed = useGame((s) => s.state?.seed);
   const rolls = useGame((s) => s.state?.openingRolls);
@@ -156,10 +153,14 @@ export function DiceCeremony() {
   // a browser at 412×700 has ~300 px): 2×2 seats at the dense metrics
   // come to ~200 px, so the card sits in the band instead of running
   // under the strip and over the hand's first row (round-5 feedback).
-  const bandShort =
-    handTop !== null && stripBottom !== null && handTop - stripBottom < REGULAR_DICE_CARD_H + 16;
+  // The predicate is shared with the 3D shell (`portraitDiceBandShort`).
+  const bandShort = glass && portraitDiceBandShort ? portraitDiceBandShort(vw, vh) === true : false;
   const short = glass && (vh < 600 || bandShort);
   const dieSize = short ? 40 : 48;
+  // Short + wide enough (a 412 px phone, any landscape): the dealer line
+  // and the dismiss hint share one row; a 360 px phone stacks them (the
+  // row wrapped with the separator orphaned on the first line — round-6).
+  const footerInline = short && vw >= 400;
   const scrimPadBottom = handTop !== null ? Math.max(20, vh - handTop + 12) : 20;
   const scrimPadTop = stripBottom !== null ? Math.max(20, stripBottom + insets.top + 8) : 20;
   // Key dismissal by `state.seed` rather than a boolean — JSON.parse
@@ -240,6 +241,11 @@ export function DiceCeremony() {
   // we retire the modal so it doesn't stack with the next caption.
   const activeStep = useActiveTutorialStep();
   const tutorialTargetsDice = activeStep?.step.targetId === 'dice-ceremony';
+  // Short portrait phone + the lesson's dice step: the 3D shell parks the
+  // held hand below the viewport, so the card pins to the top of the
+  // band (4 px under the strip) and the lesson card docks under it on
+  // free scrim instead of on the tiles (round-6).
+  const pinTop = bandShort && tutorialTargetsDice;
   useEffect(() => {
     if (!open || seed === undefined || tutorialTargetsDice) return;
     // Test seam: the screenshot verifier pins the modal open so the
@@ -327,13 +333,13 @@ export function DiceCeremony() {
         top: 0,
         bottom: 0,
         alignItems: 'center',
-        justifyContent: 'center',
+        justifyContent: pinTop ? 'flex-start' : 'center',
         backgroundColor: glass ? GLASS_DICE.scrim : 'rgba(40, 30, 20, 0.5)',
         // Matches the `Modal` primitive's gutter so the dialog never
         // sits edge-to-edge on a portrait phone (a 320px iPhone SE
         // would otherwise clip the rounded corners).
         padding: 20,
-        paddingTop: scrimPadTop,
+        paddingTop: pinTop ? scrimPadTop - 4 : scrimPadTop,
         paddingBottom: scrimPadBottom,
         zIndex: 100,
       }}
@@ -535,10 +541,8 @@ export function DiceCeremony() {
               alignSelf: 'stretch',
               alignItems: 'center',
               justifyContent: 'center',
-              flexDirection: short ? 'row' : 'column',
-              // Wrap only in the row layout: a wrapping column packs its
-              // single line at the start and left-aligns the two lines.
-              flexWrap: short ? 'wrap' : 'nowrap',
+              flexDirection: footerInline ? 'row' : 'column',
+              flexWrap: 'nowrap',
               columnGap: 10,
               rowGap: short ? 4 : 6,
             }}
@@ -549,7 +553,7 @@ export function DiceCeremony() {
                 {SEAT_WIND_GLYPH[dealer as Seat]} {dealerName}
               </Text>
             </Text>
-            {short ? (
+            {footerInline ? (
               <Text
                 style={{ fontSize: 11, lineHeight: 16, color: GLASS_DICE.text2 }}
                 accessible={false}
