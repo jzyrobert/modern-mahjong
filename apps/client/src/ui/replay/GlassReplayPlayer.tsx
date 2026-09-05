@@ -61,9 +61,12 @@ export function GlassReplayPlayer({ actions }: { actions?: ReplayPlayerActions |
     () => replayHudLayout?.chrome(width, height, insets) ?? null,
     [width, height, insets],
   );
+  // Side seats show flat tiles (a revealed hand, or melds) that reach
+  // further out than a standing rack — the desktop docks key off that.
+  const sideRevealed = pov === 'all' || state.phase === 'resolved';
   const badgeSlots = useMemo(
-    () => replayHudLayout?.badgeSlots(width, height, insets) ?? null,
-    [width, height, insets],
+    () => replayHudLayout?.badgeSlots(width, height, insets, { sideRevealed }) ?? null,
+    [width, height, insets, sideRevealed],
   );
   const apron = useMemo(
     () => replayHudLayout?.apron(width, height, insets) ?? null,
@@ -212,6 +215,7 @@ export function GlassReplayPlayer({ actions }: { actions?: ReplayPlayerActions |
           compact={compact}
           dense={landscape}
           showCounter={!portrait}
+          dealt={state.phase !== 'waiting'}
         />
         <View style={{ flex: 1 }} />
         {actions?.exportLabel ? <ChromeToast>{actions.exportLabel}</ChromeToast> : null}
@@ -237,7 +241,13 @@ export function GlassReplayPlayer({ actions }: { actions?: ReplayPlayerActions |
           }}
         >
           {(['left', 'top', 'right'] as Position[]).map((pos) => (
-            <ReplaySeatBadge key={pos} {...badgeFor(seatAt[pos])} dense />
+            <ReplaySeatBadge
+              key={pos}
+              {...badgeFor(seatAt[pos])}
+              dense
+              stacked
+              testID={`replay-seat-badge-${pos}`}
+            />
           ))}
         </View>
       ) : badgeSlots ? (
@@ -313,7 +323,13 @@ export function GlassReplayPlayer({ actions }: { actions?: ReplayPlayerActions |
         >
           {landscape ? (
             <View style={{ alignSelf: 'stretch', flex: 1, justifyContent: 'center' }}>
-              <GlassScrubber chapters={chapters} layout="row" compact leading={youBadge} />
+              <GlassScrubber
+                chapters={chapters}
+                layout="row"
+                compact
+                leading={youBadge}
+                showCounter={false}
+              />
             </View>
           ) : (
             <View
@@ -332,6 +348,7 @@ export function GlassReplayPlayer({ actions }: { actions?: ReplayPlayerActions |
                 chapters={chapters}
                 layout="row"
                 compact={false}
+                showCounter={false}
                 leading={
                   <View style={{ flexShrink: 0, maxWidth: 260, height: SEAT_BADGE_H }}>
                     {youBadge}

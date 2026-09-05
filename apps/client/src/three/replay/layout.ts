@@ -16,6 +16,7 @@ import {
   FELT_HALF,
   HAND_Z,
   type HeldHandFrame,
+  MELD_Z,
   RAIL_H,
   RAIL_WIDTH,
   SIDE_MELD_SCALE_PORTRAIT,
@@ -162,8 +163,15 @@ export interface BadgeSlot {
 
 /** Glass seat badge height, CSS px (single-line dense badge). */
 export const REPLAY_BADGE_H = 34;
-/** Air between a desktop badge and the table edge it keys off. */
-const DESKTOP_BADGE_GAP = 14;
+/** Air between a desktop badge and the table edge it keys off (the match keeps ≥ 12). */
+export const DESKTOP_BADGE_GAP = 14;
+/** World z the side docks key off: the rack slice level with the badge's height band on the pitched view. */
+export const SIDE_KEY_Z = 3;
+
+/** Outermost |x| a side seat's tiles reach on the desktop preset (flat meld / revealed tile edge). */
+export function sideOuterExtent(): number {
+  return MELD_Z + SIDE_SEAT_OUT_DESKTOP + TILE_H / 2;
+}
 
 /**
  * Desktop seat badges are placed off the table's projected landmarks
@@ -178,13 +186,22 @@ export function desktopBadgeSlots(
   width: number,
   height: number,
   chrome: ReplayChrome,
+  opts: { sideRevealed?: boolean } = {},
 ): { top: BadgeSlot; left: BadgeSlot; right: BadgeSlot } {
   const farRailTop = projectPreset(preset, width, height, [0, RAIL_H, -(FELT_HALF + RAIL_WIDTH)]);
   const far = projectPreset(preset, width, height, [seatAnchor(2).x, TILE_H, seatAnchor(2).z]);
-  // Side racks: standing tiles at |x| = HAND_Z; their outer faces are
-  // half a tile's depth further out. Badge edges key off those faces.
-  const leftFace = projectPreset(preset, width, height, [-HAND_Z - TILE_D / 2, TILE_H, 0]);
-  const rightFace = projectPreset(preset, width, height, [HAND_Z + TILE_D / 2, TILE_H, 0]);
+  // Side seats: the widest thing a side seat shows is a flat tile on the
+  // rack line — a revealed hand (POV "all" / the result frame) or its
+  // melds, which the desktop preset shifts outward by
+  // `SIDE_SEAT_OUT_DESKTOP` — reaching |x| = MELD_Z + out + TILE_H/2.
+  // Badge edges key off that edge at a slightly near z (the rack's
+  // tiles level with the badge's own height project a little further
+  // out than the z = 0 slice), so a badge never touches a tile whether
+  // the rack stands or lies revealed.
+  const outer = sideOuterExtent();
+  const top = opts.sideRevealed ? TILE_D : TILE_H;
+  const leftFace = projectPreset(preset, width, height, [-outer, top, SIDE_KEY_Z]);
+  const rightFace = projectPreset(preset, width, height, [outer, top, SIDE_KEY_Z]);
   const sideMid = projectPreset(preset, width, height, [HAND_Z, TILE_H / 2, 0]).y;
   const farTop = Math.max(
     chrome.chromeTop + chrome.chromeH + 8,

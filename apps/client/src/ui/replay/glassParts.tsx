@@ -1,5 +1,6 @@
 import type { Event as EngineEvent, Seat, Wind } from '@mahjong/game-logic';
 import type { ReactNode } from 'react';
+import type React from 'react';
 import { Pressable, ScrollView, Text, View, type ViewStyle } from 'react-native';
 import { HOVER_TRANSITION, MENU, TYPE, glass } from '../menu/theme';
 import { WIND_GLYPH, WIND_NAME } from '../winds';
@@ -40,6 +41,7 @@ export function ReplayStatusPill({
   compact,
   dense = false,
   showCounter = true,
+  dealt = true,
 }: {
   prevailingWind: Wind;
   handNumber: number;
@@ -51,6 +53,8 @@ export function ReplayStatusPill({
   dense?: boolean;
   /** Portrait drops the frame counter here — the dock carries it. */
   showCounter?: boolean;
+  /** False before the first deal: no wall yet, so no count. */
+  dealt?: boolean;
 }) {
   const h = dense ? 38 : 44;
   return (
@@ -96,10 +100,14 @@ export function ReplayStatusPill({
           <Text style={MICRO} numberOfLines={1}>
             {WIND_NAME[prevailingWind]} round
           </Text>
-          <Divider />
-          <Text style={MICRO} numberOfLines={1}>
-            {wallCount} left
-          </Text>
+          {dealt ? (
+            <>
+              <Divider />
+              <Text style={MICRO} numberOfLines={1}>
+                {wallCount} left
+              </Text>
+            </>
+          ) : null}
         </>
       )}
       {showCounter ? (
@@ -129,8 +137,13 @@ export interface ReplaySeatBadgeProps {
   isActive: boolean;
   isYou: boolean;
   isBot: boolean;
-  /** Three badges sharing a phone row: tighter name clamp. */
+  /** Three badges sharing a phone row: tighter name clamp, 30 px tall. */
   dense?: boolean;
+  /**
+   * Two lines — name + wind above, score + dealer chip below — so a
+   * third of a 360 px strip still shows the whole name.
+   */
+  stacked?: boolean;
   /** Fill the flex width the parent grants (footer leading slot). */
   fluid?: boolean;
   style?: ViewStyle | undefined;
@@ -139,6 +152,8 @@ export interface ReplaySeatBadgeProps {
 
 /** Glass seat badge height, CSS px (matches `three/replay/layout.REPLAY_BADGE_H`). */
 export const SEAT_BADGE_H = 34;
+/** Dense (phone) badge height. */
+export const SEAT_BADGE_H_DENSE = 30;
 
 export function ReplaySeatBadge({
   name,
@@ -150,51 +165,115 @@ export function ReplaySeatBadge({
   isYou,
   isBot,
   dense = false,
+  stacked = false,
   fluid = false,
   style,
   testID,
 }: ReplaySeatBadgeProps) {
   const sign = score > 0 ? '+' : '';
-  return (
+  const label = `${name}${isYou ? ' (you)' : ''}, ${WIND_NAME[seatWind]} seat, ${score} points${isDealer ? ', dealer' : ''}${isActive ? ', active turn' : ''}`;
+  const scoreColor = score > 0 ? '#7fd6a3' : score < 0 ? '#e59a8b' : MENU.text2;
+  const dealerChip = isDealer ? (
+    <View
+      accessibilityLabel="Dealer"
+      style={{
+        paddingHorizontal: 4,
+        paddingVertical: 1,
+        borderRadius: 5,
+        backgroundColor: MENU.red,
+        boxShadow: '0px 1px 4px rgba(177,77,58,0.45)',
+      }}
+    >
+      <Text style={[TYPE.serif, { fontSize: 9, color: 'white', lineHeight: 11 }]}>莊</Text>
+    </View>
+  ) : null;
+  const scoreText = (
+    <Text style={[MICRO, { letterSpacing: 0.6, color: scoreColor }]}>
+      {sign}
+      {score}
+    </Text>
+  );
+  const dot = (
+    <View
+      accessibilityElementsHidden
+      style={{
+        width: 6,
+        height: 6,
+        borderRadius: 3,
+        backgroundColor: seatColor,
+        boxShadow: `0px 0px 6px ${seatColor}`,
+      }}
+    />
+  );
+  const frame = (children: React.ReactNode) => (
     <View
       testID={testID}
-      accessibilityLabel={`${name}${isYou ? ' (you)' : ''}, ${WIND_NAME[seatWind]} seat, ${score} points${isDealer ? ', dealer' : ''}${isActive ? ', active turn' : ''}`}
+      accessibilityLabel={label}
       style={{
         ...glass({ radius: 999, quiet: !isActive }),
         borderColor: isActive ? 'rgba(216,168,90,0.9)' : MENU.hairline,
         ...(isActive
-          ? { boxShadow: '0px 0px 0px 3px rgba(216,168,90,0.22), 0px 12px 32px rgba(0,0,0,0.35)' }
+          ? {
+              boxShadow: '0px 0px 0px 3px rgba(216,168,90,0.22), 0px 12px 32px rgba(0,0,0,0.35)',
+            }
           : {}),
-        height: SEAT_BADGE_H,
+        height: dense ? SEAT_BADGE_H_DENSE : SEAT_BADGE_H,
         paddingLeft: 10,
         paddingRight: 10,
         flexDirection: 'row',
         alignItems: 'center',
         gap: dense ? 6 : 8,
         minWidth: 0,
-        maxWidth: fluid ? '100%' : dense ? 132 : 220,
+        maxWidth: fluid || stacked ? '100%' : dense ? 150 : 220,
+        flex: stacked ? 1 : undefined,
         flexShrink: 1,
         ...HOVER_TRANSITION,
         ...style,
       }}
     >
-      <View
-        accessibilityElementsHidden
-        style={{
-          width: 6,
-          height: 6,
-          borderRadius: 3,
-          backgroundColor: seatColor,
-          boxShadow: `0px 0px 6px ${seatColor}`,
-        }}
-      />
+      {children}
+    </View>
+  );
+  if (stacked) {
+    return frame(
+      <>
+        {dot}
+        <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, minWidth: 0 }}>
+            <Text
+              style={{
+                fontSize: 11,
+                lineHeight: 12,
+                fontWeight: '800',
+                color: MENU.text,
+                flexShrink: 1,
+              }}
+              numberOfLines={1}
+            >
+              {name}
+            </Text>
+            <Text style={[TYPE.serif, { fontSize: 11, color: MENU.goldHi, lineHeight: 12 }]}>
+              {WIND_GLYPH[seatWind]}
+            </Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+            {scoreText}
+            {dealerChip}
+          </View>
+        </View>
+      </>,
+    );
+  }
+  return frame(
+    <>
+      {dot}
       <Text
         style={{
           fontSize: dense ? 11 : 12,
           fontWeight: '800',
           color: MENU.text,
           flexShrink: 1,
-          minWidth: 0,
+          minWidth: 56,
         }}
         numberOfLines={1}
       >
@@ -203,37 +282,10 @@ export function ReplaySeatBadge({
       <Text style={[TYPE.serif, { fontSize: dense ? 11 : 13, color: MENU.goldHi, lineHeight: 15 }]}>
         {WIND_GLYPH[seatWind]}
       </Text>
-      {isDealer ? (
-        <View
-          accessibilityLabel="Dealer"
-          style={{
-            paddingHorizontal: 4,
-            paddingVertical: 1,
-            borderRadius: 5,
-            backgroundColor: MENU.red,
-            boxShadow: '0px 1px 4px rgba(177,77,58,0.45)',
-          }}
-        >
-          <Text style={[TYPE.serif, { fontSize: 9, color: 'white', lineHeight: 11 }]}>莊</Text>
-        </View>
-      ) : null}
-      {isBot && !dense ? (
-        <Text style={[MICRO, { fontSize: 9, letterSpacing: 0.6 }]}>Bot</Text>
-      ) : null}
-      <Text
-        style={[
-          MICRO,
-          {
-            fontSize: 10,
-            letterSpacing: 0.6,
-            color: score > 0 ? '#7fd6a3' : score < 0 ? '#e59a8b' : MENU.text2,
-          },
-        ]}
-      >
-        {sign}
-        {score}
-      </Text>
-    </View>
+      {dealerChip}
+      {isBot && !dense ? <Text style={[MICRO, { letterSpacing: 0.6 }]}>Bot</Text> : null}
+      {scoreText}
+    </>,
   );
 }
 
@@ -249,7 +301,7 @@ export function EventTicker({
   nameFor: (seat: Seat) => string;
   style?: ViewStyle;
 }) {
-  if (!event) return <View style={[{ height: 18 }, style]} />;
+  if (!event) return <View style={[{ height: 16 }, style]} />;
   return (
     <View
       testID="replay-ticker"

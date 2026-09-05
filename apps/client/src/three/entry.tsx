@@ -35,6 +35,7 @@ export interface ReplayHudLayout {
     width: number,
     height: number,
     insets: Insets,
+    opts?: { sideRevealed?: boolean },
   ): { top: BadgeSlot; left: BadgeSlot; right: BadgeSlot } | null;
   /** Portrait floor band between the near rail and the held hand (`replay/layout`). */
   apron(width: number, height: number, insets: Insets): { top: number; height: number } | null;

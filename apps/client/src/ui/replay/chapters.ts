@@ -116,3 +116,12 @@ function chapterResult(
   // dash rather than the misleading "Pending" label.
   return '—';
 }
+
+/**
+ * Compact chapter-card result: "Mei Ling wins 1 faan (self-draw)" →
+ * "Mei Ling wins · 1 faan" so a narrow card carries the name and the
+ * faan without ellipsising the faan away. Other results pass through.
+ */
+export function shortChapterResult(result: string): string {
+  return result.replace(/ \(self-draw\)$/, '').replace(/ wins (\d+) faan/, ' wins · $1 faan');
+}

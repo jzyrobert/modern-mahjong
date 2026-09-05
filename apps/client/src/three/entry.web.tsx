@@ -47,10 +47,16 @@ export const ReplayTable3D: ComponentType<ReplayTable3DProps> | null = ReplayTab
 /** Glass replay chrome maths (see `entry.tsx`). */
 export const replayHudLayout: ReplayHudLayout | null = {
   chrome: replayChromeFor,
-  badgeSlots: (width, height, insets) => {
+  badgeSlots: (width, height, insets, opts) => {
     const chrome = replayChromeFor(width, height, insets);
     if (chrome.cls === 'desktop')
-      return desktopBadgeSlots(replayCameraFor(width, height, insets.top), width, height, chrome);
+      return desktopBadgeSlots(
+        replayCameraFor(width, height, insets.top),
+        width,
+        height,
+        chrome,
+        opts ?? {},
+      );
     if (chrome.cls === 'phone-landscape') return landscapeBadgeSlots(width, chrome, insets);
     return null;
   },

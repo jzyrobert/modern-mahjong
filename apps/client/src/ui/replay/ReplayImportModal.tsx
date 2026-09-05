@@ -1,6 +1,6 @@
 import * as Clipboard from 'expo-clipboard';
 import { useState } from 'react';
-import { Text, TextInput, View } from 'react-native';
+import { Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { tryImportRecord } from '../../replay/exportImport';
 import { useGame } from '../../state/game';
 import { GlassSheet } from '../menu/GlassSheet';
@@ -25,6 +25,7 @@ export function ReplayImportModal({ open, onClose, onImported }: ReplayImportMod
   const [error, setError] = useState<string | null>(null);
   const [focused, setFocused] = useState(false);
   const replayQuota = useGame((s) => s.settings.replayQuota);
+  const narrow = useWindowDimensions().width < 400;
 
   const onPasteFromClipboard = async () => {
     try {
@@ -98,17 +99,30 @@ export function ReplayImportModal({ open, onClose, onImported }: ReplayImportMod
             </Text>
           </View>
         ) : null}
-        <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          <GlassButton size="sm" onPress={onPasteFromClipboard}>
-            Paste from clipboard
-          </GlassButton>
-          <View style={{ flex: 1 }} />
-          <GlassButton size="sm" onPress={onCancel}>
-            Cancel
-          </GlassButton>
-          <GoldButton size="sm" onPress={onImport} disabled={text.trim().length === 0}>
-            Import
-          </GoldButton>
+        {/* Narrow phones: the paste chip takes its own row so Cancel +
+            the gold Import stay together on the last line (a wrapped row
+            orphaned Import under the other two at 360 px). */}
+        <View
+          style={{
+            flexDirection: narrow ? 'column' : 'row',
+            gap: 8,
+            alignItems: narrow ? 'stretch' : 'center',
+          }}
+        >
+          <View style={{ flexDirection: 'row' }}>
+            <GlassButton size="sm" onPress={onPasteFromClipboard}>
+              Paste from clipboard
+            </GlassButton>
+          </View>
+          {narrow ? null : <View style={{ flex: 1 }} />}
+          <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end' }}>
+            <GlassButton size="sm" onPress={onCancel}>
+              Cancel
+            </GlassButton>
+            <GoldButton size="sm" onPress={onImport} disabled={text.trim().length === 0}>
+              Import
+            </GoldButton>
+          </View>
         </View>
       </View>
     </GlassSheet>

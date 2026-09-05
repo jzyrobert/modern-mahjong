@@ -330,16 +330,28 @@ const SEED_REPLAYS = [
     })()`,
   },
 ];
+/**
+ * The replay player is up: under the 3D renderer its canvas has drawn
+ * and the loading veil is gone; under classic the paper player's root
+ * is enough (both roots carry `data-testid="replay-player"`).
+ */
+const REPLAY_READY = `(() => {
+  const root = document.querySelector('[data-testid="replay-player"]');
+  if (!root) return false;
+  if (root.dataset.theme !== 'glass') return true;
+  return !!document.querySelector('[data-testid="replay-table-3d"] canvas') && !document.querySelector('[data-testid="scene-veil"]');
+})()`;
 /** Open the seed-5 fixture in the player (`query` e.g. '?frame=100'). */
 const OPEN_REPLAY = (query) => [
   { goto: `/replays/replay-fixture-5${query}` },
-  { waitFor: '[data-testid="replay-table-3d"] canvas', timeout: 30000 },
-  { waitFor: '[data-testid="scene-veil"]', state: 'hidden', timeout: 30000 },
+  { waitFor: '[data-testid="replay-player"]', timeout: 30000 },
+  { waitForFunction: REPLAY_READY, timeout: 30000 },
 ];
-/** Every tile of the frame has landed (the replay table's debug seam). */
+/** Every tile of the frame has landed (the 3D table's debug seam; trivially true under classic). */
 const REPLAY_SETTLED = [
   {
-    waitForFunction: 'globalThis.__MAHJONG_REPLAY_3D_DEBUG__?.()?.flights === 0',
+    waitForFunction:
+      '(() => { const d = globalThis.__MAHJONG_REPLAY_3D_DEBUG__; return !d || d()?.flights === 0; })()',
     timeout: 20000,
   },
   { waitMs: 400 },

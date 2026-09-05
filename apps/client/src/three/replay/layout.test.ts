@@ -4,6 +4,7 @@ import { HAND_Z, OWN_HAND_Z } from '../table/layout';
 import { TILE_D, TILE_H } from '../tiles/geometry';
 import {
   REPLAY_BADGE_H,
+  SIDE_KEY_Z,
   desktopBadgeSlots,
   landscapeBadgeSlots,
   portraitApronFor,
@@ -11,6 +12,7 @@ import {
   replayChromeFor,
   replayHeldFrameFor,
   replaySyncTuning,
+  sideOuterExtent,
 } from './layout';
 
 const NO_INSETS = { top: 0, bottom: 0, left: 0, right: 0 };
@@ -102,6 +104,26 @@ describe('badge slots', () => {
     expect(w - slots.left.right!).toBeLessThan(leftFace);
     expect(slots.right.left!).toBeGreaterThan(rightFace);
     expect(slots.left.top).toBe(slots.right.top);
+  });
+  test('desktop: ≥ 12 px between a side badge and the widest tile the seat can show', () => {
+    const w = 1440;
+    const h = 900;
+    const chrome = replayChromeFor(w, h, NO_INSETS);
+    const preset = cameraFor(w, h);
+    const outer = sideOuterExtent();
+    for (const revealed of [false, true]) {
+      const slots = desktopBadgeSlots(preset, w, h, chrome, { sideRevealed: revealed });
+      // The seat's tiles level with the badge's height band: a revealed
+      // rack lies flat (melds too), a concealed one stands.
+      for (const y of revealed ? [0, TILE_D] : [0, TILE_D, TILE_H]) {
+        for (const z of [0, 1.5, SIDE_KEY_Z]) {
+          const left = projectPreset(preset, w, h, [-outer, y, z]).x;
+          const right = projectPreset(preset, w, h, [outer, y, z]).x;
+          expect(left - (w - slots.left.right!)).toBeGreaterThanOrEqual(12);
+          expect(slots.right.left! - right).toBeGreaterThanOrEqual(12);
+        }
+      }
+    }
   });
   test('landscape: the far badge rides in the chrome row', () => {
     const chrome = replayChromeFor(915, 412, NO_INSETS);

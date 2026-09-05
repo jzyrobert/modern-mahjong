@@ -173,7 +173,7 @@ type Density = 'portrait' | 'landscape' | 'roomy';
 function FeltPage({ density, children }: { density: Density; children: React.ReactNode }) {
   const felt = useFeltSkin();
   return (
-    <View style={{ flex: 1, backgroundColor: felt.top }}>
+    <View testID="replay-player" style={{ flex: 1, backgroundColor: felt.top }}>
       <View style={{ flex: 1, paddingTop: density === 'roomy' ? 4 : 0 }}>{children}</View>
     </View>
   );

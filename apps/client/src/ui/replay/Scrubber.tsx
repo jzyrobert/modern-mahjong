@@ -1,9 +1,10 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { type LayoutChangeEvent, Pressable, Text, View } from 'react-native';
 import { type PlaybackPov, usePlayback } from '../../replay/playback';
 import type { ReplayBookmark, ReplayBookmarkKind } from '../../replay/types';
 import { COLORS } from '../colors';
 import type { ReplayChapter } from './chapters';
+import { pressX, xToCursor } from './timeline';
 
 const PIP_COLOR: Record<ReplayBookmarkKind, string> = {
   'hand-start': COLORS.ink2,
@@ -39,11 +40,16 @@ export function Scrubber({
     setTrackWidth(e.nativeEvent.layout.width);
   }, []);
 
+  const trackRef = useRef<View | null>(null);
   const onTrackPress = useCallback(
-    (e: { nativeEvent: { locationX: number } }) => {
+    (e: { nativeEvent: unknown }) => {
       if (trackWidth <= 0 || playback.totalFrames <= 1) return;
-      const ratio = Math.max(0, Math.min(1, e.nativeEvent.locationX / trackWidth));
-      playback.goto(Math.round(ratio * (playback.totalFrames - 1)));
+      // RN-web's event has no `locationX`; measure against the track.
+      const el = trackRef.current as unknown as { getBoundingClientRect?: () => DOMRect } | null;
+      const left = el?.getBoundingClientRect ? el.getBoundingClientRect().left : null;
+      const x = pressX(e.nativeEvent, left);
+      if (x === null) return;
+      playback.goto(xToCursor([], x, trackWidth, playback.totalFrames));
     },
     [trackWidth, playback],
   );
@@ -68,6 +74,7 @@ export function Scrubber({
 
       {/* Track + pips */}
       <Pressable
+        ref={trackRef}
         onPress={onTrackPress}
         onLayout={onTrackLayout}
         accessibilityLabel="Replay timeline"

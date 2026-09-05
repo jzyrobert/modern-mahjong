@@ -1,8 +1,15 @@
-import { type ReactNode, useCallback, useState } from 'react';
-import { type LayoutChangeEvent, Pressable, Text, View, type ViewStyle } from 'react-native';
+import { type ReactNode, useCallback, useMemo, useRef, useState } from 'react';
+import {
+  type DimensionValue,
+  type LayoutChangeEvent,
+  Pressable,
+  Text,
+  View,
+  type ViewStyle,
+} from 'react-native';
 import { type PlaybackPov, usePlayback } from '../../replay/playback';
 import { HOVER_TRANSITION, MENU, TYPE, glass } from '../menu/theme';
-import type { ReplayChapter } from './chapters';
+import { type ReplayChapter, shortChapterResult } from './chapters';
 import { MICRO } from './glassParts';
 import {
   PauseIcon,
@@ -12,6 +19,7 @@ import {
   StepBackIcon,
   StepForwardIcon,
 } from './icons';
+import { TIMELINE_GAP, pressX, ratioToX, timelineSegments, xToCursor } from './timeline';
 
 /**
  * Glass scrubber for the 3D replay player. The chapter cards *are* the
@@ -30,12 +38,15 @@ export function GlassScrubber({
   layout,
   compact,
   leading,
+  showCounter = true,
 }: {
   chapters: readonly ReplayChapter[];
   layout: 'stack' | 'row';
   compact: boolean;
   /** The point-of-view seat's badge (stack: header row; row: first cell). */
   leading?: ReactNode;
+  /** The frame counter — off when the status pill already shows it. */
+  showCounter?: boolean;
 }) {
   const playback = usePlayback();
   const controls = <TransportGroup compact={compact} />;
@@ -70,14 +81,14 @@ export function GlassScrubber({
           showResult={!compact}
           style={{ flex: 1, minWidth: 0 }}
         />
-        {counter}
+        {showCounter ? counter : null}
         {speed}
         {pov}
       </View>
     );
   }
   return (
-    <View testID="replay-scrubber" style={{ ...glass({ radius: 16 }), padding: 8, gap: 6 }}>
+    <View testID="replay-scrubber" style={{ ...glass({ radius: 16 }), padding: 6, gap: 5 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, minWidth: 0 }}>
         <View style={{ flex: 1, minWidth: 0, flexDirection: 'row' }}>{leading}</View>
         {pov}
@@ -102,7 +113,10 @@ export function GlassScrubber({
 
 // ─── Timeline (chapter cards + playhead) ────────────────────────────
 
-const TIMELINE_H = 30;
+/** Strip height, CSS px: 26 on compact strips (the portrait dock), 30 otherwise. */
+function timelineHeight(compact: boolean): number {
+  return compact ? 26 : 30;
+}
 
 function Timeline({
   chapters,
@@ -117,31 +131,44 @@ function Timeline({
 }) {
   const playback = usePlayback();
   const [trackWidth, setTrackWidth] = useState(0);
+  const trackRef = useRef<View | null>(null);
   const onLayout = useCallback(
     (e: LayoutChangeEvent) => setTrackWidth(e.nativeEvent.layout.width),
     [],
   );
+  const segments = useMemo(() => timelineSegments(chapters, compact), [chapters, compact]);
   const onPress = useCallback(
-    (e: { nativeEvent: { locationX: number } }) => {
+    (e: { nativeEvent: unknown }) => {
       if (trackWidth <= 0 || playback.totalFrames <= 1) return;
-      const ratio = Math.max(0, Math.min(1, e.nativeEvent.locationX / trackWidth));
-      playback.goto(Math.round(ratio * (playback.totalFrames - 1)));
+      // RN-web hands the DOM event through (no `locationX`): measure
+      // against the strip's own rect so a tap on a card lands where the
+      // playhead would draw the same frame.
+      const el = trackRef.current as unknown as { getBoundingClientRect?: () => DOMRect } | null;
+      const left = el?.getBoundingClientRect ? el.getBoundingClientRect().left : null;
+      const x = pressX(e.nativeEvent, left);
+      if (x === null) return;
+      playback.goto(xToCursor(segments, x, trackWidth, playback.totalFrames));
     },
-    [trackWidth, playback],
+    [trackWidth, playback, segments],
   );
   const ratio = playback.totalFrames > 1 ? playback.cursor / (playback.totalFrames - 1) : 0;
-  const cards = chapters.length > 0 ? chapters : [];
+  const h = timelineHeight(compact);
+  // Playhead x follows the cards' piecewise geometry (percent fallback
+  // before the first layout).
+  const headX = trackWidth > 0 ? ratioToX(segments, ratio, trackWidth) : null;
+  const headLeft: DimensionValue = headX !== null ? headX : `${ratio * 100}%`;
   return (
     <Pressable
+      ref={trackRef}
       onPress={onPress}
       onLayout={onLayout}
       accessibilityLabel="Replay timeline"
       accessibilityRole="adjustable"
       accessibilityValue={{ min: 1, max: playback.totalFrames, now: playback.cursor + 1 }}
-      style={[{ height: TIMELINE_H, minWidth: 0 }, style]}
+      style={[{ height: h, minWidth: 0 }, style]}
     >
-      <View style={{ flexDirection: 'row', gap: 3, height: TIMELINE_H }} pointerEvents="none">
-        {cards.length === 0 ? (
+      <View style={{ flexDirection: 'row', gap: TIMELINE_GAP, height: h }} pointerEvents="none">
+        {chapters.length === 0 ? (
           <View
             style={{
               flex: 1,
@@ -152,8 +179,15 @@ function Timeline({
             }}
           />
         ) : (
-          cards.map((c) => (
-            <ChapterCard key={c.seq} chapter={c} compact={compact} showResult={showResult} />
+          chapters.map((c, i) => (
+            <ChapterCard
+              key={c.seq}
+              chapter={c}
+              weight={segments[i]!.weight}
+              compact={compact}
+              showResult={showResult}
+              height={h}
+            />
           ))
         )}
       </View>
@@ -164,7 +198,7 @@ function Timeline({
           position: 'absolute',
           top: -3,
           bottom: -3,
-          left: `${ratio * 100}%`,
+          left: headLeft,
           width: 2,
           marginLeft: -1,
           borderRadius: 1,
@@ -177,7 +211,7 @@ function Timeline({
         style={{
           position: 'absolute',
           top: -6,
-          left: `${ratio * 100}%`,
+          left: headLeft,
           width: 8,
           height: 8,
           marginLeft: -4,
@@ -193,21 +227,27 @@ function Timeline({
 
 function ChapterCard({
   chapter: c,
+  weight,
   compact,
   showResult,
+  height,
 }: {
   chapter: ReplayChapter;
+  weight: number;
   compact: boolean;
   showResult: boolean;
+  height: number;
 }) {
   const full = showResult && (!compact || c.current);
+  // Compact strips: "H2" instead of "HAND 2" so the result keeps its faan.
+  const label = compact ? `H${c.index}` : c.label;
   return (
     <View
       accessibilityLabel={`Chapter ${c.label}`}
       style={{
-        flex: Math.max(0.001, c.to - c.from) * (compact && c.current ? 2 : 1),
+        flex: weight,
         minWidth: 0,
-        height: TIMELINE_H,
+        height,
         paddingHorizontal: 8,
         borderRadius: 8,
         borderWidth: 1,
@@ -231,17 +271,17 @@ function ChapterCard({
       <Text
         style={[
           MICRO,
-          { fontSize: 10, letterSpacing: 0.8, color: c.current ? MENU.text : MENU.text2 },
+          { letterSpacing: 0.8, color: c.current ? MENU.text : MENU.text2, flexShrink: 0 },
         ]}
         numberOfLines={1}
       >
-        {full ? c.label : String(c.index)}
+        {full ? label : String(c.index)}
       </Text>
       {full ? (
         <Text
           style={{
-            fontSize: 10,
-            lineHeight: 12,
+            fontSize: 11,
+            lineHeight: 13,
             fontWeight: '600',
             color: MENU.text3,
             flexShrink: 1,
@@ -249,7 +289,7 @@ function ChapterCard({
           }}
           numberOfLines={1}
         >
-          {c.result}
+          {compact ? shortChapterResult(c.result) : c.result}
         </Text>
       ) : null}
     </View>
@@ -260,7 +300,7 @@ function ChapterCard({
 
 function TransportGroup({ compact }: { compact: boolean }) {
   const playback = usePlayback();
-  const h = compact ? 30 : 34;
+  const h = compact ? 26 : 34;
   const iconColor = MENU.text;
   const icon = compact ? 12 : 14;
   return (

@@ -167,7 +167,7 @@ test('phone: the 3D table mounts within budget under glass chrome', async ({ pag
     'phone-portrait',
   );
   await expect(page.getByTestId('replay-status-pill')).toBeVisible();
-  await expect(page.getByTestId('replay-seat-strip').locator('[aria-label]')).toHaveCount(3);
+  await expect(page.locator('[data-testid^="replay-seat-badge-"]')).toHaveCount(3);
   await expect(page.getByTestId('replay-dock')).toBeVisible();
   await expect(page.getByLabel('Replay timeline')).toBeVisible();
   await expect(page.getByTestId('replay-frame-counter')).toHaveText(`100/${TOTAL_FRAMES}`);
@@ -176,8 +176,44 @@ test('phone: the 3D table mounts within budget under glass chrome', async ({ pag
   expect(snap.tiles.filter((t) => t.zone === 'discard').length).toBeGreaterThanOrEqual(36);
   expect(snap.tiles.filter((t) => t.zone === 'meld').length).toBeGreaterThan(0);
 
+  // The dock sits under the held hand with air between them: the hand's
+  // baseline is `heldBottom` (156 px at these heights) above the bottom,
+  // and no dock text may come within 8 px of it.
+  const dock = (await page.getByTestId('replay-dock').boundingBox())!;
+  const ticker = (await page.getByTestId('replay-ticker').boundingBox())!;
+  const handBaseline = 700 - 156;
+  expect(dock.y).toBeGreaterThanOrEqual(handBaseline + 8);
+  expect(ticker.y).toBeGreaterThanOrEqual(dock.y);
+  expect(ticker.y + ticker.height).toBeLessThanOrEqual(dock.y + dock.height);
+
   expect(await paperSurfaces(page, 'replay-route-glass')).toEqual([]);
   expectBudget(await readPerf(page));
+  expect(errors, 'console / page errors').toEqual([]);
+});
+
+test('small phone: the dock clears the held hand and names survive the strip', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 640 });
+  const errors = collectErrors(page);
+  await seedLibrary(page);
+  await openPlayer(page, '?frame=end');
+  const dock = (await page.getByTestId('replay-dock').boundingBox())!;
+  const ticker = (await page.getByTestId('replay-ticker').boundingBox())!;
+  expect(dock.y).toBeGreaterThanOrEqual(640 - 156 + 8);
+  expect(ticker.y).toBeGreaterThanOrEqual(dock.y);
+  expect(ticker.y + ticker.height).toBeLessThanOrEqual(dock.y + dock.height);
+  // Every strip badge shows its full name (the result frame adds 莊 + a
+  // score delta, which used to squeeze the names to "Siu…").
+  const names = await page.locator('[data-testid^="replay-seat-badge-"]').evaluateAll((els) =>
+    els.map((el) => ({
+      label: el.getAttribute('aria-label') ?? '',
+      text: el.textContent ?? '',
+    })),
+  );
+  expect(names).toHaveLength(3);
+  for (const n of names) {
+    const full = n.label.split(',')[0]!.replace(' (you)', '');
+    expect(n.text).toContain(full);
+  }
   expect(errors, 'console / page errors').toEqual([]);
 });
 
@@ -193,17 +229,47 @@ test('desktop: scrubbing springs the tiles and the point of view re-seats the ca
   await expect(player).toHaveAttribute('data-viewport', 'desktop');
   await expect(page.getByTestId('replay-events')).toBeVisible();
   await expect(page.getByTestId('replay-footer')).toBeVisible();
-  await expect(page.getByTestId('replay-frame-counter')).toHaveText(`100/${TOTAL_FRAMES}`);
+  // Wide layouts show the frame counter once, in the status pill.
+  await expect(page.getByTestId('replay-frame-counter')).toHaveCount(0);
+  await expect(page.getByTestId('replay-status-pill')).toContainText(`100 / ${TOTAL_FRAMES}`);
+  await expect(player).toHaveAttribute('data-cursor', '99');
 
   // Step forward: the cursor advances and the sync put the moved tile in
   // flight (a spring, never a snap) — read from the sync record, not
   // the live poses, so a slow shard can't outrun the tween.
   await page.getByLabel('Step forward').click();
   await expect(player).toHaveAttribute('data-cursor', '100');
-  await expect(page.getByTestId('replay-frame-counter')).toHaveText(`101/${TOTAL_FRAMES}`);
+  await expect(page.getByTestId('replay-status-pill')).toContainText(`101 / ${TOTAL_FRAMES}`);
   const stepped = (await debug(page))!.lastSync!;
   expect(stepped.snapped).toBe(false);
   expect(stepped.flights).toBeGreaterThan(0);
+  await waitSettled(page);
+
+  // Tap-to-seek on the chapter timeline: a quarter and three quarters
+  // along land on finite cursors in the right order and the table keeps
+  // its tiles (RN-web's pointer event has no `locationX` — a NaN cursor
+  // once blanked the felt).
+  const track = (await page.getByLabel('Replay timeline').boundingBox())!;
+  const seek = async (frac: number) => {
+    await page.mouse.click(track.x + track.width * frac, track.y + track.height / 2);
+    const cursor = await player.getAttribute('data-cursor');
+    expect(cursor).toMatch(/^\d+$/);
+    await waitSettled(page);
+    const snap = (await debug(page))!;
+    expect(snap.tiles.filter((t) => t.zone !== null).length).toBeGreaterThan(50);
+    return Number(cursor);
+  };
+  const quarter = await seek(0.25);
+  const threeQuarters = await seek(0.75);
+  expect(quarter).toBeGreaterThan(0);
+  expect(threeQuarters).toBeGreaterThan(quarter);
+  expect(threeQuarters).toBeLessThan(TOTAL_FRAMES - 1);
+  await page.getByLabel('Step forward').click();
+  await expect(player).toHaveAttribute('data-cursor', String(threeQuarters + 1));
+  await page.goto(`/replays/${FIXTURE}?frame=100`);
+  await expect(page.getByTestId('replay-player')).toHaveAttribute('data-cursor', '99', {
+    timeout: 20_000,
+  });
   await waitSettled(page);
 
   // Point of view: the camera sits behind seat 2 (西) and the far seat's
@@ -218,8 +284,9 @@ test('desktop: scrubbing springs the tiles and the point of view re-seats the ca
 
   // Chapter tap seeks; the end frame reveals every hand.
   await page.goto(`/replays/${FIXTURE}?frame=end`);
-  await expect(page.getByTestId('replay-frame-counter')).toHaveText(
-    `${TOTAL_FRAMES}/${TOTAL_FRAMES}`,
+  await expect(page.getByTestId('replay-player')).toHaveAttribute(
+    'data-cursor',
+    String(TOTAL_FRAMES - 1),
     { timeout: 20_000 },
   );
   await waitSettled(page);
