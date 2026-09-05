@@ -1457,7 +1457,27 @@ test('desktop footer controls never sit on the hand row: CTA, tenpai badge, one 
   const badgeMid = badgeBox.y + badgeBox.height / 2;
   expect(badgeMid, 'badge shares the turn chip row').toBeGreaterThan(chipBox.y);
   expect(badgeMid, 'badge shares the turn chip row').toBeLessThan(chipBox.y + chipBox.height);
-  expect(badgeBox.x + badgeBox.width).toBeLessThanOrEqual(chipBox.x + 1);
+  // The discard hands the turn away and the lesson's scripted bot feeds
+  // a chi, so the claim strip takes the slot from the chip. The badge
+  // still heads that row: left of every claim button, same band.
+  const strip = page.getByTestId('claim-float');
+  await expect(strip.getByRole('button', { name: 'Pass' })).toBeVisible();
+  const claimButtons = await strip
+    .getByRole('button')
+    .evaluateAll((els) =>
+      els
+        .map((el) => el.getBoundingClientRect())
+        .map((r) => ({ x: r.left, y: r.top, h: r.height })),
+    );
+  expect(claimButtons.length).toBeGreaterThan(0);
+  const stripLeft = Math.min(...claimButtons.map((b) => b.x));
+  expect(badgeBox.x + badgeBox.width, 'badge heads the claim row').toBeLessThanOrEqual(
+    stripLeft + 1,
+  );
+  for (const b of claimButtons) {
+    expect(badgeMid, 'badge shares the claim row').toBeGreaterThan(b.y);
+    expect(badgeMid, 'badge shares the claim row').toBeLessThan(b.y + b.h);
+  }
   expect(badgeBox.height).toBeGreaterThanOrEqual(56);
   expect(errors, 'console / page errors').toEqual([]);
 });
