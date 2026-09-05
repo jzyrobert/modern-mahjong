@@ -297,6 +297,40 @@ const TUTORIAL_NEXT = [
 /** Engine state via the test hatch (the zustand store's `state`). */
 const ENGINE = 'globalThis.__MAHJONG_TEST_GET_STATE__?.()?.state';
 
+/**
+ * Seed the replay library deterministically: two headless fixture
+ * matches (`src/replay/fixture.ts`, installed on the `/replays` routes
+ * as `__MAHJONG_TEST_REPLAY_FIXTURE__`) — seed 5 played an hour ago and
+ * seed 11 three days back, so the list shows two date groups. Runs on
+ * the library page so the hatch exists; the next `goto` re-reads storage.
+ */
+const SEED_REPLAYS = [
+  { goto: '/replays' },
+  { waitForText: 'Replays' },
+  {
+    evaluate: `(() => {
+      const build = globalThis.__MAHJONG_TEST_REPLAY_FIXTURE__;
+      if (!build) throw new Error('replay fixture hatch missing');
+      build({ seed: 5, hands: 2 });
+      build({ seed: 11, hands: 1, startedAt: Date.now() - 3 * 86400000 });
+    })()`,
+  },
+];
+/** Open the seed-5 fixture in the player (`query` e.g. '?frame=100'). */
+const OPEN_REPLAY = (query) => [
+  { goto: `/replays/replay-fixture-5${query}` },
+  { waitFor: '[data-testid="replay-table-3d"] canvas', timeout: 30000 },
+  { waitFor: '[data-testid="scene-veil"]', state: 'hidden', timeout: 30000 },
+];
+/** Every tile of the frame has landed (the replay table's debug seam). */
+const REPLAY_SETTLED = [
+  {
+    waitForFunction: 'globalThis.__MAHJONG_REPLAY_3D_DEBUG__?.()?.flights === 0',
+    timeout: 20000,
+  },
+  { waitMs: 400 },
+];
+
 export const STATES = {
   // ── Menu ─────────────────────────────────────────────────────────────
   menu: {
@@ -346,15 +380,61 @@ export const STATES = {
     ],
   },
   'replay-import': {
-    owner: 'menu',
+    owner: 'replay',
     scene: false,
+    // The glass import sheet over a filled library.
     steps: [
+      ...SEED_REPLAYS,
       { goto: '/replays' },
       { waitForText: 'Replays' },
       { waitForSettled: '[data-reveal]' },
       { click: 'role=button[name="Import replays"]' },
       { waitForText: 'Paste a JSON-encoded replay' },
-      { waitMs: 700 },
+      ...SHEET_SETTLED_STEPS,
+    ],
+    optional: true,
+  },
+  'replay-library-filled': {
+    owner: 'replay',
+    scene: false,
+    // Two saved matches (today + this week) as glass rows — no scene:
+    // the 3D shelf only draws on the empty state.
+    steps: [
+      ...SEED_REPLAYS,
+      { goto: '/replays' },
+      { waitForText: 'Replays' },
+      { waitForSettled: '[data-reveal]' },
+      { waitMs: 500 },
+    ],
+  },
+
+  // ── Replay player (the match's TableScene fed a recorded frame) ─────
+  'replay-player': {
+    owner: 'replay',
+    // Frame 1: the waiting table before the first deal.
+    steps: [...SEED_REPLAYS, ...OPEN_REPLAY(''), ...REPLAY_SETTLED],
+  },
+  'replay-player-mid': {
+    owner: 'replay',
+    // Late in hand 1 — a full river and seven exposed melds
+    // (`FIXTURE_MID_FRAME` in `src/replay/fixture.ts`, 1-based here).
+    steps: [...SEED_REPLAYS, ...OPEN_REPLAY('?frame=100'), ...REPLAY_SETTLED],
+  },
+  'replay-player-end': {
+    owner: 'replay',
+    // The last frame: hand 2's result, every hand laid face-up.
+    steps: [...SEED_REPLAYS, ...OPEN_REPLAY('?frame=end'), ...REPLAY_SETTLED],
+  },
+  'replay-player-pov': {
+    owner: 'replay',
+    // Point of view switched to the far seat (西): the camera sits
+    // behind seat 2 and only its hand faces the viewer.
+    steps: [
+      ...SEED_REPLAYS,
+      ...OPEN_REPLAY('?frame=100'),
+      ...REPLAY_SETTLED,
+      { click: 'role=button[name="POV W"]', timeout: 10000 },
+      ...REPLAY_SETTLED,
     ],
     optional: true,
   },
@@ -1135,6 +1215,8 @@ export const BUDGETS = {
   menu: { drawCalls: 20, triangles: 80_000, programs: 10, frameMsP95: 8, textures: 10 },
   settings: { drawCalls: 48, triangles: 160_000, programs: 14, frameMsP95: 8, textures: 14 },
   tutorial: { drawCalls: 48, triangles: 160_000, programs: 14, frameMsP95: 8, textures: 14 },
+  // The replay player mounts the match's TableScene: the table budget.
+  replay: { drawCalls: 40, triangles: 150_000, programs: 12, frameMsP95: 8, textures: 12 },
 };
 
 /**

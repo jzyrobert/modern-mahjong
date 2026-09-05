@@ -71,6 +71,9 @@ const SHARD_2_SPECS = [
   'online-reload-survival.spec.ts',
   'overlay-portrait.spec.ts',
   'replay.spec.ts',
+  // 3D replay player: the match's TableScene fed a recorded frame
+  // (~25 s on SwiftShader: five fixture-seeded page loads).
+  'three-replay.spec.ts',
   // 1 of 5 screenshot specs lands here (~14 s).
   'replay-screenshot-landscape.spec.ts',
   'scoring-rules-sheet.spec.ts',
