@@ -8,6 +8,7 @@
  *   { goto: '/path' }                      navigate (query params allowed)
  *   { click: 'role=button[name="…"]' }     any Playwright selector / locator string
  *   { clickTestId: 'own-hand-tile', nth: 0 }
+ *   { dragTestId: 'own-hand-tile', from: 0, to: 3, dx?, dy?, hold?: true }  pointer drag between two targets
  *   { waitFor: selector, state?: 'visible'|'hidden', timeout? }
  *   { waitForText: 'Lobby' }
  *   { waitMs: 400 }                        settle animations (use sparingly)
@@ -547,6 +548,25 @@ export const STATES = {
     owner: 'table',
     steps: [...START_SOLO, { waitForOwnHand: true }, { playTurns: 6 }, { waitMs: 600 }],
   },
+  'match-manual-drag': {
+    owner: 'table',
+    // Manual sort, mid-drag: the first hand tile is pressed and carried
+    // to the fourth slot (a little above the row) and the pointer is
+    // still down when the frame is taken, so the shot shows the lifted
+    // tile under the pointer and the other tiles re-flowed into the
+    // gap. Portrait: slot 3 is on the back row with slot 0, so the
+    // drag stays in-row there too.
+    steps: [
+      ...START_SOLO,
+      { waitForOwnHand: true },
+      { waitMs: 1200 },
+      { click: 'role=button[name="Sort by Manual"]' },
+      { waitMs: 400 },
+      { dragTestId: 'own-hand-tile', from: 0, to: 3, dy: -14, hold: true },
+      { waitMs: 700 },
+      { waitForPerf: true },
+    ],
+  },
   'match-late-hand': {
     owner: 'table',
     // Twelve of the user's turns in: every river holds two rows
@@ -704,7 +724,7 @@ export const BUDGETS = {
 };
 
 export const VIEWPORTS = {
-  phone: { width: 412, height: 915, dpr: 2, mobile: true },
+  phone: { width: 412, height: 700, dpr: 2, mobile: true },
   'phone-landscape': { width: 915, height: 412, dpr: 2, mobile: true },
   tablet: { width: 834, height: 1194, dpr: 2, mobile: true },
   desktop: { width: 1440, height: 900, dpr: 1, mobile: false },

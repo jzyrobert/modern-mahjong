@@ -224,6 +224,141 @@ test('tapping a hand tile discards it and the wall cue draws', async ({ page }) 
   expect(errors, 'console / page errors').toEqual([]);
 });
 
+/** Hand tile ids in DOM order (the buttons re-key into display order). */
+function domHandOrder(page: Page): Promise<number[]> {
+  return page
+    .getByTestId('own-hand-tile')
+    .evaluateAll((els) => els.map((el) => Number(el.getAttribute('data-tile-id'))));
+}
+
+/** Hand tile ids by projected position: rows top to bottom, left to right. */
+function screenHandOrder(page: Page): Promise<number[]> {
+  return page.getByTestId('own-hand-tile').evaluateAll((els) => {
+    const items = els.map((el) => {
+      const r = el.getBoundingClientRect();
+      return {
+        id: Number(el.getAttribute('data-tile-id')),
+        x: r.left + r.width / 2,
+        y: r.top + r.height / 2,
+        h: r.height,
+      };
+    });
+    items.sort((a, b) => a.y - b.y);
+    const rows: (typeof items)[] = [];
+    for (const it of items) {
+      const row = rows[rows.length - 1];
+      if (row && Math.abs(it.y - row[0]!.y) <= row[0]!.h / 2) row.push(it);
+      else rows.push([it]);
+    }
+    return rows.flatMap((row) => row.sort((a, b) => a.x - b.x).map((it) => it.id));
+  });
+}
+
+/**
+ * Order polls: a drag renders a full frame per pointer step and the
+ * springs keep the loop busy for ~0.5 s after the release, so on a
+ * loaded SwiftShader shard a single DOM read can queue for seconds.
+ */
+const POLL = { timeout: 15_000 };
+
+function moved(ids: readonly number[], from: number, to: number): number[] {
+  const next = ids.slice();
+  const [m] = next.splice(from, 1);
+  next.splice(to, 0, m!);
+  return next;
+}
+
+/** Press on the `from`-th hand tile and carry it to the `to`-th tile's centre. */
+async function dragHandTile(page: Page, from: number, to: number) {
+  const tiles = page.getByTestId('own-hand-tile');
+  const a = (await tiles.nth(from).boundingBox())!;
+  const b = (await tiles.nth(to).boundingBox())!;
+  const x0 = a.x + a.width / 2;
+  const y0 = a.y + a.height / 2;
+  await page.mouse.move(x0, y0);
+  await page.mouse.down();
+  await page.mouse.move(x0 + 8, y0, { steps: 2 });
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2 - 10, { steps: 12 });
+  await page.mouse.up();
+}
+
+function ownDiscardCount(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const s = (
+      globalThis as {
+        __MAHJONG_TEST_GET_STATE__?: () => { state: { discards: Record<number, unknown[]> } };
+      }
+    ).__MAHJONG_TEST_GET_STATE__?.();
+    return s?.state.discards[0]?.length ?? -1;
+  });
+}
+
+test('dragging a hand tile reorders it (switching to MANUAL) and a plain tap still discards', async ({
+  page,
+}) => {
+  // Two drags, a keyboard move and a discard, each waiting on a spring
+  // settle: a loaded CI shard needs the slow budget.
+  test.slow();
+  const errors: string[] = [];
+  await startSolo(page, errors);
+  await page.waitForTimeout(1500);
+  const manual = page.getByRole('button', { name: 'Sort by Manual' });
+  await expect(manual).toHaveAttribute('aria-pressed', 'false');
+  const before = await domHandOrder(page);
+  expect(before).toHaveLength(14);
+  expect(await screenHandOrder(page)).toEqual(before);
+
+  // Carry the first tile onto the fourth slot: the drag flips the sort
+  // segment to MANUAL, the row re-flows behind it and nothing is discarded.
+  await dragHandTile(page, 0, 3);
+  await expect(manual).toHaveAttribute('aria-pressed', 'true');
+  const expected = moved(before, 0, 3);
+  await expect.poll(() => domHandOrder(page), POLL).toEqual(expected);
+  await expect.poll(() => screenHandOrder(page), POLL).toEqual(expected);
+  expect(await ownDiscardCount(page)).toBe(0);
+
+  // Keyboard fallback: Shift+ArrowLeft walks the focused tile one slot back.
+  await page.getByTestId('own-hand-tile').nth(3).focus();
+  await page.keyboard.press('Shift+ArrowLeft');
+  await expect.poll(() => domHandOrder(page), POLL).toEqual(moved(expected, 3, 2));
+
+  // A plain tap on the (now second) tile is still a discard (the hand
+  // drops to 13; a bot may claim the tile, so the river is not asserted).
+  await page.getByTestId('own-hand-tile').nth(1).click();
+  await expect(page.getByTestId('own-hand-tile')).toHaveCount(13, { timeout: 10_000 });
+  expect(errors, 'console / page errors').toEqual([]);
+});
+
+test('phone portrait drag reorders within and across the two held rows', async ({ page }) => {
+  test.slow();
+  await page.setViewportSize({ width: 412, height: 700 });
+  const errors: string[] = [];
+  await startSolo(page, errors);
+  await page.waitForTimeout(1800);
+  await page.getByRole('button', { name: 'Sort by Manual' }).click();
+  const before = await domHandOrder(page);
+  expect(before).toHaveLength(14);
+  expect(await screenHandOrder(page)).toEqual(before);
+
+  // Same row: slot 0 → slot 3 (both on the back row of 7).
+  await dragHandTile(page, 0, 3);
+  const afterRow = moved(before, 0, 3);
+  await expect.poll(() => domHandOrder(page), POLL).toEqual(afterRow);
+  await expect.poll(() => screenHandOrder(page), POLL).toEqual(afterRow);
+
+  // Across rows: slot 0 (back row) → slot 10 (front row) resolves by the
+  // nearest slot centre in 2D, not by x alone.
+  await dragHandTile(page, 0, 10);
+  const afterCross = moved(afterRow, 0, 10);
+  await expect.poll(() => domHandOrder(page), POLL).toEqual(afterCross);
+  await expect.poll(() => screenHandOrder(page), POLL).toEqual(afterCross);
+  expect(await ownDiscardCount(page)).toBe(0);
+
+  await page.getByTestId('own-hand-tile').first().click();
+  await expect(page.getByTestId('own-hand-tile')).toHaveCount(13, { timeout: 10_000 });
+  expect(errors, 'console / page errors').toEqual([]);
+});
+
 test('phone portrait holds the hand near the camera at ≥ 44 px per tile', async ({ page }) => {
   await page.setViewportSize({ width: 412, height: 915 });
   const errors: string[] = [];
