@@ -76,8 +76,8 @@ const PALETTES: Record<ClaimBarTheme, ClaimPalette> = {
     glassButtons: false,
   },
   glass: {
-    panelBg: 'rgba(14,20,17,0.8)',
-    panelBorder: 'rgba(216,168,90,0.5)',
+    panelBg: 'rgba(14,20,17,0.88)',
+    panelBorder: 'rgba(216,168,90,0.65)',
     label: 'rgba(255,255,255,0.62)',
     divider: 'rgba(255,255,255,0.14)',
     ghostBorder: 'rgba(255,255,255,0.2)',
@@ -227,22 +227,29 @@ export function ClaimBar({
   // rather than shrinking the live tile to a thumbnail.
   const large = size === 'large';
   const footer = size === 'footer';
-  const tileW = large || isDesktop ? 44 : footer ? 26 : 32;
-  const tileH = large || isDesktop ? 60 : footer ? 35 : 44;
-  const previewW = large || isDesktop ? 22 : footer ? 12 : 13;
-  const previewH = large || isDesktop ? 30 : footer ? 16 : 18;
+  // `large` (the 1440 px desktop footer strip): a 48 × 66 live tile, 24 ×
+  // 33 meld previews, 20 px glyphs on 48 px gold buttons — the user's
+  // call is the primary CTA on the screen and reads as one from across
+  // the room, not at the phone strip's compact sizing. The strip stays
+  // ≤ 84 px tall (`Table3DShell.CLAIM_STRIP_LARGE_H`) so it fits the
+  // void band under the desktop hand row instead of climbing onto the
+  // tiles' bottom edge.
+  const tileW = large ? 48 : isDesktop ? 44 : footer ? 26 : 32;
+  const tileH = large ? 66 : isDesktop ? 60 : footer ? 35 : 44;
+  const previewW = large ? 24 : isDesktop ? 22 : footer ? 12 : 13;
+  const previewH = large ? 33 : isDesktop ? 30 : footer ? 16 : 18;
   const buttonPadV = large ? 12 : footer ? 4 : dense ? 6 : 7;
-  const buttonPadH = large ? 14 : isDesktop ? 11 : 10;
-  const glyphSize = large ? 18 : isDesktop ? 15 : footer ? 13 : 14;
-  const labelSize = large ? 12 : 10;
-  /** Vertical padding of the dense strip: 37 px footer (incl. border), 74 px large. */
-  const stripPadV = footer ? 1 : dense ? 6 : 10;
+  const buttonPadH = large ? 18 : isDesktop ? 11 : 10;
+  const glyphSize = large ? 20 : isDesktop ? 15 : footer ? 13 : 14;
+  const labelSize = large ? 13 : 10;
+  /** Vertical padding of the dense strip: 37 px footer (incl. border), ~83 px large. */
+  const stripPadV = footer ? 1 : large ? 6 : dense ? 6 : 10;
   // Glass: the HUD's 0 12px 40px shadow so the strip floats above the
   // felt (and, on landscape, the near wall's backs) instead of reading
   // as painted on them.
   const cardShadow =
     theme === 'glass'
-      ? '0px 12px 40px rgba(0,0,0,0.35)'
+      ? '0px 0px 0px 1px rgba(216,168,90,0.18), 0px 0px 28px rgba(216,168,90,0.22), 0px 12px 40px rgba(0,0,0,0.35)'
       : isDesktop
         ? '0px 8px 24px rgba(0,0,0,0.14)'
         : '0px 4px 12px rgba(0,0,0,0.08)';
@@ -420,9 +427,9 @@ export function ClaimBar({
           style={{
             flexDirection: 'row',
             alignItems: 'center',
-            gap: 10,
+            gap: large ? 16 : 10,
             paddingVertical: stripPadV,
-            paddingHorizontal: footer ? 10 : 12,
+            paddingHorizontal: footer ? 10 : large ? 16 : 12,
           }}
         >
           {tileHeader}
@@ -544,7 +551,7 @@ function ClaimAction({
             fontSize: sizing.labelSize,
             fontWeight: '900',
             color: fg,
-            letterSpacing: 0.4,
+            letterSpacing: sizing.labelSize >= 14 ? 1.2 : 0.4,
             textTransform: 'uppercase',
           }}
         >

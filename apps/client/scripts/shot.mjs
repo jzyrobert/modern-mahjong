@@ -277,6 +277,11 @@ async function runStep(page, step, ctx) {
     }
     return;
   }
+  if (step.clickLastOwnTile) {
+    const tiles = page.getByTestId('own-hand-tile');
+    await tiles.first().waitFor({ timeout: step.timeout ?? 20_000 });
+    return tiles.last().click({ timeout: 8000 });
+  }
   if (step.waitForOwnHand)
     return page
       .getByTestId('own-hand-tile')

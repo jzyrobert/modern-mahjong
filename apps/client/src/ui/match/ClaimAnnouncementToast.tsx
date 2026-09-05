@@ -4,6 +4,8 @@ import { type ClaimMeldKind, nameForSeat, useGame } from '../../state/game';
 import { COLORS } from '../colors';
 
 const TOAST_DURATION_MS = 2_200;
+/** Glass theme holds a beat longer — the card is the only cue that a claim happened. */
+const GLASS_TOAST_DURATION_MS = 2_800;
 
 const KIND_LABEL: Record<ClaimMeldKind, { en: string; zh: string }> = {
   chi: { en: 'CHI', zh: '吃' },
@@ -41,6 +43,12 @@ interface ClaimAnnouncementToastProps {
    * it lands in (the 3D shell's portrait seat strip on short phones).
    */
   onVisibleChange?: ((visible: boolean) => void) | undefined;
+  /**
+   * Glass only: an opaque card. Phone portrait parks the toast on the
+   * seat-strip row over the far seat's badge, and even a 3 % translucency
+   * lets that badge's avatar and name ghost through the glyph.
+   */
+  solid?: boolean;
 }
 
 const THEMES = {
@@ -51,19 +59,22 @@ const THEMES = {
     glyph: COLORS.red,
     label: COLORS.ink3,
     text: COLORS.ink,
+    solidBg: COLORS.paperHi,
     shadow: '0px 6px 16px rgba(0,0,0,0.28)',
   },
   glass: {
-    bg: 'rgba(14,20,17,0.84)',
-    border: 'rgba(255,255,255,0.14)',
+    bg: 'rgba(14,20,17,0.97)',
+    solidBg: 'rgb(14,20,17)',
+    border: 'rgba(216,168,90,0.7)',
     borderWidth: 1,
-    glyph: '#e57a63',
+    glyph: '#d8a85a',
     // 0.78 alpha (not the HUD's 0.62 secondary tone): the toast can sit in
     // the portrait seat-strip slot over the warm glow, where the lighter
     // backdrop pulled the 11 px kind label to 3.9:1 (round-7).
     label: 'rgba(255,255,255,0.78)',
-    text: 'rgba(255,255,255,0.92)',
-    shadow: '0px 12px 40px rgba(0,0,0,0.35)',
+    text: 'rgba(255,255,255,0.96)',
+    shadow:
+      '0px 0px 0px 3px rgba(216,168,90,0.16), 0px 0px 32px rgba(216,168,90,0.28), 0px 12px 40px rgba(0,0,0,0.45)',
   },
 } as const;
 
@@ -71,6 +82,7 @@ export function ClaimAnnouncementToast({
   theme = 'paper',
   top = 56,
   onVisibleChange,
+  solid = false,
 }: ClaimAnnouncementToastProps) {
   const pal = THEMES[theme];
   const announcement = useGame((s) => s.claimAnnouncement);
@@ -106,18 +118,21 @@ export function ClaimAnnouncementToast({
       easing: Easing.out(Easing.ease),
     }).start();
     if (dismissHandle.current !== null) clearTimeout(dismissHandle.current);
-    dismissHandle.current = setTimeout(() => {
-      Animated.timing(opacity, {
-        toValue: 0,
-        duration: 220,
-        useNativeDriver: true,
-        easing: Easing.in(Easing.ease),
-      }).start(() => setVisible(false));
-    }, TOAST_DURATION_MS);
+    dismissHandle.current = setTimeout(
+      () => {
+        Animated.timing(opacity, {
+          toValue: 0,
+          duration: 220,
+          useNativeDriver: true,
+          easing: Easing.in(Easing.ease),
+        }).start(() => setVisible(false));
+      },
+      theme === 'glass' ? GLASS_TOAST_DURATION_MS : TOAST_DURATION_MS,
+    );
     return () => {
       if (dismissHandle.current !== null) clearTimeout(dismissHandle.current);
     };
-  }, [announcement, opacity]);
+  }, [announcement, opacity, theme]);
 
   useEffect(() => {
     onVisibleChange?.(visible);
@@ -141,25 +156,28 @@ export function ClaimAnnouncementToast({
       <Animated.View
         style={{
           opacity,
-          backgroundColor: pal.bg,
+          backgroundColor: solid ? pal.solidBg : pal.bg,
           borderColor: pal.border,
           borderWidth: pal.borderWidth,
-          borderRadius: theme === 'glass' ? 16 : 14,
-          paddingVertical: 10,
-          paddingHorizontal: 16,
+          borderRadius: theme === 'glass' ? 18 : 14,
+          // Glass: 7 + 32 + 7 (+ border) ≈ 48 px — the chrome row's height,
+          // so the landscape toast slot never runs onto the far wall.
+          paddingVertical: theme === 'glass' ? 7 : 10,
+          paddingHorizontal: theme === 'glass' ? 20 : 16,
           flexDirection: 'row',
           alignItems: 'center',
-          gap: 10,
+          gap: theme === 'glass' ? 14 : 10,
           boxShadow: pal.shadow,
         }}
       >
         <Text
+          testID="claim-toast-glyph"
           style={{
             fontFamily: 'Noto Serif TC',
-            fontSize: 22,
+            fontSize: theme === 'glass' ? 30 : 22,
             fontWeight: '800',
             color: pal.glyph,
-            lineHeight: 26,
+            lineHeight: theme === 'glass' ? 32 : 26,
           }}
         >
           {label.zh}
@@ -167,15 +185,21 @@ export function ClaimAnnouncementToast({
         <View style={{ flexDirection: 'column' }}>
           <Text
             style={{
-              fontSize: 11,
+              fontSize: theme === 'glass' ? 12 : 11,
               fontWeight: '900',
-              color: pal.label,
-              letterSpacing: theme === 'glass' ? 2 : 0.6,
+              color: theme === 'glass' ? pal.glyph : pal.label,
+              letterSpacing: theme === 'glass' ? 2.2 : 0.6,
             }}
           >
             {label.en}
           </Text>
-          <Text style={{ fontSize: 13, fontWeight: '800', color: pal.text }}>
+          <Text
+            style={{
+              fontSize: theme === 'glass' ? 15 : 13,
+              fontWeight: '800',
+              color: pal.text,
+            }}
+          >
             {seatName} called
           </Text>
         </View>

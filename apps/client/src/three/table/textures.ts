@@ -184,6 +184,7 @@ export interface PlateInfo {
   prevailingWind: Wind;
   /** Live wall count; `null` between hands (the waiting table shows the wind only). */
   wallCount: number | null;
+  deadCount?: number | undefined;
 }
 
 /**
@@ -225,6 +226,14 @@ export function drawPlate(ctx: CanvasRenderingContext2D, size: number, info: Pla
     ctx.fillStyle = 'rgba(216,168,90,0.95)';
     ctx.font = `800 ${size * 0.13}px ${SANS}`;
     ctx.fillText(`${info.wallCount}`, r, r * 1.5);
+    // Dead-wall count under it (desktop-legible; a detail at phone size)
+    // so the stacks still standing after the live wall runs dry are
+    // accounted for on the table itself.
+    if (info.deadCount !== undefined && info.deadCount > 0) {
+      ctx.fillStyle = 'rgba(216,168,90,0.7)';
+      ctx.font = `800 ${size * 0.06}px ${SANS}`;
+      ctx.fillText(`${info.deadCount} DEAD`, r, r * 1.7);
+    }
   }
 }
 
@@ -330,5 +339,56 @@ export function buildDiceTexture(): Texture {
   const tex = new CanvasTexture(c);
   tex.colorSpace = SRGBColorSpace;
   tex.minFilter = LinearMipmapLinearFilter;
+  return tex;
+}
+
+/**
+ * Soft radial glow for the table's cue halo (`TableScene.cueHalo`): a
+ * white disc that fades to transparent by the edge, tinted by the
+ * material colour, so one texture serves both the round draw cue and
+ * the stretched hand-row band.
+ */
+export function buildCueHaloTexture(size = 128): Texture {
+  const [c, ctx] = canvas2d(size, size);
+  const r = size / 2;
+  const g = ctx.createRadialGradient(r, r, 0, r, r, r);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.35, 'rgba(255,255,255,0.75)');
+  g.addColorStop(0.7, 'rgba(255,255,255,0.22)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+  const tex = new CanvasTexture(c);
+  tex.colorSpace = SRGBColorSpace;
+  return tex;
+}
+
+/**
+ * The cue halo's *band* variant (`TableScene.cueHalo` along the user's
+ * hand row): a soft vertical falloff (peak on the centre line) under a
+ * horizontal plateau with feathered ends, so the glow runs the row's
+ * full width instead of pinching to an ellipse the way the stretched
+ * radial disc did.
+ */
+export function buildCueBandTexture(w = 256, h = 64): Texture {
+  const [c, ctx] = canvas2d(w, h);
+  const img = ctx.createImageData(w, h);
+  for (let y = 0; y < h; y++) {
+    const v = (y + 0.5) / h - 0.5;
+    const across = Math.exp(-(v * v) / (2 * 0.19 * 0.19));
+    for (let x = 0; x < w; x++) {
+      const u = (x + 0.5) / w;
+      const edge = Math.min(u, 1 - u) / 0.14;
+      const along = edge >= 1 ? 1 : edge * edge * (3 - 2 * edge);
+      const i = (y * w + x) * 4;
+      img.data[i] = 255;
+      img.data[i + 1] = 255;
+      img.data[i + 2] = 255;
+      img.data[i + 3] = Math.round(255 * across * along);
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  const tex = new CanvasTexture(c);
+  tex.colorSpace = SRGBColorSpace;
   return tex;
 }

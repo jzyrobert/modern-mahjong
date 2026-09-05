@@ -44,7 +44,13 @@ import {
   riverZoomCameraFor,
   sheetCameraFor,
 } from './cameraPresets';
-import { ActionCtas, ActionRow, FOOTER_LEADING_MAX, hasActionCtas } from './hud/ActionRow';
+import {
+  ActionCtas,
+  ActionRow,
+  FOOTER_LEADING_MAX,
+  ReadyBadgeCta,
+  hasActionCtas,
+} from './hud/ActionRow';
 import { HandRail } from './hud/HandRail';
 import { HitTargets, type HitTargetsHandle, type HudRects } from './hud/HitTargets';
 import { MenuButtons } from './hud/MenuButtons';
@@ -235,6 +241,25 @@ const CHROME_H_LANDSCAPE = 38;
  */
 const LANDSCAPE_FOOTER_PAD = 5;
 /**
+ * Desktop footer: 12 px safe pad (the chrome keeps 24). The footer's one
+ * row grows upward from here into the void band under the hand row; see
+ * `desktopBand`.
+ */
+const DESKTOP_FOOTER_PAD = 12;
+/**
+ * Air kept between the hand row's projected extent (`hudRects.ownHand`,
+ * which already carries a 6 px pad) and any footer control.
+ */
+const DESKTOP_HAND_CLEAR = 4;
+/**
+ * Height of the desktop claim strip at `size="large"` (48 × 66 live
+ * tile + 6 px pads + border + countdown bar). The strip only takes the
+ * large size while the band under the hand can hold it; otherwise it
+ * falls back to the 37 px `footer` strip rather than climbing onto the
+ * tiles (round-FB1 critic: 10 px of every tile under the strip covered).
+ */
+const CLAIM_STRIP_LARGE_H = 84;
+/**
  * Portrait phones ≤ 420 CSS px wide render at DPR 2 even on the `low`
  * tier: the canvas is small (≈ 1.5 MP) and the full-table river tiles
  * are ~19 CSS px, where the 1.5 clamp visibly softens the glyphs.
@@ -279,8 +304,11 @@ function heldFrameFor(
     ? heldHandFrameFor(preset, width, height, heldHandParkedBaseline(width, height))
     : heldHandFrameFor(preset, width, height);
 }
-/** Approximate height of a glass toast, CSS px (anchor maths only). */
-const TOAST_H = 52;
+/**
+ * Approximate height of a glass toast, CSS px (anchor maths only): the
+ * claim toast's 32 px glyph line + 7 px pads + border.
+ */
+const TOAST_H = 50;
 /** Width the root `FullscreenPrompt` reserves at the landscape top-right. */
 const FULLSCREEN_PROMPT_W = 124;
 
@@ -354,9 +382,25 @@ export function Table3DShell(props: Table3DShellProps) {
     };
   }, []);
 
+  // The tile to mark as "just drawn". A gang replacement comes out of
+  // the dead wall without a `drew` event, so the store's `drawnTileId`
+  // keeps pointing at the tile that has just gone *into* the meld — the
+  // meld tile wore the drawn glow and the real replacement sorted into
+  // the hand unmarked (round-FB1: "the wrong tile" on a promoted gang).
+  // Diff the hand across a replacement to find the tile that arrived.
+  const drawnTileId = useEffectiveDrawnTile(props.state, props.seat, props.drawnTileId);
+  const shellProps = drawnTileId === props.drawnTileId ? props : { ...props, drawnTileId };
+
   // Latest inputs for the imperative side (built once, read live).
-  const inputRef = useRef({ props, manualOrder, shuffling, sortMode, landscape, compact });
-  inputRef.current = { props, manualOrder, shuffling, sortMode, landscape, compact };
+  const inputRef = useRef({
+    props: shellProps,
+    manualOrder,
+    shuffling,
+    sortMode,
+    landscape,
+    compact,
+  });
+  inputRef.current = { props: shellProps, manualOrder, shuffling, sortMode, landscape, compact };
 
   const syncScene = useCallback(() => {
     const scene = sceneRef.current;
@@ -379,6 +423,7 @@ export function Table3DShell(props: Table3DShellProps) {
         latestDiscardId: p.latestDiscardId,
         hintTileId: p.hintTileId,
         needsDraw: p.needsDraw,
+        canDiscard: p.myTurn && p.state.hasDrawn && p.state.phase === 'turn',
         shuffling: sh,
         heldHand: heldRef.current,
         riverScale: heldRef.current ? PORTRAIT_RIVER_SCALE : 1,
@@ -403,6 +448,9 @@ export function Table3DShell(props: Table3DShellProps) {
         // on the width-bound portrait table.
         sideMeldsNear: true,
         sideMeldScale: heldRef.current ? SIDE_MELD_SCALE_PORTRAIT : 1,
+        // Wide presets: the user's melds stand in the hand row, faces to
+        // the camera (the held portrait hand keeps its flat felt melds).
+        ownMeldsStanding: true,
       },
       performance.now(),
     );
@@ -621,6 +669,8 @@ export function Table3DShell(props: Table3DShellProps) {
     props.latestDiscardId,
     props.hintTileId,
     props.needsDraw,
+    props.myTurn,
+    drawnTileId,
     sortMode,
     manualOrder,
     shuffling,
@@ -756,6 +806,36 @@ export function Table3DShell(props: Table3DShellProps) {
   // sort control is moot while the hand is out of frame).
   const landscapeRail = landscape && zoomed && !landscapeFooterClaim;
   const desktopStrip = !compact && props.hasClaimOption;
+  // Wide presets: the footer's centre slot — directly under the hand —
+  // carries the turn chip while it is the user's move (draw → discard),
+  // so the cue sits where the eye already is instead of only in the
+  // chrome pill. The claim strip / hand rail take the slot when they
+  // need it.
+  // Not during the between-hand ceremony: the dispense + 洗牌 pill own
+  // that beat, and the new hand's "your turn" would read as stale chrome
+  // under the veil (round-FB1 critic #6).
+  const footerTurnChip = !portrait && props.myTurn && !resolved && !shuffling;
+  // Desktop: the void band between the hand row's projected bottom and
+  // the footer's bottom edge. Everything the footer hosts must fit in
+  // it — a control that grows past it lands on the tiles.
+  const footerPad = landscape ? LANDSCAPE_FOOTER_PAD : portrait ? pad : DESKTOP_FOOTER_PAD;
+  const handBottom = hudRects.ownHand ? hudRects.ownHand.top + hudRects.ownHand.height : null;
+  const desktopBand =
+    !compact && handBottom !== null
+      ? height - insets.bottom - footerPad - (handBottom + DESKTOP_HAND_CLEAR)
+      : null;
+  const desktopStripSize: 'large' | 'footer' =
+    desktopBand === null || desktopBand >= CLAIM_STRIP_LARGE_H ? 'large' : 'footer';
+  // Desktop: the CTAs (declare win / gang, promote) ride in the centre
+  // slot beside the turn chip, and the tenpai badge heads that same row
+  // — under the hand, where the eye is — rather than the footer's far
+  // left corner beside the seat badge (round-FB2 critic #9).
+  const desktopCtas = !compact && showCtas && !resolved;
+  const desktopReadyBadge = !compact && props.readyWaits.length > 0 && !resolved;
+  // Portrait: while the claim strip owns the tray, the compact tenpai
+  // badge stands in for the (moot) sort control in the footer row.
+  const portraitReadyBadge =
+    portrait && trayActions && props.hasClaimOption && props.readyWaits.length > 0 && !resolved;
   // Landscape zoom header: a full-bleed glass band the far wall's row
   // (and the far seat's rack) park behind, so the chrome pills, the far
   // badge and the toast slot never sit on tile tops (round-4 #5).
@@ -947,7 +1027,7 @@ export function Table3DShell(props: Table3DShellProps) {
             ref={hitRef}
             hand={ownHand}
             hintTileId={props.hintTileId}
-            drawnTileId={props.drawnTileId}
+            drawnTileId={drawnTileId}
             canDiscard={canDiscard}
             onTileTap={props.onTileTap}
             onHover={(id) => sceneRef.current?.setHover(id)}
@@ -985,12 +1065,14 @@ export function Table3DShell(props: Table3DShellProps) {
               windGlyph={props.userWindGlyph}
               name={props.userName}
               wallCount={state.wall.length}
-              isMyTurn={props.myTurn}
+              deadCount={state.deadWall.length}
+              isMyTurn={props.myTurn && !shuffling}
               needsDraw={props.needsDraw}
               turnCountdown={props.turnCountdown}
               onPress={() => props.setPlayersOpen(true)}
               compact={compact}
               showTurn={!portrait}
+              turnTarget={!footerTurnChip}
               style={landscape ? { minHeight: chromeH, padding: '4px 10px 4px 4px' } : undefined}
             />
             {compact ? null : (
@@ -1150,7 +1232,7 @@ export function Table3DShell(props: Table3DShellProps) {
                   }}
                 >
                   <TurnChip
-                    isMyTurn={props.myTurn}
+                    isMyTurn={props.myTurn && !shuffling}
                     needsDraw={props.needsDraw}
                     turnCountdown={props.turnCountdown}
                     activeName={activeSeat !== null ? nameForSeat(lobby, activeSeat) : null}
@@ -1193,7 +1275,7 @@ export function Table3DShell(props: Table3DShellProps) {
               position: 'absolute',
               left: pad + insets.left,
               right: pad + insets.right,
-              bottom: (landscape ? LANDSCAPE_FOOTER_PAD : pad) + insets.bottom,
+              bottom: footerPad + insets.bottom,
               // The footer parks with the hand (see `handParked`).
               display: handParked ? 'none' : 'flex',
               flexDirection: 'column',
@@ -1207,10 +1289,23 @@ export function Table3DShell(props: Table3DShellProps) {
               {...ctaProps}
               sortMode={sortMode}
               onSortModeChange={props.onSortModeChange ?? (() => {})}
-              ctasExternal={compact}
+              ctasExternal
               dense={landscape}
+              sortReplacement={
+                portraitReadyBadge ? (
+                  <ReadyBadgeCta waits={props.readyWaits} compact dense />
+                ) : undefined
+              }
               sortAlign={
-                landscapeFooterClaim || landscapeRail ? 'replace' : compact ? 'auto' : 'end'
+                landscapeFooterClaim || landscapeRail
+                  ? 'replace'
+                  : // Landscape turn chip: the three-column footer so the chip
+                    // takes the centre slot between the badge and the sort control.
+                    footerTurnChip && landscape
+                    ? 'end'
+                    : compact
+                      ? 'auto'
+                      : 'end'
               }
               leading={
                 compact && youBadge ? (
@@ -1236,11 +1331,45 @@ export function Table3DShell(props: Table3DShellProps) {
                 landscapeRail ? (
                   <HandRail
                     hand={ownHand}
-                    drawnTileId={props.drawnTileId}
+                    drawnTileId={drawnTileId}
                     needsDraw={props.needsDraw && nextDrawTile !== null}
                     onShowHand={exitRiverZoom}
                     onDraw={() => props.onAction({ t: 'draw', seat })}
                   />
+                ) : (footerTurnChip || desktopCtas || desktopReadyBadge) &&
+                  !desktopStrip &&
+                  !landscapeFooterClaim ? (
+                  // One row: the turn chip and, on desktop, the tenpai badge
+                  // and the declare / promote CTAs beside it — never stacked
+                  // above it, so the row stays one control tall under the
+                  // hand. The badge keeps the row alive through the bots'
+                  // turns, when there is no chip to show.
+                  <div
+                    className="mj-hud-fade"
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                      gap: 12,
+                      flexWrap: 'nowrap',
+                    }}
+                  >
+                    {desktopReadyBadge ? (
+                      <ReadyBadgeCta waits={props.readyWaits} compact={false} />
+                    ) : null}
+                    {footerTurnChip ? (
+                      <TurnChip
+                        isMyTurn
+                        needsDraw={props.needsDraw}
+                        turnCountdown={props.turnCountdown}
+                        activeName={null}
+                        activeColour={null}
+                        claimsOpen={false}
+                        size={landscape ? 'dense' : 'large'}
+                      />
+                    ) : null}
+                    {desktopCtas ? <ActionCtas {...ctaProps} readyBadge={false} /> : null}
+                  </div>
                 ) : desktopStrip || landscapeFooterClaim ? (
                   <div
                     data-testid="claim-float"
@@ -1253,7 +1382,17 @@ export function Table3DShell(props: Table3DShellProps) {
                       minWidth: 0,
                     }}
                   >
-                    {landscapeFooterClaim && showCtas ? <ActionCtas {...ctaProps} /> : null}
+                    {desktopReadyBadge ? (
+                      <div
+                        className="mj-hud-fade"
+                        style={{ display: 'flex', alignItems: 'center' }}
+                      >
+                        <ReadyBadgeCta waits={props.readyWaits} compact={false} />
+                      </div>
+                    ) : null}
+                    {(landscapeFooterClaim || desktopCtas) && showCtas ? (
+                      <ActionCtas {...ctaProps} readyBadge={!desktopCtas} />
+                    ) : null}
                     {props.hasClaimOption ? (
                       <TutorialTarget id="claim-bar" style={{ maxWidth: '100%', minWidth: 0 }}>
                         <div
@@ -1266,7 +1405,7 @@ export function Table3DShell(props: Table3DShellProps) {
                             orientation="portrait"
                             theme="glass"
                             dense
-                            size={landscape ? 'footer' : 'large'}
+                            size={landscape ? 'footer' : desktopStripSize}
                           />
                         </div>
                       </TutorialTarget>
@@ -1302,6 +1441,7 @@ export function Table3DShell(props: Table3DShellProps) {
               <ClaimAnnouncementToast
                 theme="glass"
                 top={toastTop}
+                solid
                 onVisibleChange={setAnnounceUp}
               />
             </>
@@ -1339,4 +1479,45 @@ export function Table3DShell(props: Table3DShellProps) {
       )}
     </div>
   );
+}
+
+/**
+ * The user's freshly drawn tile, gang replacements included. The store
+ * tracks `drawnTileId` from `drew` / `discarded` events; a gang's
+ * replacement draw (`gangReplacementCount` steps up, `hasDrawn` stays
+ * true) emits neither, so across that step the tile now in the hand
+ * that was not there before is the drawn one. The stored id wins while
+ * it is still a hand tile (a normal draw); the replacement is forgotten
+ * once it leaves the hand or a new hand starts.
+ */
+function useEffectiveDrawnTile(
+  state: GameState,
+  seat: Seat,
+  storeDrawnTileId: number | null,
+): number | null {
+  const handIds = useMemo(() => new Set(state.hands[seat].map(tileId)), [state, seat]);
+  const track = useRef<{
+    seed: number;
+    gangs: number;
+    hand: Set<number>;
+    replacement: number | null;
+  } | null>(null);
+  const prev = track.current;
+  let replacement = prev && prev.seed === state.seed ? prev.replacement : null;
+  if (prev && prev.seed === state.seed && state.gangReplacementCount > prev.gangs) {
+    if (state.turn === seat && state.hasDrawn) {
+      for (const id of handIds) if (!prev.hand.has(id)) replacement = id;
+    }
+  }
+  if (replacement !== null && !handIds.has(replacement)) replacement = null;
+  if (!prev || prev.hand !== handIds || prev.replacement !== replacement) {
+    track.current = {
+      seed: state.seed,
+      gangs: state.gangReplacementCount,
+      hand: handIds,
+      replacement,
+    };
+  }
+  if (storeDrawnTileId !== null && handIds.has(storeDrawnTileId)) return storeDrawnTileId;
+  return replacement;
 }

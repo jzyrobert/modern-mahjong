@@ -207,6 +207,53 @@ describe('Choreographer', () => {
   });
 });
 
+describe('gang replacement', () => {
+  test('the replacement leaves the dead wall from its break end and is the tile that lands in the hand', () => {
+    // The engine `shift()`s `deadWall[0]`; the layout maps `deadWall[j]`
+    // from the break outward, so index 0 is the stack right across the
+    // gap from the live wall's drawing end — the deck's tail (牌尾), the
+    // physical "back of the wall" a 補牌 replacement is taken from. The
+    // tile that flies is the one that arrives; no other wall tile moves.
+    const st = dealt();
+    const c = new Choreographer({ reducedMotion: true });
+    const before = computeLayout(st, 0, OPTS);
+    c.setLayout(before, st, 0, 1000);
+    c.update(0.5, 1200);
+    const taken = st.deadWall[0]!;
+    const takenId = tileId(taken);
+    const next: GameState = {
+      ...st,
+      deadWall: st.deadWall.slice(1),
+      hands: { ...st.hands, 0: [...st.hands[0], taken] },
+    };
+    const after = computeLayout(next, 0, OPTS);
+    c.setLayout(after, next, 0, 2000);
+    const t = c.tiles[takenId]!;
+    expect(t.flight?.kind).toBe('draw');
+    // …out of the dead-wall slot it stood in.
+    const from = before[takenId]!;
+    expect(from.zone).toBe('deadWall');
+    expect(t.flight!.from.pos.x).toBeCloseTo(from.x, 6);
+    expect(t.flight!.from.pos.z).toBeCloseTo(from.z, 6);
+    // …into the hand.
+    expect(after[takenId]!.zone).toBe('hand');
+    // The break end: no other dead tile sits closer to the live wall's
+    // k = 0 slot (the two ends of the deck meet across the gap).
+    const dead = before.filter((sl) => sl?.zone === 'deadWall');
+    const liveNext = before.find((sl) => sl?.zone === 'wall' && sl.index === 0)!;
+    const dist = (sl: { x: number; z: number }) => Math.hypot(sl.x - liveNext.x, sl.z - liveNext.z);
+    expect(dist(from)).toBeCloseTo(Math.min(...dead.map((sl) => dist(sl!))), 6);
+    // Every other wall tile stays put (no flight, same slot).
+    for (const sl of before) {
+      if (!sl || sl.id === takenId || (sl.zone !== 'wall' && sl.zone !== 'deadWall')) continue;
+      const nt = c.tiles[sl.id]!;
+      expect(nt.flight).toBeNull();
+      expect(after[sl.id]!.x).toBeCloseTo(sl.x, 6);
+      expect(after[sl.id]!.z).toBeCloseTo(sl.z, 6);
+    }
+  });
+});
+
 describe('rotationProgress', () => {
   const eased = (raw: number) => raw * raw; // any monotone ease will do
   test('a drawn tile stays as it lay in the wall until the last third of the flight', () => {
