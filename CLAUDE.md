@@ -546,6 +546,22 @@ CC0-only asset policy, verifier rules. Operational notes:
   ink (round-FB3 "tiles fade toward the right"). Moving the light only
   moves the wash; keep the finish and the e2e luminance guard in
   `three-table.spec.ts` (face spread ≤ 12, darkest-ink spread ≤ 28).
+- **Dead wall = darker back shade only; own melds = plain aligned rows**
+  (round-4 feedback). The 14 dead tiles are told apart by `aBackVariant`
+  selecting `uDeadBack*` (`materials.deadBackColors`, same hue, darker)
+  and nothing else — the gold inlay band that used to run along the
+  stacks' inner edge read as "extra yellow stripes" on the walls, so it,
+  its `aStackTop` attribute and `TileSlot.stackTop` are gone; do not
+  bring back a per-tile marker. The user's standing melds
+  (`layoutMeldStanding` / `placeStandingMelds`) sit on the hand's line
+  with no claimed-tile step — under the 44° desktop camera a tile
+  stepped toward the camera read as misplaced; only the flat opponents'
+  melds keep the turned-tile provenance rule. The phone held hand splits
+  rows from the hand *with the drawn slot reserved*
+  (`heldRowSplit(total, hasDrawn)`): a row never exceeds
+  `HELD_ROW_UNITS` (7 tiles incl. the drawn one) and the back row holds
+  across a draw / discard — a 7-tile hand is 4 + 3 → 4 + 4, never one
+  overflowing row of 8.
 - **Coach-card body takes the room the placement has**
   (`src/ui/tutorial/bodyCap.ts`): cap = room − measured chrome, whole
   text when it fits, dense / tight frames on short phones, strips fill

@@ -1898,3 +1898,190 @@ test('phone landscape promoted-gang lesson reaches the promotion and draws the r
   expect(perf.drawCalls).toBeLessThanOrEqual(BUDGET.drawCalls);
   expect(errors, 'console / page errors').toEqual([]);
 });
+
+/**
+ * Drive a solo match (seed 41, the user is dealer) to two claimed melds:
+ * a peng fed by bot 1 and a single-shape chi fed by bot 3 (the seat
+ * before the user — the only one a chi can come from), then discard so
+ * the concealed hand is down to 7 tiles. Mirrors `scripts/shot-states.mjs`
+ * `match-two-melds`. Bots are forced to pass so a coin-flip peng on the
+ * user's discard cannot reorder the turns.
+ */
+async function driveTwoMelds(page: Page) {
+  const claimBar = page.getByTestId('claim-bar');
+  // Read the deal, script the two feeds and discard a tile that keeps
+  // both the pair and the run in hand.
+  await page.evaluate(() => {
+    type T = { kind: string; suit?: string; rank?: number; honor?: string };
+    const g = globalThis as {
+      __MAHJONG_TEST_GET_STATE__?: () => { state: { hands: Record<number, T[]> }; you: number };
+      __MAHJONG_TEST_BOT_SCRIPTS__?: Record<number, { discards?: T[] }>;
+      __E2E_AVOID__?: string[];
+    };
+    const s = g.__MAHJONG_TEST_GET_STATE__!();
+    const key = (t: T) => (t.kind === 'suit' ? `s:${t.suit}:${t.rank}` : `h:${t.honor}`);
+    const mine = s.state.hands[s.you]!;
+    const counts = new Map<string, number>();
+    for (const t of mine) counts.set(key(t), (counts.get(key(t)) ?? 0) + 1);
+    const bot1 = new Set(s.state.hands[1]!.map(key));
+    const bot3 = new Set(s.state.hands[3]!.map(key));
+    const peng = mine.find((t) => counts.get(key(t)) === 2 && bot1.has(key(t)))!;
+    let chi: { suit: string; keep: number[]; tile: T } | null = null;
+    for (const suit of ['man', 'pin', 'sou']) {
+      const has = (r: number) => counts.get(`s:${suit}:${r}`) ?? 0;
+      for (let r = 1; r <= 8 && !chi; r++) {
+        if (has(r) !== 1 || has(r + 1) !== 1) continue;
+        for (const x of [r - 1, r + 2]) {
+          if (x < 1 || x > 9 || has(x) > 0 || !bot3.has(`s:${suit}:${x}`)) continue;
+          const near = [x - 2, x - 1, x + 1, x + 2].filter((q) => q >= 1 && q <= 9 && has(q) > 0);
+          if (near.length === 2) {
+            chi = { suit, keep: [r, r + 1], tile: { kind: 'suit', suit, rank: x } };
+            break;
+          }
+        }
+      }
+    }
+    if (!chi) throw new Error('seed 41: no single-shape chi bot 3 can feed');
+    g.__MAHJONG_TEST_BOT_SCRIPTS__![1] = { discards: [peng] };
+    g.__MAHJONG_TEST_BOT_SCRIPTS__![3] = { discards: [chi.tile] };
+    const names: Record<string, string> = {
+      E: 'East wind',
+      S: 'South wind',
+      W: 'West wind',
+      N: 'North wind',
+      Z: 'Red dragon',
+      F: 'Green dragon',
+      B: 'White dragon',
+    };
+    const name = (t: T) => (t.kind === 'suit' ? `${t.rank} ${t.suit}` : names[t.honor!]!);
+    g.__E2E_AVOID__ = [name(peng), ...chi.keep.map((r) => `${r} ${chi!.suit}`)];
+  });
+  const discardKeeping = () =>
+    page.evaluate(() => {
+      const avoid = (globalThis as { __E2E_AVOID__?: string[] }).__E2E_AVOID__ ?? [];
+      const btn = Array.from(
+        document.querySelectorAll<HTMLElement>('[data-testid="own-hand-tile"]'),
+      ).find((b) => !avoid.some((a) => (b.getAttribute('aria-label') || '').startsWith(a)))!;
+      btn.click();
+    });
+  await discardKeeping();
+  await expect(claimBar).toBeVisible({ timeout: 20_000 });
+  await page.getByRole('button', { name: 'Peng', exact: true }).click();
+  await expect(claimBar).toBeHidden({ timeout: 10_000 });
+  await page.waitForTimeout(400);
+  await discardKeeping();
+  await expect(page.getByRole('button', { name: 'Chi', exact: true })).toBeVisible({
+    timeout: 20_000,
+  });
+  await page.getByRole('button', { name: 'Chi', exact: true }).click();
+  await expect(claimBar).toBeHidden({ timeout: 10_000 });
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const g = globalThis as {
+            __MAHJONG_TEST_GET_STATE__?: () => {
+              state: {
+                hands: Record<number, unknown[]>;
+                melds: Record<number, { kind: string }[]>;
+              };
+            };
+          };
+          const s = g.__MAHJONG_TEST_GET_STATE__!().state;
+          return `${s.melds[0]!.map((m) => m.kind).join('+')}:${s.hands[0]!.length}`;
+        }),
+      { timeout: 10_000 },
+    )
+    .toBe('peng+chi:8');
+  await page.waitForTimeout(400);
+  // Discard to 7 concealed tiles.
+  await page.getByTestId('own-hand-tile').first().click();
+}
+
+/** Wait for the user's draw cue, passing any incidental claim window on the way. */
+async function waitForDrawCuePassing(page: Page, timeoutMs = 30_000) {
+  const cue = page.getByTestId('wall-draw-next').first();
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (await cue.isVisible().catch(() => false)) return;
+    const pass = page.getByRole('button', { name: 'Pass', exact: true }).first();
+    if (await pass.isVisible().catch(() => false))
+      await pass.click({ timeout: 2000 }).catch(() => {});
+    await page.waitForTimeout(250);
+  }
+  await expect(cue).toBeVisible({ timeout: 1 });
+}
+
+/**
+ * Round-4 feedback: with two melds out the hand is 7 tiles, 8 once the
+ * next tile is drawn — and the held hand kept up to 8 on one row while
+ * the frame is sized for 7 (six at pitch + the drawn tile with its gap),
+ * so the row overflowed both edges and the outer tiles were only half
+ * visible. The split is now decided from the hand with the drawn slot
+ * reserved: 7 → 4 + 3, 8 → 4 + 4, every tile inside the viewport, and
+ * the row count does not flip between the discard and the next draw.
+ */
+for (const [w, h] of [
+  [412, 700],
+  [360, 640],
+] as const) {
+  test(`phone in a browser (${w}×${h}): a 7-tile hand splits into two rows and the drawn tile stays on screen`, async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    await page.setViewportSize({ width: w, height: h });
+    await page.addInitScript(() => {
+      const g = globalThis as {
+        __MAHJONG_TEST_SEED__?: number;
+        __MAHJONG_TEST_BOT_SCRIPTS__?: Record<number, object>;
+        __MAHJONG_TUTORIAL_FORCE_PASS__?: boolean;
+      };
+      g.__MAHJONG_TEST_SEED__ = 41;
+      g.__MAHJONG_TEST_BOT_SCRIPTS__ = { 1: {}, 2: {}, 3: {} };
+      g.__MAHJONG_TUTORIAL_FORCE_PASS__ = true;
+    });
+    const errors: string[] = [];
+    await startSolo(page, errors);
+    await waitForDealSettled(page);
+    await driveTwoMelds(page);
+    const tiles = page.getByTestId('own-hand-tile');
+    await expect(tiles).toHaveCount(7);
+    await waitForDealSettled(page);
+    // Row sizes, back row first: tiles whose tops are within half a tile
+    // height (20 px) of each other share a row — a fixed 20 px bucket
+    // split one row across a boundary at 360 px wide.
+    const rowsOf = (boxes: Box[]) => {
+      const rows: number[][] = [];
+      for (const y of boxes.map((b) => b.y).sort((a, b) => a - b)) {
+        const row = rows[rows.length - 1];
+        if (row && y - row[0]! < 20) row.push(y);
+        else rows.push([y]);
+      }
+      return rows.map((r) => r.length);
+    };
+    const inside = (boxes: Box[]) => {
+      for (const b of boxes) {
+        expect(b.width).toBeGreaterThanOrEqual(44);
+        expect(b.x).toBeGreaterThanOrEqual(0);
+        expect(b.x + b.width).toBeLessThanOrEqual(w);
+        expect(b.y).toBeGreaterThanOrEqual(0);
+        expect(b.y + b.height).toBeLessThanOrEqual(h);
+      }
+    };
+    const seven = await handTileBoxes(page);
+    inside(seven);
+    expect(rowsOf(seven), '7 tiles: two rows (4 + 3)').toEqual([4, 3]);
+    // Draw: 8 tiles, still two rows (4 + 4), the drawn tile on screen.
+    await waitForDrawCuePassing(page);
+    await page.getByTestId('wall-draw-next').first().click();
+    await expect(tiles).toHaveCount(8);
+    await waitForDealSettled(page);
+    const eight = await handTileBoxes(page);
+    inside(eight);
+    expect(rowsOf(eight), '8 tiles: two rows (4 + 4)').toEqual([4, 4]);
+    await expect(
+      page.locator('[data-testid="own-hand-tile"][aria-label*="just drawn"]'),
+    ).toHaveCount(1);
+    expect(errors, 'console / page errors').toEqual([]);
+  });
+}

@@ -38,14 +38,8 @@ export interface TilePose {
   faceCell: number;
   tint: Color;
   highlight: number;
-  /** 0 = skin gradient on the back, 1 = the warm dead-wall variant. */
+  /** 0 = skin gradient on the back, 1 = the darker dead-wall shade. */
   backVariant: number;
-  /**
-   * 1 (default) when the tile is the exposed top of a wall stack (or
-   * not in a wall at all); 0 for the lower tile under another. The
-   * dead-wall inlay's side band draws on top tiles only.
-   */
-  stackTop: number;
 }
 
 export interface TilePoolOptions {
@@ -66,7 +60,6 @@ export class TilePool {
   private tintAttr: InstancedBufferAttribute;
   private highlightAttr: InstancedBufferAttribute;
   private backVariantAttr: InstancedBufferAttribute;
-  private stackTopAttr: InstancedBufferAttribute;
   private dirty = true;
 
   constructor(backSkin: TileBackSkin, opts: TilePoolOptions = {}) {
@@ -87,9 +80,7 @@ export class TilePool {
     this.tintAttr = new InstancedBufferAttribute(new Float32Array(TOTAL_TILES * 3), 3);
     this.highlightAttr = new InstancedBufferAttribute(new Float32Array(TOTAL_TILES), 1);
     this.backVariantAttr = new InstancedBufferAttribute(new Float32Array(TOTAL_TILES), 1);
-    this.stackTopAttr = new InstancedBufferAttribute(new Float32Array(TOTAL_TILES), 1);
     this.faceCellAttr.setUsage(DynamicDrawUsage);
-    this.stackTopAttr.setUsage(DynamicDrawUsage);
     this.tintAttr.setUsage(DynamicDrawUsage);
     this.highlightAttr.setUsage(DynamicDrawUsage);
     this.backVariantAttr.setUsage(DynamicDrawUsage);
@@ -97,7 +88,6 @@ export class TilePool {
     geo.setAttribute('aTint', this.tintAttr);
     geo.setAttribute('aHighlight', this.highlightAttr);
     geo.setAttribute('aBackVariant', this.backVariantAttr);
-    geo.setAttribute('aStackTop', this.stackTopAttr);
 
     for (let id = 0; id < TOTAL_TILES; id++) {
       this.poses.push({
@@ -109,7 +99,6 @@ export class TilePool {
         tint: new Color(1, 1, 1),
         highlight: 0,
         backVariant: 0,
-        stackTop: 1,
       });
     }
     this.commit();
@@ -153,7 +142,6 @@ export class TilePool {
     const tn = this.tintAttr.array as Float32Array;
     const hl = this.highlightAttr.array as Float32Array;
     const bv = this.backVariantAttr.array as Float32Array;
-    const stp = this.stackTopAttr.array as Float32Array;
     for (let id = 0; id < TOTAL_TILES; id++) {
       const p = this.poses[id]!;
       const s = p.visible ? p.scale : 0;
@@ -177,14 +165,12 @@ export class TilePool {
       tn[id * 3 + 2] = p.tint.b;
       hl[id] = p.highlight;
       bv[id] = p.backVariant;
-      stp[id] = p.stackTop;
     }
     this.mesh.instanceMatrix.needsUpdate = true;
     this.faceCellAttr.needsUpdate = true;
     this.tintAttr.needsUpdate = true;
     this.highlightAttr.needsUpdate = true;
     this.backVariantAttr.needsUpdate = true;
-    this.stackTopAttr.needsUpdate = true;
     this.dirty = false;
     return true;
   }
