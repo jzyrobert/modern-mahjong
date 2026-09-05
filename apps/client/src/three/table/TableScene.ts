@@ -48,7 +48,7 @@ import {
   tileSheetLayout,
   toWorld,
 } from './layout';
-import { type ScreenRect, projectTileRect } from './picking';
+import { type ScreenRect, projectTileFaceRect, projectTileRect } from './picking';
 import { buildRailGeometry } from './rail';
 import {
   buildCueBandTexture,
@@ -1040,6 +1040,23 @@ export class TableScene {
     this.pool.mesh.updateMatrixWorld();
     const m = this.pool.matrixAt(id, _m);
     return projectTileRect(m, this.ctx.rig.camera, this.ctx.size.width, this.ctx.size.height, out);
+  }
+
+  /** Screen rect (CSS px) of a tile's printed face only — what the
+   *  player sees as "the tile"; overlays that hug it use this instead of
+   *  the box bounds. Null when hidden. */
+  tileFaceRect(id: number, out?: ScreenRect): ScreenRect | null {
+    const t = this.choreo.tiles[id];
+    if (!t || !t.visible) return null;
+    this.pool.mesh.updateMatrixWorld();
+    const m = this.pool.matrixAt(id, _m);
+    return projectTileFaceRect(
+      m,
+      this.ctx.rig.camera,
+      this.ctx.size.width,
+      this.ctx.size.height,
+      out,
+    );
   }
 
   /**

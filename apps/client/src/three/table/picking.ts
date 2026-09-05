@@ -24,6 +24,16 @@ for (const sx of [-1, 1]) {
     }
   }
 }
+/** The four corners of the +Z face only — the printed side the player
+ *  sees. Standing hand tiles lean toward the camera, so the full box's
+ *  projection also spans the top bevel and the back edge; overlays that
+ *  must hug the visible face (the discard-hint ring) project these. */
+const FACE_CORNERS: Vector3[] = [];
+for (const sx of [-1, 1]) {
+  for (const sy of [-1, 1]) {
+    FACE_CORNERS.push(new Vector3((sx * TILE_W) / 2, (sy * TILE_H) / 2, TILE_D / 2));
+  }
+}
 const _v = new Vector3();
 const _m = new Matrix4();
 
@@ -39,12 +49,34 @@ export function projectTileRect(
   height: number,
   out: ScreenRect = { left: 0, top: 0, width: 0, height: 0 },
 ): ScreenRect | null {
+  return projectCorners(CORNERS, matrixWorld, camera, width, height, out);
+}
+
+/** Like `projectTileRect`, but the 2D bounds of the tile's +Z face only. */
+export function projectTileFaceRect(
+  matrixWorld: Matrix4,
+  camera: Camera,
+  width: number,
+  height: number,
+  out: ScreenRect = { left: 0, top: 0, width: 0, height: 0 },
+): ScreenRect | null {
+  return projectCorners(FACE_CORNERS, matrixWorld, camera, width, height, out);
+}
+
+function projectCorners(
+  corners: readonly Vector3[],
+  matrixWorld: Matrix4,
+  camera: Camera,
+  width: number,
+  height: number,
+  out: ScreenRect,
+): ScreenRect | null {
   let minX = Number.POSITIVE_INFINITY;
   let minY = Number.POSITIVE_INFINITY;
   let maxX = Number.NEGATIVE_INFINITY;
   let maxY = Number.NEGATIVE_INFINITY;
   let any = false;
-  for (const c of CORNERS) {
+  for (const c of corners) {
     _v.copy(c).applyMatrix4(matrixWorld).project(camera);
     if (_v.z > 1) continue;
     any = true;

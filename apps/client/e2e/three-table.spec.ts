@@ -1331,6 +1331,21 @@ test('a win stamps the glass result card and the next hand shuffles without the 
   await expect(page.getByTestId('win-stamp')).toBeVisible({ timeout: 15_000 });
   await expect(page.getByTestId('result-veil-card')).toBeVisible();
   await expect(page.getByText('WINNER', { exact: true })).toHaveCount(0);
+  // The seal owns the card's top-right corner: no control may sit under
+  // it (round-FB3 feedback: the SAVE pill was stamped over).
+  await page.waitForTimeout(700);
+  const seal = (await page.getByTestId('win-stamp').boundingBox())!;
+  const controls = await page
+    .getByTestId('result-veil-card')
+    .getByRole('button')
+    .evaluateAll((els) =>
+      els.map((el) => {
+        const r = el.getBoundingClientRect();
+        return { x: r.left, y: r.top, width: r.width, height: r.height, name: el.textContent };
+      }),
+    );
+  expect(controls.length).toBeGreaterThan(0);
+  for (const c of controls) expect(overlaps(c, seal), `${c.name} under the 和 seal`).toBe(false);
   await expect(page.getByText('Tap anywhere to dismiss', { exact: true })).toHaveCount(0);
   // Finish the lesson and start the next hand: the between-hand shuffle
   // is the glass 洗牌 pill over the table, never the cream token ring.
@@ -1356,6 +1371,114 @@ test('a win stamps the glass result card and the next hand shuffles without the 
   expect(shuffling).toBe(true);
   await expect(page.getByText('Shuffling…')).toHaveCount(0);
   await expect(page.getByTestId('shuffle-pill')).toBeHidden({ timeout: 15_000 });
+  expect(errors, 'console / page errors').toEqual([]);
+});
+
+for (const vp of [
+  { name: 'phone', width: 412, height: 700 },
+  { name: 'desktop', width: 1440, height: 900 },
+]) {
+  test(`the discard-hint ring hugs the hinted tile face on ${vp.name}, not the taller tap target`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: vp.width, height: vp.height });
+    // Settings live in localStorage before boot (the shot verifier seeds
+    // them the same way).
+    await page.addInitScript(() => {
+      try {
+        const key = 'mj.settings.v1';
+        const cur = JSON.parse(localStorage.getItem(key) || '{}');
+        localStorage.setItem(key, JSON.stringify({ ...cur, discardHint: true }));
+      } catch {}
+    });
+    const errors: string[] = [];
+    await startSolo(page, errors);
+    await waitForDealSettled(page);
+    const ring = page.getByTestId('hand-tile-recommended');
+    await expect(ring).toHaveCount(1, { timeout: 15_000 });
+    await page.waitForTimeout(400);
+    const ringBox = (await ring.boundingBox())!;
+    const button = (await ring.locator('..').boundingBox())!;
+    // The button is the tile *box*'s projection: for a hand tile leaning
+    // toward the camera that also spans the top bevel and the back edge.
+    // The ring follows the printed face instead: its bottom is the tile's
+    // nearest edge (the box bottom, where the old ring stopped 10 px
+    // short), its top never rides above the box and, from the shallower
+    // desktop camera, sits below the back edge.
+    expect(Math.abs(ringBox.y + ringBox.height - (button.y + button.height))).toBeLessThanOrEqual(
+      6,
+    );
+    expect(ringBox.y).toBeGreaterThanOrEqual(button.y - 3);
+    expect(ringBox.y).toBeLessThan(button.y + button.height * 0.4);
+    expect(ringBox.height).toBeGreaterThan(button.height * 0.55);
+    expect(ringBox.x).toBeGreaterThanOrEqual(button.x - 4);
+    expect(ringBox.x + ringBox.width).toBeLessThanOrEqual(button.x + button.width + 4);
+    expect(errors, 'console / page errors').toEqual([]);
+  });
+}
+
+test('the glass result card keeps the save-replay chip in the action row, not the seal corner', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 412, height: 700 });
+  const errors: string[] = [];
+  await startSolo(page, errors);
+  await waitForDealSettled(page);
+  // One discard so the recorder's draft has a frame, then wait for the
+  // bots' round-trip (the user's draw cue) before injecting the result —
+  // mid-loop the next bot delta would clear `lastResult` again.
+  await page.getByTestId('own-hand-tile').first().dispatchEvent('click');
+  const start = Date.now();
+  while (Date.now() - start < 30_000) {
+    if (
+      await page
+        .getByTestId('wall-draw-next')
+        .isVisible()
+        .catch(() => false)
+    )
+      break;
+    if (
+      await page
+        .getByText('CLAIM?', { exact: true })
+        .isVisible()
+        .catch(() => false)
+    ) {
+      await page
+        .getByText('Pass', { exact: true })
+        .first()
+        .click({ timeout: 2000 })
+        .catch(() => {});
+    }
+    await page.waitForTimeout(200);
+  }
+  await page.evaluate(() => {
+    const store = (
+      globalThis as {
+        __MAHJONG_TEST_GET_STATE__?: () => { state: unknown; setState: (s: unknown) => void };
+      }
+    ).__MAHJONG_TEST_GET_STATE__?.();
+    if (!store?.state) throw new Error('engine state not ready');
+    const cur = store.state as Record<string, unknown>;
+    store.setState({
+      ...cur,
+      phase: 'resolved',
+      lastResult: { kind: 'draw', reason: 'wall-empty' },
+    });
+  });
+  const card = page.getByTestId('result-veil-card');
+  await expect(card).toBeVisible({ timeout: 15_000 });
+  const save = page.getByRole('button', { name: 'Save replay' });
+  await expect(save).toBeVisible({ timeout: 10_000 });
+  const cardBox = (await card.boundingBox())!;
+  const saveBox = (await save.boundingBox())!;
+  const heading = (await page.getByText('Drawn game', { exact: true }).boundingBox())!;
+  // In the flow under the heading, on the card's left — never the
+  // absolute top-right corner the 和 seal takes on a win.
+  expect(saveBox.y).toBeGreaterThanOrEqual(heading.y + heading.height);
+  expect(saveBox.x).toBeLessThan(cardBox.x + cardBox.width / 2);
+  expect(saveBox.height).toBeGreaterThanOrEqual(44);
+  await save.dispatchEvent('click');
+  await expect(page.getByRole('button', { name: 'Replay saved — tap to discard' })).toBeVisible();
   expect(errors, 'console / page errors').toEqual([]);
 });
 

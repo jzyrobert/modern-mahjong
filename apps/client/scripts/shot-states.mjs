@@ -762,6 +762,18 @@ export const STATES = {
       { waitMs: 500 },
     ],
   },
+  'match-discard-hint': {
+    owner: 'table',
+    // Discard hint on: the dealer's first discard turn shows the teal
+    // ring on the bot-recommended tile — it must hug that tile's face.
+    steps: [
+      { setSettings: { discardHint: true } },
+      ...START_SOLO,
+      { waitForOwnHand: true },
+      { waitFor: '[data-testid="hand-tile-recommended"]', timeout: 15000 },
+      { waitMs: 900 },
+    ],
+  },
   'match-mid-hand': {
     owner: 'table',
     steps: [...START_SOLO, { waitForOwnHand: true }, { playTurns: 6 }, { waitMs: 600 }],
