@@ -500,3 +500,63 @@ describe('menu layout', () => {
     expect(fp.all.x + fp.all.w).toBeCloseTo(die.x + DIE_R * die.pxPerUnit, 6);
   });
 });
+
+describe('hero canvas fit (the band as its own canvas)', () => {
+  const FRAMES = [
+    ['phone', 412, 700, 380, 140],
+    ['phone-small', 360, 640, 328, 130],
+    ['phone-tall', 412, 915, 380, 183],
+    ['phone-landscape', 915, 412, 260, 200],
+    ['desktop', 1440, 900, 1072, 160],
+  ] as const;
+
+  test.each(FRAMES)(
+    '%s: the fit is translation-invariant — a band at the origin lays the rack out exactly as the same band anywhere on the page',
+    (_n, w, h, bw, bh) => {
+      const origin = menuLayout(w / h, { width: w, height: h, band: { x: 0, y: 0, w: bw, h: bh } });
+      const placed = menuLayout(w / h, {
+        width: w,
+        height: h,
+        band: { x: 37, y: 211, w: bw, h: bh },
+      });
+      // Same class, distance (so fov / perspective / fog) and dice slots…
+      expect(origin.cls).toBe(placed.cls);
+      expect(origin.distance).toBeCloseTo(placed.distance, 9);
+      expect(origin.fogDensity).toBeCloseTo(placed.fogDensity, 9);
+      expect(origin.dice).toEqual(placed.dice);
+      // …and the footprint is the same rectangle shifted by the band's
+      // corner, so the hero canvas (the band, laid out at the origin and
+      // rendered as a sub-frame of the viewport) shows the rack where a
+      // full-viewport canvas would have drawn it, wherever the page has
+      // scrolled the band to.
+      const a = origin.footprint!;
+      const b = placed.footprint!;
+      expect(b.all.x - a.all.x).toBeCloseTo(37, 6);
+      expect(b.all.y - a.all.y).toBeCloseTo(211, 6);
+      expect(b.all.w).toBeCloseTo(a.all.w, 6);
+      expect(b.all.h).toBeCloseTo(a.all.h, 6);
+      expect(b.tiles.x - a.tiles.x).toBeCloseTo(37, 6);
+      expect(b.tiles.y - a.tiles.y).toBeCloseTo(211, 6);
+      // The rack fills the band-sized canvas: inside it, clear of the
+      // title / card clearances, and most of the box tall.
+      expect(a.all.x).toBeGreaterThanOrEqual(-0.5);
+      expect(a.all.x + a.all.w).toBeLessThanOrEqual(bw + 0.5);
+      expect(a.all.y).toBeGreaterThanOrEqual(HERO_GAP_TOP_PX - 0.5);
+      expect(a.all.y + a.all.h).toBeLessThanOrEqual(bh - HERO_GAP_BOTTOM_PX + 0.5);
+      expect(a.all.h).toBeGreaterThan((bh - HERO_GAP_TOP_PX - HERO_GAP_BOTTOM_PX) * 0.6);
+    },
+  );
+
+  test('the class follows the viewport aspect, never the band aspect', () => {
+    // A phone's band is a wide strip (380 × 140 ≈ 2.7) — classified on
+    // its own it would be a landscape phone and get the wrong fan.
+    const l = menuLayout(412 / 700, {
+      width: 412,
+      height: 700,
+      band: { x: 0, y: 0, w: 380, h: 140 },
+    });
+    expect(l.cls).toBe('portrait');
+    expect(l.aspect).toBeCloseTo(412 / 700, 9);
+    expect(l.fan.rows).toBe(2);
+  });
+});

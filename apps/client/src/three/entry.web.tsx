@@ -6,7 +6,7 @@ import {
   subscribeRiverInterior,
 } from './core/sceneRects';
 import type { ReplayHudLayout, TutorialSceneRects } from './entry';
-import { Menu3DBackdrop as MenuBackdrop } from './menu/Menu3DBackdrop';
+import { Menu3DBackdrop as MenuBackdrop, Menu3DHero as MenuHero } from './menu/Menu3DBackdrop';
 import { type ReplayShelf3DProps, ReplayShelf3D as Shelf } from './menu/ReplayShelf3D';
 import { ReplayTable3D as ReplayTable, type ReplayTable3DProps } from './replay/ReplayTable3D';
 import {
@@ -39,6 +39,7 @@ import { Tutorial3D as Tutorial } from './tutorial/Tutorial3D';
  */
 export const Table3DShell: ComponentType<Table3DShellProps> | null = Shell;
 export const Menu3DBackdrop: ComponentType<Record<string, never>> | null = MenuBackdrop;
+export const Menu3DHero: ComponentType<Record<string, never>> | null = MenuHero;
 export const SettingsPreview3D: ComponentType<SettingsPreview3DProps> | null = SettingsPreview;
 export const Tutorial3D: ComponentType<Record<string, never>> | null = Tutorial;
 export const Lobby3DView: ComponentType<Lobby3DViewProps> | null = LobbyGlass;

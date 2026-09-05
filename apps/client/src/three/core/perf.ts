@@ -7,6 +7,13 @@ import type { QualityTier } from './quality';
  * (`scripts/shot.mjs`) and the `three-*` Playwright specs can read a
  * device-independent budget (draw calls, triangles, programs, JS frame
  * time) — see ARCHITECTURE.md §4 / §6.
+ *
+ * The global describes the *page*: when several runtimes are live at
+ * once (the menu's fixed drift canvas + the hero canvas that scrolls
+ * with the title; the table + the settings preview) their snapshots
+ * are summed (`aggregate`) so a budget judged against it covers every
+ * canvas. With one live monitor the published snapshot is that
+ * monitor's own, unchanged.
  */
 export interface PerfSnapshot {
   renderer: '3d';
@@ -53,6 +60,49 @@ declare global {
 }
 
 const RING = 120;
+/** Monitors that may still publish (constructed / `reset()`, not disposed). */
+const live = new Set<PerfMonitor>();
+/** Page-wide sample counter — advances on every publish by any monitor. */
+let pageSample = 0;
+
+/**
+ * Sum the live monitors' latest snapshots into one page snapshot. Work
+ * counters (draw calls, triangles, textures, programs, renders, fps)
+ * add up; JS frame times add up too (two canvases rendering in the same
+ * rAF cost the main thread their sum); `idle` needs every canvas idle;
+ * the size / dpr are the largest canvas's.
+ */
+function aggregate(): PerfSnapshot | undefined {
+  let out: PerfSnapshot | undefined;
+  for (const m of live) {
+    const s = m.latest;
+    if (!s) continue;
+    if (!out) {
+      out = { ...s };
+      continue;
+    }
+    out.fps += s.fps;
+    out.frameMsP50 = round(out.frameMsP50 + s.frameMsP50);
+    out.frameMsP95 = round(out.frameMsP95 + s.frameMsP95);
+    out.drawCalls += s.drawCalls;
+    out.triangles += s.triangles;
+    out.textures += s.textures;
+    out.geometries += s.geometries;
+    out.programs += s.programs;
+    out.idle = out.idle && s.idle;
+    out.renders += s.renders;
+    out.warmupMs = Math.max(out.warmupMs, s.warmupMs);
+    out.dpr = Math.max(out.dpr, s.dpr);
+    if (s.width * s.height > out.width * out.height) {
+      out.width = s.width;
+      out.height = s.height;
+    }
+    out.peakDrawCalls += s.peakDrawCalls;
+    out.peakTriangles += s.peakTriangles;
+  }
+  if (out) out.sample = pageSample;
+  return out;
+}
 /**
  * Rendered frames skipped before the ring starts sampling. The first
  * frames pay for shader compilation + texture upload (hundreds of ms
@@ -74,8 +124,12 @@ export class PerfMonitor {
   private peakCalls = 0;
   private peakTris = 0;
   quality: QualityTier = 'mid';
+  /** This monitor's own latest snapshot (`aggregate` reads it). */
+  latest: PerfSnapshot | null = null;
 
-  constructor(private readonly renderer: WebGLRenderer) {}
+  constructor(private readonly renderer: WebGLRenderer) {
+    live.add(this);
+  }
 
   /** Call once per rendered frame with the JS time the frame took. */
   recordFrame(frameMs: number, now: number): void {
@@ -136,7 +190,9 @@ export class PerfMonitor {
       peakTriangles: this.peakTris,
     };
     this.framesThisSecond = 0;
-    globalThis.__MAHJONG_PERF__ = snap;
+    this.latest = snap;
+    pageSample++;
+    globalThis.__MAHJONG_PERF__ = aggregate();
   }
 
   /**
@@ -156,11 +212,24 @@ export class PerfMonitor {
     this.warmupMs = 0;
     this.peakCalls = 0;
     this.peakTris = 0;
+    this.latest = null;
+    live.add(this);
   }
 
+  /** Leave the page total; the global is the remaining monitors' sum
+   *  (or `undefined` when this was the last one). */
   dispose(): void {
-    globalThis.__MAHJONG_PERF__ = undefined;
+    live.delete(this);
+    this.latest = null;
+    globalThis.__MAHJONG_PERF__ = aggregate();
   }
+}
+
+/** Test seam — forget every monitor. */
+export function resetPerfMonitorsForTests(): void {
+  live.clear();
+  pageSample = 0;
+  globalThis.__MAHJONG_PERF__ = undefined;
 }
 
 const tmpSize = new Vector2();

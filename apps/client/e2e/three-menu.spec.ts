@@ -4,10 +4,16 @@ import { expect, test } from './_helpers';
  * Three.js menu backdrop (`src/three/menu/`). Pins the 3D renderer,
  * loads the lobby at phone + desktop, and asserts the contract from
  * ARCHITECTURE.md §8: zero console / page errors, `__MAHJONG_PERF__`
- * published within the menu budget (≤ 20 draw calls, ≤ 80 k
- * triangles, ≤ 10 programs), the scene idles / throttles once the
- * intro has settled, and every DOM hit target the legacy lobby specs
- * rely on still exists over the canvas.
+ * (the page total over both menu canvases) published within the menu
+ * budget (≤ 20 draw calls, ≤ 80 k triangles, ≤ 10 programs), the
+ * scenes idle / throttle once the intro has settled, and every DOM hit
+ * target the legacy lobby specs rely on still exists over the canvas.
+ *
+ * Two canvases draw the menu: the drift field in the fixed backdrop
+ * (`menu-3d`) and the hero rack + dice inside the lobby's hero band
+ * (`menu-3d-hero`), which is ScrollView content — the rack scrolls
+ * with the title on the compositor, so no scroll handler re-aims a
+ * camera (`viewOffsetApplies` must not move across a scroll).
  */
 
 interface PerfSnapshot {
@@ -35,6 +41,10 @@ interface MenuDebug {
   rack: { x: number; y: number; w: number; h: number };
   band: { x: number; y: number; w: number; h: number } | null;
   rackGoal: { x: number; y: number; w: number; h: number } | null;
+  /** Hero camera `setViewOffset` re-applies since build (resize only). */
+  viewOffsetApplies: number;
+  /** Hero scenes built on the page (1 = never remounted). */
+  heroBuilds: number;
 }
 
 type Rect = { x: number; y: number; w: number; h: number };
@@ -178,6 +188,62 @@ async function scrollLobbyTo(page: import('@playwright/test').Page, top: number)
   }, top);
 }
 
+/**
+ * Where the two menu canvases live in the DOM: `scroller` is the
+ * lobby's ScrollView element; `heroInScroller` / `driftInScroller` say
+ * whether each canvas is a descendant of it (the hero must be — that is
+ * what makes the compositor move it with the title; the drift field
+ * must not — a fixed field behind a scrolling page is depth, one that
+ * follows scroll is jitter).
+ */
+async function canvasAncestry(page: import('@playwright/test').Page) {
+  return page.evaluate(() => {
+    let best: Element | null = null;
+    for (const el of Array.from(document.querySelectorAll('*'))) {
+      const cs = getComputedStyle(el);
+      if (el.scrollHeight > el.clientHeight + 4 && /auto|scroll/.test(cs.overflowY)) {
+        if (!best || el.scrollHeight > best.scrollHeight) best = el;
+      }
+    }
+    const hero = document.querySelector('[data-testid="menu-3d-hero"] canvas');
+    const drift = document.querySelector('[data-testid="menu-3d"] canvas');
+    const band = document.querySelector('[data-testid="hero-band"]');
+    return {
+      scroller: best !== null,
+      heroInScroller: !!(best && hero && best.contains(hero)),
+      heroInBand: !!(band && hero && band.contains(hero)),
+      driftInScroller: !!(best && drift && best.contains(drift)),
+    };
+  });
+}
+
+/**
+ * Set the lobby's `scrollTop` and read the hero canvas's client top in
+ * the *same* synchronous evaluate — no rAF, no paint in between. A
+ * canvas that is scroll content moves by exactly the scroll delta
+ * right there; one that a scroll listener re-aims would still read its
+ * old position.
+ */
+async function scrollLobbyAndMeasure(
+  page: import('@playwright/test').Page,
+  top: number,
+): Promise<{ scrollTop: number; heroTop: number }> {
+  return page.evaluate((y) => {
+    let best: Element | null = null;
+    for (const el of Array.from(document.querySelectorAll('*'))) {
+      const cs = getComputedStyle(el);
+      if (el.scrollHeight > el.clientHeight + 4 && /auto|scroll/.test(cs.overflowY)) {
+        if (!best || el.scrollHeight > best.scrollHeight) best = el;
+      }
+    }
+    if (!best) throw new Error('no lobby scroller');
+    best.scrollTop = y;
+    const hero = document.querySelector('[data-testid="menu-3d-hero"] canvas');
+    if (!hero) throw new Error('no hero canvas');
+    return { scrollTop: best.scrollTop, heroTop: hero.getBoundingClientRect().top };
+  }, top);
+}
+
 interface ShelfDebug {
   top: number;
   bottom: number;
@@ -285,9 +351,13 @@ test.describe('three: menu backdrop', () => {
     await page.goto('/');
     await expect(page.getByRole('heading', { name: 'Modern Mahjong' })).toBeVisible();
 
-    // The 3D backdrop is mounted (lazy) and the canvas is present.
+    // The 3D backdrop is mounted (lazy) and both canvases are present:
+    // the drift field behind the page, the hero inside the hero band.
     await expect(page.getByTestId('lobby-backdrop-3d')).toBeAttached();
     await expect(page.getByTestId('menu-3d').locator('canvas')).toBeAttached({ timeout: 15_000 });
+    await expect(page.getByTestId('hero-band').locator('canvas')).toBeAttached({
+      timeout: 15_000,
+    });
 
     const perf = await readPerf(page);
     expect(perf.drawCalls).toBeLessThanOrEqual(MENU_BUDGET.drawCalls);
@@ -669,9 +739,13 @@ test.describe('three: menu backdrop', () => {
     const online = await page.getByTestId('mode-online').boundingBox();
     if (!scrolled?.band || !online) throw new Error('missing scrolled boxes');
     const bandNow = await page.getByTestId('hero-band').boundingBox();
-    if (!bandNow) throw new Error('missing hero band');
+    const heroCanvas = await page.getByTestId('menu-3d-hero').locator('canvas').boundingBox();
+    if (!bandNow || !heroCanvas) throw new Error('missing hero band / canvas');
     expect(Math.abs(scrolled.band.y - bandNow.y)).toBeLessThan(1.5);
     expect(scrolled.rack.y + scrolled.rack.h).toBeLessThanOrEqual(online.y + 1.5);
+    // The hero canvas itself is the band: it went with the title.
+    expect(Math.abs(heroCanvas.y - bandNow.y)).toBeLessThan(1.5);
+    expect(heroCanvas.y + heroCanvas.height).toBeLessThanOrEqual(online.y + 1.5);
     // The ground stays the void after the resize + scroll.
     expect((await pageGround(page)).body).toBe(VOID_RGB);
     expect(errors()).toEqual([]);
@@ -699,9 +773,27 @@ test.describe('three: menu backdrop', () => {
         null,
         { timeout: 8000 },
       );
+      await expect(page.getByTestId('menu-3d-hero').locator('canvas')).toBeAttached({
+        timeout: 15_000,
+      });
       const bar = await page.getByTestId('lobby-app-bar').boundingBox();
       const chip = await page.getByText('麻', { exact: true }).boundingBox();
       if (!bar || !chip) throw new Error('missing app bar boxes');
+
+      // The hero canvas is ScrollView content inside the hero band; the
+      // drift field's canvas is not (it stays fixed behind the page).
+      const where = await canvasAncestry(page);
+      expect(where).toEqual({
+        scroller: true,
+        heroInScroller: true,
+        heroInBand: true,
+        driftInScroller: false,
+      });
+      const before = await readMenuDebug(page);
+      if (!before) throw new Error('menu debug never published');
+      expect(before.heroBuilds).toBe(1);
+      const heroTop0 = (await scrollLobbyAndMeasure(page, 0)).heroTop;
+
       // The bar left of the brand chip (the chip is ivory by design);
       // `sampleBarGround` reads the padding rows above / below the pill.
       // Sampled with the canvas visible — this is the rack passing under
@@ -710,22 +802,23 @@ test.describe('three: menu backdrop', () => {
       let rackUnderBar = false;
       const seen: string[] = [];
       for (const offset of [0, 40, 80, 120, 160, 240]) {
-        await scrollLobbyTo(page, offset);
-        // The band re-measures on the next frame and the rack follows
-        // it; wait for the live rack to land on the prediction.
-        await expect
-          .poll(
-            async () => {
-              const d = await readMenuDebug(page);
-              const slot = await page.getByTestId('hero-band').boundingBox();
-              if (!d?.band || !d.rackGoal || !slot) return Number.POSITIVE_INFINITY;
-              return Math.max(Math.abs(d.band.y - slot.y), Math.abs(d.rack.y - d.rackGoal.y));
-            },
-            { timeout: 5000 },
-          )
-          .toBeLessThan(2);
+        // Scroll and read back in one synchronous evaluate: the canvas
+        // has already moved by exactly the scroll delta — no listener,
+        // no rAF, no frame behind (round-3 feedback: the rack jittering
+        // against the title on Android Chrome).
+        const moved = await scrollLobbyAndMeasure(page, offset);
+        // (The last stop may clamp at the end of a short lobby — the
+        // delta the canvas must have moved by is the scroll achieved.)
+        expect(moved.scrollTop).toBeGreaterThanOrEqual(Math.min(offset, 160));
+        expect(moved.scrollTop).toBeLessThanOrEqual(offset);
+        expect(Math.abs(heroTop0 - moved.heroTop - moved.scrollTop)).toBeLessThanOrEqual(0.5);
+        // The debug seam reads the rack where the canvas now is.
         const d = await readMenuDebug(page);
-        if (d && d.rack.y < bar.y + bar.height && d.rack.y + d.rack.h > bar.y) rackUnderBar = true;
+        const slot = await page.getByTestId('hero-band').boundingBox();
+        if (!d?.band || !d.rackGoal || !slot) throw new Error('missing scrolled rack boxes');
+        expect(Math.abs(d.band.y - slot.y)).toBeLessThan(2);
+        expect(Math.abs(d.rack.y - d.rackGoal.y)).toBeLessThan(2);
+        if (d.rack.y < bar.y + bar.height && d.rack.y + d.rack.h > bar.y) rackUnderBar = true;
         const s = await sampleBarGround(page, clip);
         seen.push(`${offset}:${s.maxChannel}`);
         expect(
@@ -737,6 +830,14 @@ test.describe('three: menu backdrop', () => {
       // The probe means something: the rack really did pass under the bar.
       expect(rackUnderBar, `rack never reached the bar (${seen.join(' ')})`).toBe(true);
       test.info().annotations.push({ type: 'app-bar-probe', description: seen.join(' ') });
+      // No scroll handler re-aimed the hero camera and nothing remounted
+      // the scene: the view offset was applied at build + first size only.
+      await page.waitForTimeout(300);
+      const after = await readMenuDebug(page);
+      if (!after) throw new Error('menu debug never published');
+      expect(after.viewOffsetApplies).toBe(before.viewOffsetApplies);
+      expect(after.viewOffsetApplies).toBeLessThanOrEqual(2);
+      expect(after.heroBuilds).toBe(1);
       expect(errors()).toEqual([]);
     });
   }
@@ -764,9 +865,15 @@ test.describe('three: menu backdrop', () => {
         null,
         { timeout: 8000 },
       );
-      // The scene fitted its layout to the DOM's hero band…
+      // The scene fitted its layout to the DOM's hero band — which is
+      // the hero canvas's own box…
       const bandBox = await page.getByTestId('hero-band').boundingBox();
-      if (!bandBox) throw new Error('missing hero band');
+      const canvasBox = await page.getByTestId('menu-3d-hero').locator('canvas').boundingBox();
+      if (!bandBox || !canvasBox) throw new Error('missing hero band / canvas');
+      expect(Math.abs(canvasBox.x - bandBox.x)).toBeLessThan(1.5);
+      expect(Math.abs(canvasBox.y - bandBox.y)).toBeLessThan(1.5);
+      expect(Math.abs(canvasBox.width - bandBox.width)).toBeLessThan(1.5);
+      expect(Math.abs(canvasBox.height - bandBox.height)).toBeLessThan(1.5);
       // …and the live rack has eased onto the pure prediction (a late
       // font reflow re-fits it once more, so poll rather than read once).
       await expect
