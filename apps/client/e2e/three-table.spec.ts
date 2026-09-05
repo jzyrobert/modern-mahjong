@@ -878,6 +878,13 @@ test('phone landscape lobby: three columns above a felt band, bot skill controls
   page,
 }) => {
   await page.setViewportSize({ width: 915, height: 412 });
+  // Hold the opening-rolls modal open once the match starts: it
+  // auto-dismisses after 3.5 s, and under shard load the final
+  // `dice-ceremony-glass` wait below could otherwise poll after the glass
+  // had already gone (1-in-2 red on a loaded host).
+  await page.addInitScript(() => {
+    (globalThis as { __MAHJONG_TEST_HOLD_DICE__?: boolean }).__MAHJONG_TEST_HOLD_DICE__ = true;
+  });
   const errors: string[] = [];
   page.on('console', (m) => {
     if (m.type() === 'error') errors.push(m.text());
