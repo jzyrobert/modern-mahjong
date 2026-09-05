@@ -77,6 +77,46 @@ export interface ActionCtasProps {
   readyWaits: readonly MTile[];
   onAction: (a: Action) => void;
   compact: boolean;
+  /**
+   * Render the ready-hand badge alongside the CTAs (default). Desktop
+   * passes false and hosts the badge in the footer's left slot instead
+   * (`ReadyBadgeCta`), so the centre slot under the hand only ever
+   * holds one row of controls.
+   */
+  readyBadge?: boolean | undefined;
+}
+
+interface ReadyBadgeCtaProps {
+  waits: readonly MTile[];
+  compact: boolean;
+  /** Portrait footer: the compact badge replaces the sort control during a claim window. */
+  dense?: boolean | undefined;
+}
+
+/**
+ * The tenpai badge wrapped in its lesson target. Desktop's footer hosts
+ * it in the left column (beside nothing — the seat badges project onto
+ * the felt there), phone portrait swaps it in for the sort control
+ * while the claim strip owns the action tray, so a tenpai player who is
+ * offered a chi still sees 聽 and the waits.
+ */
+export function ReadyBadgeCta({ waits, compact, dense = false }: ReadyBadgeCtaProps) {
+  if (waits.length === 0) return null;
+  return (
+    <TutorialTarget id="ready-hand-badge">
+      <div style={{ pointerEvents: 'auto', display: 'inline-flex' }}>
+        <ReadyHandBadge
+          waits={waits}
+          theme="glass"
+          {...(dense
+            ? { tileWidth: 18, tileHeight: 25, dense: true }
+            : compact
+              ? {}
+              : { tileWidth: 28, tileHeight: 38 })}
+        />
+      </div>
+    </TutorialTarget>
+  );
 }
 
 export function hasActionCtas(p: ActionCtasProps): boolean {
@@ -96,8 +136,9 @@ export function hasActionCtas(p: ActionCtasProps): boolean {
  */
 export function ActionCtas(p: ActionCtasProps) {
   const { seat, canTsumo, tsumoFaan, concealedGangTile, promotedGangTile, readyWaits, compact } = p;
-  if (!hasActionCtas(p)) return null;
+  const readyBadge = p.readyBadge ?? true;
   const hasCta = canTsumo || concealedGangTile !== null || promotedGangTile !== null;
+  if (!hasCta && !(readyBadge && readyWaits.length > 0)) return null;
   return (
     <div
       className="mj-hud-fade"
@@ -110,17 +151,7 @@ export function ActionCtas(p: ActionCtasProps) {
         pointerEvents: 'none',
       }}
     >
-      {readyWaits.length > 0 ? (
-        <TutorialTarget id="ready-hand-badge">
-          <div style={{ pointerEvents: 'auto' }}>
-            <ReadyHandBadge
-              waits={readyWaits}
-              theme="glass"
-              {...(compact ? {} : { tileWidth: 28, tileHeight: 38 })}
-            />
-          </div>
-        </TutorialTarget>
-      ) : null}
+      {readyBadge ? <ReadyBadgeCta waits={readyWaits} compact={compact} /> : null}
       {hasCta ? (
         <TutorialTarget id="tsumo-button">
           <div style={{ display: 'inline-flex', gap: 8, pointerEvents: 'auto' }}>
@@ -184,6 +215,12 @@ interface ActionRowProps extends ActionCtasProps {
   sortAlign?: 'auto' | 'end' | 'replace' | undefined;
   /** Centred footer content (desktop / landscape claim strip). */
   centre?: ReactNode;
+  /**
+   * Phone layout (`sortAlign: 'auto'`): rendered in the sort control's
+   * place. Portrait swaps the compact ready-hand badge in while the
+   * claim strip owns the action tray (the sort mode is moot mid-call).
+   */
+  sortReplacement?: ReactNode;
 }
 
 /**
@@ -210,6 +247,7 @@ export function ActionRow(props: ActionRowProps) {
     dense = false,
     sortAlign = 'auto',
     centre,
+    sortReplacement,
   } = props;
   const sort = (
     <SortSegment mode={sortMode} onChange={onSortModeChange} compact={compact} dense={dense} />
@@ -295,7 +333,9 @@ export function ActionRow(props: ActionRowProps) {
               {leading}
             </div>
           ) : null}
-          <div style={{ flex: 'none' }}>{sort}</div>
+          <div style={{ flex: 'none', display: 'flex', alignItems: 'center' }}>
+            {sortReplacement ?? sort}
+          </div>
         </div>
       )}
     </div>

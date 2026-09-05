@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { WALL_LOW_THRESHOLD } from '../../../ui/match/GameStatusBar';
 import { TutorialTarget } from '../../../ui/tutorial/TargetRegistry';
 import { GLASS, glassStyle, labelStyle } from './glass';
@@ -26,6 +26,13 @@ interface StatusPillProps {
    * so the chrome pill carries only the wind disc and the wall count.
    */
   showTurn?: boolean | undefined;
+  /**
+   * Register the turn segment as the `turn-countdown` lesson target
+   * (default). The shell passes false while its footer turn chip carries
+   * the same id — two live registrations of one id flip-flop the
+   * registry on every commit and the coach-mark ring with them.
+   */
+  turnTarget?: boolean | undefined;
   style?: CSSProperties | undefined;
 }
 
@@ -46,6 +53,7 @@ export function StatusPill({
   onPress,
   compact,
   showTurn = true,
+  turnTarget = true,
   style,
 }: StatusPillProps) {
   const low = wallCount <= WALL_LOW_THRESHOLD;
@@ -137,7 +145,7 @@ export function StatusPill({
         </span>
       ) : null}
       {isMyTurn && showTurn ? (
-        <TutorialTarget id="turn-countdown">
+        <MaybeTarget enabled={turnTarget}>
           <span
             style={{
               display: 'inline-flex',
@@ -180,8 +188,23 @@ export function StatusPill({
               {turnCountdown !== null ? ` · ${turnCountdown}s` : ''}
             </span>
           </span>
-        </TutorialTarget>
+        </MaybeTarget>
       ) : null}
     </button>
+  );
+}
+
+/**
+ * The pill's turn segment is the `turn-countdown` lesson target only
+ * while the shell has no footer turn chip carrying that id (two live
+ * registrations of one id flip-flop the registry — and the coach-mark
+ * ring — on every commit). Otherwise the segment renders bare, so the
+ * DOM holds exactly one element tagged with the id.
+ */
+function MaybeTarget({ enabled, children }: { enabled: boolean; children: ReactNode }) {
+  return enabled ? (
+    <TutorialTarget id="turn-countdown">{children}</TutorialTarget>
+  ) : (
+    <>{children}</>
   );
 }

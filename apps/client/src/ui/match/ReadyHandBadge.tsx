@@ -19,6 +19,12 @@ interface ReadyHandBadgeProps {
    * the table, not as a footnote.
    */
   theme?: 'paper' | 'glass';
+  /**
+   * Glass only: a 40 px-tall footer variant (18 px 聽, no READY label,
+   * tighter pads) for the phone portrait footer row, where it stands in
+   * for the sort control during a claim window.
+   */
+  dense?: boolean;
 }
 
 const DEFAULT_TILE_W = 16;
@@ -42,9 +48,11 @@ export function ReadyHandBadge({
   tileWidth,
   tileHeight,
   theme = 'paper',
+  dense = false,
 }: ReadyHandBadgeProps) {
   if (waits.length === 0) return null;
   const glass = theme === 'glass';
+  const tight = glass && dense;
   const tw = tileWidth ?? (glass ? GLASS_TILE_W : DEFAULT_TILE_W);
   const th = tileHeight ?? (glass ? GLASS_TILE_H : DEFAULT_TILE_H);
   return (
@@ -55,9 +63,9 @@ export function ReadyHandBadge({
         flexDirection: 'row',
         alignItems: 'center',
         alignSelf: 'flex-start',
-        gap: glass ? 12 : 8,
-        paddingVertical: glass ? 7 : 4,
-        paddingHorizontal: glass ? 14 : 10,
+        gap: tight ? 8 : glass ? 12 : 8,
+        paddingVertical: tight ? 4 : glass ? 7 : 4,
+        paddingHorizontal: tight ? 10 : glass ? 14 : 10,
         borderRadius: glass ? 999 : 14,
         backgroundColor: glass ? 'rgba(14, 20, 17, 0.88)' : 'rgba(255, 250, 234, 0.95)',
         borderColor: glass ? 'rgba(216, 168, 90, 0.75)' : '#dca84a',
@@ -74,24 +82,26 @@ export function ReadyHandBadge({
         <Text
           style={{
             fontFamily: 'Noto Serif TC',
-            fontSize: glass ? 22 : 14,
-            lineHeight: glass ? 26 : undefined,
+            fontSize: tight ? 18 : glass ? 22 : 14,
+            lineHeight: tight ? 22 : glass ? 26 : undefined,
             fontWeight: '900',
             color: glass ? '#d8a85a' : '#a16b1c',
           }}
         >
           聽
         </Text>
-        <Text
-          style={{
-            fontSize: glass ? 11 : 10,
-            fontWeight: '900',
-            color: glass ? 'rgba(255,255,255,0.92)' : COLORS.ink,
-            letterSpacing: glass ? 2 : 1,
-          }}
-        >
-          READY
-        </Text>
+        {tight ? null : (
+          <Text
+            style={{
+              fontSize: glass ? 11 : 10,
+              fontWeight: '900',
+              color: glass ? 'rgba(255,255,255,0.92)' : COLORS.ink,
+              letterSpacing: glass ? 2 : 1,
+            }}
+          >
+            READY
+          </Text>
+        )}
       </View>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: glass ? 4 : 3 }}>
         {waits.map((tile) => (

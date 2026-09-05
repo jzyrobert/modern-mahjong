@@ -130,6 +130,14 @@ export const HELD_ROW_GAP = 0.55;
 export const HELD_ROW_DEPTH = 0.3;
 /** Right edge of the user's flat melds when the hand is held off-table. */
 export const OWN_MELD_RIGHT = 10.7;
+/**
+ * Scale of the user's flat melds while the hand is held off the table
+ * (phone portrait). At 1× a meld tile projects to ~30 px there — barely
+ * legible under the near rail's shadow; 1.3× brings it to ~39 px while
+ * the group (z 9.62–11.38) still clears the near wall (9.48) and the
+ * rail (11.9).
+ */
+export const OWN_MELD_SCALE_HELD = 1.3;
 export const MELD_GAP = 0.55;
 export const MELD_GROUP_GAP = 0.3;
 export const MELD_PITCH = TILE_W + 0.03;
@@ -221,9 +229,15 @@ export interface WallRef {
  *
  * `live[k]` is the slot of `wall[wall.length − 1 − k]` — the engine
  * pops from the end, so `k = 0` is the next tile to be drawn. Top
- * tiles are taken before bottom ones. `dead[j]` is `deadWall[j]`;
- * gang replacements `shift()` from the front, so index 0 is the far
- * end of the dead wall.
+ * tiles are taken before bottom ones. `dead[j]` is `deadWall[j]`, and
+ * index 0 is the stack *at the break* — the dead wall's near end,
+ * right across the gap from the live wall's drawing end (牌尾, the
+ * tail of the deck). That is where the engine's order puts it: the
+ * deal splits `deadWall = wall.splice(len − 14, 14)`, so `deadWall[0]`
+ * is deck-adjacent to the first live draw (`wall.pop()`), and a gang
+ * replacement (`deadWall.shift()`) is the tail tile — the same tile a
+ * Hong Kong table's 補牌 comes from. Round FB1 mapped index 0 to the
+ * far end instead, so the replacement visibly left the wrong end.
  */
 export function wallSlotRefs(
   dealer: Seat,
@@ -238,8 +252,9 @@ export function wallSlotRefs(
 
   const dead: WallRef[] = [];
   {
-    // Fill the 7 dead stacks left→right, then reverse so index 0 is
-    // the far (rightmost) end.
+    // Fill the 7 dead stacks from the break outward (left→right from
+    // the break wall's point of view): index 0 is the break-adjacent
+    // stack, top tile first.
     let seat = breakWall;
     let idx = breakStack;
     const stacks: { seat: Seat; stack: number }[] = [];
@@ -251,7 +266,6 @@ export function wallSlotRefs(
       stacks.push({ seat, stack: idx });
       idx++;
     }
-    stacks.reverse();
     for (const s of stacks) {
       dead.push({ wallSeat: s.seat, stack: s.stack, level: 1, dead: true });
       dead.push({ wallSeat: s.seat, stack: s.stack, level: 0, dead: true });
@@ -725,28 +739,19 @@ export function computeLayout(state: GameState, me: Seat, opts: LayoutOptions): 
       // row the hand would otherwise occupy.
       for (const slot of heldHandSlots(hand, drawnIdx, opts.heldHand, seat)) put(layout, slot);
       const meldsWidth =
-        melds.reduce((acc, m) => acc + m.width, 0) + Math.max(0, melds.length - 1) * MELD_GROUP_GAP;
-      let cursor = OWN_MELD_RIGHT - meldsWidth;
-      melds.forEach((m, mi) => {
-        let idx = 0;
-        for (const ms of m.tiles) {
-          put(layout, {
-            id: tileId(ms.tile),
-            zone: 'meld',
-            seat,
-            rel,
-            x: cursor + ms.dx,
-            y: FLAT_Y + (ms.stacked ? TILE_D : 0),
-            z: MELD_Z,
-            base: ms.faceDown ? 'flatDown' : 'flatUp',
-            yaw: yaw + (ms.rotated ? Math.PI / 2 : 0),
-            tilt: 0,
-            back: ms.faceDown,
-            index: mi * 4 + idx++,
-          });
-        }
-        cursor += m.width + MELD_GROUP_GAP;
-      });
+        (melds.reduce((acc, m) => acc + m.width, 0) +
+          Math.max(0, melds.length - 1) * MELD_GROUP_GAP) *
+        OWN_MELD_SCALE_HELD;
+      placeMelds(
+        layout,
+        melds,
+        seat,
+        rel,
+        yaw,
+        MELD_Z,
+        OWN_MELD_RIGHT - meldsWidth,
+        OWN_MELD_SCALE_HELD,
+      );
       // River below still applies.
       placeRiver(layout, state, seat, rel, yaw, opts.riverScale ?? 1);
       continue;
@@ -948,8 +953,8 @@ function placeRailMelds(
  * `wall` and shifts gang replacements from the front of `deadWall`;
  * physically the remaining tiles never move, so map them onto the *full*
  * set of slots offset by how many have already gone (the gap next to the
- * break grows as the hand progresses, the dead wall shrinks from its far
- * end).
+ * break grows as the hand progresses, the dead wall shrinks from its
+ * break end — the two ends of the deck meet at the gap).
  */
 function placeWalls(layout: Layout, state: GameState, me: Seat, opts: LayoutOptions): void {
   const refs = wallSlotRefs(

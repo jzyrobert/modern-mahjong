@@ -101,6 +101,31 @@ const BOT_PENG_SETUP = `
 })();
 `;
 
+/**
+ * Tenpai claim window (`match-tenpai-claim`): the user is tenpai after
+ * the win lesson's hand lost one tile; script the first bot that holds
+ * a face the user has two of to discard it (a peng — possibly also the
+ * wait, so the strip may offer HU as well) so the claim tray / strip is
+ * up while the 聽 badge must still be visible.
+ */
+const TENPAI_CLAIM_SETUP = `
+(() => {
+  const s = globalThis.__MAHJONG_TEST_GET_STATE__();
+  if (!s.state || s.you === null) throw new Error('no state');
+  const key = (t) => (t.kind === 'suit' ? 's:' + t.suit + ':' + t.rank : 'h:' + t.honor);
+  const mine = s.state.hands[s.you];
+  const counts = new Map();
+  for (const t of mine) counts.set(key(t), (counts.get(key(t)) ?? 0) + 1);
+  for (const seat of [1, 2, 3]) {
+    const target = s.state.hands[seat].find((t) => (counts.get(key(t)) ?? 0) >= 2);
+    if (!target) continue;
+    globalThis.__MAHJONG_TEST_BOT_SCRIPTS__ = { ...(globalThis.__MAHJONG_TEST_BOT_SCRIPTS__ ?? {}), [seat]: { discards: [target] } };
+    return;
+  }
+  throw new Error('no bot holds a face the user can peng');
+})();
+`;
+
 /** Dismiss the tutorial completion prompt through the store hook. */
 const DISMISS_TUTORIAL_PROMPT = `
 (() => {
@@ -584,6 +609,49 @@ export const STATES = {
       { waitMs: 900 },
     ],
   },
+  'match-tenpai': {
+    owner: 'table',
+    // Tenpai (聽牌): the `win` lesson deals a complete hand; skipping the
+    // lesson and discarding one tile leaves the user waiting. The glass
+    // 聽 badge must sit clear of the hand row on every viewport —
+    // desktop: the footer's left column; landscape: the footer's centre
+    // strip; portrait: the action tray.
+    steps: [
+      { initScript: 'globalThis.__MAHJONG_TEST_BOT_SCRIPTS__ = { 1: {}, 2: {}, 3: {} };' },
+      { goto: '/' },
+      { waitForText: 'Modern Mahjong' },
+      { startTutorial: 'win' },
+      { waitForOwnHand: true },
+      { waitMs: 700 },
+      { click: 'role=button[name="Skip lesson"]', timeout: 10000 },
+      { waitMs: 500 },
+      { clickTestId: 'own-hand-tile', nth: 0 },
+      { waitFor: '[data-testid="ready-hand-badge"]', timeout: 15000 },
+      { waitMs: 900 },
+    ],
+  },
+  'match-tenpai-claim': {
+    owner: 'table',
+    // Tenpai *and* offered a claim: the claim strip owns the desktop
+    // centre slot / portrait tray, and the 聽 badge must still show —
+    // desktop keeps it in the footer's left column, portrait swaps it in
+    // for the sort control in the footer row.
+    steps: [
+      { initScript: 'globalThis.__MAHJONG_TEST_BOT_SCRIPTS__ = { 1: {}, 2: {}, 3: {} };' },
+      { goto: '/' },
+      { waitForText: 'Modern Mahjong' },
+      { startTutorial: 'win' },
+      { waitForOwnHand: true },
+      { waitMs: 700 },
+      { click: 'role=button[name="Skip lesson"]', timeout: 10000 },
+      { waitMs: 500 },
+      { clickTestId: 'own-hand-tile', nth: 0 },
+      { waitFor: '[data-testid="ready-hand-badge"]', timeout: 15000 },
+      { evaluate: TENPAI_CLAIM_SETUP },
+      { waitFor: '[data-testid="claim-bar"]', timeout: 20000 },
+      { waitMs: 700 },
+    ],
+  },
   'match-shuffle': {
     owner: 'table',
     // Mid-shuffle frame between hands: the `win` lesson's hand resolves
@@ -620,8 +688,11 @@ export const STATES = {
     // The promoted-gang lesson at the moment before the promotion: the
     // user has peng'd 7p, drawn the fourth 7p and the "Promote gang" CTA
     // is up. Paired with `-after` to check the replacement draw leaves
-    // the dead wall's far end and lands in the hand.
-    steps: [...PROMOTED_GANG_TO_CTA, { waitMs: 800 }],
+    // the dead wall's break end and lands in the hand. The settle is
+    // long: the coach-mark ring tweens from the previous step's target
+    // (the drawn stack) to the CTA on requestAnimationFrame, and at
+    // SwiftShader's 1–2 fps that takes seconds, not 300 ms.
+    steps: [...PROMOTED_GANG_TO_CTA, { waitMs: 2500 }],
   },
   'tutorial-promoted-gang-after': {
     owner: 'table',

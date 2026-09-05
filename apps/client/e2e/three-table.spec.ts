@@ -802,6 +802,214 @@ test('a win stamps the glass result card and the next hand shuffles without the 
   expect(errors, 'console / page errors').toEqual([]);
 });
 
+type Box = { x: number; y: number; width: number; height: number };
+const overlaps = (a: Box, b: Box) =>
+  a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+
+/** Bounding boxes of the user's projected hand tiles (CSS px). */
+async function handTileBoxes(page: Page): Promise<Box[]> {
+  return page.getByTestId('own-hand-tile').evaluateAll((els) =>
+    els.map((el) => {
+      const r = el.getBoundingClientRect();
+      return { x: r.left, y: r.top, width: r.width, height: r.height };
+    }),
+  );
+}
+
+/**
+ * Start the `win` lesson (a complete 14-tile hand) and skip it, leaving
+ * a solo match where the user has the declare-win CTA up and is one
+ * discard away from tenpai.
+ */
+async function startWinHandSkipped(page: Page) {
+  await page.goto('/');
+  await page.waitForFunction(
+    () =>
+      typeof (globalThis as { __MAHJONG_TEST_START_TUTORIAL__?: unknown })
+        .__MAHJONG_TEST_START_TUTORIAL__ === 'function',
+    null,
+    { timeout: 20_000 },
+  );
+  await page.evaluate(() => {
+    (
+      globalThis as { __MAHJONG_TEST_START_TUTORIAL__?: (id: string) => void }
+    ).__MAHJONG_TEST_START_TUTORIAL__?.('win');
+  });
+  await expect(page.getByTestId('own-hand-tile').first()).toBeVisible({ timeout: 20_000 });
+  const skip = page.getByRole('button', { name: 'Skip lesson' });
+  await skip.waitFor({ timeout: 15_000 });
+  await skip.dispatchEvent('click');
+  await expect(page.getByTestId('tutorial-next')).toHaveCount(0);
+}
+
+test('desktop footer controls never sit on the hand row: CTA, tenpai badge, one turn target', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.addInitScript(() => {
+    (
+      globalThis as { __MAHJONG_TEST_BOT_SCRIPTS__?: Record<number, object> }
+    ).__MAHJONG_TEST_BOT_SCRIPTS__ = { 1: {}, 2: {}, 3: {} };
+  });
+  const errors: string[] = [];
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(m.text());
+  });
+  page.on('pageerror', (e) => errors.push(String(e)));
+  await startWinHandSkipped(page);
+  await page.waitForTimeout(900);
+  // The declare CTA rides the footer row beside the turn chip — one row
+  // under the hand, clear of every tile (round-FB1 critic #2: the CTA
+  // row stacked above the chip climbed onto the tiles' bottom edge).
+  const declare = page.getByRole('button', { name: /Declare win/ });
+  await expect(declare).toBeVisible({ timeout: 15_000 });
+  let tiles = await handTileBoxes(page);
+  const declareBox = (await declare.boundingBox())!;
+  expect(
+    tiles.some((t) => overlaps(t, declareBox)),
+    'declare CTA over a hand tile',
+  ).toBe(false);
+  expect(declareBox.y).toBeGreaterThanOrEqual(Math.max(...tiles.map((t) => t.y + t.height)) + 4);
+  // The turn chip under the hand carries the `turn-countdown` target on
+  // its own — the status pill's segment stands down, so the lesson
+  // registry never sees two rects for one id.
+  await expect(page.locator('[data-tutorial-target="turn-countdown"]')).toHaveCount(1);
+  // Discard one tile: tenpai. The 聽 badge takes the footer's left
+  // column, never the hand band.
+  await page.getByTestId('own-hand-tile').first().dispatchEvent('click');
+  const badge = page.getByTestId('ready-hand-badge');
+  await expect(badge).toBeVisible({ timeout: 15_000 });
+  await page.waitForTimeout(600);
+  tiles = await handTileBoxes(page);
+  const badgeBox = (await badge.boundingBox())!;
+  expect(
+    tiles.some((t) => overlaps(t, badgeBox)),
+    'tenpai badge over a hand tile',
+  ).toBe(false);
+  expect(badgeBox.y).toBeGreaterThanOrEqual(Math.max(...tiles.map((t) => t.y + t.height)) + 4);
+  expect(badgeBox.y + badgeBox.height).toBeLessThanOrEqual(900 - 4);
+  expect(errors, 'console / page errors').toEqual([]);
+});
+
+test('desktop claim strip stays in the void band under the hand', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.addInitScript(() => {
+    const g = globalThis as {
+      __MAHJONG_TEST_SEED__?: number;
+      __MAHJONG_TEST_BOT_SCRIPTS__?: Record<number, { discards?: unknown[] }>;
+    };
+    g.__MAHJONG_TEST_SEED__ = 30;
+    g.__MAHJONG_TEST_BOT_SCRIPTS__ = { 1: {}, 2: {}, 3: {} };
+  });
+  const errors: string[] = [];
+  await startSolo(page, errors);
+  await page.waitForTimeout(1600);
+  await page.evaluate(() => {
+    type T = { kind: string; suit?: string; rank?: number; honor?: string };
+    const g = globalThis as {
+      __MAHJONG_TEST_GET_STATE__?: () => { state: { hands: Record<number, T[]> }; you: number };
+      __MAHJONG_TEST_BOT_SCRIPTS__?: Record<number, { discards?: T[] }>;
+    };
+    const s = g.__MAHJONG_TEST_GET_STATE__!();
+    const key = (t: T) => (t.kind === 'suit' ? `s:${t.suit}:${t.rank}` : `h:${t.honor}`);
+    const mine = s.state.hands[s.you]!;
+    const counts = new Map<string, number>();
+    for (const t of mine) counts.set(key(t), (counts.get(key(t)) ?? 0) + 1);
+    const botFaces = new Set(s.state.hands[1]!.map(key));
+    const target = mine.find((t) => (counts.get(key(t)) ?? 0) >= 2 && botFaces.has(key(t)))!;
+    g.__MAHJONG_TEST_BOT_SCRIPTS__![1] = { discards: [target] };
+    const names: Record<string, string> = {
+      E: 'East wind',
+      S: 'South wind',
+      W: 'West wind',
+      N: 'North wind',
+      Z: 'Red dragon',
+      F: 'Green dragon',
+      B: 'White dragon',
+    };
+    const name = (t: T) => (t.kind === 'suit' ? `${t.rank} ${t.suit}` : names[t.honor!]!);
+    const avoid = name(target);
+    const btn = Array.from(
+      document.querySelectorAll<HTMLElement>('[data-testid="own-hand-tile"]'),
+    ).find((b) => !(b.getAttribute('aria-label') || '').startsWith(avoid))!;
+    btn.click();
+  });
+  const bar = page.getByTestId('claim-bar');
+  await expect(bar).toBeVisible({ timeout: 20_000 });
+  await page.waitForTimeout(400);
+  const tiles = await handTileBoxes(page);
+  const barBox = (await bar.boundingBox())!;
+  // The large strip (≤ 84 px) grows up from the 14 px footer pad and
+  // stops ≥ 6 px short of the tiles' bottom edge.
+  expect(
+    tiles.some((t) => overlaps(t, barBox)),
+    'claim strip over a hand tile',
+  ).toBe(false);
+  expect(barBox.y).toBeGreaterThanOrEqual(Math.max(...tiles.map((t) => t.y + t.height)) + 6);
+  expect(barBox.height).toBeLessThanOrEqual(84);
+  expect(barBox.y + barBox.height).toBeLessThanOrEqual(900 - 10);
+  await expect(page.getByRole('button', { name: 'Peng' })).toBeVisible();
+  expect(errors, 'console / page errors').toEqual([]);
+});
+
+test('phone portrait keeps the tenpai badge on screen through a claim window', async ({ page }) => {
+  await page.setViewportSize({ width: 412, height: 915 });
+  await page.addInitScript(() => {
+    (
+      globalThis as { __MAHJONG_TEST_BOT_SCRIPTS__?: Record<number, object> }
+    ).__MAHJONG_TEST_BOT_SCRIPTS__ = { 1: {}, 2: {}, 3: {} };
+  });
+  const errors: string[] = [];
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(m.text());
+  });
+  page.on('pageerror', (e) => errors.push(String(e)));
+  await startWinHandSkipped(page);
+  await page.waitForTimeout(900);
+  await page.getByTestId('own-hand-tile').first().dispatchEvent('click');
+  const badge = page.getByTestId('ready-hand-badge');
+  await expect(badge).toBeVisible({ timeout: 15_000 });
+  // Script seat 1 to throw a face the user holds two of: the claim strip
+  // takes the action tray, and the compact 聽 badge moves into the footer
+  // row in the sort control's place (round-FB1 critic #5).
+  await page.evaluate(() => {
+    type T = { kind: string; suit?: string; rank?: number; honor?: string };
+    const g = globalThis as {
+      __MAHJONG_TEST_GET_STATE__?: () => { state: { hands: Record<number, T[]> }; you: number };
+      __MAHJONG_TEST_BOT_SCRIPTS__?: Record<number, { discards?: T[] }>;
+    };
+    const s = g.__MAHJONG_TEST_GET_STATE__!();
+    const key = (t: T) => (t.kind === 'suit' ? `s:${t.suit}:${t.rank}` : `h:${t.honor}`);
+    const counts = new Map<string, number>();
+    for (const t of s.state.hands[s.you]!) counts.set(key(t), (counts.get(key(t)) ?? 0) + 1);
+    for (const seat of [1, 2, 3]) {
+      const target = s.state.hands[seat]!.find((t) => (counts.get(key(t)) ?? 0) >= 2);
+      if (!target) continue;
+      g.__MAHJONG_TEST_BOT_SCRIPTS__ = {
+        ...(g.__MAHJONG_TEST_BOT_SCRIPTS__ ?? {}),
+        [seat]: { discards: [target] },
+      };
+      return;
+    }
+    throw new Error('no bot holds a face the user can peng');
+  });
+  const bar = page.getByTestId('claim-bar');
+  await expect(bar).toBeVisible({ timeout: 20_000 });
+  await expect(badge).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Sort by Suit' })).toHaveCount(0);
+  const badgeBox = (await badge.boundingBox())!;
+  const barBox = (await bar.boundingBox())!;
+  const tiles = await handTileBoxes(page);
+  expect(overlaps(badgeBox, barBox), 'badge over the claim strip').toBe(false);
+  expect(
+    tiles.some((t) => overlaps(t, badgeBox)),
+    'badge over a hand tile',
+  ).toBe(false);
+  expect(badgeBox.y + badgeBox.height).toBeLessThanOrEqual(915 - 4);
+  expect(badgeBox.height).toBeLessThanOrEqual(46);
+  expect(errors, 'console / page errors').toEqual([]);
+});
+
 test('debug tile sheet renders every face with no errors', async ({ page }) => {
   await page.addInitScript(() => {
     (globalThis as { __MAHJONG_DEBUG_TILE_SHEET__?: boolean }).__MAHJONG_DEBUG_TILE_SHEET__ = true;

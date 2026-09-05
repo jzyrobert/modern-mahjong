@@ -51,7 +51,9 @@ const THEMES = {
     shadow: '0px 6px 16px rgba(0,0,0,0.28)',
   },
   glass: {
-    bg: 'rgba(14,20,17,0.92)',
+    // Near-opaque: on phone portrait the toast rides the seat-strip row
+    // over the far seat's badge, whose text must not bleed through.
+    bg: 'rgba(14,20,17,0.97)',
     border: 'rgba(216,168,90,0.7)',
     borderWidth: 1,
     glyph: '#d8a85a',

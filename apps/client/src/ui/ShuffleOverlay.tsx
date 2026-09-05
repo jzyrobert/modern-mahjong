@@ -160,12 +160,15 @@ function GlassShufflePill({ fade }: { fade: Animated.Value }) {
   const { width, height } = useWindowDimensions();
   const landscapePhone = width > height && height < 600;
   const portraitPhone = !landscapePhone && width < 768;
-  // Portrait: under the chrome (12 + 44) and the 34 px seat strip;
-  // desktop: centred in the 44 px chrome row. Landscape: the chrome
+  // Portrait: over the seat-strip row (12 + 44 chrome + 8, less 6 so the
+  // 40 px pill straddles the 34 px strip) — the same slot the claim
+  // toast takes there: the band between the strip and the far rail is
+  // too shallow for a pill without it lying on the rail's top edge.
+  // Desktop: centred in the 44 px chrome row. Landscape: the chrome
   // row's free run right of the far seat's badge and left of the
   // fullscreen prompt (the shells' toast slot) — the far wall's top row
   // sits directly under the chrome there, so nothing may hang below it.
-  const top = landscapePhone ? 4 : portraitPhone ? 12 + 44 + 8 + 34 + 8 : 24;
+  const top = landscapePhone ? 4 : portraitPhone ? 12 + 44 + 8 - 6 : 24;
   const slot = landscapePhone
     ? { left: '50%' as const, marginLeft: 60, right: 140, alignItems: 'flex-start' as const }
     : { left: 0, right: 0, alignItems: 'center' as const };
@@ -216,7 +219,8 @@ function GlassShufflePill({ fade }: { fade: Animated.Value }) {
           paddingLeft: 14,
           paddingRight: 18,
           borderRadius: 999,
-          backgroundColor: 'rgba(14,20,17,0.82)',
+          // Near-opaque: on portrait the pill sits over the far seat's badge.
+          backgroundColor: 'rgba(14,20,17,0.96)',
           borderWidth: 1,
           borderColor: 'rgba(216,168,90,0.6)',
           boxShadow:

@@ -41,7 +41,13 @@ import {
   riverZoomCameraFor,
   sheetCameraFor,
 } from './cameraPresets';
-import { ActionCtas, ActionRow, FOOTER_LEADING_MAX, hasActionCtas } from './hud/ActionRow';
+import {
+  ActionCtas,
+  ActionRow,
+  FOOTER_LEADING_MAX,
+  ReadyBadgeCta,
+  hasActionCtas,
+} from './hud/ActionRow';
 import { HandRail } from './hud/HandRail';
 import { HitTargets, type HitTargetsHandle, type HudRects } from './hud/HitTargets';
 import { MenuButtons } from './hud/MenuButtons';
@@ -230,6 +236,25 @@ const CHROME_H_LANDSCAPE = 38;
  * and the tiles' bottom edge.
  */
 const LANDSCAPE_FOOTER_PAD = 5;
+/**
+ * Desktop footer: 12 px safe pad (the chrome keeps 24). The footer's one
+ * row grows upward from here into the void band under the hand row; see
+ * `desktopBand`.
+ */
+const DESKTOP_FOOTER_PAD = 12;
+/**
+ * Air kept between the hand row's projected extent (`hudRects.ownHand`,
+ * which already carries a 6 px pad) and any footer control.
+ */
+const DESKTOP_HAND_CLEAR = 4;
+/**
+ * Height of the desktop claim strip at `size="large"` (48 × 66 live
+ * tile + 6 px pads + border + countdown bar). The strip only takes the
+ * large size while the band under the hand can hold it; otherwise it
+ * falls back to the 37 px `footer` strip rather than climbing onto the
+ * tiles (round-FB1 critic: 10 px of every tile under the strip covered).
+ */
+const CLAIM_STRIP_LARGE_H = 84;
 /**
  * Portrait phones ≤ 420 CSS px wide render at DPR 2 even on the `low`
  * tier: the canvas is small (≈ 1.5 MP) and the full-table river tiles
@@ -763,7 +788,29 @@ export function Table3DShell(props: Table3DShellProps) {
   // so the cue sits where the eye already is instead of only in the
   // chrome pill. The claim strip / hand rail take the slot when they
   // need it.
-  const footerTurnChip = !portrait && props.myTurn && !resolved;
+  // Not during the between-hand ceremony: the dispense + 洗牌 pill own
+  // that beat, and the new hand's "your turn" would read as stale chrome
+  // under the veil (round-FB1 critic #6).
+  const footerTurnChip = !portrait && props.myTurn && !resolved && !shuffling;
+  // Desktop: the void band between the hand row's projected bottom and
+  // the footer's bottom edge. Everything the footer hosts must fit in
+  // it — a control that grows past it lands on the tiles.
+  const footerPad = landscape ? LANDSCAPE_FOOTER_PAD : portrait ? pad : DESKTOP_FOOTER_PAD;
+  const handBottom = hudRects.ownHand ? hudRects.ownHand.top + hudRects.ownHand.height : null;
+  const desktopBand =
+    !compact && handBottom !== null
+      ? height - insets.bottom - footerPad - (handBottom + DESKTOP_HAND_CLEAR)
+      : null;
+  const desktopStripSize: 'large' | 'footer' =
+    desktopBand === null || desktopBand >= CLAIM_STRIP_LARGE_H ? 'large' : 'footer';
+  // Desktop: the CTAs (declare win / gang, promote) ride in the centre
+  // slot beside the turn chip; the tenpai badge takes the left column.
+  const desktopCtas = !compact && showCtas && !resolved;
+  const desktopReadyBadge = !compact && props.readyWaits.length > 0 && !resolved;
+  // Portrait: while the claim strip owns the tray, the compact tenpai
+  // badge stands in for the (moot) sort control in the footer row.
+  const portraitReadyBadge =
+    portrait && trayActions && props.hasClaimOption && props.readyWaits.length > 0 && !resolved;
   // Landscape zoom header: a full-bleed glass band the far wall's row
   // (and the far seat's rack) park behind, so the chrome pills, the far
   // badge and the toast slot never sit on tile tops (round-4 #5).
@@ -771,13 +818,15 @@ export function Table3DShell(props: Table3DShellProps) {
   // Portrait-only offset; landscape and desktop park toasts in the
   // chrome row (see `toastSlot`), the one void that never holds a tile
   // or a discard-to-be.
-  const farRowTop = hudRects.farRowTop;
+  // Portrait (full table): the toast rides the seat-strip row — glass
+  // over glass, centred on the far seat's badge for its 1.8 s — because
+  // the band between the strip and the far rail (~40 px) cannot hold a
+  // 50 px toast without it lying on the rail's top edge or within a few
+  // px of the far seat's rack (round-FB1 critic #9).
   const toastTop = portrait
     ? zoomed && nearWallBottom !== null
       ? nearWallBottom + 10
-      : farRowTop !== null && !zoomed
-        ? Math.max(stripTop + 34 + 6, farRowTop - 6 - TOAST_H)
-        : stripTop + 40
+      : stripTop - 6
     : 0;
   // Portrait: where the table centre lands in the viewport (0–100 %),
   // for the void's lamp glow — from the projected river square once the
@@ -964,13 +1013,14 @@ export function Table3DShell(props: Table3DShellProps) {
               windGlyph={props.userWindGlyph}
               name={props.userName}
               wallCount={state.wall.length}
-              deadCount={portrait ? undefined : state.deadWall.length}
-              isMyTurn={props.myTurn}
+              deadCount={state.deadWall.length}
+              isMyTurn={props.myTurn && !shuffling}
               needsDraw={props.needsDraw}
               turnCountdown={props.turnCountdown}
               onPress={() => props.setPlayersOpen(true)}
               compact={compact}
               showTurn={!portrait}
+              turnTarget={!footerTurnChip}
               style={landscape ? { minHeight: chromeH, padding: '4px 10px 4px 4px' } : undefined}
             />
             {compact ? null : (
@@ -1119,7 +1169,7 @@ export function Table3DShell(props: Table3DShellProps) {
                   }}
                 >
                   <TurnChip
-                    isMyTurn={props.myTurn}
+                    isMyTurn={props.myTurn && !shuffling}
                     needsDraw={props.needsDraw}
                     turnCountdown={props.turnCountdown}
                     activeName={activeSeat !== null ? nameForSeat(lobby, activeSeat) : null}
@@ -1162,7 +1212,7 @@ export function Table3DShell(props: Table3DShellProps) {
               position: 'absolute',
               left: pad + insets.left,
               right: pad + insets.right,
-              bottom: (landscape ? LANDSCAPE_FOOTER_PAD : pad) + insets.bottom,
+              bottom: footerPad + insets.bottom,
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'stretch',
@@ -1175,8 +1225,13 @@ export function Table3DShell(props: Table3DShellProps) {
               {...ctaProps}
               sortMode={sortMode}
               onSortModeChange={props.onSortModeChange ?? (() => {})}
-              ctasExternal={compact}
+              ctasExternal
               dense={landscape}
+              sortReplacement={
+                portraitReadyBadge ? (
+                  <ReadyBadgeCta waits={props.readyWaits} compact dense />
+                ) : undefined
+              }
               sortAlign={
                 landscapeFooterClaim || landscapeRail
                   ? 'replace'
@@ -1189,7 +1244,11 @@ export function Table3DShell(props: Table3DShellProps) {
                       : 'end'
               }
               leading={
-                compact && youBadge ? (
+                desktopReadyBadge ? (
+                  <div className="mj-hud-fade" style={{ display: 'flex', alignItems: 'center' }}>
+                    <ReadyBadgeCta waits={props.readyWaits} compact={false} />
+                  </div>
+                ) : compact && youBadge ? (
                   <SeatBadge
                     model={youBadge}
                     lobby={lobby}
@@ -1216,20 +1275,32 @@ export function Table3DShell(props: Table3DShellProps) {
                     onShowHand={exitRiverZoom}
                     onDraw={() => props.onAction({ t: 'draw', seat })}
                   />
-                ) : footerTurnChip && !desktopStrip && !landscapeFooterClaim ? (
+                ) : (footerTurnChip || desktopCtas) && !desktopStrip && !landscapeFooterClaim ? (
+                  // One row: the turn chip and, on desktop, the declare /
+                  // promote CTAs beside it — never stacked above it, so
+                  // the row stays one control tall under the hand.
                   <div
                     className="mj-hud-fade"
-                    style={{ display: 'flex', justifyContent: 'center' }}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                      gap: 12,
+                      flexWrap: 'nowrap',
+                    }}
                   >
-                    <TurnChip
-                      isMyTurn
-                      needsDraw={props.needsDraw}
-                      turnCountdown={props.turnCountdown}
-                      activeName={null}
-                      activeColour={null}
-                      claimsOpen={false}
-                      size={landscape ? 'dense' : 'large'}
-                    />
+                    {footerTurnChip ? (
+                      <TurnChip
+                        isMyTurn
+                        needsDraw={props.needsDraw}
+                        turnCountdown={props.turnCountdown}
+                        activeName={null}
+                        activeColour={null}
+                        claimsOpen={false}
+                        size={landscape ? 'dense' : 'large'}
+                      />
+                    ) : null}
+                    {desktopCtas ? <ActionCtas {...ctaProps} readyBadge={false} /> : null}
                   </div>
                 ) : desktopStrip || landscapeFooterClaim ? (
                   <div
@@ -1243,7 +1314,9 @@ export function Table3DShell(props: Table3DShellProps) {
                       minWidth: 0,
                     }}
                   >
-                    {landscapeFooterClaim && showCtas ? <ActionCtas {...ctaProps} /> : null}
+                    {(landscapeFooterClaim || desktopCtas) && showCtas ? (
+                      <ActionCtas {...ctaProps} readyBadge={!desktopCtas} />
+                    ) : null}
                     {props.hasClaimOption ? (
                       <TutorialTarget id="claim-bar" style={{ maxWidth: '100%', minWidth: 0 }}>
                         <div
@@ -1256,7 +1329,7 @@ export function Table3DShell(props: Table3DShellProps) {
                             orientation="portrait"
                             theme="glass"
                             dense
-                            size={landscape ? 'footer' : 'large'}
+                            size={landscape ? 'footer' : desktopStripSize}
                           />
                         </div>
                       </TutorialTarget>

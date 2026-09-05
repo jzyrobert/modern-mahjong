@@ -13,6 +13,7 @@ import {
   OWN_HAND_Z,
   OWN_MELD_CLAIM_STEP,
   OWN_MELD_RIGHT,
+  OWN_MELD_SCALE_HELD,
   RAIL_MELD_Z,
   RAIL_TOP,
   RAIL_WIDTH,
@@ -84,21 +85,42 @@ describe('wallSlotRefs', () => {
     expect(live[1]).toEqual({ wallSeat: 2, stack: 9, level: 0, dead: false });
     expect(live[2]).toEqual({ wallSeat: 2, stack: 8, level: 1, dead: false });
   });
-  test('dead wall is the 7 stacks right of the break; index 0 is the far end', () => {
+  test('dead wall is the 7 stacks right of the break; index 0 is the break end', () => {
     const { dead } = wallSlotRefs(0, 7, 122, 14);
     expect(dead).toHaveLength(14);
     expect(dead.every((d) => d.dead)).toBe(true);
-    // Far end: stack 16 on the break wall (seat 2).
-    expect(dead[0]).toEqual({ wallSeat: 2, stack: 16, level: 1, dead: true });
-    expect(dead[13]).toEqual({ wallSeat: 2, stack: 10, level: 0, dead: true });
+    // Break end: stack 10 on the break wall (seat 2), right across the
+    // gap from live k = 0 (stack 9); the far end is stack 16.
+    expect(dead[0]).toEqual({ wallSeat: 2, stack: 10, level: 1, dead: true });
+    expect(dead[1]).toEqual({ wallSeat: 2, stack: 10, level: 0, dead: true });
+    expect(dead[13]).toEqual({ wallSeat: 2, stack: 16, level: 0, dead: true });
+  });
+  test('deadWall[0] is deck-adjacent to the first live draw (engine order → break end)', () => {
+    // Engine: `deadWall = wall.splice(len − 14, 14)`, `wall.pop()` draws
+    // — so deadWall[0] and the first drawn tile were neighbours in the
+    // deck. Physically they must be neighbours across the break gap.
+    for (const dealer of [0, 1, 2, 3] as const) {
+      for (let n = 2; n <= 12; n++) {
+        const { live, dead } = wallSlotRefs(dealer, n, 122, 14);
+        const l0 = live[0]!;
+        const d0 = dead[0]!;
+        expect(d0.level).toBe(1);
+        const adjacent =
+          (d0.wallSeat === l0.wallSeat && d0.stack === l0.stack + 1) ||
+          (d0.stack === 0 && l0.stack === 16 && d0.wallSeat !== l0.wallSeat);
+        expect(adjacent).toBe(true);
+      }
+    }
   });
   test('wraps onto the next seat when the dead wall overruns the corner', () => {
     const { dead } = wallSlotRefs(0, 3, 122, 14);
     // break stack 14 → dead stacks 14,15,16 on seat 2 then 0..3 on seat 3.
     const seats = new Set(dead.map((d) => d.wallSeat));
     expect(seats).toEqual(new Set([2, 3]));
-    expect(dead[0]!.wallSeat).toBe(3);
-    expect(dead[0]!.stack).toBe(3);
+    expect(dead[0]!.wallSeat).toBe(2);
+    expect(dead[0]!.stack).toBe(14);
+    expect(dead[13]!.wallSeat).toBe(3);
+    expect(dead[13]!.stack).toBe(3);
   });
   test('live wall wraps onto the previous seat and never overlaps the dead wall', () => {
     const { live, dead } = wallSlotRefs(1, 12, 122, 14);
@@ -574,7 +596,7 @@ describe('computeLayout', () => {
     );
     expect(occupied).toBe(false);
   });
-  test('gang replacements shrink the dead wall from its far end', () => {
+  test('gang replacements shrink the dead wall from its break end; the rest stays put', () => {
     const st = dealt();
     const before = computeLayout(st, 0, OPTS);
     const taken = st.deadWall[0]!;
@@ -697,7 +719,19 @@ describe('held hand (phone portrait)', () => {
       expect(m!.z).toBeCloseTo(MELD_Z, 5);
       expect(m!.x).toBeLessThanOrEqual(OWN_MELD_RIGHT + 0.01);
       expect(m!.x).toBeGreaterThan(5);
+      // Portrait: 1.3× so a meld tile reads at ~39 px, not ~30 — and the
+      // scaled tile still sits between the near wall and the rail.
+      expect(m!.scale).toBeCloseTo(OWN_MELD_SCALE_HELD, 5);
+      expect(m!.y).toBeCloseTo((TILE_D / 2) * OWN_MELD_SCALE_HELD, 5);
+      const halfDepth = (TILE_H / 2) * OWN_MELD_SCALE_HELD;
+      expect(m!.z - halfDepth).toBeGreaterThan(WALL_D + TILE_H / 2);
+      expect(m!.z + halfDepth).toBeLessThan(FELT_HALF);
     }
+    // The group's right edge stays at the rail-side bound.
+    const rightmost = melds.reduce((a, b) => (a!.x > b!.x ? a : b))!;
+    expect(rightmost.x + (TILE_W / 2) * OWN_MELD_SCALE_HELD).toBeLessThanOrEqual(
+      OWN_MELD_RIGHT + 0.01,
+    );
   });
   test('tile sheet rows are each centred on the sheet axis', () => {
     const layout = tileSheetLayout();

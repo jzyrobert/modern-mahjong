@@ -205,12 +205,12 @@ describe('Choreographer', () => {
 });
 
 describe('gang replacement', () => {
-  test('the replacement leaves the dead wall from its far end and is the tile that lands in the hand', () => {
+  test('the replacement leaves the dead wall from its break end and is the tile that lands in the hand', () => {
     // The engine `shift()`s `deadWall[0]`; the layout maps `deadWall[j]`
-    // to the dead segment's slots *reversed*, so index 0 is the far end
-    // (opposite the live wall's drawing end) — the physical "back of the
-    // wall" a replacement is taken from. The tile that flies is the one
-    // that arrives; no other wall tile moves.
+    // from the break outward, so index 0 is the stack right across the
+    // gap from the live wall's drawing end — the deck's tail (牌尾), the
+    // physical "back of the wall" a 補牌 replacement is taken from. The
+    // tile that flies is the one that arrives; no other wall tile moves.
     const st = dealt();
     const c = new Choreographer({ reducedMotion: true });
     const before = computeLayout(st, 0, OPTS);
@@ -234,12 +234,12 @@ describe('gang replacement', () => {
     expect(t.flight!.from.pos.z).toBeCloseTo(from.z, 6);
     // …into the hand.
     expect(after[takenId]!.zone).toBe('hand');
-    // The far end: no other dead tile sits further along the segment in
-    // the direction away from the break (the live wall's k = 0 slot).
+    // The break end: no other dead tile sits closer to the live wall's
+    // k = 0 slot (the two ends of the deck meet across the gap).
     const dead = before.filter((sl) => sl?.zone === 'deadWall');
     const liveNext = before.find((sl) => sl?.zone === 'wall' && sl.index === 0)!;
     const dist = (sl: { x: number; z: number }) => Math.hypot(sl.x - liveNext.x, sl.z - liveNext.z);
-    expect(dist(from)).toBeCloseTo(Math.max(...dead.map((sl) => dist(sl!))), 6);
+    expect(dist(from)).toBeCloseTo(Math.min(...dead.map((sl) => dist(sl!))), 6);
     // Every other wall tile stays put (no flight, same slot).
     for (const sl of before) {
       if (!sl || sl.id === takenId || (sl.zone !== 'wall' && sl.zone !== 'deadWall')) continue;

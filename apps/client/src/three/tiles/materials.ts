@@ -212,9 +212,12 @@ export function createTileMaterial(
         // camera — the far wall shows the side band face-on, the near
         // wall its top edge, the side walls both. Replaces a felt hairline
         // beside the stacks that read as a stray line on the cloth.
-        float inlayTop = vBack * step(vLocalYZ.x, -0.5 + 0.17);
-        float inlaySide = vInnerSide * step(vLocalYZ.y, -0.5 + 0.55);
-        float inlay = vBackVariant * clamp(inlayTop + inlaySide, 0.0, 1.0);
+        // Kept slim (a hairline along the inner edge, the upper third of
+        // the inner side) and blended at 0.8 so seven marked stacks read
+        // as an inlaid trim, not a dashed yellow stripe down the wall.
+        float inlayTop = vBack * step(vLocalYZ.x, -0.5 + 0.09);
+        float inlaySide = vInnerSide * step(vLocalYZ.y, -0.5 + 0.36);
+        float inlay = vBackVariant * clamp(inlayTop + inlaySide, 0.0, 1.0) * 0.8;
         body = mix(body, uDeadInlay, inlay);
         float showFace = vFace * (1.0 - vBackCell);
         diffuseColor.rgb = mix(body, faceTexel.rgb, showFace) * vTint;
@@ -260,7 +263,7 @@ export function createTileMaterial(
         totalEmissiveRadiance += uHighlightColor * vHighlight * glowAmt;
         // The dead-wall inlay keeps a faint self-glow so it stays gold in
         // the stacks' shadow instead of dropping to brown.
-        totalEmissiveRadiance += uDeadInlay * inlay * 0.18;`,
+        totalEmissiveRadiance += uDeadInlay * inlay * 0.1;`,
       );
   };
   // Distinct cache key so three doesn't share the program with a stock
