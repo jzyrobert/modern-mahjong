@@ -19,11 +19,22 @@ interface LobbyBackdropProps {
 }
 
 /**
+ * How far past the root's bottom edge the void gradient is painted on
+ * web (CSS px). Android Chrome keeps the layout box at the *small*
+ * viewport height while the URL bar retracts on scroll, so the strip
+ * it exposes at the bottom shows whatever sits behind the root; the
+ * overshoot puts more gradient there instead of an edge.
+ */
+export const BACKDROP_OVERSHOOT_PX = 160;
+
+/**
  * Full-bleed backdrop behind the lobby / replay content: the parlour
  * void (vertical gradient + a soft warm radial glow behind the focal
  * object), then either the lazily-loaded 3D hero or the classic
  * scattered tile-backs. Pointer-transparent so every DOM hit target
- * stays clickable.
+ * stays clickable. The gradient layers overshoot the root's bottom
+ * edge (`BACKDROP_OVERSHOOT_PX`); the hero layer keeps the root's
+ * exact box so the scene's canvas aspect stays the viewport's.
  */
 export function LobbyBackdrop({
   scene = true,
@@ -36,11 +47,19 @@ export function LobbyBackdrop({
   const use3d = scene && Menu3DBackdrop !== null && resolveMenuBackdrop(rendererSetting);
   const gx = `${Math.round(glow.x * 100)}%`;
   const gy = `${Math.round(glow.y * 100)}%`;
+  const overshoot = Platform.OS === 'web' ? BACKDROP_OVERSHOOT_PX : 0;
   return (
     <View
       pointerEvents="none"
       testID={use3d ? 'lobby-backdrop-3d' : 'lobby-backdrop-classic'}
-      style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflow: 'hidden' }}
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: -overshoot,
+        overflow: 'hidden',
+      }}
     >
       <View
         style={{
@@ -80,11 +99,16 @@ export function LobbyBackdrop({
           }}
         />
       ) : null}
-      {use3d && Menu3DBackdrop ? (
-        <Menu3DBackdrop />
-      ) : backs || scene ? (
-        <ScatteredTiles fan={scene} />
-      ) : null}
+      <View
+        testID="lobby-backdrop-hero"
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: overshoot }}
+      >
+        {use3d && Menu3DBackdrop ? (
+          <Menu3DBackdrop />
+        ) : backs || scene ? (
+          <ScatteredTiles fan={scene} />
+        ) : null}
+      </View>
     </View>
   );
 }

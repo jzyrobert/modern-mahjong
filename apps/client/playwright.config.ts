@@ -77,6 +77,11 @@ const SHARD_2_SPECS = [
   // 1 of 5 screenshot specs lands here (~14 s).
   'replay-screenshot-landscape.spec.ts',
   'scoring-rules-sheet.spec.ts',
+  // 3D menu backdrop (~70 s on SwiftShader: budget + DOM contract over
+  // the canvas, page chrome, the hero rack under the title at five
+  // viewports). Here, the lightest shard, so shard 3 does not carry
+  // every SwiftShader scene at once.
+  'three-menu.spec.ts',
 ];
 
 const SHARD_3_SPECS = [
@@ -89,8 +94,6 @@ const SHARD_3_SPECS = [
   'solo-match.spec.ts',
   // 3D table smoke (~20 s on SwiftShader).
   'three-table.spec.ts',
-  // 3D menu backdrop smoke (~8 s): budget + DOM contract over the canvas.
-  'three-menu.spec.ts',
   // 3D render layer — settings panel + live preview (~15 s).
   'three-settings.spec.ts',
 ];

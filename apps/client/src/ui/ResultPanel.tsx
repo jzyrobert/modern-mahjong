@@ -78,7 +78,6 @@ export function ResultPanel({
         : null;
     return (
       <View style={{ padding: compact ? 10 : 14, gap: compact ? 10 : 12 }}>
-        <SaveReplayButton theme="glass" />
         {r.kind === 'win' ? (
           <View style={{ gap: 6 }}>
             <Text
@@ -110,8 +109,12 @@ export function ResultPanel({
               compact={compact}
               tileWidth={handTileWidth}
             />
-            <View style={{ flexDirection: 'row', gap: 8, marginTop: 2 }}>
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 2, flexWrap: 'wrap' }}>
               <GlassChip onPress={() => setBreakdownOpen(true)} label="View breakdown" />
+              {/* Inline, not the card's corner: the gold 和 seal owns that
+                  corner in the win veil (round-FB3 feedback: the seal sat
+                  on top of the SAVE control). */}
+              <SaveReplayButton theme="glass" inline />
             </View>
           </View>
         ) : (
@@ -137,6 +140,9 @@ export function ResultPanel({
             >
               Drawn game
             </Text>
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 2 }}>
+              <SaveReplayButton theme="glass" inline />
+            </View>
           </View>
         )}
 
@@ -322,7 +328,14 @@ function WinningHand({
  *     implies the save is opt-in when it's actually automatic — users
  *     opt out via Settings → Auto-record to regain manual control.
  */
-function SaveReplayButton({ theme = 'paper' }: { theme?: ResultPanelTheme }) {
+function SaveReplayButton({
+  theme = 'paper',
+  inline = false,
+}: {
+  theme?: ResultPanelTheme;
+  /** Glass: sit in the action row as a chip instead of the card's corner. */
+  inline?: boolean;
+}) {
   const glass = theme === 'glass';
   const draftActive = useRecorder((s) => s.draft !== null);
   const savedThisMatch = useRecorder((s) => s.savedThisMatch);
@@ -341,16 +354,20 @@ function SaveReplayButton({ theme = 'paper' }: { theme?: ResultPanelTheme }) {
       accessibilityRole="button"
       accessibilityLabel={savedThisMatch ? 'Replay saved — tap to discard' : 'Save replay'}
       style={({ pressed }) => ({
-        position: 'absolute',
-        top: 10,
-        right: 10,
-        // RN-Web styles every View `position: relative`, so later
-        // siblings paint on top by document order and intercept taps
-        // on this absolute button — lift it above them.
-        zIndex: 2,
-        paddingHorizontal: 10,
-        paddingVertical: 6,
-        borderRadius: 14,
+        ...(inline
+          ? { minHeight: 44, paddingHorizontal: 16, borderRadius: 12, justifyContent: 'center' }
+          : {
+              position: 'absolute',
+              top: 10,
+              right: 10,
+              // RN-Web styles every View `position: relative`, so later
+              // siblings paint on top by document order and intercept
+              // taps on this absolute button — lift it above them.
+              zIndex: 2,
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+              borderRadius: 14,
+            }),
         backgroundColor: glass
           ? pressed
             ? 'rgba(216,168,90,0.22)'
@@ -365,16 +382,16 @@ function SaveReplayButton({ theme = 'paper' }: { theme?: ResultPanelTheme }) {
         gap: 5,
       })}
     >
-      <Text style={{ fontSize: 13 }}>{savedThisMatch ? '✓' : '💾'}</Text>
+      {inline ? null : <Text style={{ fontSize: 13 }}>{savedThisMatch ? '✓' : '💾'}</Text>}
       <Text
         style={{
-          fontSize: 11,
+          fontSize: inline ? 13 : 11,
           fontWeight: '800',
           color: glass ? GLASS.text : COLORS.ink2,
-          letterSpacing: glass ? 1.5 : 0.4,
+          letterSpacing: inline ? 0.3 : glass ? 1.5 : 0.4,
         }}
       >
-        {savedThisMatch ? 'SAVED' : 'SAVE'}
+        {inline ? (savedThisMatch ? 'Saved ✓' : 'Save replay') : savedThisMatch ? 'SAVED' : 'SAVE'}
       </Text>
     </Pressable>
   );

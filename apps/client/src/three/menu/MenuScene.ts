@@ -10,6 +10,7 @@ import {
 } from 'three';
 import { PCFShadowMap } from 'three';
 import type { TileBackSkin } from '../../state/game';
+import { getHeroBand, heroBandVersion, subscribeHeroBand } from '../../ui/menu/heroBand';
 import {
   OCCLUDER_BAND_PX,
   type OccluderRect,
@@ -25,13 +26,15 @@ import { clamp01, easeOutCubic, lerp } from '../core/tween';
 import { TilePool } from '../tiles/TilePool';
 import { BACK_CELL } from '../tiles/faceAtlas';
 import { TILE_D, TILE_H, TILE_W } from '../tiles/geometry';
-import { DIE_SIZE, createDice } from './dice';
+import { createDice } from './dice';
 import {
+  DIE_R,
   DRIFT_COUNT,
   type DriftTile,
   HERO_COUNT,
   MENU_TILE_COUNT,
   type MenuLayout,
+  type MenuView,
   type Slot,
   diceCandidateOffsets,
   driftCandidates,
@@ -117,7 +120,6 @@ const PARK_BELOW = 0.75;
 const SPREAD = 1.6;
 /** Fade / keep-out disc radii in world units. */
 const TILE_R = TILE_H * 0.72;
-const DIE_R = DIE_SIZE * 0.87;
 /** Dice re-placement after a resize waits for the camera ease (0 under
  *  reduced motion, where the camera snaps and the loop idles). */
 const DICE_PLACE_DELAY_MS = 450;
@@ -157,6 +159,12 @@ declare global {
         diceRects: { x: number; y: number; r: number }[];
         /** The hero rack's projected footprint (phones: a solid keep-out). */
         rack: { x: number; y: number; w: number; h: number };
+        /** The measured hero band the layout was fitted to (unscrolled
+         *  viewport CSS px), `null` while the DOM has not reported one. */
+        band: { x: number; y: number; w: number; h: number } | null;
+        /** Where the pure layout maths expects the settled rack (tiles
+         *  + dice) to project — the live `rack` converges on it. */
+        rackGoal: { x: number; y: number; w: number; h: number } | null;
       }
     | undefined;
 }
@@ -218,7 +226,15 @@ export function buildMenuScene(ctx: SceneContext, opts: MenuSceneOptions): Scene
   // supported filter up front so the console stays clean.
   renderer.shadowMap.type = PCFShadowMap;
 
-  let layout: MenuLayout = menuLayout(ctx.size.width / Math.max(1, ctx.size.height));
+  const menuView = (width: number, height: number): MenuView => ({
+    width,
+    height,
+    band: getHeroBand(),
+  });
+  let layout: MenuLayout = menuLayout(
+    ctx.size.width / Math.max(1, ctx.size.height),
+    menuView(ctx.size.width, ctx.size.height),
+  );
   rig.snap(layout.camera);
   rig.halfLife = 0.28;
 
@@ -764,6 +780,8 @@ export function buildMenuScene(ctx: SceneContext, opts: MenuSceneOptions): Scene
       dicePlaceRects,
       diceRects: debugDiceRects.map((r) => ({ ...r })),
       rack: { x: rack.x, y: rack.y, w: rack.w, h: rack.h },
+      band: layout.band ? { ...layout.band } : null,
+      rackGoal: layout.footprint ? { ...layout.footprint.all } : null,
     };
     return live;
   };
@@ -813,7 +831,7 @@ export function buildMenuScene(ctx: SceneContext, opts: MenuSceneOptions): Scene
 
   const applyLayout = (width: number, height: number, now: number) => {
     const aspect = width / Math.max(1, height);
-    layout = menuLayout(aspect);
+    layout = menuLayout(aspect, menuView(width, height));
     refreshOccluders();
     if (snap) rig.snap(layout.camera);
     else rig.setPreset(layout.camera);
@@ -861,6 +879,35 @@ export function buildMenuScene(ctx: SceneContext, opts: MenuSceneOptions): Scene
 
   // Initial view offset (SceneHost sizes the renderer right after build).
   applyViewOffset(ctx.size.width, ctx.size.height);
+
+  /**
+   * The lobby re-measures its hero band on scroll, on resize, when the
+   * web fonts land and when the title reflows. A band that only *moved*
+   * (a scroll: same size, so the fit — camera distance — is unchanged)
+   * shifts the frustum in place so the rack travels with the title
+   * frame-exactly; a band that changed size re-fits the rack the way a
+   * resize does (eased camera, dice re-placed).
+   */
+  let bandSeen = heroBandVersion();
+  const applyBand = () => {
+    if (heroBandVersion() === bandSeen) return;
+    bandSeen = heroBandVersion();
+    const width = ctx.size.width;
+    const height = ctx.size.height;
+    const next = menuLayout(width / Math.max(1, height), menuView(width, height));
+    if (next.cls !== layout.cls || Math.abs(next.distance - layout.distance) > 1e-6) {
+      applyLayout(width, height, performance.now());
+      return;
+    }
+    layout = next;
+    applyViewOffset(width, height);
+    refreshOccluders();
+    // Re-pose (same world poses) so this frame's drift pass sees the
+    // moved rack keep-out and the moved title keep-out.
+    heroLive = true;
+    loop.requestRender();
+  };
+  const unsubscribeBand = subscribeHeroBand(applyBand);
 
   return {
     update(dt, now) {
@@ -936,6 +983,7 @@ export function buildMenuScene(ctx: SceneContext, opts: MenuSceneOptions): Scene
       globalThis.__MAHJONG_MENU_DEBUG__ = undefined;
       if (diceWake !== undefined) clearTimeout(diceWake);
       unsubscribeOccluders();
+      unsubscribeBand();
       if (parallaxOn) window.removeEventListener('pointermove', onPointer);
       lights.dispose();
       pool.dispose();

@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useGame } from '../../state/game';
+import { getHeroBand } from '../../ui/menu/heroBand';
 import { type SceneContext, type SceneHandle, SceneHost } from '../core/SceneHost';
 import { buildMenuScene } from './MenuScene';
 import { menuLayout } from './layout';
@@ -17,7 +18,9 @@ export function MenuSceneView() {
   const initialCamera = useMemo(() => {
     const w = typeof window !== 'undefined' ? window.innerWidth : 1440;
     const h = typeof window !== 'undefined' ? window.innerHeight : 900;
-    return menuLayout(w / Math.max(1, h)).camera;
+    // Fit to the band the lobby has already measured (the scene loads
+    // after first paint) so the intro starts on the final framing.
+    return menuLayout(w / Math.max(1, h), { width: w, height: h, band: getHeroBand() }).camera;
   }, []);
 
   const build = useCallback(
