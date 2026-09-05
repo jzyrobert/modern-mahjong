@@ -464,7 +464,18 @@ CC0-only asset policy, verifier rules. Operational notes:
   to `viewport: 'phone'` shoots at whichever portrait phone size the
   CLI asks for. Portrait maths that must give ground on short phones
   goes through `cameraPresets.portraitMetrics(height)` /
-  `portraitFitFor` rather than per-size constants.
+  `portraitFitFor` rather than per-size constants. Short-phone rules
+  that follow from the pitched camera: portrait toasts take the seat
+  strip's row (`data-toast-slot="strip"`, badges step aside) because
+  the far rail sits ~10 px under the strip; the tutorial's opening-dice
+  step parks the held hand below the viewport (`heldHandParkedBaseline`,
+  `data-hand-parked`) so the dense dice card and the lesson card share
+  the band; the portrait lobby is one scrolling panel over a 56 px felt
+  band (`LOBBY_PORTRAIT_FELT_BAND`) with Start / Leave pinned under it;
+  the 360×640 result card pins to the top (`resultPanelPinsTop`) so the
+  scoring caption docks below the winning hand. Shoot with one
+  `shot.mjs` process at a time — three in parallel on SwiftShader once
+  produced a frame with the camera still easing in from the lobby.
 - **Sandboxed containers**: `pnpm install --offline --frozen-lockfile`
   works in a fresh worktree (store is warm). Point
   `PW_CHROMIUM_PATH=/opt/pw-browsers/chromium` at the pre-installed

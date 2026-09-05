@@ -481,10 +481,10 @@ export const STATES = {
   },
   'match-river-zoom-landscape': {
     owner: 'table',
-    // Phone landscape: the same tap lifts the camera to 50° over the
+    // Phone landscape: the same tap lifts the camera to 62° over the
     // river block, framed between the zoom header (glass across the
-    // chrome row, the far wall behind it) and the footer (~28 px tiles,
-    // ~21 px tall vs ~8 from the resting 31° camera). The zoom stays
+    // chrome row, the far wall behind it) and the footer (~30 px tiles
+    // near plan-view vs ~8 px tall from the resting 31° camera). The zoom stays
     // through the player's own turn: the footer's hand rail shows the
     // hand as face thumbnails (tap → the table returns) and carries the
     // gold Draw pill while the player has to draw; the side seats' rows

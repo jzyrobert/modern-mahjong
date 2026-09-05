@@ -50,6 +50,28 @@ async function startSolo(page: Page, errors: string[]) {
   await expect(page.getByTestId('own-hand-tile').first()).toBeVisible({ timeout: 20_000 });
 }
 
+/**
+ * The deal has landed: no tile is in flight (`TableDebugSnapshot.flights`)
+ * and the hit-target rects have had a beat to settle. Replaces the fixed
+ * 1.5–1.8 s sleeps that a loaded shard outran (round-6: the landscape
+ * specs read rects with the dispense still in the air).
+ */
+async function waitForDealSettled(page: Page) {
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const dbg = (
+            globalThis as { __MAHJONG_TABLE_3D_DEBUG__?: () => { flights: number } | null }
+          ).__MAHJONG_TABLE_3D_DEBUG__?.();
+          return dbg ? dbg.flights : -1;
+        }),
+      { timeout: 20_000 },
+    )
+    .toBe(0);
+  await page.waitForTimeout(300);
+}
+
 async function readPerf(page: Page): Promise<PerfSnapshot> {
   await page.waitForFunction(
     () =>
@@ -228,7 +250,7 @@ test('phone portrait holds the hand near the camera at ≥ 44 px per tile', asyn
   await page.setViewportSize({ width: 412, height: 915 });
   const errors: string[] = [];
   await startSolo(page, errors);
-  await page.waitForTimeout(1800);
+  await waitForDealSettled(page);
   await expect(page.getByTestId('table-3d')).toHaveAttribute(
     'data-viewport-class',
     'phone-portrait',
@@ -329,7 +351,7 @@ test('phone landscape keeps ≥ 44 px hand tiles above the footer with glass chr
   await page.setViewportSize({ width: 915, height: 412 });
   const errors: string[] = [];
   await startSolo(page, errors);
-  await page.waitForTimeout(1800);
+  await waitForDealSettled(page);
   await expect(page.getByTestId('table-3d')).toHaveAttribute(
     'data-viewport-class',
     'phone-landscape',
@@ -417,7 +439,7 @@ for (const [w, h] of [
     await page.setViewportSize({ width: w, height: h });
     const errors: string[] = [];
     await startSolo(page, errors);
-    await page.waitForTimeout(1800);
+    await waitForDealSettled(page);
     await expect(page.getByTestId('table-3d')).toHaveAttribute(
       'data-viewport-class',
       'phone-portrait',
@@ -453,9 +475,182 @@ for (const [w, h] of [
     // tall — the camera pitched down rather than shrinking the table
     // (the tall-phone fallback left a 280 px square in a 470 px band).
     expect(handTop - (strip.y + strip.height)).toBeGreaterThanOrEqual(230);
+    // The pitched camera parks the far rail right under the strip, so
+    // portrait toasts take the strip's row (badges step aside) instead
+    // of landing on the far rack + wall; the tall phone keeps the rail.
+    await expect(page.getByTestId('table-3d')).toHaveAttribute('data-toast-slot', 'strip');
+    await expect(page.getByTestId('seat-strip')).toHaveAttribute('data-cleared', 'false');
     expect(errors, 'console / page errors').toEqual([]);
   });
 }
+
+test('the tall phone keeps the far-rail toast slot', async ({ page }) => {
+  await page.setViewportSize({ width: 412, height: 915 });
+  const errors: string[] = [];
+  await startSolo(page, errors);
+  await waitForDealSettled(page);
+  await expect(page.getByTestId('table-3d')).toHaveAttribute('data-toast-slot', 'rail');
+  expect(errors, 'console / page errors').toEqual([]);
+});
+
+/**
+ * Portrait pre-game lobby on a phone in a browser: one scrolling panel
+ * (Seats · Bot skill · collapsed Rules) over a felt band that shows the
+ * waiting table's near wall, Start / Leave always on screen, the page
+ * itself never scrolling (round-6: stacked cards pushed Start below the
+ * fold and hid every table pixel at 360×640).
+ */
+for (const [w, h] of [
+  [412, 700],
+  [360, 640],
+] as const) {
+  test(`portrait lobby (${w}×${h}): panel above a felt band, Start match on screen`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: w, height: h });
+    const errors: string[] = [];
+    page.on('console', (m) => {
+      if (m.type() === 'error') errors.push(m.text());
+    });
+    page.on('pageerror', (e) => errors.push(String(e)));
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Play vs bots' }).click({ timeout: 20_000 });
+    await expect(page.getByTestId('lobby-3d')).toBeVisible();
+    const panel = page.getByTestId('lobby-portrait-panel');
+    await expect(panel).toBeVisible();
+    const start = page.getByRole('button', { name: 'Start match' });
+    await expect(start).toBeVisible();
+    const startBox = (await start.boundingBox())!;
+    const panelBox = (await panel.boundingBox())!;
+    // Panel, then the Start row, then ≥ 56 px of felt / near wall.
+    expect(startBox.y).toBeGreaterThanOrEqual(panelBox.y + panelBox.height);
+    expect(startBox.y + startBox.height).toBeLessThanOrEqual(h - 56);
+    expect(startBox.height).toBeGreaterThanOrEqual(44);
+    // Rules start collapsed to their summary; Bot skill rows are whole
+    // inside the panel or scroll under the fade cue — never clipped by
+    // the page.
+    await expect(page.getByText(/Min \d faan/)).toBeVisible();
+    const scroll = page.getByTestId('lobby-portrait-scroll');
+    const overflow = await scroll.evaluate((el) => el.scrollHeight - el.clientHeight > 2);
+    await expect(page.getByTestId('lobby-panel-fade')).toHaveCount(overflow ? 1 : 0);
+    const pageScrolls = await page.evaluate(
+      () => (document.scrollingElement?.scrollHeight ?? 0) > window.innerHeight + 1,
+    );
+    expect(pageScrolls).toBe(false);
+    await expect(page.getByTestId('lobby-table-3d')).toBeVisible({ timeout: 30_000 });
+    expect(errors, 'console / page errors').toEqual([]);
+  });
+}
+
+/**
+ * The basics lesson's opening-dice step on a phone in a browser: the
+ * dense dice card and the lesson card need the whole band under the
+ * seat strip, so the held hand (with its tray + footer) parks below the
+ * viewport and springs back when the step advances (round-6: the card
+ * sat on the dimmed hand).
+ */
+test('phone in a browser: the dice lesson step parks the hand under the lesson card', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 412, height: 700 });
+  const errors: string[] = [];
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(m.text());
+  });
+  page.on('pageerror', (e) => errors.push(String(e)));
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'Modern Mahjong' })).toBeVisible();
+  await page.evaluate(() => {
+    (
+      globalThis as { __MAHJONG_TEST_START_TUTORIAL__?: (id: string) => void }
+    ).__MAHJONG_TEST_START_TUTORIAL__?.('basics');
+  });
+  const dice = page.getByTestId('dice-ceremony-glass');
+  await expect(dice).toBeVisible({ timeout: 20_000 });
+  const table = page.getByTestId('table-3d');
+  await expect(table).toHaveAttribute('data-hand-parked', 'true');
+  await expect(page.getByTestId('action-tray')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Sort by Suit' })).toBeHidden();
+  const cta = page.getByTestId('tutorial-next');
+  await expect(cta).toBeVisible({ timeout: 15_000 });
+  await page.waitForTimeout(600);
+  const diceBox = (await dice.boundingBox())!;
+  const ctaBox = (await cta.boundingBox())!;
+  const strip = (await page.getByTestId('seat-strip').boundingBox())!;
+  // Dice card pinned under the strip, lesson card (its CTA) below the
+  // dice card and inside the viewport; no hand tile on screen.
+  expect(diceBox.y).toBeGreaterThanOrEqual(strip.y + strip.height);
+  expect(ctaBox.y).toBeGreaterThan(diceBox.y + diceBox.height);
+  expect(ctaBox.y + ctaBox.height).toBeLessThanOrEqual(700);
+  const tileTops = await page.getByTestId('own-hand-tile').evaluateAll((els) =>
+    els
+      .map((el) => el.getBoundingClientRect())
+      .filter((r) => r.height > 0)
+      .map((r) => r.top),
+  );
+  for (const t of tileTops) expect(t).toBeGreaterThanOrEqual(700);
+  // Advancing the step brings the hand (and its footer) back.
+  await cta.click();
+  await expect(table).toHaveAttribute('data-hand-parked', 'false');
+  await expect(page.getByRole('button', { name: 'Sort by Suit' })).toBeVisible();
+  await expect
+    .poll(
+      () =>
+        page
+          .getByTestId('own-hand-tile')
+          .evaluateAll((els) =>
+            Math.min(
+              ...els.map((el) => el.getBoundingClientRect().top).filter((t) => Number.isFinite(t)),
+            ),
+          ),
+      { timeout: 10_000 },
+    )
+    .toBeLessThan(600);
+  expect(errors, 'console / page errors').toEqual([]);
+});
+
+/**
+ * Scoring lesson on a 360×640 phone: the result card pins to the top
+ * (`resultPanelPinsTop`) so the caption docks below the spotlit header +
+ * winning hand instead of covering the panel from its overlap fallback.
+ */
+test('360×640 scoring step: result card pinned top, caption below the winning hand', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 360, height: 640 });
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'Modern Mahjong' })).toBeVisible();
+  await page.evaluate(() => {
+    (
+      globalThis as { __MAHJONG_TEST_START_TUTORIAL__?: (id: string) => void }
+    ).__MAHJONG_TEST_START_TUTORIAL__?.('scoring-intro');
+  });
+  await expect(page.getByText('Scoring 101')).toBeVisible({ timeout: 20_000 });
+  await page.getByTestId('tutorial-next').click();
+  await expect(page.getByRole('heading', { name: /平和/ })).toBeVisible({ timeout: 15_000 });
+  const veilCard = page.getByTestId('result-veil-card');
+  await expect(veilCard).toHaveAttribute('data-pin', 'top');
+  const veilBox = (await veilCard.boundingBox())!;
+  expect(veilBox.y).toBeLessThanOrEqual(24);
+  const hand = (await page.getByTestId('winning-hand').boundingBox())!;
+  const cta = page.getByTestId('tutorial-next');
+  await expect(cta).toBeVisible();
+  const ctaBox = (await cta.boundingBox())!;
+  // The lesson card docks snugly *below* the spotlit band (header +
+  // winning hand + View breakdown), so it starts under the hand and
+  // stays wholly on screen.
+  await expect
+    .poll(async () => {
+      const l = await page.evaluate(() => globalThis.__MAHJONG_TEST_TUTORIAL_LAYOUT__);
+      return l ? `${l.placement.kind}:${(l.placement.gap ?? 99) <= 14.5}` : 'none';
+    })
+    .toBe('below:true');
+  expect(ctaBox.y).toBeGreaterThan(hand.y + hand.height);
+  expect(ctaBox.y + ctaBox.height).toBeLessThanOrEqual(640);
+  expect(errors, 'page errors').toEqual([]);
+});
 
 test('phone in a browser: the opening rolls card sits in the band above the hand', async ({
   page,
@@ -511,8 +706,14 @@ test('phone landscape lobby: three columns above a felt band, bot skill controls
   const panel = page.getByTestId('lobby-merged-panel');
   await expect(panel).toBeVisible();
   const panelBox = (await panel.boundingBox())!;
-  // The panel stops ≥ 44 px above the bottom edge (felt / near wall band).
+  // The panel stops ≥ 44 px above the bottom edge (felt / near wall band)
+  // and starts under the root fullscreen prompt's DISMISS pill (y ≤ 62).
   expect(panelBox.y + panelBox.height).toBeLessThanOrEqual(412 - 44);
+  expect(panelBox.y).toBeGreaterThanOrEqual(64);
+  const dismiss = (await page
+    .getByRole('button', { name: 'Dismiss fullscreen prompt' })
+    .boundingBox())!;
+  expect(dismiss.y + dismiss.height).toBeLessThanOrEqual(panelBox.y);
   // Bot skill lives in its own column beside Rules, every segmented
   // control fully inside the panel — none clipped at the fold.
   const bots = page.getByTestId('lobby-merged-bots');
@@ -535,7 +736,11 @@ test('phone landscape lobby: three columns above a felt band, bot skill controls
   }
   // Nothing overflowed, so no scroll cue fade is shown.
   await expect(page.getByTestId('lobby-panel-fade')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Start match' })).toBeVisible();
+  const start = page.getByRole('button', { name: 'Start match' });
+  await expect(start).toBeVisible();
+  // The button is a real click target (nothing of the panel intercepts it).
+  await start.click({ timeout: 20_000 });
+  await expect(page.getByTestId('dice-ceremony-glass')).toBeVisible({ timeout: 20_000 });
   expect(errors, 'console / page errors').toEqual([]);
 });
 
@@ -545,12 +750,12 @@ test('landscape river zoom stays through the own turn with the hand rail and dra
   await page.setViewportSize({ width: 915, height: 412 });
   const errors: string[] = [];
   await startSolo(page, errors);
-  await page.waitForTimeout(1500);
+  await waitForDealSettled(page);
   const table = page.getByTestId('table-3d');
   const zoomBtn = page.getByRole('button', { name: 'Zoom into the discards' });
   // The user is dealer (seed 5): their turn to discard — the zoom is
   // offered all the same (the hatch matters most when picking a discard).
-  await expect(zoomBtn).toBeVisible();
+  await expect(zoomBtn).toBeVisible({ timeout: 15_000 });
   await expect(table).toHaveAttribute('data-river-zoom', 'false');
   const tiles = page.getByTestId('own-hand-tile');
   const restingTops = await tiles.evaluateAll((els) =>
@@ -572,9 +777,11 @@ test('landscape river zoom stays through the own turn with the hand rail and dra
   expect(headerBox.x).toBeLessThanOrEqual(1);
   expect(headerBox.width).toBeGreaterThanOrEqual(913);
   expect(headerBox.y + headerBox.height).toBeGreaterThanOrEqual(exitBox.y + exitBox.height);
+  // Generous: on a loaded shard the footer's re-render can trail the
+  // zoom attribute by seconds.
   const rail = page.getByTestId('hand-rail');
-  await expect(rail).toBeVisible();
-  await expect(page.getByTestId('hand-rail-tile')).toHaveCount(14);
+  await expect(rail).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId('hand-rail-tile')).toHaveCount(14, { timeout: 15_000 });
   await expect(page.getByTestId('wall-draw-next')).toHaveCount(0);
   const railBox = (await rail.boundingBox())!;
   expect(railBox.y).toBeGreaterThan(360);
@@ -757,7 +964,7 @@ test('landscape claim window moves the strip into the footer, off the near wall'
   });
   const errors: string[] = [];
   await startSolo(page, errors);
-  await page.waitForTimeout(1600);
+  await waitForDealSettled(page);
   // Seed 30: the user (dealer) holds a pair bot 1 also holds one of.
   // Script bot 1 to discard it and discard something else ourselves.
   await page.evaluate(() => {

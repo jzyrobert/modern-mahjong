@@ -8,6 +8,7 @@
  *        [--viewport phone|phone-tall|phone-small|phone-landscape|tablet|desktop] [--dist dist]
  *        [--out shots/<label>] [--label round1] [--port 0]
  *        [--seed 5] [--headed]
+ *   SHOT_TIMEOUT_SCALE=3 stretches every step timeout (shared / loaded CPU).
  *
  * For every state it writes `<out>/<state>.<viewport>.<renderer>.png`
  * and a sibling `.json` with console errors, page errors, perf
@@ -27,6 +28,17 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
 import { BUDGETS, DEFAULT_SEED, STATES, VIEWPORTS } from './shot-states.mjs';
+
+/**
+ * Multiplies every step timeout. The verifier runs on SwiftShader and,
+ * in the agent sandboxes, on a CPU shared with sibling worktrees' e2e
+ * runs: at a load average of 25 on four cores a `Start match` click can
+ * outlive the recipes' 20 s budgets while nothing is wrong with the
+ * page. `SHOT_TIMEOUT_SCALE=3 node scripts/shot.mjs …` stretches the
+ * waits instead of failing the drive; the PNG + perf are unaffected.
+ */
+const TIMEOUT_SCALE = Math.max(1, Number(process.env.SHOT_TIMEOUT_SCALE ?? 1) || 1);
+const scaled = (ms) => Math.round(ms * TIMEOUT_SCALE);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const clientRoot = path.resolve(__dirname, '..');
@@ -166,27 +178,27 @@ async function runStep(page, step, ctx) {
     return page
       .locator(step.click)
       .first()
-      .click({ timeout: step.timeout ?? 10_000 });
+      .click({ timeout: scaled(step.timeout ?? 10_000) });
   if (step.clickTestId)
     return page
       .getByTestId(step.clickTestId)
       .nth(step.nth ?? 0)
-      .click({ timeout: step.timeout ?? 10_000 });
+      .click({ timeout: scaled(step.timeout ?? 10_000) });
   if (step.waitFor)
     return page
       .locator(step.waitFor)
       .first()
-      .waitFor({ state: step.state ?? 'visible', timeout: step.timeout ?? 15_000 });
+      .waitFor({ state: step.state ?? 'visible', timeout: scaled(step.timeout ?? 15_000) });
   if (step.waitForText)
     return page
       .getByText(step.waitForText, { exact: false })
       .first()
-      .waitFor({ timeout: step.timeout ?? 15_000 });
+      .waitFor({ timeout: scaled(step.timeout ?? 15_000) });
   if (step.waitMs) return page.waitForTimeout(step.waitMs);
   if (step.evaluate) return page.evaluate(step.evaluate);
   if (step.waitForFunction)
     return page.waitForFunction(step.waitForFunction, null, {
-      timeout: step.timeout ?? 15_000,
+      timeout: scaled(step.timeout ?? 15_000),
       polling: 100,
     });
   if (step.waitForSettled) {
@@ -203,7 +215,7 @@ async function runStep(page, step, ctx) {
         });
       },
       step.waitForSettled,
-      { timeout: step.timeout ?? 15_000, polling: 100 },
+      { timeout: scaled(step.timeout ?? 15_000), polling: 100 },
     );
   }
   if (step.initScript) {
@@ -232,11 +244,11 @@ async function runStep(page, step, ctx) {
     // (a software rasteriser can take seconds to paint the first frame
     // of the match) before deciding it is not there.
     const hint = page.getByText('Tap anywhere to dismiss', { exact: true });
-    await hint.waitFor({ timeout: step.timeout ?? 6000 }).catch(() => {});
+    await hint.waitFor({ timeout: scaled(step.timeout ?? 6000) }).catch(() => {});
     if (await hint.isVisible().catch(() => false)) {
       const vp = page.viewportSize() ?? { width: 412, height: 700 };
       await page.mouse.click(vp.width / 2, vp.height / 2).catch(() => {});
-      await hint.waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {});
+      await hint.waitFor({ state: 'hidden', timeout: scaled(5000) }).catch(() => {});
     }
     return;
   }
@@ -244,11 +256,11 @@ async function runStep(page, step, ctx) {
     return page
       .getByTestId('own-hand-tile')
       .first()
-      .waitFor({ timeout: step.timeout ?? 20_000 });
+      .waitFor({ timeout: scaled(step.timeout ?? 20_000) });
   if (step.waitForDrawCue) {
     // Mirrors e2e/_helpers.ts waitForUserDrawCue: pass incidental claims.
     const start = Date.now();
-    while (Date.now() - start < (step.timeout ?? 30_000)) {
+    while (Date.now() - start < scaled(step.timeout ?? 30_000)) {
       if (
         await page
           .getByTestId('wall-draw-next')
@@ -260,7 +272,7 @@ async function runStep(page, step, ctx) {
       // An incidental claim window (any shell, any strip density): pass.
       const pass = page.getByRole('button', { name: 'Pass' }).first();
       if (await pass.isVisible().catch(() => false)) {
-        await pass.click({ timeout: 2000 }).catch(() => {});
+        await pass.click({ timeout: scaled(2000) }).catch(() => {});
       }
       await page.waitForTimeout(250);
     }
@@ -272,13 +284,13 @@ async function runStep(page, step, ctx) {
       await page
         .getByTestId('wall-draw-next')
         .first()
-        .click({ timeout: 5000 })
+        .click({ timeout: scaled(5000) })
         .catch(() => {});
       await page.waitForTimeout(350);
       await page
         .getByTestId('own-hand-tile')
         .first()
-        .click({ timeout: 5000 })
+        .click({ timeout: scaled(5000) })
         .catch(() => {});
       await page.waitForTimeout(350);
     }
@@ -313,13 +325,13 @@ async function runStep(page, step, ctx) {
         .locator('[data-testid="open-settings"]')
         .or(page.getByRole('button', { name: 'Settings' }))
         .first();
-      await row.click({ timeout: step.timeout ?? 8000 });
+      await row.click({ timeout: scaled(step.timeout ?? 8000) });
     }
     // The panel is open once its title is on screen.
     return page
       .getByText('Settings', { exact: true })
       .first()
-      .waitFor({ timeout: step.timeout ?? 8000 });
+      .waitFor({ timeout: scaled(step.timeout ?? 8000) });
   }
   if (step.startTutorial) {
     return page.evaluate((id) => {
@@ -340,12 +352,12 @@ async function runStep(page, step, ctx) {
     // The coach-mark CTA carries `tutorial-next`; fall back to the
     // accessible names for an overlay that predates the testID.
     const byId = page.getByTestId('tutorial-next').first();
-    if (await byId.isVisible({ timeout: 4000 }).catch(() => false))
-      return byId.click({ timeout: 8000 });
+    if (await byId.isVisible({ timeout: scaled(4000) }).catch(() => false))
+      return byId.click({ timeout: scaled(8000) });
     return page
       .getByRole('button', { name: /^(Got it|Next|Done)$/ })
       .first()
-      .click({ timeout: 8000 });
+      .click({ timeout: scaled(8000) });
   }
   if (step.waitForPerf) {
     // Resolves to 'stale' (recorded as `perfStale` in the log) instead
@@ -353,7 +365,7 @@ async function runStep(page, step, ctx) {
     // "sample: 1, renders: 0" snapshot must not pass as fresh telemetry.
     return page
       .waitForFunction(() => (globalThis.__MAHJONG_PERF__?.sample ?? 0) >= 2, null, {
-        timeout: 8000,
+        timeout: scaled(8000),
       })
       .then(() => 'fresh')
       .catch(() => 'stale');

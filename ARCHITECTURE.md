@@ -249,7 +249,10 @@ phone|phone-tall|phone-small|phone-landscape|tablet|desktop`, `--dist
 fullscreen case and `phone-small` a 360×640 budget phone — portrait
 states are verified at `phone` and `phone-small`, with `phone-tall` as
 the regression check. A recipe that pins `viewport: 'phone'` only fixes
-the orientation: a CLI viewport of the same class wins.
+the orientation: a CLI viewport of the same class wins. Run one
+`shot.mjs` process at a time: SwiftShader shares one CPU, and parallel
+runs have captured a frame with the camera still easing in from the
+lobby preset.
 
 Rule for every agent, feature or critic: **you may not describe what the
 app looks like unless you have run `shot.mjs` for that state and looked
