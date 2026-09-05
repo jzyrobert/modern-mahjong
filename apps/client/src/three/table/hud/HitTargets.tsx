@@ -29,8 +29,6 @@ export interface HudRects {
   ownHand: ScreenRect | null;
   wallDraw: ScreenRect | null;
   river: ScreenRect | null;
-  /** Union of the near wall's stacks (rel 0) — HUD anchors avoid it. */
-  nearWall: ScreenRect | null;
   /** Union of every river's tiles. */
   discards: ScreenRect | null;
   /** Screen y of the centre plate's near edge (band floor while rivers are empty). */
@@ -41,6 +39,8 @@ export interface HudRects {
   farRowTop: number | null;
   /** Screen y of the near rail's bottom edge (portrait floor shadow). */
   nearRailBottom: number | null;
+  /** Screen y of the near river's last row's far edge at the portrait river scale — the block's bottom while zoomed (toast slot). */
+  riverBlockBottom: number | null;
 }
 
 export interface HitTargetsHandle {
@@ -89,9 +89,9 @@ interface HitTargetsProps {
   onRiverTap?: (() => void) | undefined;
   riverZoomed?: boolean | undefined;
   /**
-   * Skip the projected draw target (and its tutorial anchor): the
-   * landscape river zoom hosts the draw control in its hand rail under
-   * the same `wall-draw-next` id.
+   * Skip the projected draw target (and its tutorial anchor): the river
+   * zoom hosts the draw control in the landscape hand rail / the
+   * portrait tray (`DrawPill`) under the same `wall-draw-next` id.
    */
   wallHidden?: boolean | undefined;
 }

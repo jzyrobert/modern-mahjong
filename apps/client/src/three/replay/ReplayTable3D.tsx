@@ -9,7 +9,7 @@ import {
   acquireTableScene,
   releaseTableScene,
 } from '../table/TableScene';
-import { classifyViewport } from '../table/cameraPresets';
+import { TABLE_PARALLAX, classifyViewport } from '../table/cameraPresets';
 import type { HeldHandFrame } from '../table/layout';
 import { replayCameraFor, replayHeldFrameFor, replaySyncTuning } from './layout';
 
@@ -116,7 +116,9 @@ export function ReplayTable3D(props: ReplayTable3DProps) {
       const inset = inputRef.current.topInset;
       ctx.rig.snap(replayCameraFor(ctx.size.width, ctx.size.height, inset));
       ctx.rig.halfLife = ctx.reducedMotion ? 0.04 : 0.24;
-      ctx.rig.parallaxStrength = 0.45;
+      // The match table's drift, not a follow (round-FB4) — see `TABLE_PARALLAX`.
+      ctx.rig.parallaxStrength = TABLE_PARALLAX.strength;
+      ctx.rig.parallaxHalfLife = TABLE_PARALLAX.halfLife;
       heldRef.current = replayHeldFrameFor(ctx.size.width, ctx.size.height, inset);
       sync(true);
       return {

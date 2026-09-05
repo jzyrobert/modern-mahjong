@@ -72,6 +72,30 @@ async function waitForDealSettled(page: Page) {
   await page.waitForTimeout(300);
 }
 
+/**
+ * The camera rig has eased to rest since `t0` (page `performance.now()`,
+ * taken before the action that moves it): at least one live step after
+ * `t0`, then `live === false` (`three/core/sceneRects`). The river zoom is
+ * a ~30-unit move; a fixed sleep on a loaded shard reads the hit-target
+ * rects with the camera still 5 % short.
+ */
+async function waitForCameraSettled(page: Page, t0: number) {
+  await expect
+    .poll(
+      () =>
+        page.evaluate((since) => {
+          const m = (
+            globalThis as {
+              __MAHJONG_TEST_CAMERA_MOTION__?: () => { live: boolean; lastLiveAt: number };
+            }
+          ).__MAHJONG_TEST_CAMERA_MOTION__?.();
+          return !!m && !m.live && m.lastLiveAt >= since - 50;
+        }, t0),
+      { timeout: 20_000 },
+    )
+    .toBe(true);
+}
+
 async function readPerf(page: Page): Promise<PerfSnapshot> {
   await page.waitForFunction(
     () =>
@@ -463,6 +487,7 @@ test('phone portrait holds the hand near the camera at ≥ 44 px per tile', asyn
   await expect(table).toHaveAttribute('data-river-zoom', 'false');
   const region = page.getByTestId('shared-discards-region');
   await expect(region).toHaveAccessibleName('Zoom into the discards');
+  const zoomT0 = await page.evaluate(() => performance.now());
   await region.click();
   await expect(table).toHaveAttribute('data-river-zoom', 'true');
   // The exit control lives in the chrome row (never over the table) and
@@ -477,7 +502,7 @@ test('phone portrait holds the hand near the camera at ≥ 44 px per tile', asyn
   const barBox = (await strip.boundingBox())!;
   expect(barBox.x).toBeLessThanOrEqual(1);
   expect(barBox.width).toBeGreaterThanOrEqual(410);
-  await page.waitForTimeout(1500);
+  await waitForCameraSettled(page, zoomT0);
   const zoomedBoxes = await tiles.evaluateAll((els) =>
     els.map((el) => {
       const r = el.getBoundingClientRect();
@@ -1894,6 +1919,128 @@ test('phone landscape promoted-gang lesson reaches the promotion and draws the r
     .poll(async () => JSON.stringify(await probe()), { timeout: 10_000 })
     .toBe(JSON.stringify({ hand: before.hand, dead: 13, melds: ['gang-promoted'] }));
   await expect(page.getByTestId('table-3d')).toBeVisible();
+  const perf = await readPerf(page);
+  expect(perf.drawCalls).toBeLessThanOrEqual(BUDGET.drawCalls);
+  expect(errors, 'console / page errors').toEqual([]);
+});
+
+test('portrait river zoom is a plan view with no wall; the tray carries the draw pill', async ({
+  page,
+}) => {
+  // Round-FB4: the zoom is an 84° plan view of the four rivers framed
+  // between the zoom header and the held hand. No wall is laid out
+  // while zoomed (a plan-view block and a wall cannot share a 412×700
+  // band), so the draw control moves into the action tray under the
+  // classic `wall-draw-next` id; the toast slot is the felt under the
+  // block on the tall phone and the header's badge row on a short one.
+  await page.setViewportSize({ width: 412, height: 915 });
+  const errors: string[] = [];
+  await startSolo(page, errors);
+  await waitForDealSettled(page);
+  const table = page.getByTestId('table-3d');
+  const tiles = page.getByTestId('own-hand-tile');
+  // Discard; the bots play out (zero pacing) and the user's draw cue
+  // comes round on the projected wall stack. Park the pointer off the
+  // hand so no hover lift skews the resting rects.
+  await tiles.first().click();
+  await page.mouse.move(2, 2);
+  const start = Date.now();
+  while (Date.now() - start < 30_000) {
+    if (
+      await page
+        .getByTestId('wall-draw-next')
+        .isVisible()
+        .catch(() => false)
+    )
+      break;
+    if (
+      await page
+        .getByText('CLAIM?', { exact: true })
+        .isVisible()
+        .catch(() => false)
+    ) {
+      await page
+        .getByText('Pass', { exact: true })
+        .first()
+        .click({ timeout: 2000 })
+        .catch(() => {});
+    }
+    await page.waitForTimeout(200);
+  }
+  await expect(page.getByTestId('wall-draw-next')).toBeVisible();
+  // The discard re-flowed the held rows (14 → 13 tiles): let the tile
+  // springs land before sampling the resting rects.
+  await waitForDealSettled(page);
+  const restingTops = await tiles.evaluateAll((els) =>
+    els.map((el) => el.getBoundingClientRect().top),
+  );
+  const zoomT0 = await page.evaluate(() => performance.now());
+  await page.getByRole('button', { name: 'Zoom into the discards' }).click();
+  await expect(table).toHaveAttribute('data-river-zoom', 'true');
+  // The wall leaves the scene …
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const dbg = (
+            globalThis as {
+              __MAHJONG_TABLE_3D_DEBUG__?: () => { tiles: { zone: string | null }[] } | null;
+            }
+          ).__MAHJONG_TABLE_3D_DEBUG__?.();
+          return dbg
+            ? dbg.tiles.filter((t) => t.zone === 'wall' || t.zone === 'deadWall').length
+            : -1;
+        }),
+      { timeout: 10_000 },
+    )
+    .toBe(0);
+  // … and the tray's turn row carries the one draw control, under the
+  // held hand, never on the table.
+  const pill = page.getByTestId('action-tray').getByTestId('wall-draw-next');
+  await expect(pill).toBeVisible();
+  await expect(pill).toHaveAccessibleName('Draw next tile');
+  await expect(page.locator('[data-testid="wall-draw-next"]')).toHaveCount(1);
+  const handBottom = Math.max(
+    ...(await tiles.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().bottom))),
+  );
+  const pillBox = (await pill.boundingBox())!;
+  expect(pillBox.y).toBeGreaterThanOrEqual(handBottom - 1);
+  // The held hand stays put through the camera move.
+  await waitForCameraSettled(page, zoomT0);
+  const zoomedTops = await tiles.evaluateAll((els) =>
+    els.map((el) => el.getBoundingClientRect().top),
+  );
+  for (let i = 0; i < restingTops.length; i++)
+    expect(Math.abs(zoomedTops[i]! - restingTops[i]!)).toBeLessThan(6);
+  // The tall phone leaves felt under the block for the toast.
+  await expect(table).toHaveAttribute('data-toast-slot', 'felt');
+  await pill.click();
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const s = (
+            globalThis as {
+              __MAHJONG_TEST_GET_STATE__?: () => { state: { hasDrawn: boolean; turn: number } };
+            }
+          ).__MAHJONG_TEST_GET_STATE__?.();
+          return s ? `${s.state.turn}:${s.state.hasDrawn}` : '';
+        }),
+      { timeout: 10_000 },
+    )
+    .toBe('0:true');
+  await expect(tiles).toHaveCount(14);
+  // Portrait keeps the zoom through the own turn; the pill has gone.
+  await expect(table).toHaveAttribute('data-river-zoom', 'true');
+  await expect(page.getByTestId('wall-draw-next')).toHaveCount(0);
+  // A phone in a browser: the block is height-bound to the hand's band,
+  // so the toast takes the header's badge row instead.
+  await page.setViewportSize({ width: 412, height: 700 });
+  await expect(table).toHaveAttribute('data-river-zoom', 'true');
+  await expect(table).toHaveAttribute('data-toast-slot', 'strip', { timeout: 10_000 });
+  await expect(tiles).toHaveCount(14);
+  await page.getByTestId('river-zoom-exit').click();
+  await expect(table).toHaveAttribute('data-river-zoom', 'false');
   const perf = await readPerf(page);
   expect(perf.drawCalls).toBeLessThanOrEqual(BUDGET.drawCalls);
   expect(errors, 'console / page errors').toEqual([]);

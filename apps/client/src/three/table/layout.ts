@@ -435,11 +435,6 @@ export function orderOwnHand(hand: readonly Tile[], opts: HandOrderOptions): Til
 }
 
 // ─── Full layout ───────────────────────────────────────────────────
-/** See `LayoutOptions.hideSideWallsBeyondZ`. */
-function hideSideWall(p: { rel: Rel; z: number }, beyondZ: number | undefined): boolean {
-  return beyondZ !== undefined && (p.rel === 1 || p.rel === 3) && p.z < beyondZ;
-}
-
 export interface LayoutOptions extends HandOrderOptions {
   /** Hand end: opponents' concealed tiles lie face up in their row. */
   reveal: boolean;
@@ -455,14 +450,16 @@ export interface LayoutOptions extends HandOrderOptions {
    */
   riverScale?: number | undefined;
   /**
-   * Portrait river zoom: drop the side walls' stacks (rel 1 / 3) whose
-   * world z is beyond this (toward the far side). The zoom frames the
-   * river block and crops the walls off-screen, but perspective folds
-   * the side walls' far ends back in under the header bar, where their
-   * top faces peek out as a sliver; hiding that far third keeps the
-   * header's bottom edge clean. `undefined` keeps every stack.
+   * Portrait river zoom: lay out no wall at all. The plan-view zoom
+   * (`cameraPresets.riverZoomFrameFor`) frames the four rivers between
+   * the zoom header and the held hand; the far wall would sit under the
+   * header, the side walls off the frame's edges (or as 25 px strips of
+   * backs on a short phone) and the near wall between the hand's rows —
+   * so none of them is drawn, and the shell's tray hosts the draw
+   * control (`wall-draw-next`) while the wall is away. A tile drawn
+   * meanwhile appears in the hand (`flightFor` with no previous slot).
    */
-  hideSideWallsBeyondZ?: number | undefined;
+  hideWalls?: boolean | undefined;
   /**
    * Show the user's own concealed hand backs-out (the pre-game waiting
    * table deals every filled seat a rack, the user's included).
@@ -713,7 +710,7 @@ export function computeLayout(state: GameState, me: Seat, opts: LayoutOptions): 
   const layout = emptyLayout();
 
   if (opts.waitingWalls) placeWaitingWalls(layout, state, me);
-  else placeWalls(layout, state, me, opts);
+  else if (opts.hideWalls !== true) placeWalls(layout, state, me);
 
   for (const seat of [0, 1, 2, 3] as Seat[]) {
     const rel = relOf(seat, me);
@@ -963,7 +960,7 @@ function placeRailMelds(
  * break grows as the hand progresses, the dead wall shrinks from its
  * break end — the two ends of the deck meet at the gap).
  */
-function placeWalls(layout: Layout, state: GameState, me: Seat, opts: LayoutOptions): void {
+function placeWalls(layout: Layout, state: GameState, me: Seat): void {
   const refs = wallSlotRefs(
     state.dealer,
     state.openingRolls?.breakPosition,
@@ -977,7 +974,6 @@ function placeWalls(layout: Layout, state: GameState, me: Seat, opts: LayoutOpti
     const tile = state.wall[state.wall.length - 1 - i];
     if (!tile) return;
     const p = wallSlotPosition(ref, me);
-    if (hideSideWall(p, opts.hideSideWallsBeyondZ)) return;
     put(layout, {
       id: tileId(tile),
       zone: 'wall',
@@ -1003,7 +999,6 @@ function placeWalls(layout: Layout, state: GameState, me: Seat, opts: LayoutOpti
     const tile = state.deadWall[i];
     if (!tile) return;
     const p = wallSlotPosition(ref, me);
-    if (hideSideWall(p, opts.hideSideWallsBeyondZ)) return;
     put(layout, {
       id: tileId(tile),
       zone: 'deadWall',

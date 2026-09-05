@@ -101,8 +101,8 @@ export interface SyncInput {
   snap?: boolean | undefined;
   /** Show the user's own hand backs-out (the waiting table's racks). */
   concealOwn?: boolean | undefined;
-  /** Portrait river zoom — see `LayoutOptions.hideSideWallsBeyondZ`. */
-  hideSideWallsBeyondZ?: number | undefined;
+  /** Portrait river zoom: no walls — see `LayoutOptions.hideWalls`. */
+  hideWalls?: boolean | undefined;
   /**
    * Albedo multiplier for the near wall's stacks (rel 0). Phone
    * landscape sets 0.85: the hand stands directly in front of the wall
@@ -199,13 +199,31 @@ const DICE_WORLD: [number, number][] = [
 const DICE_SCALE = 0.8;
 /** How long the gold cue pulses before settling to a steady glow. */
 const PULSE_MS = 3200;
-/** Cue halo: draw-disc diameter; hand band depth, extra width, and rearward shift (world units). */
+/** Cue halo: draw-disc diameter (world units). */
 const CUE_HALO_DRAW = 3.2;
-const CUE_HALO_HAND_DEPTH = 1.9;
-const CUE_HALO_HAND_PAD = 2.6;
-const CUE_HALO_HAND_BACK = 0.85;
-/** Cue halo opacity at rest (pulses a little above and below it). */
+/**
+ * Cue halo, hand-row band: depth, extra width and forward shift (world
+ * units). A contact glow under the standing row rather than a bar on the
+ * felt behind it (round-FB4: "the golden glow behind your hand does not
+ * fit in — change the effect or move it below the tiles"). The row's
+ * tiles pivot about their centre by `HAND_TILT`, so their feet run from
+ * z + 0.05 (back edge, on the felt) to z + 0.6 (front lip, floating
+ * 0.23 above it); the band is centred 0.45 toward the camera from the
+ * slot line and 0.9 deep, so it reaches from under the tiles' back edge
+ * to the rail's foot (`FELT_HALF`, whose geometry hides it beyond) and
+ * never onto the felt the wide cameras see *behind* the row (the
+ * 0.2-unit strip past the tiles' tops). What shows is the light under
+ * the feet: the sliver between the lip and the rail, the gaps between
+ * tiles, and a pool at each end of the row (`CUE_HALO_HAND_PAD` past
+ * the end tiles, feathered — `buildCueBandTexture`).
+ */
+const CUE_HALO_HAND_DEPTH = 0.9;
+const CUE_HALO_HAND_PAD = 2.0;
+const CUE_HALO_HAND_FRONT = 0.45;
+/** Cue halo opacity at rest (pulses a little above and below it): the draw disc … */
 const CUE_HALO_OPACITY = 0.78;
+/** … and the hand band, dimmer — an underlight, not a highlight. */
+const CUE_HALO_BAND_OPACITY = 0.55;
 const _m = new Matrix4();
 const _obj = new Object3D();
 const _q = new Quaternion();
@@ -667,7 +685,7 @@ export class TableScene {
       reveal: state.phase === 'resolved' || input.revealAll === true,
       heldHand: input.heldHand ?? null,
       riverScale: input.riverScale ?? 1,
-      hideSideWallsBeyondZ: input.hideSideWallsBeyondZ,
+      hideWalls: input.hideWalls,
       concealOwn: input.concealOwn,
       sideSeatOut: input.sideSeatOut,
       sideMeldsNear: input.sideMeldsNear,
@@ -814,10 +832,9 @@ export class TableScene {
       }
       if (n > 0) {
         t.x = (minX + maxX) / 2;
-        // Centred on the felt *behind* the row: from the wide presets the
-        // strip between the near wall's front and the hand's base is the
-        // felt the user sees; in front of the hand there is only a sliver.
-        t.z = z / n - CUE_HALO_HAND_BACK;
+        // Centred under the tiles' feet, toward the camera (see the
+        // constants): light from under the row, not a bar behind it.
+        t.z = z / n + CUE_HALO_HAND_FRONT;
         t.sx = maxX - minX + TILE_W + CUE_HALO_HAND_PAD;
         t.sz = CUE_HALO_HAND_DEPTH;
         t.on = true;
@@ -903,7 +920,8 @@ export class TableScene {
     {
       const t = this.cueHaloTarget;
       const pulse = this.pulseT === 0 ? 0.6 : 0.5 + 0.5 * Math.sin(this.pulseT * 4.2);
-      const want = t.on ? CUE_HALO_OPACITY * (0.82 + 0.3 * pulse) : 0;
+      const rest = t.band ? CUE_HALO_BAND_OPACITY : CUE_HALO_OPACITY;
+      const want = t.on ? rest * (0.82 + 0.3 * pulse) : 0;
       const cur = this.cueHaloMat.opacity;
       if (Math.abs(cur - want) > 0.004) {
         const k = this.choreo.reducedMotion ? 1 : Math.min(1, dt * 9);

@@ -91,48 +91,60 @@ export function HandRail({ hand, drawnTileId, needsDraw, onShowHand, onDraw }: H
           );
         })}
       </button>
-      {needsDraw ? (
-        <TutorialTarget id="wall-draw">
-          <button
-            type="button"
-            data-testid="wall-draw-next"
-            aria-label="Draw next tile"
-            onClick={onDraw}
-            className="mj-glass-btn"
-            style={glassStyle({
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 7,
-              padding: '0 14px 0 11px',
-              minHeight: 40,
-              borderRadius: 12,
-              cursor: 'pointer',
-              pointerEvents: 'auto',
-              background: 'rgba(216,168,90,0.16)',
-              border: '1px solid rgba(216,168,90,0.6)',
-              color: GLASS.gold,
-              fontSize: 11,
-              fontWeight: 800,
-              letterSpacing: 1.4,
-              textTransform: 'uppercase',
-              whiteSpace: 'nowrap',
-            })}
-          >
-            <span
-              aria-hidden="true"
-              className="mj-pulse"
-              style={{
-                width: 7,
-                height: 7,
-                borderRadius: 4,
-                background: GLASS.gold,
-                boxShadow: '0 0 8px rgba(216,168,90,0.9)',
-              }}
-            />
-            Draw
-          </button>
-        </TutorialTarget>
-      ) : null}
+      {needsDraw ? <DrawPill onDraw={onDraw} /> : null}
     </div>
+  );
+}
+
+/**
+ * The gold Draw control the river zoom hosts in HUD while the wall's
+ * next stack is off-frame (landscape: in the hand rail) or not laid out
+ * (portrait: in the action tray beside the turn chip). Carries the
+ * classic `wall-draw-next` id and the `wall-draw` tutorial anchor, so
+ * the tutorial and the e2e suite keep their hook; `HitTargets` skips its
+ * projected target (`wallHidden`) while one of these is mounted.
+ */
+export function DrawPill({ onDraw }: { onDraw: () => void }) {
+  return (
+    <TutorialTarget id="wall-draw">
+      <button
+        type="button"
+        data-testid="wall-draw-next"
+        aria-label="Draw next tile"
+        onClick={onDraw}
+        className="mj-glass-btn"
+        style={glassStyle({
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 7,
+          padding: '0 14px 0 11px',
+          minHeight: 40,
+          borderRadius: 12,
+          cursor: 'pointer',
+          pointerEvents: 'auto',
+          background: 'rgba(216,168,90,0.16)',
+          border: '1px solid rgba(216,168,90,0.6)',
+          color: GLASS.gold,
+          fontSize: 11,
+          fontWeight: 800,
+          letterSpacing: 1.4,
+          textTransform: 'uppercase',
+          whiteSpace: 'nowrap',
+        })}
+      >
+        <span
+          aria-hidden="true"
+          className="mj-pulse"
+          style={{
+            width: 7,
+            height: 7,
+            borderRadius: 4,
+            background: GLASS.gold,
+            boxShadow: '0 0 8px rgba(216,168,90,0.9)',
+          }}
+        />
+        Draw
+      </button>
+    </TutorialTarget>
   );
 }

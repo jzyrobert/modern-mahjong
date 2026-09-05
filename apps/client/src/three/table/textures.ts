@@ -364,21 +364,23 @@ export function buildCueHaloTexture(size = 128): Texture {
 }
 
 /**
- * The cue halo's *band* variant (`TableScene.cueHalo` along the user's
- * hand row): a soft vertical falloff (peak on the centre line) under a
- * horizontal plateau with feathered ends, so the glow runs the row's
- * full width instead of pinching to an ellipse the way the stretched
- * radial disc did.
+ * The cue halo's *band* variant (`TableScene.cueHalo` under the user's
+ * hand row): a soft across-falloff (gaussian, σ = 0.24 of the depth, so
+ * the 0.9-unit band still glows at 13–19 % at its back edge and at the
+ * rail's foot) under a plateau that runs the row's full width, with
+ * ends feathered over 7 % (≈ 1.1 units — the pad past the end tiles),
+ * so the glow pools briefly beyond the row instead of pinching to an
+ * ellipse the way the stretched radial disc did.
  */
 export function buildCueBandTexture(w = 256, h = 64): Texture {
   const [c, ctx] = canvas2d(w, h);
   const img = ctx.createImageData(w, h);
   for (let y = 0; y < h; y++) {
     const v = (y + 0.5) / h - 0.5;
-    const across = Math.exp(-(v * v) / (2 * 0.19 * 0.19));
+    const across = Math.exp(-(v * v) / (2 * 0.24 * 0.24));
     for (let x = 0; x < w; x++) {
       const u = (x + 0.5) / w;
-      const edge = Math.min(u, 1 - u) / 0.14;
+      const edge = Math.min(u, 1 - u) / 0.07;
       const along = edge >= 1 ? 1 : edge * edge * (3 - 2 * edge);
       const i = (y * w + x) * 4;
       img.data[i] = 255;
