@@ -831,10 +831,12 @@ test('the discard flight stretches under the slow-motion seam and carries the go
   const tileId = Number(
     await page.getByTestId('own-hand-tile').nth(3).getAttribute('data-tile-id'),
   );
-  await page.getByTestId('own-hand-tile').nth(3).click();
   // The tapped tile leaves the hand on a stretched discard arc (520 ms ×
   // 8) — the `match-discard-flight` recipe relies on catching it mid-air.
-  await expect
+  // The poll runs alongside the click: on a loaded SwiftShader shard the
+  // click's actionability wait alone can eat most of the 4.2 s flight,
+  // and the poll must be watching before the tile takes off.
+  const flight = expect
     .poll(
       () =>
         page.evaluate((id) => {
@@ -852,9 +854,10 @@ test('the discard flight stretches under the slow-motion seam and carries the go
           const t = dbg?.tiles.find((x) => x.id === id);
           return t ? `${t.zone}:${t.flight?.kind ?? 'none'}:${t.flight?.ms ?? 0}` : 'missing';
         }, tileId),
-      { timeout: 5_000 },
+      { timeout: 8_000, intervals: [50, 100, 100, 200] },
     )
     .toBe('discard:discard:4160');
+  await Promise.all([flight, page.getByTestId('own-hand-tile').nth(3).dispatchEvent('click')]);
   expect(errors, 'console / page errors').toEqual([]);
 });
 
@@ -1009,8 +1012,9 @@ test('desktop footer controls never sit on the hand row: CTA, tenpai badge, one 
   // its own — the status pill's segment stands down, so the lesson
   // registry never sees two rects for one id.
   await expect(page.locator('[data-tutorial-target="turn-countdown"]')).toHaveCount(1);
-  // Discard one tile: tenpai. The 聽 badge takes the footer's left
-  // column, never the hand band.
+  // Discard one tile: tenpai. The 聽 badge heads the footer's centre row
+  // — under the hand, beside the turn chip — never the hand band and no
+  // longer the far-left corner (round-FB2 critic #9).
   await page.getByTestId('own-hand-tile').first().dispatchEvent('click');
   const badge = page.getByTestId('ready-hand-badge');
   await expect(badge).toBeVisible({ timeout: 15_000 });
@@ -1023,6 +1027,16 @@ test('desktop footer controls never sit on the hand row: CTA, tenpai badge, one 
   ).toBe(false);
   expect(badgeBox.y).toBeGreaterThanOrEqual(Math.max(...tiles.map((t) => t.y + t.height)) + 4);
   expect(badgeBox.y + badgeBox.height).toBeLessThanOrEqual(900 - 4);
+  const handLeft = Math.min(...tiles.map((t) => t.x));
+  const handRight = Math.max(...tiles.map((t) => t.x + t.width));
+  expect(badgeBox.x + badgeBox.width / 2, 'badge centre under the hand').toBeGreaterThan(handLeft);
+  expect(badgeBox.x + badgeBox.width / 2, 'badge centre under the hand').toBeLessThan(handRight);
+  const chipBox = (await page.locator('[data-tutorial-target="turn-countdown"]').boundingBox())!;
+  const badgeMid = badgeBox.y + badgeBox.height / 2;
+  expect(badgeMid, 'badge shares the turn chip row').toBeGreaterThan(chipBox.y);
+  expect(badgeMid, 'badge shares the turn chip row').toBeLessThan(chipBox.y + chipBox.height);
+  expect(badgeBox.x + badgeBox.width).toBeLessThanOrEqual(chipBox.x + 1);
+  expect(badgeBox.height).toBeGreaterThanOrEqual(56);
   expect(errors, 'console / page errors').toEqual([]);
 });
 
@@ -1171,4 +1185,88 @@ test('debug tile sheet renders every face with no errors', async ({ page }) => {
   const perf = await readPerf(page);
   expect(perf.drawCalls).toBeLessThanOrEqual(BUDGET.drawCalls);
   expect(errors).toEqual([]);
+});
+
+/** Rightmost own-hand hit-target (the honour singleton the lessons ask for). */
+async function clickLastOwnTile(page: Page) {
+  const tiles = page.getByTestId('own-hand-tile');
+  await tiles.first().waitFor({ timeout: 20_000 });
+  await tiles.last().dispatchEvent('click');
+}
+
+type EngineProbe = {
+  state: {
+    hands: Record<number, unknown[]>;
+    deadWall: unknown[];
+    melds: Record<number, { kind: string }[]>;
+  };
+};
+
+test('phone landscape promoted-gang lesson reaches the promotion and draws the replacement from the dead wall', async ({
+  page,
+}) => {
+  // Round-FB2 blocker: at 812–915 × 375–412 the lesson crashed (React
+  // #185) before the CTA. The 3D table must carry the lesson through the
+  // promotion: the fourth tile joins the meld, one tile leaves the dead
+  // wall and lands in the hand, and nothing errors along the way.
+  await page.setViewportSize({ width: 915, height: 412 });
+  await page.addInitScript(() => {
+    (globalThis as { __MAHJONG_TEST_BOT_PACE_MS__?: number }).__MAHJONG_TEST_BOT_PACE_MS__ = 200;
+  });
+  const errors: string[] = [];
+  page.on('console', (m) => {
+    if (m.type() === 'error') errors.push(m.text());
+  });
+  page.on('pageerror', (e) => errors.push(String(e)));
+  await page.goto('/');
+  await page.waitForFunction(
+    () =>
+      typeof (globalThis as { __MAHJONG_TEST_START_TUTORIAL__?: unknown })
+        .__MAHJONG_TEST_START_TUTORIAL__ === 'function',
+    null,
+    { timeout: 20_000 },
+  );
+  await page.evaluate(() => {
+    (
+      globalThis as { __MAHJONG_TEST_START_TUTORIAL__?: (id: string) => void }
+    ).__MAHJONG_TEST_START_TUTORIAL__?.('promoted-gang');
+  });
+  await expect(page.getByTestId('own-hand-tile').first()).toBeVisible({ timeout: 20_000 });
+  await page.waitForTimeout(900);
+  await page.getByTestId('tutorial-next').first().dispatchEvent('click');
+  await page.waitForTimeout(500);
+  await clickLastOwnTile(page);
+  await expect(page.getByTestId('claim-bar')).toBeVisible({ timeout: 30_000 });
+  await page.getByRole('button', { name: 'Peng' }).dispatchEvent('click');
+  await expect(page.getByTestId('claim-bar')).toHaveCount(0, { timeout: 10_000 });
+  await page.waitForTimeout(900);
+  await clickLastOwnTile(page);
+  await expect(page.getByTestId('wall-draw-next')).toBeVisible({ timeout: 30_000 });
+  await page.getByTestId('wall-draw-next').dispatchEvent('click');
+  const promote = page.getByRole('button', { name: 'Promote gang' });
+  await expect(promote).toBeVisible({ timeout: 15_000 });
+  const probe = () =>
+    page.evaluate(() => {
+      const s = (globalThis as { __MAHJONG_TEST_GET_STATE__?: () => EngineProbe })
+        .__MAHJONG_TEST_GET_STATE__!();
+      return {
+        hand: s.state.hands[0]!.length,
+        dead: s.state.deadWall.length,
+        melds: s.state.melds[0]!.map((m) => m.kind),
+      };
+    });
+  const before = await probe();
+  expect(before.dead).toBe(14);
+  expect(before.melds).toEqual(['peng']);
+  await promote.dispatchEvent('click');
+  // The engine shifts `deadWall[0]` into the hand: the promoted tile
+  // leaves the hand, the replacement arrives — the count holds while the
+  // dead wall is one shorter and the meld is an open gang.
+  await expect
+    .poll(async () => JSON.stringify(await probe()), { timeout: 10_000 })
+    .toBe(JSON.stringify({ hand: before.hand, dead: 13, melds: ['gang-open'] }));
+  await expect(page.getByTestId('table-3d')).toBeVisible();
+  const perf = await readPerf(page);
+  expect(perf.drawCalls).toBeLessThanOrEqual(BUDGET.drawCalls);
+  expect(errors, 'console / page errors').toEqual([]);
 });

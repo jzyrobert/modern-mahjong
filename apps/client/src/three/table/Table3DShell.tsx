@@ -798,7 +798,9 @@ export function Table3DShell(props: Table3DShellProps) {
   const desktopStripSize: 'large' | 'footer' =
     desktopBand === null || desktopBand >= CLAIM_STRIP_LARGE_H ? 'large' : 'footer';
   // Desktop: the CTAs (declare win / gang, promote) ride in the centre
-  // slot beside the turn chip; the tenpai badge takes the left column.
+  // slot beside the turn chip, and the tenpai badge heads that same row
+  // — under the hand, where the eye is — rather than the footer's far
+  // left corner beside the seat badge (round-FB2 critic #9).
   const desktopCtas = !compact && showCtas && !resolved;
   const desktopReadyBadge = !compact && props.readyWaits.length > 0 && !resolved;
   // Portrait: while the claim strip owns the tray, the compact tenpai
@@ -1242,11 +1244,7 @@ export function Table3DShell(props: Table3DShellProps) {
                       : 'end'
               }
               leading={
-                desktopReadyBadge ? (
-                  <div className="mj-hud-fade" style={{ display: 'flex', alignItems: 'center' }}>
-                    <ReadyBadgeCta waits={props.readyWaits} compact={false} />
-                  </div>
-                ) : compact && youBadge ? (
+                compact && youBadge ? (
                   <SeatBadge
                     model={youBadge}
                     lobby={lobby}
@@ -1273,10 +1271,14 @@ export function Table3DShell(props: Table3DShellProps) {
                     onShowHand={exitRiverZoom}
                     onDraw={() => props.onAction({ t: 'draw', seat })}
                   />
-                ) : (footerTurnChip || desktopCtas) && !desktopStrip && !landscapeFooterClaim ? (
-                  // One row: the turn chip and, on desktop, the declare /
-                  // promote CTAs beside it — never stacked above it, so
-                  // the row stays one control tall under the hand.
+                ) : (footerTurnChip || desktopCtas || desktopReadyBadge) &&
+                  !desktopStrip &&
+                  !landscapeFooterClaim ? (
+                  // One row: the turn chip and, on desktop, the tenpai badge
+                  // and the declare / promote CTAs beside it — never stacked
+                  // above it, so the row stays one control tall under the
+                  // hand. The badge keeps the row alive through the bots'
+                  // turns, when there is no chip to show.
                   <div
                     className="mj-hud-fade"
                     style={{
@@ -1287,6 +1289,9 @@ export function Table3DShell(props: Table3DShellProps) {
                       flexWrap: 'nowrap',
                     }}
                   >
+                    {desktopReadyBadge ? (
+                      <ReadyBadgeCta waits={props.readyWaits} compact={false} />
+                    ) : null}
                     {footerTurnChip ? (
                       <TurnChip
                         isMyTurn
@@ -1312,6 +1317,14 @@ export function Table3DShell(props: Table3DShellProps) {
                       minWidth: 0,
                     }}
                   >
+                    {desktopReadyBadge ? (
+                      <div
+                        className="mj-hud-fade"
+                        style={{ display: 'flex', alignItems: 'center' }}
+                      >
+                        <ReadyBadgeCta waits={props.readyWaits} compact={false} />
+                      </div>
+                    ) : null}
                     {(landscapeFooterClaim || desktopCtas) && showCtas ? (
                       <ActionCtas {...ctaProps} readyBadge={!desktopCtas} />
                     ) : null}
@@ -1360,7 +1373,7 @@ export function Table3DShell(props: Table3DShellProps) {
           ) : portrait ? (
             <>
               <ClaimMissedToast theme="glass" top={toastTop} />
-              <ClaimAnnouncementToast theme="glass" top={toastTop} />
+              <ClaimAnnouncementToast theme="glass" top={toastTop} solid />
             </>
           ) : null}
 

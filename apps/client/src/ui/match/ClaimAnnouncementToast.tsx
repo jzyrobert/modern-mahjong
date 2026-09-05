@@ -38,6 +38,12 @@ interface ClaimAnnouncementToastProps {
   theme?: ClaimToastTheme;
   /** Distance from the shell's top edge, px (default 56). */
   top?: number;
+  /**
+   * Glass only: an opaque card. Phone portrait parks the toast on the
+   * seat-strip row over the far seat's badge, and even a 3 % translucency
+   * lets that badge's avatar and name ghost through the glyph.
+   */
+  solid?: boolean;
 }
 
 const THEMES = {
@@ -48,12 +54,12 @@ const THEMES = {
     glyph: COLORS.red,
     label: COLORS.ink3,
     text: COLORS.ink,
+    solidBg: COLORS.paperHi,
     shadow: '0px 6px 16px rgba(0,0,0,0.28)',
   },
   glass: {
-    // Near-opaque: on phone portrait the toast rides the seat-strip row
-    // over the far seat's badge, whose text must not bleed through.
     bg: 'rgba(14,20,17,0.97)',
+    solidBg: 'rgb(14,20,17)',
     border: 'rgba(216,168,90,0.7)',
     borderWidth: 1,
     glyph: '#d8a85a',
@@ -64,7 +70,11 @@ const THEMES = {
   },
 } as const;
 
-export function ClaimAnnouncementToast({ theme = 'paper', top = 56 }: ClaimAnnouncementToastProps) {
+export function ClaimAnnouncementToast({
+  theme = 'paper',
+  top = 56,
+  solid = false,
+}: ClaimAnnouncementToastProps) {
   const pal = THEMES[theme];
   const announcement = useGame((s) => s.claimAnnouncement);
   const lobby = useGame((s) => s.lobby);
@@ -133,7 +143,7 @@ export function ClaimAnnouncementToast({ theme = 'paper', top = 56 }: ClaimAnnou
       <Animated.View
         style={{
           opacity,
-          backgroundColor: pal.bg,
+          backgroundColor: solid ? pal.solidBg : pal.bg,
           borderColor: pal.border,
           borderWidth: pal.borderWidth,
           borderRadius: theme === 'glass' ? 18 : 14,

@@ -95,8 +95,8 @@ interface ReadyBadgeCtaProps {
 
 /**
  * The tenpai badge wrapped in its lesson target. Desktop's footer hosts
- * it in the left column (beside nothing — the seat badges project onto
- * the felt there), phone portrait swaps it in for the sort control
+ * it at the head of the centre row, directly under the hand beside the
+ * turn chip / claim strip, phone portrait swaps it in for the sort control
  * while the claim strip owns the action tray, so a tenpai player who is
  * offered a chi still sees 聽 and the waits.
  */
@@ -112,7 +112,7 @@ export function ReadyBadgeCta({ waits, compact, dense = false }: ReadyBadgeCtaPr
             ? { tileWidth: 18, tileHeight: 25, dense: true }
             : compact
               ? {}
-              : { tileWidth: 28, tileHeight: 38 })}
+              : { tileWidth: 32, tileHeight: 44, large: true })}
         />
       </div>
     </TutorialTarget>

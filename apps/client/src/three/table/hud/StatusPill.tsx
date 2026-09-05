@@ -71,7 +71,11 @@ export function StatusPill({
         padding: compact ? '6px 12px 6px 6px' : '7px 16px 7px 7px',
         cursor: 'pointer',
         pointerEvents: 'auto',
-        maxWidth: compact ? 260 : 460,
+        // Desktop: room for the 240 px name beside the count, the dead
+        // tally and the turn segment — the chrome row's toast slot is
+        // flex and the far seat's badge projects lower, so nothing is
+        // crowded out.
+        maxWidth: compact ? 260 : 620,
         minHeight: 44,
         ...style,
       })}
@@ -102,7 +106,9 @@ export function StatusPill({
               fontWeight: 800,
               fontSize: 13,
               color: GLASS.text,
-              maxWidth: 160,
+              // The pill has 460 px on desktop; 160 truncated most
+              // generated names ("Quick…") with 300 px to spare.
+              maxWidth: 240,
               minWidth: 0,
               flexShrink: 1,
               overflow: 'hidden',

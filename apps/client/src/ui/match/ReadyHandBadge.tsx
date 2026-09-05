@@ -25,6 +25,12 @@ interface ReadyHandBadgeProps {
    * for the sort control during a claim window.
    */
   dense?: boolean;
+  /**
+   * Glass only: the desktop footer variant — 28 px 聽, 13 px READY and
+   * wider pads, so the badge reads from the hand's centre rather than as
+   * a footnote in a corner.
+   */
+  large?: boolean;
 }
 
 const DEFAULT_TILE_W = 16;
@@ -49,10 +55,12 @@ export function ReadyHandBadge({
   tileHeight,
   theme = 'paper',
   dense = false,
+  large = false,
 }: ReadyHandBadgeProps) {
   if (waits.length === 0) return null;
   const glass = theme === 'glass';
   const tight = glass && dense;
+  const big = glass && large && !dense;
   const tw = tileWidth ?? (glass ? GLASS_TILE_W : DEFAULT_TILE_W);
   const th = tileHeight ?? (glass ? GLASS_TILE_H : DEFAULT_TILE_H);
   return (
@@ -64,8 +72,8 @@ export function ReadyHandBadge({
         alignItems: 'center',
         alignSelf: 'flex-start',
         gap: tight ? 8 : glass ? 12 : 8,
-        paddingVertical: tight ? 4 : glass ? 7 : 4,
-        paddingHorizontal: tight ? 10 : glass ? 14 : 10,
+        paddingVertical: tight ? 4 : big ? 8 : glass ? 7 : 4,
+        paddingHorizontal: tight ? 10 : big ? 18 : glass ? 14 : 10,
         borderRadius: glass ? 999 : 14,
         backgroundColor: glass ? 'rgba(14, 20, 17, 0.88)' : 'rgba(255, 250, 234, 0.95)',
         borderColor: glass ? 'rgba(216, 168, 90, 0.75)' : '#dca84a',
@@ -82,8 +90,8 @@ export function ReadyHandBadge({
         <Text
           style={{
             fontFamily: 'Noto Serif TC',
-            fontSize: tight ? 18 : glass ? 22 : 14,
-            lineHeight: tight ? 22 : glass ? 26 : undefined,
+            fontSize: tight ? 18 : big ? 28 : glass ? 22 : 14,
+            lineHeight: tight ? 22 : big ? 32 : glass ? 26 : undefined,
             fontWeight: '900',
             color: glass ? '#d8a85a' : '#a16b1c',
           }}
@@ -93,10 +101,10 @@ export function ReadyHandBadge({
         {tight ? null : (
           <Text
             style={{
-              fontSize: glass ? 11 : 10,
+              fontSize: big ? 13 : glass ? 11 : 10,
               fontWeight: '900',
               color: glass ? 'rgba(255,255,255,0.92)' : COLORS.ink,
-              letterSpacing: glass ? 2 : 1,
+              letterSpacing: big ? 2.4 : glass ? 2 : 1,
             }}
           >
             READY

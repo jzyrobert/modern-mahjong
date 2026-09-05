@@ -55,6 +55,13 @@ export interface TileSlot {
   quat?: [number, number, number, number];
   /** Uniform size multiplier (portrait rivers 1.36×, portrait side melds 1.15×). Default 1. */
   scale?: number;
+  /**
+   * Walls only: this tile is the exposed top of its stack — the upper
+   * tile, or the lower one once the upper has been drawn. The dead-wall
+   * inlay's side band is drawn on top tiles only, so a marked segment
+   * reads as one trim line and not a ladder of two bars per stack.
+   */
+  stackTop?: boolean;
 }
 
 /**
@@ -984,6 +991,9 @@ function placeWalls(layout: Layout, state: GameState, me: Seat, opts: LayoutOpti
       tilt: 0,
       back: true,
       index: i,
+      // Refs pair up top-then-bottom per stack: a bottom tile is the
+      // exposed top once the ref before it (its stack's top) is drawn.
+      stackTop: ref.level === 1 || k - 1 < drawn,
     });
   });
   const deadGone = Math.max(0, DEAD_TILES - state.deadWall.length);
@@ -1007,6 +1017,7 @@ function placeWalls(layout: Layout, state: GameState, me: Seat, opts: LayoutOpti
       tilt: 0,
       back: true,
       index: i,
+      stackTop: ref.level === 1 || j - 1 < deadGone,
     });
   });
 }

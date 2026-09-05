@@ -6,6 +6,7 @@ import {
   CHIP_POCKET_REACH,
   DEAD_WALL_OFFSET,
   FELT_HALF,
+  FLAT_Y,
   HAND_PITCH,
   HAND_TILT,
   HAND_Z,
@@ -1075,5 +1076,43 @@ describe('dealer chip pocket', () => {
     expect(WALL_D - TILE_H / 2 - 0.22 - (local[1] - CHIP_POCKET_NUDGE + chipR)).toBeGreaterThan(
       0.45,
     );
+  });
+});
+
+describe('wall stack tops', () => {
+  test('the upper tile of every stack is the top; a lower tile becomes the top once the upper is drawn', () => {
+    const st = dealt();
+    const layout = computeLayout(st, 0, OPTS);
+    const walls = layout.filter((sl) => sl?.zone === 'wall' || sl?.zone === 'deadWall');
+    const key = (sl: { x: number; z: number }) => `${sl.x.toFixed(3)},${sl.z.toFixed(3)}`;
+    const upper = new Set(walls.filter((sl) => sl!.y > FLAT_Y + TILE_D / 2).map((sl) => key(sl!)));
+    for (const sl of walls) {
+      const isUpper = sl!.y > FLAT_Y + TILE_D / 2;
+      expect(sl!.stackTop, `tile ${sl!.id}`).toBe(isUpper || !upper.has(key(sl!)));
+    }
+    // Draw through the next upper live tile (the deal leaves a lone lower
+    // tile at the drawing end, so it is the second draw on this seed):
+    // its partner below is then exposed and flagged as the top.
+    const from = walls
+      .filter((sl) => sl!.zone === 'wall' && sl!.y > FLAT_Y + TILE_D / 2)
+      .sort((a, b) => a!.index - b!.index)[0]!;
+    expect(from.stackTop).toBe(true);
+    const partnerBefore = layout.find(
+      (sl) => sl && sl.zone === 'wall' && key(sl) === key(from) && sl.id !== from.id,
+    );
+    expect(partnerBefore?.stackTop).toBe(false);
+    const next: GameState = { ...st, wall: st.wall.slice(0, st.wall.length - 1 - from.index) };
+    const after = computeLayout(next, 0, OPTS);
+    expect(after[from.id]).toBeNull();
+    expect(after[partnerBefore!.id]?.stackTop).toBe(true);
+    // A gang replacement (`deadWall.shift()`) exposes the dead stack's lower tile the same way.
+    const deadTop = layout[tileId(st.deadWall[0]!)]!;
+    expect(deadTop.zone).toBe('deadWall');
+    expect(deadTop.stackTop).toBe(true);
+    const afterGang = computeLayout({ ...st, deadWall: st.deadWall.slice(1) }, 0, OPTS);
+    const deadLower = afterGang[tileId(st.deadWall[1]!)]!;
+    expect(deadLower.zone).toBe('deadWall');
+    expect(key(deadLower)).toBe(key(deadTop));
+    expect(deadLower.stackTop).toBe(true);
   });
 });

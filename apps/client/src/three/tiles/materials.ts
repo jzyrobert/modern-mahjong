@@ -126,6 +126,7 @@ export function createTileMaterial(
         attribute vec3 aTint;
         attribute float aHighlight;
         attribute float aBackVariant;
+        attribute float aStackTop;
         uniform vec2 uCellScale;
         varying vec2 vAtlasUv;
         varying vec3 vTint;
@@ -136,6 +137,7 @@ export function createTileMaterial(
         varying float vBackCell;
         varying float vBackVariant;
         varying float vInnerSide;
+        varying float vStackTop;
         varying vec2 vLocalYZ;`,
       )
       .replace(
@@ -156,6 +158,7 @@ export function createTileMaterial(
         // inner long side (face-down tiles keep local −Y toward the
         // table centre on every wall), local y / z locate the band.
         vInnerSide = step(0.92, -objectNormal.y);
+        vStackTop = aStackTop;
         vLocalYZ = vec2(position.y / 1.36, position.z / 0.62);`,
       );
     shader.fragmentShader = shader.fragmentShader
@@ -181,6 +184,7 @@ export function createTileMaterial(
         varying float vBackCell;
         varying float vBackVariant;
         varying float vInnerSide;
+        varying float vStackTop;
         varying vec2 vLocalYZ;
         uniform vec3 uDeadInlay;`,
       )
@@ -190,7 +194,18 @@ export function createTileMaterial(
         // Slight negative LOD bias: minified river glyphs pick the
         // sharper mip (anisotropic filtering keeps it from shimmering).
         vec4 faceTexel = texture2D(uAtlas, vAtlasUv, -0.35);
-        float backGrad = mix(0.5, vBackGrad, uBackGradAmount);
+        // Every selector below is a per-vertex step / clamp interpolated
+        // across the triangle. At a silhouette pixel MSAA shades the
+        // fragment at the pixel centre, which can lie *outside* the
+        // triangle, so the varyings arrive extrapolated past [0, 1].
+        // Unclamped, mix(uBackColor2, uBackColor, grad) overshot along
+        // the skin's gradient and painted a 1 px hairline of the wrong
+        // hue along the far edge of every wall top (violet on the blue
+        // skin, green on plum). Clamp before use.
+        float vFaceC = clamp(vFace, 0.0, 1.0);
+        float vBackC = clamp(vBack, 0.0, 1.0);
+        float vInnerSideC = clamp(vInnerSide, 0.0, 1.0);
+        float backGrad = mix(0.5, clamp(vBackGrad, 0.0, 1.0), uBackGradAmount);
         vec3 backCol = mix(
           mix(uBackColor2, uBackColor, backGrad),
           mix(uDeadBack2, uDeadBack, backGrad),
@@ -204,7 +219,7 @@ export function createTileMaterial(
         // Any printed-back pixel — the true −Z face or the +Z sentinel
         // (a concealed rack seen from the user's seat) — also takes the
         // back finish below, so a blue rack never wears the ivory gloss.
-        float showBack = max(vBack, vFace * vBackCell);
+        float showBack = max(vBackC, vFaceC * vBackCell);
         vec3 body = mix(uBodyColor, backCol, showBack);
         // Dead-wall inlay: a gold band along the inner edge of the back
         // (the up-facing side of a face-down stack) and the upper part of
@@ -215,11 +230,15 @@ export function createTileMaterial(
         // Kept slim (a hairline along the inner edge, the upper third of
         // the inner side) and blended at 0.8 so seven marked stacks read
         // as an inlaid trim, not a dashed yellow stripe down the wall.
-        float inlayTop = vBack * step(vLocalYZ.x, -0.5 + 0.09);
-        float inlaySide = vInnerSide * step(vLocalYZ.y, -0.5 + 0.36);
+        // The side band is drawn on the stack's exposed top tile only
+        // (aStackTop): on both tiles of a two-high stack the 31° and
+        // 44° cameras saw two bars per stack, and a marked segment read
+        // as a ladder of gold dashes instead of one continuous trim.
+        float inlayTop = vBackC * step(vLocalYZ.x, -0.5 + 0.09);
+        float inlaySide = vInnerSideC * vStackTop * step(vLocalYZ.y, -0.5 + 0.36);
         float inlay = vBackVariant * clamp(inlayTop + inlaySide, 0.0, 1.0) * 0.8;
         body = mix(body, uDeadInlay, inlay);
-        float showFace = vFace * (1.0 - vBackCell);
+        float showFace = vFaceC * (1.0 - vBackCell);
         diffuseColor.rgb = mix(body, faceTexel.rgb, showFace) * vTint;
         // The inlay is lacquer, not the matte back: keep it glossy.
         showBack *= 1.0 - inlay;
@@ -268,7 +287,7 @@ export function createTileMaterial(
   };
   // Distinct cache key so three doesn't share the program with a stock
   // MeshPhysicalMaterial.
-  mat.customProgramCacheKey = () => 'mahjong-tile-v8';
+  mat.customProgramCacheKey = () => 'mahjong-tile-v9';
   return mat;
 }
 
