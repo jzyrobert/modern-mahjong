@@ -490,3 +490,33 @@ CC0-only asset policy, verifier rules. Operational notes:
 - **Critic scoreboard**: `docs/STATUS.json` — every gauntlet round
   writes scores + ranked open issues there; the next `/loop` iteration
   resumes from the lowest-scoring subsystem.
+- **Page chrome keys on the surface, not the renderer**: `usePageChrome()`
+  in `app/_layout.tsx` (`pageSurface(pathname)` + `pageChrome(surface,
+  renderer)` in `src/ui/menu/palette.ts`) paints html/body/theme-color,
+  the hydration shell and the Stack `contentStyle`. The lobby and
+  `/replays*` are the void under both renderers; only the classic
+  `/match` is cream. Android Chrome keeps the layout box at the *small*
+  viewport when the URL bar retracts, so whatever is behind the app root
+  shows in the exposed strip — the static default in `+html.tsx` is the
+  void too, and `LobbyBackdrop` overshoots the root by 160 px. Round-FB2
+  feedback ("white band at the bottom when scrolling") was this. Sticky
+  bars over the scrolling hero rack need a ≥ 0.94-alpha void fill, not
+  quiet glass — blur over ivory tiles reads khaki.
+- **Overlays that hug a tile use the face rect**: `TableScene.tileRect`
+  is the projection of the whole tile box (top bevel + back edge
+  included, then floored to 44 px for the tap target).
+  `tileFaceRect` / `projectTileFaceRect` is the +Z printed face only —
+  the discard-hint ring is placed from it (`HitTargets.setTileRect`'s
+  fourth argument). Do not inherit the classic shell's `bottom: 10`
+  lift zone on 3D overlays.
+- **Glass result card**: the top-right corner belongs to the 和 seal
+  (`ResultVeil.WinStamp`); controls (save replay) ride inline in the
+  action rows via `SaveReplayButton inline`.
+- **Replay under 3D**: `src/three/replay/ReplayTable3D` mounts the
+  match's `TableScene` for `frames[cursor].state` (`sync({ state, me,
+  revealAll, snap })`) — the same pattern as `LobbyTableBackdrop`; the
+  documented `replay/ → table/` import exception is in ARCHITECTURE.md.
+  Recipes seed a deterministic record through
+  `__MAHJONG_TEST_REPLAY_FIXTURE__` (`src/replay/fixture.ts`) and deep-
+  link with `?frame=`. RN-web `nativeEvent` has no `locationX` — use
+  `src/ui/replay/timeline.ts`'s `pressX` for any tap-to-seek surface.

@@ -237,6 +237,30 @@
           "notes": "Round-2 polish pass (menu + settings preview) passed at iteration 2 (8.1 → 8.6): drift/dice keep-outs, 3D replay shelf, settings preview framing/badge/hover/labels. Merged into integration.",
           "at": "2026-09-04T06:33:00Z"
         }
+      ],
+      "rounds": [
+        {
+          "round": 1,
+          "at": "2026-09-05T10:10:44Z",
+          "score": 8.6,
+          "pass": true,
+          "errors": 0,
+          "context": "feedback round 2"
+        }
+      ],
+      "openIssues": [
+        {
+          "severity": "medium",
+          "title": "Replay shelf can freeze mid-intro: tiles clipped at the canvas top with a shadow blob below",
+          "where": "replay-library @ phone and phone-tall (3D) — intermittent",
+          "detail": "shot.mjs captured 2 of 5 replay-library frames with the shelf tiles cut off at the top edge of the empty-state card's canvas and a dark smear under them (apps/client/shots/critic/replay-library.phone.3d.png, replay-library.phone-tall.3d.png; both JSONs show perf.renders=1, idle=true, warmupMs ~900-1100). Re-probing the same viewports (probe-shelf.phone.{300,1500,4000,8000}ms.png, same for phone-tall) showed the settled shelf every time with __MAHJONG_SHELF_DEBUG__ bounds top 12 / bottom 74.7 inside a 122 px canvas — so the render-on-demand loop can go idle after its first (slow) frame without drawing the settled pose. Not touched by this branch's two feedback commits (ShelfScene.ts/ReplayShelf3D.tsx unchanged in them), but it is in the 3D flow being shipped; render one more frame after 'settled' flips."
+        },
+        {
+          "severity": "low",
+          "title": "Fullscreen prompt overlaps LAN card copy on a grown, scrolled landscape phone",
+          "where": "menu-urlbar @ phone-landscape (915x512 after +100 px, scrolled to end)",
+          "detail": "apps/client/shots/critic/menu-urlbar.phone-landscape.3d.png: the FULLSCREEN / DISMISS chips sit over 'Paste the host's URL ... Hosting needs the Android app.' in the LAN card. Root overlay, not menu-owned, and only in this scrolled state, but it is visible in the 3D lobby flow."
+        }
       ]
     },
     "settings": {
@@ -414,6 +438,50 @@
           "openIssues": 8,
           "notes": "Manual feedback round 1: claim-bar ring hugs the CHI/PASS strip on every viewport; opaque coach cards; first card waits for the camera; landscape ring clear of the footer; chevron in a gutter; flights lit under the veil.",
           "at": "2026-09-05T03:59:09.218Z"
+        }
+      ]
+    },
+    "replay": {
+      "owner": "replay",
+      "score": 9.0,
+      "pass": true,
+      "errors": 0,
+      "rounds": [
+        {
+          "round": 1,
+          "at": "2026-09-05T10:10:44Z",
+          "score": 7.5,
+          "pass": false,
+          "errors": 0,
+          "context": "feedback round 2 — glass player on the match TableScene"
+        },
+        {
+          "round": 2,
+          "at": "2026-09-05T10:10:44Z",
+          "score": 9.0,
+          "pass": true,
+          "errors": 0,
+          "context": "after the timeline seek / dock / badge / name fixes (e729348)"
+        }
+      ],
+      "openIssues": [
+        {
+          "severity": "low",
+          "title": "Compact timeline seam still ~4 px / 2 frames off the rendered card edge",
+          "where": "replay-player @ phone, phone-small, phone-landscape (frame 105)",
+          "detail": "ratioToX/xToRatio assume the cards' widths equal their flex weights, but the rendered cards keep min-content (8 px padding + the non-shrinking label), so the seam lands 3-4 px later than the maths: at hand 2's first frame the playhead draws 1.5 px inside the Hand-1 card (phone 123.3 vs card-2 left 127.8), and a tap 1.5 px inside the Hand-2 card seeks to frame 107 instead of 105. Desktop matches exactly. Either measure card rects via onLayout or give the cards flexBasis 0 with no min-content (overflow hidden on the label)."
+        },
+        {
+          "severity": "low",
+          "title": "Chapter result clips its faan on the 360 px strip",
+          "where": "replay-player-end @ phone-small",
+          "detail": "'東 H2 Mei Ling wins · 0 faan' renders in 104 of the 114 px it needs and ellipsises to 'Mei Ling wins · 0 …' (scratchpad/probe2/phone-small-dock-end.png). The name and faan both fit at 412 px."
+        },
+        {
+          "severity": "low",
+          "title": "Speed / POV-All segments at 10 px, dealer glyph at 9 px",
+          "where": "scrubber and badges @ all viewports",
+          "detail": "Remaining sub-11 px text: '0.5× 1× 2× 4×' and 'All' segment labels (10 px), the 莊 chip glyph (9 px). Contrast is fine (>= 5.26:1 measured in round 1); this is the last gap against the 11 px micro-label spec."
         }
       ]
     }
@@ -1212,6 +1280,85 @@
           "item": "Highlight around the actions pill incorrect",
           "status": "fixed",
           "note": "Ring hugs the CHI/PASS strip (6-7 px padding) on every viewport; e2e asserts it."
+        }
+      ]
+    },
+    {
+      "id": "fb2",
+      "at": "2026-09-05T10:10:44Z",
+      "source": "second manual play-test on the Pages preview (Android phone)",
+      "areas": {
+        "menu": {
+          "rounds": [
+            {
+              "score": 8.6,
+              "pass": true,
+              "errors": 0,
+              "fixed": 2,
+              "total": 2
+            }
+          ],
+          "final": 8.6,
+          "pass": true,
+          "followUp": "critic medium (sticky app bar turned khaki under the scrolling rack) fixed in 909531d: bar fill rgba(14,20,17,0.94), probe max channel <= 30 at every scroll stop; page chrome keyed on surface; title scrim removed"
+        },
+        "replay": {
+          "rounds": [
+            {
+              "score": 7.5,
+              "pass": false,
+              "errors": 0,
+              "fixed": 1,
+              "total": 1
+            },
+            {
+              "score": 9.0,
+              "pass": true,
+              "errors": 0,
+              "fixed": 1,
+              "total": 1
+            }
+          ],
+          "final": 9.0,
+          "pass": true
+        },
+        "table": {
+          "rounds": [],
+          "final": null,
+          "pass": null,
+          "note": "integrator fixes (hint ring, save chip) verified by shots at phone + desktop and new e2e in three-table.spec.ts; no separate critic round"
+        }
+      },
+      "userItems": [
+        {
+          "area": "General",
+          "item": "The discard hint is not aligned with the tile",
+          "status": "fixed",
+          "note": "Ring was drawn on the tap target (whole-box projection incl. top bevel/back edge, plus the classic 10 px lift zone). Now follows the +Z face projection (projectTileFaceRect / TableScene.tileFaceRect); e2e at phone + desktop."
+        },
+        {
+          "area": "Mobile",
+          "item": "Scrolling the main menu: white transparent band overlaps the buttons; bottom section not the right green",
+          "status": "fixed",
+          "note": "Page chrome (html/body/theme-color/Stack/hydration shell) is the void on the lobby and replay surfaces; backdrop overshoots the root by 160 px; the hero rack scrolls with the title (it used to ghost through the Online card); app bar fill opaque enough to stay in the void family. Critic: 0 cream pixels in the URL-bar strip probe."
+        },
+        {
+          "area": "Mobile",
+          "item": "Main menu text not readable over the background tiles",
+          "status": "fixed",
+          "note": "Hero rack fitted into a measured band under the title block (>= 16 px below the tagline, >= 8 px above the first card; classic DOM fan agrees). Critic: 0 px overlap at every viewport, h1 contrast 15-16:1, tagline 7.3-7.6:1."
+        },
+        {
+          "area": "Mobile",
+          "item": "The replay system has not been updated for the 3D look",
+          "status": "fixed",
+          "note": "Replay player mounts the match TableScene for the current frame (src/three/replay/ReplayTable3D) with glass chrome, chapter-card scrubber, glass library rows / import / delete sheet / not-found. Critic 7.5 -> 9.0 after the timeline NaN seek and dock fixes."
+        },
+        {
+          "area": "Mobile",
+          "item": "If you win, the 和 character overlaps the save replay icon",
+          "status": "fixed",
+          "note": "Save-replay control is an inline glass chip in the result card action row; the seal owns the corner. e2e: seal overlaps no control; chip sits in the flow."
         }
       ]
     }

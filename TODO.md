@@ -33,9 +33,14 @@ Live tracker for queued and out-of-scope work. The full design lives in [`docs/P
 
 ### Three.js rewrite follow-ups (PR #434 gauntlet — see `docs/STATUS.json`)
 
-Every subsystem passed its art-director critic before the manual play-test; the play-test feedback round (`docs/STATUS.json` → `feedbackRounds[0]`) then fixed all 18 user-reported items, verified per item by the critics. The lists below are the critic residuals still open, ranked; each names the state and viewport where the critic saw it. The next `/loop` iteration resumes from the lowest-scoring subsystem.
+Every subsystem passed its art-director critic before the manual play-tests; the two play-test feedback rounds (`docs/STATUS.json` → `feedbackRounds[0..1]`) then fixed all 18 + 5 user-reported items, verified per item by the critics. The lists below are the critic residuals still open, ranked; each names the state and viewport where the critic saw it. The next `/loop` iteration resumes from the lowest-scoring subsystem.
 
 - **manual feedback round 1** — 18/18 user items fixed; area critics: mobile 7.9 → 8.4 → 8; table 7.3 → 7.7 → 8.1; tutorial 7.4 → 8.2 → 8.5 pass; settings 8.6 pass; input 8.7 pass. Table and mobile stayed under 8.5 on critic-added residuals (listed under table below).
+- **manual feedback round 2** — 5/5 user items fixed (discard-hint ring on the tile face, menu cream underlay + hero rack under the title, replay player on the 3D table, 和 seal off the save control); area critics: menu 8.6 pass (follow-up fixed the khaki app bar), replay 7.5 → 9.0 pass.
+- **replay** (latest critic: **9.0/10, pass**; 7.5 → 9.0):
+  - [ ] [low] Compact timeline seam ~4 px / 2 frames off the rendered card edge (flex min-content vs weight maths; desktop exact) — _replay-player @ phone, phone-small, phone-landscape (frame 105)_
+  - [ ] [low] Chapter result clips its faan on the 360 px strip ("Mei Ling wins · 0 …") — _replay-player-end @ phone-small_
+  - [ ] [low] Speed / POV-All segments at 10 px, dealer 莊 glyph at 9 px vs the 11 px spec — _scrubber and badges @ all viewports_
 - **table (desktop + mobile)** (latest critic: **8.1/10, below 8.5**; 8.3 → 8.6 → 8.6 → 8.1):
   - [ ] [medium] [desktop] Portrait 'Watch the wall run out' card hides the entire table (tutorial-owned) — _tutorial-drawn-game-2.phone.3d.png_
   - [ ] [low] [desktop] Landscape breakdown modal clips the TOTAL row and overlaps the coach card — _match-result-breakdown.phone-landscape.3d.png_
@@ -58,7 +63,9 @@ Every subsystem passed its art-director critic before the manual play-test; the 
   - [ ] [low] Landscape dice step leaves a sliver of hand tile tops between modal and card — _tutorial-basics-0 @ phone-landscape_
   - [ ] [low] Last live wall tile spotlight reads as a plain cream slab — _tutorial-drawn-game-2 @ desktop (1075-1120 x 640-700) and phone-landscape (1500-1570 x 500-580)_
   - [ ] [low] Phone dice step card hides the footer badge and sort control completely — _tutorial-basics-0 @ phone_
-- **menu** (latest critic: **8.6/10, pass**; 8.5 → 8.6):
+- **menu** (latest critic: **8.6/10, pass**; 8.5 → 8.6 → 8.6):
+  - [ ] [medium] Replay shelf can freeze mid-intro: tiles clipped at the canvas top with a shadow blob (render-on-demand loop idles before the settled pose; intermittent, 2 of 5 shots) — _replay-library @ phone, phone-tall_
+  - [ ] [low] Fullscreen prompt overlaps the LAN card copy on a grown + scrolled landscape phone (915×512 mounts the desktop lobby while the prompt uses its own height rule) — _menu-urlbar @ phone-landscape_
   - [ ] [medium] Desktop: a drift tile back sits on the hero rack's 一萬 corner (rack keep-out is phone-only) — _menu, menu-tutorials @ desktop 1440x900 (3d)_
   - [ ] [medium] Desktop replay shelf reads small and aliased inside a 620 px card — _replay-library @ desktop 1440x900 (3d, dpr 1)_
   - [ ] [low] Reduced-motion portrait field is one lone edge-on tile in the left margin — _menu-reduced-motion @ phone 412x915 (3d)_
