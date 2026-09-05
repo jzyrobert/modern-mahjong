@@ -33,6 +33,83 @@ interface MenuDebug {
   dice: number[];
   diceRects: { x: number; y: number; r: number }[];
   rack: { x: number; y: number; w: number; h: number };
+  band: { x: number; y: number; w: number; h: number } | null;
+  rackGoal: { x: number; y: number; w: number; h: number } | null;
+}
+
+type Rect = { x: number; y: number; w: number; h: number };
+type Box = { x: number; y: number; width: number; height: number };
+
+function intersects(r: Rect, b: Box): boolean {
+  return r.x < b.x + b.width && r.x + r.w > b.x && r.y < b.y + b.height && r.y + r.h > b.y;
+}
+
+/** The title block's heading + tagline boxes (the tagline is absent on
+ *  landscape phones) and the lowest edge of the two. */
+async function titleBoxes(
+  page: import('@playwright/test').Page,
+): Promise<{ heading: Box; tagline: Box | null; bottom: number }> {
+  const heading = await page.getByRole('heading', { name: 'Modern Mahjong' }).boundingBox();
+  if (!heading) throw new Error('missing heading box');
+  const taglineLoc = page.getByText(/^136 tiles/);
+  const tagline = (await taglineLoc.count()) > 0 ? await taglineLoc.first().boundingBox() : null;
+  const bottom = Math.max(heading.y + heading.height, tagline ? tagline.y + tagline.height : 0);
+  return { heading, tagline, bottom };
+}
+
+/** The 3D flow's page ground (`MENU.void0`, #0b120f) as CSS reports it. */
+const VOID_RGB = 'rgb(11, 18, 15)';
+const CREAM_RGB = 'rgb(241, 234, 220)';
+
+async function pageGround(page: import('@playwright/test').Page) {
+  return page.evaluate(() => ({
+    html: getComputedStyle(document.documentElement).backgroundColor,
+    body: getComputedStyle(document.body).backgroundColor,
+    themeColor: document.querySelector('meta[name="theme-color"]')?.getAttribute('content') ?? null,
+  }));
+}
+
+/**
+ * Sample a viewport strip of the *DOM* ground: the WebGL canvas is
+ * hidden for the capture (a drifting ivory tile face is the same hue
+ * as the cream this guards against), then every pixel is classed as
+ * cream-ish (warm, light, r − b ≥ 10 — the #f1eadc family; white copy
+ * and the gold accent both fall outside) and the mean luminance taken.
+ */
+async function sampleStrip(
+  page: import('@playwright/test').Page,
+  clip: Box,
+): Promise<{ total: number; cream: number; meanLum: number }> {
+  await page.evaluate(() => {
+    for (const c of Array.from(document.querySelectorAll('canvas'))) c.style.visibility = 'hidden';
+  });
+  const png = await page.screenshot({ clip, type: 'png' });
+  const out = await page.evaluate(async (b64) => {
+    const img = new Image();
+    img.src = `data:image/png;base64,${b64}`;
+    await img.decode();
+    const c = document.createElement('canvas');
+    c.width = img.width;
+    c.height = img.height;
+    const ctx = c.getContext('2d');
+    if (!ctx) throw new Error('no 2d context');
+    ctx.drawImage(img, 0, 0);
+    const d = ctx.getImageData(0, 0, c.width, c.height).data;
+    let cream = 0;
+    let lum = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      const r = d[i] ?? 0;
+      const g = d[i + 1] ?? 0;
+      const b = d[i + 2] ?? 0;
+      lum += (r + g + b) / 3;
+      if (r >= 225 && g >= 215 && b >= 200 && b <= 240 && r - b >= 10) cream++;
+    }
+    return { total: d.length / 4, cream, meanLum: lum / (d.length / 4) };
+  }, png.toString('base64'));
+  await page.evaluate(() => {
+    for (const c of Array.from(document.querySelectorAll('canvas'))) c.style.visibility = '';
+  });
+  return out;
 }
 
 interface ShelfDebug {
@@ -478,6 +555,146 @@ test.describe('three: menu backdrop', () => {
     expect(errors()).toEqual([]);
   });
 
+  test('page chrome: everything behind the app root is the void, including the strip a retracting URL bar exposes', async ({
+    page,
+  }) => {
+    const errors = collectErrors(page);
+    await page.setViewportSize({ width: 412, height: 700 });
+    await page.goto('/');
+    await expect(page.getByRole('heading', { name: 'Modern Mahjong' })).toBeVisible();
+    await expect(page.getByTestId('menu-3d').locator('canvas')).toBeAttached({ timeout: 15_000 });
+
+    // html / body and the theme-color meta are the void, not the cream
+    // the classic shells paint (round-1 feedback: a cream band under the
+    // lobby cards once Android Chrome's URL bar had retracted).
+    const ground = await pageGround(page);
+    expect(ground.html).toBe(VOID_RGB);
+    expect(ground.body).toBe(VOID_RGB);
+    expect(ground.themeColor?.toLowerCase()).not.toBe('#f1eadc');
+    expect(ground.themeColor?.toLowerCase()).toBe('#0b120f');
+    // The backdrop's gradient overshoots the root so a taller visual
+    // viewport shows more void, not an edge.
+    const backdrop = await page.getByTestId('lobby-backdrop-3d').boundingBox();
+    if (!backdrop) throw new Error('missing backdrop box');
+    expect(backdrop.y + backdrop.height).toBeGreaterThanOrEqual(700 + 100);
+
+    // The URL bar retracts: the viewport grows by 100 px without a
+    // reload. Every pixel along the new bottom 60 px is dark ground —
+    // at the top of the page and scrolled to the very end.
+    await page.setViewportSize({ width: 412, height: 800 });
+    await page.waitForTimeout(600);
+    const strip = { x: 0, y: 740, width: 412, height: 60 };
+    const top = await sampleStrip(page, strip);
+    expect(top.cream).toBe(0);
+    expect(top.meanLum).toBeLessThan(70);
+    await page.evaluate(() => {
+      let best: Element | null = null;
+      for (const el of Array.from(document.querySelectorAll('*'))) {
+        const cs = getComputedStyle(el);
+        if (el.scrollHeight > el.clientHeight + 4 && /auto|scroll/.test(cs.overflowY)) {
+          if (!best || el.scrollHeight > best.scrollHeight) best = el;
+        }
+      }
+      if (best) best.scrollTop = best.scrollHeight;
+    });
+    await page.waitForTimeout(400);
+    // The credits sit on the void in their own colour, above the strip.
+    const credit = await page.getByText(/^Sound by/).boundingBox();
+    if (!credit) throw new Error('missing footer credit');
+    expect(credit.y + credit.height).toBeLessThanOrEqual(800);
+    const bottom = await sampleStrip(page, strip);
+    expect(bottom.cream).toBe(0);
+    expect(bottom.meanLum).toBeLessThan(70);
+    // The rack scrolled away with the title it is anchored to — it is
+    // not sitting behind the glass cards that now fill the viewport
+    // (round-1 feedback: an ivory ghost under the Online card's form).
+    const scrolled = await readMenuDebug(page);
+    const online = await page.getByTestId('mode-online').boundingBox();
+    if (!scrolled?.band || !online) throw new Error('missing scrolled boxes');
+    const bandNow = await page.getByTestId('hero-band').boundingBox();
+    if (!bandNow) throw new Error('missing hero band');
+    expect(Math.abs(scrolled.band.y - bandNow.y)).toBeLessThan(1.5);
+    expect(scrolled.rack.y + scrolled.rack.h).toBeLessThanOrEqual(online.y + 1.5);
+    // The ground stays the void after the resize + scroll.
+    expect((await pageGround(page)).body).toBe(VOID_RGB);
+    expect(errors()).toEqual([]);
+  });
+
+  for (const vp of [
+    { name: 'phone', width: 412, height: 700 },
+    { name: 'phone-small', width: 360, height: 640 },
+    { name: 'phone-tall', width: 412, height: 915 },
+    { name: 'phone landscape', width: 915, height: 412 },
+    { name: 'desktop', width: 1440, height: 900 },
+  ]) {
+    test(`hero @ ${vp.name}: the rack sits in the measured band under the title, clear of the copy and the first card`, async ({
+      page,
+    }) => {
+      const errors = collectErrors(page);
+      await page.setViewportSize({ width: vp.width, height: vp.height });
+      await page.goto('/');
+      await expect(page.getByRole('heading', { name: 'Modern Mahjong' })).toBeVisible();
+      await expect(page.getByTestId('menu-3d').locator('canvas')).toBeAttached({
+        timeout: 15_000,
+      });
+      await page.waitForFunction(
+        () =>
+          (globalThis as { __MAHJONG_MENU_INTRO__?: string }).__MAHJONG_MENU_INTRO__ === 'settled',
+        null,
+        { timeout: 8000 },
+      );
+      // The scene fitted its layout to the DOM's hero band…
+      const bandBox = await page.getByTestId('hero-band').boundingBox();
+      if (!bandBox) throw new Error('missing hero band');
+      // …and the live rack has eased onto the pure prediction (a late
+      // font reflow re-fits it once more, so poll rather than read once).
+      await expect
+        .poll(
+          async () => {
+            const d = await readMenuDebug(page);
+            if (!d?.band || !d.rackGoal) return Number.POSITIVE_INFINITY;
+            return Math.max(
+              Math.abs(d.rack.x - d.rackGoal.x),
+              Math.abs(d.rack.y - d.rackGoal.y),
+              Math.abs(d.rack.x + d.rack.w - (d.rackGoal.x + d.rackGoal.w)),
+              Math.abs(d.rack.y + d.rack.h - (d.rackGoal.y + d.rackGoal.h)),
+            );
+          },
+          { timeout: 6000 },
+        )
+        .toBeLessThan(3);
+      const debug = await readMenuDebug(page);
+      if (!debug?.band) throw new Error('menu debug never published a band');
+      expect(Math.abs(debug.band.x - bandBox.x)).toBeLessThan(1.5);
+      expect(Math.abs(debug.band.y - bandBox.y)).toBeLessThan(1.5);
+      expect(Math.abs(debug.band.w - bandBox.width)).toBeLessThan(1.5);
+      expect(Math.abs(debug.band.h - bandBox.height)).toBeLessThan(1.5);
+
+      const rack = debug.rack;
+      const title = await titleBoxes(page);
+      // ≥ 16 px under the title block's last line and off every glyph.
+      expect(rack.y).toBeGreaterThanOrEqual(title.bottom + 16 - 1.5);
+      expect(intersects(rack, title.heading)).toBe(false);
+      if (title.tagline) expect(intersects(rack, title.tagline)).toBe(false);
+      // Inside the band the lobby reserved (8 px above its end).
+      expect(rack.y + rack.h).toBeLessThanOrEqual(bandBox.y + bandBox.height - 8 + 1.5);
+      expect(rack.x).toBeGreaterThanOrEqual(bandBox.x - 1.5);
+      expect(rack.x + rack.w).toBeLessThanOrEqual(bandBox.x + bandBox.width + 1.5);
+      // Clear of the first card: below the rack on portrait / desktop,
+      // right of it on landscape phones.
+      const online = await page.getByTestId('mode-online').boundingBox();
+      if (!online) throw new Error('missing online card box');
+      if (vp.width > vp.height && vp.height <= 480) {
+        expect(rack.x + rack.w).toBeLessThanOrEqual(online.x + 1.5);
+      } else {
+        expect(rack.y + rack.h).toBeLessThanOrEqual(online.y + 1.5);
+      }
+      // Still a hero, not a thumbnail: the rack fills most of the band.
+      expect(rack.h).toBeGreaterThan((bandBox.height - 24) * 0.6);
+      expect(errors()).toEqual([]);
+    });
+  }
+
   test('classic renderer keeps the restyled lobby without a canvas', async ({ page }) => {
     await page.addInitScript(() => {
       (globalThis as { __MAHJONG_TEST_RENDERER__?: string }).__MAHJONG_TEST_RENDERER__ = 'classic';
@@ -487,7 +704,32 @@ test.describe('three: menu backdrop', () => {
     await expect(page.getByRole('heading', { name: 'Modern Mahjong' })).toBeVisible();
     await expect(page.getByTestId('lobby-backdrop-classic')).toBeAttached();
     await expect(page.locator('canvas')).toHaveCount(0);
-    // The DOM hero fan fills the band the 3D scene would otherwise own.
+    // The DOM hero fan fills the band the 3D scene would otherwise own…
     await expect(page.getByTestId('hero-fan')).toBeAttached();
+    // …and the classic shells keep their cream page ground.
+    const ground = await pageGround(page);
+    expect(ground.body).toBe(CREAM_RGB);
+    expect(ground.html).toBe(CREAM_RGB);
+    expect(ground.themeColor?.toLowerCase()).toBe('#f1eadc');
+    // The fan is centred in the same measured band as the 3D rack, so
+    // it never runs under the title copy either.
+    const title = await titleBoxes(page);
+    const bandBox = await page.getByTestId('hero-band').boundingBox();
+    if (!bandBox) throw new Error('missing hero band');
+    const tiles = await page.getByTestId('hero-fan').evaluate((fan) =>
+      Array.from(fan.children)
+        .filter((c) => c.children.length > 0)
+        .map((c) => {
+          const r = (c.children[0] as HTMLElement).getBoundingClientRect();
+          return { x: r.left, y: r.top, w: r.width, h: r.height };
+        }),
+    );
+    expect(tiles.length).toBeGreaterThanOrEqual(7);
+    for (const t of tiles) {
+      expect(t.y).toBeGreaterThanOrEqual(title.bottom + 8);
+      expect(intersects(t, title.heading)).toBe(false);
+      if (title.tagline) expect(intersects(t, title.tagline)).toBe(false);
+      expect(t.y + t.h).toBeLessThanOrEqual(bandBox.y + bandBox.height);
+    }
   });
 });

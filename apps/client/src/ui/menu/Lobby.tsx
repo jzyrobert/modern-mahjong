@@ -10,6 +10,7 @@ import { useGame } from '../../state/game';
 import { LESSON_ORDER } from '../../state/tutorial';
 import { BrowseLobbyModal } from '../BrowseLobbyModal';
 import { JoinLanModal } from '../JoinLanModal';
+import { HeroBandSlot } from './HeroBandSlot';
 import { LessonGrid, LessonProgress, lessonProgressLabel, useLessonItems } from './LessonPicker';
 import { LobbyBackdrop } from './LobbyBackdrop';
 import { BrandMark, IdentityPill, TitleBlock } from './LobbyHeader';
@@ -62,8 +63,8 @@ function DesktopLobby() {
 
   const columns = width >= 960 ? 3 : 2;
   // Reserve the upper ~38 % for the hero: the title block sits at the
-  // top of this band and the fan renders in the space below it (its
-  // anchor is `heroAnchor` → y ≈ 0.33 on wide viewports). Together
+  // top of this band and the fan renders in the measured slot below it
+  // (`HeroBandSlot` — the 3D rack is fitted into that slot). Together
   // with the single-line footer this keeps a 1440 × 900 lobby fold-free.
   const heroMinHeight = Math.max(300, Math.round(height * 0.38));
   const inlineFooter = width >= 1280;
@@ -289,6 +290,7 @@ function DesktopLobby() {
             <View style={{ alignItems: 'center', marginTop: 26 }}>
               <TitleBlock size="lg" align="center" />
             </View>
+            <HeroBandSlot style={{ flex: 1, minHeight: 120 }} />
           </View>
 
           <Columns columns={stacks} gap={14} />

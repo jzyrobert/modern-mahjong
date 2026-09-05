@@ -1,4 +1,5 @@
 import type { Tile as MTile } from '@mahjong/game-logic';
+import { type HeroBand, heroBox } from './heroBand';
 
 /**
  * Where the menu hero (the fanned hand) sits on screen, as fractions of
@@ -60,41 +61,80 @@ export interface DomFanSlot {
 /** Tile aspect used by `ui/Tile` (36 × 50). */
 const TILE_ASPECT = 50 / 36;
 
+export interface DomFanOptions {
+  /** The measured hero band (`heroBand.ts`); the fan centres itself in
+   *  the band's inset box and shrinks to fit it. Without one the fan
+   *  sits on the viewport-fraction anchor. */
+  band?: HeroBand | null;
+  count?: number;
+}
+
+/** Tile width the classic fan starts from per viewport class (CSS px). */
+function domFanTileWidth(cls: ViewportClass): number {
+  return cls === 'wide' ? 52 : 44;
+}
+
+/** Smallest tile the fan shrinks to when the band is short. */
+const DOM_FAN_MIN_TILE_W = 28;
+
 /**
  * Screen-space slots for the classic fan: `count` tiles on a shallow
- * arc centred on the hero anchor. Tiles are ≥ 44 CSS px wide on phones
- * so the glyphs stay crisp (visual language), a little larger on wide
- * viewports.
+ * arc centred on the hero anchor — or, when the lobby has measured its
+ * hero band, centred in the band's inset box (`heroBox`) and scaled
+ * down until the arc fits it, so the fan never runs under the title's
+ * tagline or the first card. Tiles are ≥ 44 CSS px wide on phones so
+ * the glyphs stay crisp (visual language), a little larger on wide
+ * viewports; a short band trades size for clearance.
  */
-export function domFan(
-  width: number,
-  height: number,
-  count = width / Math.max(1, height) < 0.85 || width / Math.max(1, height) > 1.95 ? 7 : 9,
-): DomFanSlot[] {
-  const a = heroAnchor(width / Math.max(1, height));
-  const tileW = a.cls === 'wide' ? 52 : 44;
-  const tileH = Math.round(tileW * TILE_ASPECT);
-  // Landscape phones pack tighter so seven 44 px tiles fit the title
-  // column (≈ 245 px) without reaching the card stack at x ≈ 0.32.
-  const spacing = tileW * (a.cls === 'wide' ? 0.94 : a.cls === 'landscape-phone' ? 0.76 : 0.8);
+export function domFan(width: number, height: number, opts: DomFanOptions = {}): DomFanSlot[] {
+  const aspect = width / Math.max(1, height);
+  const a = heroAnchor(aspect);
+  const count = opts.count ?? (a.cls === 'wide' ? 9 : 7);
+  const box = heroBox(opts.band);
+  const baseW = domFanTileWidth(a.cls);
+  const spacingF = a.cls === 'wide' ? 0.94 : a.cls === 'landscape-phone' ? 0.76 : 0.8;
   const rotStep = a.cls === 'portrait' ? 4.5 : 3;
-  const bow = a.cls === 'wide' ? 1.0 : 1.5;
-  const cx = width * a.x;
-  // Wide viewports lift the DOM fan above the shared anchor so its
-  // bowed ends keep ≥ 20 px of air above the card row (which starts at
-  // 38 % of the height — `DesktopLobby.heroMinHeight`).
-  const cy = height * a.y - (a.cls === 'wide' ? 26 : 0);
+  const bowF = (a.cls === 'wide' ? 1.0 : 1.5) / baseW;
   const mid = (count - 1) / 2;
-  const out: DomFanSlot[] = [];
-  for (let i = 0; i < count; i++) {
-    const u = i - mid;
-    out.push({
-      left: Math.round(cx + u * spacing - tileW / 2),
-      top: Math.round(cy - tileH / 2 + u * u * bow),
-      rotate: u * rotStep,
-      width: tileW,
-      height: tileH,
-    });
+  const build = (tileW: number, cx: number, cy: number): DomFanSlot[] => {
+    const tileH = Math.round(tileW * TILE_ASPECT);
+    const spacing = tileW * spacingF;
+    const bow = tileW * bowF;
+    const out: DomFanSlot[] = [];
+    for (let i = 0; i < count; i++) {
+      const u = i - mid;
+      out.push({
+        left: Math.round(cx + u * spacing - tileW / 2),
+        top: Math.round(cy - tileH / 2 + u * u * bow),
+        rotate: u * rotStep,
+        width: tileW,
+        height: tileH,
+      });
+    }
+    return out;
+  };
+  if (!box) {
+    // Wide viewports lift the DOM fan above the shared anchor so its
+    // bowed ends keep ≥ 20 px of air above the card row (which starts
+    // at 38 % of the height — `DesktopLobby.heroMinHeight`).
+    return build(baseW, width * a.x, height * a.y - (a.cls === 'wide' ? 26 : 0));
   }
-  return out;
+  // Fit: the arc's extent at the base size (plus the slop the end
+  // tiles' rotation adds) against the box, then centre it in the box.
+  const extent = (slots: DomFanSlot[]) => {
+    const slop = Math.ceil(slots[0]!.width * 0.12);
+    return {
+      top: Math.min(...slots.map((s) => s.top)) - slop,
+      bottom: Math.max(...slots.map((s) => s.top + s.height)) + slop,
+      left: Math.min(...slots.map((s) => s.left)) - slop,
+      right: Math.max(...slots.map((s) => s.left + s.width)) + slop,
+    };
+  };
+  const probe = extent(build(baseW, 0, 0));
+  const scale = Math.min(1, box.h / (probe.bottom - probe.top), box.w / (probe.right - probe.left));
+  const tileW = Math.max(DOM_FAN_MIN_TILE_W, Math.floor(baseW * scale));
+  const fitted = extent(build(tileW, 0, 0));
+  const cx = box.x + box.w / 2 - (fitted.left + fitted.right) / 2;
+  const cy = box.y + box.h / 2 - (fitted.top + fitted.bottom) / 2;
+  return build(tileW, cx, cy);
 }

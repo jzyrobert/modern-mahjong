@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { Platform, Pressable, Text, TextInput, View } from 'react-native';
-import { MENU, TYPE, glass, heading } from './theme';
+import { MENU, TYPE, glass, heading, webStyle } from './theme';
 import { useMenuOccluder } from './useMenuOccluder';
 
 /**
@@ -20,6 +20,24 @@ interface TitleBlockProps {
 const HEADING_SIZE = { lg: 52, md: 34, sm: 24 } as const;
 const MARK_SIZE = { lg: 34, md: 24, sm: 18 } as const;
 
+/**
+ * Legibility for the title copy over the hero: the rack is laid out
+ * *below* the measured title block (`HeroBandSlot`), so overlap is the
+ * exception (a font swap mid-relayout, a drift tile) — a soft void
+ * scrim behind the block plus a shadow under every line keeps the
+ * copy ≥ 4.5:1 even then, without reading as a panel.
+ */
+const SCRIM_PAD = { top: 18, bottom: 22, side: 40 } as const;
+const SCRIM_STYLE = webStyle({
+  backgroundImage:
+    'radial-gradient(ellipse 72% 90% at 50% 46%, rgba(11,18,15,0.82) 0%, rgba(11,18,15,0.55) 52%, rgba(11,18,15,0) 100%)',
+});
+const TITLE_SHADOW = {
+  textShadowColor: 'rgba(11,18,15,0.55)',
+  textShadowOffset: { width: 0, height: 1 },
+  textShadowRadius: 12,
+} as const;
+
 export function TitleBlock({ size = 'lg', align = 'center', tagline = true }: TitleBlockProps) {
   const h = HEADING_SIZE[size];
   const center = align === 'center';
@@ -35,7 +53,19 @@ export function TitleBlock({ size = 'lg', align = 'center', tagline = true }: Ti
         gap: size === 'lg' ? 10 : 6,
       }}
     >
-      <Text style={[TYPE.label, { color: MENU.gold }]}>Hong Kong Mahjong</Text>
+      <View
+        aria-hidden
+        pointerEvents="none"
+        style={{
+          position: 'absolute',
+          top: -SCRIM_PAD.top,
+          bottom: -SCRIM_PAD.bottom,
+          left: -SCRIM_PAD.side,
+          right: -SCRIM_PAD.side,
+          ...SCRIM_STYLE,
+        }}
+      />
+      <Text style={[TYPE.label, TITLE_SHADOW, { color: MENU.gold }]}>Hong Kong Mahjong</Text>
       <View
         style={{
           flexDirection: 'row',
@@ -49,13 +79,14 @@ export function TitleBlock({ size = 'lg', align = 'center', tagline = true }: Ti
           accessibilityRole="header"
           // RN-Web maps `accessibilityRole="header"` to an `<h1>` so
           // `getByRole('heading', { name: 'Modern Mahjong' })` resolves.
-          style={[heading(h), center ? { textAlign: 'center' } : null]}
+          style={[heading(h), TITLE_SHADOW, center ? { textAlign: 'center' } : null]}
         >
           Modern Mahjong
         </Text>
         <Text
           style={[
             TYPE.serif,
+            TITLE_SHADOW,
             {
               fontSize: MARK_SIZE[size],
               lineHeight: MARK_SIZE[size] + 4,
@@ -70,6 +101,7 @@ export function TitleBlock({ size = 'lg', align = 'center', tagline = true }: Ti
         <Text
           style={[
             TYPE.body,
+            TITLE_SHADOW,
             {
               fontSize: size === 'lg' ? 14 : 12,
               lineHeight: size === 'lg' ? 20 : 17,
