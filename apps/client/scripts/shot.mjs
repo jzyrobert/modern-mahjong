@@ -221,6 +221,18 @@ async function runStep(page, step, ctx) {
       .waitFor({ timeout: scaled(step.timeout ?? 15_000) });
   if (step.waitMs) return page.waitForTimeout(step.waitMs);
   if (step.evaluate) return page.evaluate(step.evaluate);
+  if (step.resizeViewport) {
+    // Grow / shrink the viewport after load, the way a mobile browser's
+    // URL bar retracting hands the page more height without a reload.
+    // `{ grow: n }` adds n CSS px to the current height; `{ width,
+    // height }` sets an absolute size.
+    const cur = page.viewportSize() ?? { width: 412, height: 700 };
+    const r = step.resizeViewport;
+    return page.setViewportSize({
+      width: r.width ?? cur.width,
+      height: r.height ?? cur.height + (r.grow ?? 0),
+    });
+  }
   if (step.waitForFunction)
     return page.waitForFunction(step.waitForFunction, null, {
       timeout: scaled(step.timeout ?? 15_000),
