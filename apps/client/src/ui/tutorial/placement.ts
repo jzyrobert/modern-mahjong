@@ -105,9 +105,10 @@ export const MAX_CHROME_SHIFT = 140;
 export const MAX_KEEPOUT_SHIFT = 260;
 export const CARD_MAX_WIDTH = 440;
 /** A centred (no-target) card on a short, wide viewport (landscape
- *  phone) may use this much width: three lines of body instead of four
- *  with the fourth capped mid-sentence by the room above the hand row. */
-export const CENTRE_MAX_WIDTH_SHORT = 560;
+ *  phone) may use this much width: the band between the top HUD and the
+ *  hand row holds ~3 body lines, so a wider card keeps a three-sentence
+ *  intro inside them instead of scrolling. */
+export const CENTRE_MAX_WIDTH_SHORT = 600;
 /** Viewports shorter than this are "short" (landscape phones). */
 export const SHORT_VIEWPORT_MAX_HEIGHT = 600;
 /** Height assumed for the bottom strip before it has been measured. */
@@ -969,9 +970,14 @@ export function centredRoom(
   avoid: readonly HaloRect[],
   viewport: { width: number; height: number },
   cardWidth: number,
+  /** The card's left edge when it is not dead centre — the narrower
+   *  column beside a keep-out region (the lesson-complete card beside
+   *  the result panel). Measured from the centre the column card
+   *  counted the panel's own title as chrome above it and lost a line. */
+  cardLeft: number = (viewport.width - cardWidth) / 2,
 ): number {
   const safe = safeInset(viewport.width);
-  const left = (viewport.width - cardWidth) / 2;
+  const left = cardLeft;
   const right = left + cardWidth;
   let topBound = safe;
   for (const r of avoid) {

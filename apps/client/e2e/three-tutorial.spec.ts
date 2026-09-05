@@ -106,6 +106,12 @@ test('3D tutorial: coach-marks render over the canvas with zero errors and perf 
   await cta.click();
   await expect(page.getByText('Welcome to mahjong')).toBeVisible();
   await expect(page.getByTestId('tutorial-halo')).toHaveCount(0);
+  // The glass is a tint, not a window: at 0.86 the dice and the plate
+  // glyph were legible through the header and action rows.
+  const cardBg = await page
+    .getByTestId('tutorial-card')
+    .evaluate((el) => getComputedStyle(el as HTMLElement).backgroundColor);
+  expect(cssAlpha(cardBg), cardBg).toBeGreaterThanOrEqual(0.93);
 
   // Step 3 — own-hand: the halo appears again once the 3D shell has a
   // registered `own-hand` rect; the CTA is still on screen.
@@ -179,6 +185,17 @@ interface Box {
   width: number;
   height: number;
 }
+/** Alpha channel of a computed `rgb()` / `rgba()` colour (1 when opaque). */
+const cssAlpha = (color: string): number => {
+  const m = color.match(/rgba?\(([^)]+)\)/);
+  if (!m) return Number.NaN;
+  const parts = m[1]!
+    .split(/[\s,/]+/)
+    .filter(Boolean)
+    .map(Number);
+  return parts.length >= 4 ? parts[3]! : 1;
+};
+
 const intersects = (a: Box, b: Box) =>
   a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
 const contains = (outer: Box, inner: Box) =>
@@ -974,6 +991,97 @@ test.describe('3D coach-marks: tsumo button ring (phone)', () => {
     expect(cardBox).not.toBeNull();
     for (const b of await ownHandTileBoxes(page))
       expect(intersects(cardBox!, b), `card over tile ${JSON.stringify(b)}`).toBe(false);
+  });
+});
+
+/**
+ * Desktop: the declare-win CTA lives in the footer's centred slot, level
+ * with the sort control, so the spotlit button — and the ring around it
+ * — sits under the projected hand instead of running into the tiles'
+ * bottom glyphs (stacked above the sort row its top edge was ~8 px
+ * inside the hand rect on 1440×900).
+ */
+test.describe('3D coach-marks: tsumo button ring (desktop)', () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+  test.setTimeout(60_000);
+  test('the Declare win button clears the hand row and the ring hugs it', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.getByRole('heading', { name: 'Modern Mahjong' })).toBeVisible();
+    await page.evaluate(() => {
+      const g = globalThis as { __MAHJONG_TEST_START_TUTORIAL__?: (id: string) => void };
+      g.__MAHJONG_TEST_START_TUTORIAL__?.('win');
+    });
+    await expect(page.getByText('Winning a hand')).toBeVisible({ timeout: 15_000 });
+    await page.getByTestId('tutorial-next').click();
+    await expect(page.getByText("You're already winning!")).toBeVisible();
+    const button = page.getByRole('button', { name: /^Declare win \(tsumo/ });
+    await expect(button).toBeVisible();
+    const tiles = await ownHandTileBoxes(page);
+    expect(tiles.length).toBeGreaterThan(0);
+    const handBottom = Math.max(...tiles.map((t) => t.y + t.height));
+    const b = await button.boundingBox();
+    expect(b).not.toBeNull();
+    // Whole button below the hand, with room for the ring's padding.
+    expect(b!.y, `button top ${b!.y} vs hand bottom ${handBottom}`).toBeGreaterThanOrEqual(
+      handBottom + RING_SLACK,
+    );
+    const halo = page.getByTestId('tutorial-halo');
+    await expect
+      .poll(
+        async () => {
+          const h = await halo.boundingBox();
+          const bb = await button.boundingBox();
+          if (!h || !bb) return 'missing';
+          if (!contains(h, bb)) return 'not enclosed';
+          const slack = [
+            bb.x - h.x,
+            bb.y - h.y,
+            h.x + h.width - (bb.x + bb.width),
+            h.y + h.height - (bb.y + bb.height),
+          ];
+          return slack.every((v) => v <= RING_SLACK) ? 'hugging' : `loose ${slack.map(Math.round)}`;
+        },
+        { timeout: 15_000 },
+      )
+      .toBe('hugging');
+    // …and the ring itself stays off the tiles.
+    const h = await halo.boundingBox();
+    for (const t of tiles)
+      expect(intersects(h!, t), `ring over tile ${JSON.stringify(t)}`).toBe(false);
+  });
+});
+
+/**
+ * Landscape phone: the centred intro card lives in the ~215 px band
+ * between the top HUD and the hand row. The dense frame (14 px pad, 7 px
+ * gaps, 22 px title) must leave three body lines visible there — the
+ * regular frame showed two plus a scroll chevron for a three-sentence
+ * intro — while the CTA keeps its 44 px and the card keeps off the hand.
+ */
+test.describe('3D coach-marks: landscape intro card shows three body lines', () => {
+  test.use({ viewport: { width: 915, height: 412 }, isMobile: true, hasTouch: true });
+  test.setTimeout(60_000);
+  test('Scoring 101 shows at least three lines above the hand', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.getByRole('heading', { name: 'Modern Mahjong' })).toBeVisible();
+    await page.evaluate(() => {
+      const g = globalThis as { __MAHJONG_TEST_START_TUTORIAL__?: (id: string) => void };
+      g.__MAHJONG_TEST_START_TUTORIAL__?.('scoring-intro');
+    });
+    await expect(page.getByText('Scoring 101')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('own-hand-tile').first()).toBeAttached();
+    const body = page.getByTestId('tutorial-body');
+    // 3 × 21 px lines (the overflow chevron's gutter sits on top of that).
+    await expect
+      .poll(async () => (await body.boundingBox())?.height ?? 0, { timeout: 15_000 })
+      .toBeGreaterThanOrEqual(63);
+    const cta = await page.getByTestId('tutorial-next').boundingBox();
+    expect(cta).not.toBeNull();
+    expect(cta!.height).toBeGreaterThanOrEqual(44);
+    const card = await page.getByTestId('tutorial-card').boundingBox();
+    expect(card).not.toBeNull();
+    for (const t of await ownHandTileBoxes(page))
+      expect(intersects(card!, t), `card over tile ${JSON.stringify(t)}`).toBe(false);
   });
 });
 

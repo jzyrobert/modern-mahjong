@@ -52,6 +52,7 @@ import {
   HALO_RADIUS,
   type HaloRect,
   NARROW_STRIP_MAX_WIDTH,
+  SHORT_VIEWPORT_MAX_HEIGHT,
   SIDE_CARD_MIN_WIDTH,
   SIDE_GAP,
   type SideMask,
@@ -227,8 +228,10 @@ interface ActiveStepProps {
 
 /** Coach-card glass. Deep enough that the felt, walls and tiles behind
  *  the header and action rows read as a tint, not as geometry through
- *  the card (whole-game critic: scene showing through at 0.74). */
-const GLASS_BG = 'rgba(12,16,14,0.86)';
+ *  the card: at 0.86 the dice, the plate glyph and the near-wall stacks
+ *  were still identifiable through the header and action rows, so the
+ *  fill sits just under opaque and the blur only softens the tint. */
+const GLASS_BG = 'rgba(12,16,14,0.94)';
 /** Backdrop blur behind a glass card (px). */
 const GLASS_BLUR_PX = 18;
 /** Opaque card for the docks that land over chrome or the spotlit
@@ -239,6 +242,9 @@ const GLASS_BLUR_PX = 18;
  *  backdrop-filter. */
 const GLASS_BG_SOLID = 'rgb(16,22,19)';
 const GLASS_BORDER = 'rgba(255,255,255,0.12)';
+/** Card frame on a short (landscape-phone) viewport — see `dense`. */
+const DENSE_CARD_PAD = 12;
+const DENSE_CARD_GAP = 6;
 const TEXT_PRIMARY = 'rgba(255,255,255,0.92)';
 const TEXT_SECONDARY = 'rgba(255,255,255,0.64)';
 const INK_ON_GOLD = '#2a2418';
@@ -513,6 +519,12 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
   const lessonLabel =
     lessonIndex >= 0 ? `Lesson ${lessonIndex + 1}/${LESSON_ORDER.length}` : 'Tutorial';
   const compact = placement.width < 260;
+  // Short viewport (landscape phone): the card lives in the ~215 px
+  // band between the top HUD and the hand row, where the regular
+  // frame (18 px pad, 10 px gaps, 26 px title) left two body lines and
+  // a scroll for a three-sentence intro. Trim the frame — never the 44
+  // px CTA — so a third line fits.
+  const dense = !compact && window.height <= SHORT_VIEWPORT_MAX_HEIGHT;
   // Below this width the header stacks (lesson + step labels on one
   // row, dots beneath) — a single row would wrap the labels.
   const stackedHeader = placement.width < 380;
@@ -533,16 +545,22 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
   // kind depends on the card height, and a cap keyed to the dock
   // oscillated between an above dock and a side dock every frame.)
   if (keepOut) {
-    const room = centredRoom(keepOut, avoidForCard, window, placement.width);
+    const room = centredRoom(keepOut, avoidForCard, window, placement.width, placement.left);
     bodyMaxHeight = Math.min(bodyMaxHeight, room - chromeNow);
   }
-  // Snap a capped body to whole lines so the scroll edge falls between
-  // lines instead of slicing one in half; never below three lines.
+  // Snap a capped body to whole lines *plus* the overflow cue's gutter:
+  // `ScrollBody` takes the gutter off the cap before it snaps the scroll
+  // area to whole lines, so a cap snapped to bare lines handed it one
+  // line less than the room held (a 75 px cap floored to 63 showed two
+  // lines and a chevron where three fitted). Never below three lines.
   const lineHeight = strip ? STRIP_LINE_HEIGHT : compact ? 17 : 21;
   // The vertical-slot cap decided above (docked card, no side slot).
   bodyMaxHeight = Math.min(bodyMaxHeight, slotBodyCap);
   if (strip) bodyMaxHeight = STRIP_LINE_HEIGHT * STRIP_BODY_LINES;
-  bodyMaxHeight = Math.max(lineHeight * 3, Math.floor(bodyMaxHeight / lineHeight) * lineHeight);
+  bodyMaxHeight = Math.max(
+    lineHeight * 3,
+    Math.floor((bodyMaxHeight - BODY_CUE_H) / lineHeight) * lineHeight + BODY_CUE_H,
+  );
   const ctaLabel = step.ctaLabel ?? 'Got it';
   const canRestart = stepIndex > 0 && lesson.id !== '_stub';
 
@@ -657,9 +675,9 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
               borderRadius: 16,
               borderWidth: 1,
               borderColor: GLASS_BORDER,
-              padding: strip ? STRIP_PAD : compact ? 12 : 18,
+              padding: strip ? STRIP_PAD : compact ? 12 : dense ? DENSE_CARD_PAD : 18,
               paddingHorizontal: strip ? 14 : undefined,
-              gap: strip ? 6 : compact ? 6 : 10,
+              gap: strip ? 6 : compact ? 6 : dense ? DENSE_CARD_GAP : 10,
               boxShadow: '0 12px 40px rgba(0,0,0,0.35)',
               // A stretched strip covers the chrome beneath it whole; the
               // content sits centred in the extra height.
@@ -721,8 +739,8 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
                 accessibilityRole="header"
                 accessibilityLabel={`Tutorial step: ${step.caption.title}`}
                 style={{
-                  fontSize: compact ? 15 : 20,
-                  lineHeight: compact ? 19 : 26,
+                  fontSize: compact ? 15 : dense ? 18 : 20,
+                  lineHeight: compact ? 19 : dense ? 22 : 26,
                   fontWeight: '800',
                   letterSpacing: -0.3,
                   color: TEXT_PRIMARY,
@@ -750,7 +768,7 @@ function ActiveStep({ lesson, step, stepIndex }: ActiveStepProps) {
                   justifyContent: 'space-between',
                   alignItems: compact ? 'stretch' : 'center',
                   gap: compact ? 0 : 10,
-                  marginTop: compact ? 0 : 2,
+                  marginTop: compact || dense ? 0 : 2,
                 }}
               >
                 <View
@@ -886,6 +904,7 @@ function ScrollBody({
     : maxHeight;
   return (
     <View
+      testID="tutorial-body"
       style={{ flexGrow: 0, flexShrink: 1, minHeight: 0 }}
       onLayout={(e) => onLayout?.(e.nativeEvent.layout.height)}
     >

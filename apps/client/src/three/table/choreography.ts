@@ -133,6 +133,32 @@ export function flightFor(
   return { kind: 'slide', duration: d(420), arc: rm ? 0 : 0.35, spin: 0, ease: easeInOutCubic };
 }
 
+/**
+ * Where along a flight the tile's orientation has got to (0..1), given
+ * the flight's raw time fraction `raw` and its eased position progress
+ * `e`. Position and orientation share `e` for most flights; the two hand
+ * ↔ table transitions front- or back-load the turn (a smoothstep over a
+ * third of the flight time) so the tile never crosses the arc half-turned:
+ *
+ * - `draw` (wall → a hand): the tile stays back-up and flat, as it lay
+ *   in the wall, through the arc and only stands up into the hand over
+ *   the last third. A tile rolling face-out mid-air both leaked a hidden
+ *   draw and, under the tutorial's veil, read as a dark floating slab.
+ * - `discard` (a hand → the river): the tile turns face-up over the
+ *   first third, so what crosses the arc to the river is the tile the
+ *   table is about to read, not its back.
+ */
+export function rotationProgress(kind: FlightKind, raw: number, e: number): number {
+  if (kind === 'draw') return smoothstep(clamp01((raw - DRAW_TURN_FROM) / (1 - DRAW_TURN_FROM)));
+  if (kind === 'discard') return smoothstep(clamp01(raw / DISCARD_TURN_BY));
+  return e;
+}
+const smoothstep = (t: number): number => t * t * (3 - 2 * t);
+/** Time fraction of a `draw` flight at which the tile starts to stand up. */
+export const DRAW_TURN_FROM = 0.65;
+/** Time fraction of a `discard` flight by which the tile lies face-up. */
+export const DISCARD_TURN_BY = 0.35;
+
 /** Is this the first layout of a freshly dealt hand? */
 export function looksFreshlyDealt(state: GameState): boolean {
   if (state.phase !== 'turn' && state.phase !== 'dealing') return false;
@@ -354,7 +380,7 @@ export class Choreographer {
         const e = fl.ease(raw);
         t.pos.lerpVectors(fl.from.pos, fl.to.pos, e);
         t.pos.y += fl.arc * Math.sin(Math.PI * raw);
-        t.quat.slerpQuaternions(fl.from.quat, fl.to.quat, e);
+        t.quat.slerpQuaternions(fl.from.quat, fl.to.quat, rotationProgress(fl.kind, raw, e));
         if (fl.spin !== 0) {
           _q.setFromAxisAngle(Y_AXIS, fl.spin * (1 - e));
           t.quat.premultiply(_q);

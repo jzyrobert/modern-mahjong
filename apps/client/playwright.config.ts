@@ -52,6 +52,10 @@ const SHARD_1_SPECS = [
   'manual-sort-drag.spec.ts',
   // 1 of 5 screenshot specs lands here (~21 s).
   'replay-library-screenshot-portrait.spec.ts',
+  // 3D tutorial coach-marks (17 tests, ~60 s on SwiftShader): here rather
+  // than beside the other 3D specs so shard 3 stops carrying every
+  // SwiftShader scene at once.
+  'three-tutorial.spec.ts',
 ];
 
 const SHARD_2_SPECS = [
@@ -86,8 +90,6 @@ const SHARD_3_SPECS = [
   'three-menu.spec.ts',
   // 3D render layer — settings panel + live preview (~15 s).
   'three-settings.spec.ts',
-  // 3D tutorial coach-marks (~8 s).
-  'three-tutorial.spec.ts',
 ];
 
 const ASSIGNED_SPECS = [...SHARD_1_SPECS, ...SHARD_2_SPECS, ...SHARD_3_SPECS];

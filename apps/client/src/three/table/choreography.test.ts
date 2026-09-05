@@ -3,9 +3,12 @@ import { type Quaternion, Vector3 } from 'three';
 import { describe, expect, test } from 'vitest';
 import {
   Choreographer,
+  DISCARD_TURN_BY,
+  DRAW_TURN_FROM,
   dispenseDelay,
   flightFor,
   looksFreshlyDealt,
+  rotationProgress,
   slotQuaternion,
 } from './choreography';
 import { type TileSlot, computeLayout } from './layout';
@@ -201,5 +204,47 @@ describe('Choreographer', () => {
   test('quaternion helper output is normalised', () => {
     const q: Quaternion = slotQuaternion(standing);
     expect(q.length()).toBeCloseTo(1);
+  });
+});
+
+describe('rotationProgress', () => {
+  const eased = (raw: number) => raw * raw; // any monotone ease will do
+  test('a drawn tile stays as it lay in the wall until the last third of the flight', () => {
+    expect(rotationProgress('draw', 0, 0)).toBe(0);
+    expect(rotationProgress('draw', 0.5, eased(0.5))).toBe(0); // top of the arc: untouched
+    expect(rotationProgress('draw', DRAW_TURN_FROM, eased(DRAW_TURN_FROM))).toBe(0);
+    expect(rotationProgress('draw', (1 + DRAW_TURN_FROM) / 2, 0.9)).toBeCloseTo(0.5);
+    expect(rotationProgress('draw', 1, 1)).toBe(1);
+  });
+  test('a discard lies face-up before the top of the arc', () => {
+    expect(rotationProgress('discard', 0, 0)).toBe(0);
+    expect(rotationProgress('discard', DISCARD_TURN_BY / 2, 0.1)).toBeCloseTo(0.5);
+    expect(rotationProgress('discard', DISCARD_TURN_BY, 0.2)).toBe(1);
+    expect(rotationProgress('discard', 0.5, 0.5)).toBe(1); // top of the arc: face-up
+    expect(rotationProgress('discard', 0.8, 0.9)).toBe(1);
+  });
+  test('every other flight turns in step with its eased position', () => {
+    for (const kind of ['claim', 'slide', 'dispense', 'reveal', 'appear'] as const)
+      for (const raw of [0, 0.25, 0.5, 0.9, 1])
+        expect(rotationProgress(kind, raw, eased(raw))).toBe(eased(raw));
+  });
+  test("a bot's draw is still back-up and flat at the top of its arc", () => {
+    const st = dealt(5);
+    // Seat 1's next draw: the top wall tile moves into its hidden hand.
+    const drawn = st.wall[st.wall.length - 1]!;
+    const next: GameState = {
+      ...st,
+      wall: st.wall.slice(0, -1),
+      hands: { ...st.hands, 1: [...st.hands[1], drawn] },
+    };
+    const c = new Choreographer({ reducedMotion: false });
+    c.setLayout(computeLayout(st, 0, OPTS), st, 0, 0, { snap: true });
+    const before = c.tiles[tileId(drawn)]!.quat.clone();
+    c.setLayout(computeLayout(next, 0, OPTS), next, 0, 100);
+    const t = c.tiles[tileId(drawn)]!;
+    expect(t.flight?.kind).toBe('draw');
+    c.update(0.016, 100 + t.flight!.duration / 2);
+    expect(Math.abs(t.quat.dot(before))).toBeGreaterThan(0.999);
+    expect(t.pos.y).toBeGreaterThan(before.length() - 1 + 0.5); // mid-arc, well off the felt
   });
 });

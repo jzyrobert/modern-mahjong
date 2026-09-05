@@ -125,6 +125,17 @@ const RETINT_ROUNDTRIP = (away, back) => [
   { waitMs: 250 },
 ];
 
+// Coach-card CTA press that waits for the card first: the opening card
+// holds for the camera rig (≤ 3.5 s) on top of a software rasteriser's
+// first paint, and a bare `clickTutorialNext` (8 s) timed out on a loaded
+// host before the card had even mounted.
+const TUTORIAL_NEXT = [
+  { waitFor: '[data-testid="tutorial-next"]', timeout: 40000 },
+  { clickTutorialNext: true },
+];
+/** Engine state via the test hatch (the zustand store's `state`). */
+const ENGINE = 'globalThis.__MAHJONG_TEST_GET_STATE__?.()?.state';
+
 export const STATES = {
   // ── Menu ─────────────────────────────────────────────────────────────
   menu: {
@@ -243,7 +254,7 @@ export const STATES = {
       { waitForText: 'Modern Mahjong' },
       { startTutorial: 'basics' },
       { waitMs: 800 },
-      { clickTutorialNext: true },
+      ...TUTORIAL_NEXT,
       { waitMs: 800 },
     ],
   },
@@ -256,9 +267,9 @@ export const STATES = {
       { waitForText: 'Modern Mahjong' },
       { startTutorial: 'basics' },
       { waitMs: 800 },
-      { clickTutorialNext: true },
+      ...TUTORIAL_NEXT,
       { waitMs: 500 },
-      { clickTutorialNext: true },
+      ...TUTORIAL_NEXT,
       { waitMs: 900 },
     ],
   },
@@ -266,26 +277,31 @@ export const STATES = {
     // `watch-bots` step: the shared discard pool is the target. The user's
     // first discard lands, then the bots start filling the pool — on the
     // 3D table the ring follows the projected river rect and every
-    // discarded tile carries the gold spotlight. Bots are paced to 1.8 s
-    // so the third discard (which completes the step and swaps the card)
-    // lands well after the shot, perf wait included — a shot taken during
-    // that swap catches the next card mid fade-in on SwiftShader.
+    // discarded tile carries the gold spotlight. Bots are paced to 5 s
+    // and the shot waits for the first bot discard, so the third (which
+    // completes the step and swaps the card) lands well after the shot,
+    // perf wait included — a shot taken during that swap catches the
+    // next card mid fade-in on SwiftShader.
     owner: 'tutorial',
     steps: [
-      { initScript: 'globalThis.__MAHJONG_TEST_BOT_PACE_MS__ = 1800;' },
+      { initScript: 'globalThis.__MAHJONG_TEST_BOT_PACE_MS__ = 5000;' },
       { goto: '/' },
       { waitForText: 'Modern Mahjong' },
       { startTutorial: 'basics' },
       { waitMs: 800 },
-      { clickTutorialNext: true },
+      ...TUTORIAL_NEXT,
       { waitMs: 400 },
-      { clickTutorialNext: true },
+      ...TUTORIAL_NEXT,
       { waitMs: 400 },
-      { clickTutorialNext: true },
+      ...TUTORIAL_NEXT,
       { waitForOwnHand: true },
       { waitMs: 600 },
       { clickTestId: 'own-hand-tile', nth: 0 },
-      { waitMs: 3000 },
+      // Shoot once the first bot discard is in the pool (the ring has
+      // something to follow); the second lands 5 s later and the third —
+      // which swaps the card — 10 s later, past the perf wait.
+      { waitForFunction: `(${ENGINE}?.discardOrder?.length ?? 0) >= 2`, timeout: 20000 },
+      { waitMs: 900 },
     ],
   },
   'tutorial-drawn-game-2': {
@@ -295,18 +311,70 @@ export const STATES = {
     // the next wall tile glows gold — and the card's fallback.
     owner: 'tutorial',
     steps: [
-      { initScript: 'globalThis.__MAHJONG_TEST_BOT_PACE_MS__ = 1500;' },
+      { initScript: 'globalThis.__MAHJONG_TEST_BOT_PACE_MS__ = 9000;' },
       { goto: '/' },
       { waitForText: 'Modern Mahjong' },
       { startTutorial: 'drawn-game' },
       { waitMs: 800 },
-      { clickTutorialNext: true },
+      ...TUTORIAL_NEXT,
       { waitForOwnHand: true },
       { waitMs: 600 },
       { clickTestId: 'own-hand-tile', nth: 0 },
-      // The wall holds two tiles; the first bot draws one at once, so
-      // shoot before its paced discard hands the last tile on.
-      { waitMs: 350 },
+      // The wall holds two tiles; the first bot draws one at once and
+      // its paced discard hands the last tile on 9 s later — shoot once
+      // that draw has landed (flight + bounce ≈ 1.2 s), inside the window.
+      { waitForFunction: `(${ENGINE}?.wall?.length ?? 2) === 1`, timeout: 20000 },
+      { waitMs: 1300 },
+    ],
+  },
+  'tutorial-drawn-game-2-draw-flight': {
+    // Same step, caught mid-arc: the first bot's draw stretched 30× (the
+    // choreography's slow-motion seam) so the frame shows the tile
+    // between the wall and the hidden hand under the tutorial veil. It
+    // must read as a flat, back-up tile in transit — not a half-turned
+    // slab — since the veil only dims, it does not hide motion.
+    owner: 'tutorial',
+    steps: [
+      { initScript: 'globalThis.__MAHJONG_TEST_BOT_PACE_MS__ = 30000;' },
+      { initScript: 'globalThis.__MAHJONG_TEST_MOTION_SLOWMO__ = 30;' },
+      { goto: '/' },
+      { waitForText: 'Modern Mahjong' },
+      { startTutorial: 'drawn-game' },
+      { waitMs: 800 },
+      ...TUTORIAL_NEXT,
+      { waitForOwnHand: true },
+      { waitMs: 600 },
+      { waitForPerf: true },
+      { clickTestId: 'own-hand-tile', nth: 0 },
+      { waitForFunction: `(${ENGINE}?.wall?.length ?? 2) === 1`, timeout: 20000 },
+      // 560 ms × 30 = 16.8 s of flight: the frame lands ~30 % in even
+      // after the verifier's own perf wait.
+      { waitMs: 4000 },
+    ],
+  },
+  'tutorial-drawn-game-2-discard-flight': {
+    // …and the first bot's discard mid-arc (same slow-motion seam): the
+    // tile must already be face-up on its way to the river.
+    owner: 'tutorial',
+    steps: [
+      // 12 s pace: the second bot's discard (which empties the wall and
+      // ends the hand under the result panel) lands 24 s in, after the
+      // shot; the first lands at 12 s.
+      { initScript: 'globalThis.__MAHJONG_TEST_BOT_PACE_MS__ = 12000;' },
+      { initScript: 'globalThis.__MAHJONG_TEST_MOTION_SLOWMO__ = 30;' },
+      { goto: '/' },
+      { waitForText: 'Modern Mahjong' },
+      { startTutorial: 'drawn-game' },
+      { waitMs: 800 },
+      ...TUTORIAL_NEXT,
+      { waitForOwnHand: true },
+      { waitMs: 600 },
+      { waitForPerf: true },
+      { clickTestId: 'own-hand-tile', nth: 0 },
+      { waitForFunction: `(${ENGINE}?.discardOrder?.length ?? 0) >= 2`, timeout: 30000 },
+      // 520 ms × 30 = 15.6 s of flight: the frame lands ~30 % in even
+      // after the verifier's own perf wait.
+      { waitMs: 4000 },
     ],
   },
   'tutorial-drawn-game-3': {
@@ -322,7 +390,7 @@ export const STATES = {
       { waitForText: 'Modern Mahjong' },
       { startTutorial: 'drawn-game' },
       { waitMs: 800 },
-      { clickTutorialNext: true },
+      ...TUTORIAL_NEXT,
       { waitForOwnHand: true },
       { waitMs: 600 },
       { clickTestId: 'own-hand-tile', nth: 0 },
@@ -352,7 +420,7 @@ export const STATES = {
       { waitForText: 'Modern Mahjong' },
       { startTutorial: 'scoring-intro' },
       { waitMs: 800 },
-      { clickTutorialNext: true },
+      ...TUTORIAL_NEXT,
       { waitMs: 1200 },
     ],
   },
@@ -378,7 +446,7 @@ export const STATES = {
       { waitForText: 'Modern Mahjong' },
       { startTutorial: 'claims' },
       { waitMs: 800 },
-      { clickTutorialNext: true },
+      ...TUTORIAL_NEXT,
       { waitForOwnHand: true },
       { waitMs: 600 },
       { clickTestId: 'own-hand-tile', nth: 0 },
@@ -396,7 +464,7 @@ export const STATES = {
       { waitForText: 'Modern Mahjong' },
       { startTutorial: 'win' },
       { waitMs: 800 },
-      { clickTutorialNext: true },
+      ...TUTORIAL_NEXT,
       { waitForOwnHand: true },
       { waitMs: 1200 },
     ],

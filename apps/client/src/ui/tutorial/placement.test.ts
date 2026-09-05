@@ -613,6 +613,16 @@ describe('centredRoom', () => {
   });
   test('falls back to the safe inset with nothing above, and ignores lower-half chrome', () => {
     const low = [{ left: 300, top: 250, width: 100, height: 30 }];
+    // A column card beside a keep-out region measures its own column,
+    // not the centre: chrome under the centre (the result panel's title)
+    // does not bound a card docked in the free column to its right.
+    const centreChrome = { left: 300, top: 120, width: 200, height: 40 };
+    expect(centredRoom(hand, [...hud, centreChrome, hand], landscape, 400, 500)).toBe(
+      centredRoom(hand, [...hud, hand], landscape, 400, 500),
+    );
+    expect(centredRoom(hand, [...hud, centreChrome, hand], landscape, 400)).toBeLessThan(
+      centredRoom(hand, [...hud, hand], landscape, 400),
+    );
     expect(centredRoom(hand, [...low, hand], landscape, 440)).toBe(
       300 - CENTRE_CHROME_GAP - safeInset(915),
     );
