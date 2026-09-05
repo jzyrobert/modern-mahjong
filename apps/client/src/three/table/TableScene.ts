@@ -121,6 +121,11 @@ export interface SyncInput {
   hideSideSeats?: boolean | undefined;
   /** The user's melds stand in the hand row — see `LayoutOptions.ownMeldsStanding`. */
   ownMeldsStanding?: boolean | undefined;
+  /**
+   * Lay every seat's concealed hand face-up, as the resolved hand does
+   * — the replay's "all seats" point of view (`src/three/replay`).
+   */
+  revealAll?: boolean | undefined;
 }
 
 export interface TableDebugTile {
@@ -659,7 +664,7 @@ export class TableScene {
       sortMode: input.sortMode,
       manualOrder: input.manualOrder,
       drawnTileId: input.drawnTileId,
-      reveal: state.phase === 'resolved',
+      reveal: state.phase === 'resolved' || input.revealAll === true,
       heldHand: input.heldHand ?? null,
       riverScale: input.riverScale ?? 1,
       hideSideWallsBeyondZ: input.hideSideWallsBeyondZ,

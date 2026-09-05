@@ -75,20 +75,34 @@ apps/client/src/three/
 │   │                      changes re-tint live.
 │   ├── Settings3D.tsx
 │   └── quality.tsx        Renderer / quality controls (classic ↔ 3D).
-└── tutorial/      Tutorial subsystem.
-    ├── Spotlight.ts       3D spotlight + rim highlight on the target
-    │                      tiles / slots (world-space, not DOM rects).
-    ├── targets.ts         Maps TutorialTargetId → world anchor, projects
-    │                      to screen so the existing coach-mark overlay
-    │                      (TutorialOverlay) keeps working unchanged.
-    └── Tutorial3D.tsx
+├── tutorial/      Tutorial subsystem.
+│   ├── Spotlight.ts       3D spotlight + rim highlight on the target
+│   │                      tiles / slots (world-space, not DOM rects).
+│   ├── targets.ts         Maps TutorialTargetId → world anchor, projects
+│   │                      to screen so the existing coach-mark overlay
+│   │                      (TutorialOverlay) keeps working unchanged.
+│   └── Tutorial3D.tsx
+└── replay/        Replay player (`/replays/[id]` under the 3D renderer).
+    ├── ReplayTable3D.tsx  Read-only table: the match's TableScene fed
+    │                      `frames[cursor].state`, camera behind the
+    │                      point-of-view seat, no hit targets; a cursor
+    │                      step springs the moved tiles (snaps under
+    │                      reduced motion).
+    └── layout.ts          HUD bands + seat-badge docks per viewport
+                           class, mirroring Table3DShell's (pure,
+                           unit-tested). The glass chrome itself is
+                           universal RN (`src/ui/replay/Glass*`) and
+                           reaches these through `entry.tsx`.
 ```
 
 Rules:
 
 - `core/` and `tiles/` must not import from `table/`, `menu/`, `settings/`
   or `tutorial/`. Subsystems may import `core/` and `tiles/` and nothing
-  from each other.
+  from each other — with one deliberate exception: `replay/` imports
+  `table/` (`TableScene`, `layout`, `cameraPresets`), because a replay
+  *is* the match's table shown at a recorded frame; it never re-derives
+  the scene.
 - Game logic, scoring, claim rules: import from `@mahjong/game-logic`.
   Never re-derive in the render layer.
 - Anything a user clicks must also exist as a DOM element with the same
@@ -240,7 +254,8 @@ loads the exported bundle, drives to a named state, and writes
 
 States are recipes in `scripts/shot-states.mjs` (menu, menu-online,
 settings, settings-skins, tutorial-basics-step0, match-dealt,
-match-my-turn, match-claim, match-result, replay-library, …). Each recipe
+match-my-turn, match-claim, match-result, replay-library,
+replay-player-mid, …). Each recipe
 is a list of steps (goto, click, waitFor, evaluate, setSetting). Adding a
 state = adding a recipe. `--renderer classic|3d`, `--viewport
 phone|phone-tall|phone-small|phone-landscape|tablet|desktop`, `--dist

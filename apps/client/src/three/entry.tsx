@@ -1,6 +1,8 @@
 import type { ComponentType } from 'react';
 import type { CameraMotion, ScreenBounds } from './core/sceneRects';
 import type { ReplayShelf3DProps } from './menu/ReplayShelf3D';
+import type { ReplayTable3DProps } from './replay/ReplayTable3D';
+import type { BadgeSlot, Insets, ReplayChrome } from './replay/layout';
 import type { SettingsPreview3DProps } from './settings/SettingsPreview3D';
 import type { Table3DShellProps } from './table/Table3DShell';
 import type { Lobby3DViewProps } from './table/hud/LobbyGlass';
@@ -19,6 +21,25 @@ export const SettingsPreview3D: ComponentType<SettingsPreview3DProps> | null = n
 export const Tutorial3D: ComponentType<Record<string, never>> | null = null;
 export const Lobby3DView: ComponentType<Lobby3DViewProps> | null = null;
 export const ReplayShelf3D: ComponentType<ReplayShelf3DProps> | null = null;
+/** Read-only 3D table for the replay player (`replay/ReplayTable3D`). */
+export const ReplayTable3D: ComponentType<ReplayTable3DProps> | null = null;
+/**
+ * HUD bands + seat-badge docks for the glass replay chrome
+ * (`replay/layout`): the chrome row, portrait seat strip, the dock under
+ * the held hand, footer rows, and where each seat's badge pins per
+ * viewport class. Null on native (the classic player renders there).
+ */
+export interface ReplayHudLayout {
+  chrome(width: number, height: number, insets: Insets): ReplayChrome;
+  badgeSlots(
+    width: number,
+    height: number,
+    insets: Insets,
+  ): { top: BadgeSlot; left: BadgeSlot; right: BadgeSlot } | null;
+  /** Portrait floor band between the near rail and the held hand (`replay/layout`). */
+  apron(width: number, height: number, insets: Insets): { top: number; height: number } | null;
+}
+export const replayHudLayout: ReplayHudLayout | null = null;
 
 /**
  * Read-only handle on the scene-derived bounds the table publishes
