@@ -266,7 +266,12 @@ export function buildShelfScene(ctx: SceneContext, opts: ShelfSceneOptions): Sce
       const live = write(now);
       if (!live) settled = true;
       publishBounds(settled);
-      return live;
+      // This frame wrote poses, so it must render — including the one
+      // that lands the last tween (`write` returns false for it): a
+      // scene that idles right there leaves the canvas on the previous,
+      // mid-drop frame for good (tops cut by the canvas edge, shadow
+      // smeared) — which is what a 2 fps software rasteriser shows.
+      return true;
     },
     resize(width, height) {
       rig.snap(shelfCamera(width / Math.max(1, height)));

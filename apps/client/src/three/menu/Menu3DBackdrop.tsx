@@ -30,27 +30,27 @@ function afterPaintWhenIdle(cb: () => void): () => void {
   };
 }
 
+type SceneModule = typeof import('./MenuSceneView');
+
 /**
- * Zero-prop menu backdrop that fills its positioned parent. The scene
- * module (three + TilePool + atlas) is pulled in with a dynamic import
- * once the lobby has painted and the main thread has gone idle, so the
- * first paint, LCP and TBT are measured on the DOM menu alone and the
- * WebGL canvas fades in afterwards (`MenuSceneView`, ~400 ms).
- *
- * Web-only — `src/three/entry.tsx` exports `null` on native. Whether
- * to mount at all is `resolveMenuBackdrop()`'s call (`LobbyBackdrop`).
+ * Pull the scene module (three + TilePool + atlas) in with a dynamic
+ * import once the lobby has painted and the main thread has gone idle,
+ * so the first paint, LCP and TBT are measured on the DOM menu alone.
+ * Both menu canvases share the chunk — the second import resolves from
+ * the module cache.
  */
-export function Menu3DBackdrop() {
+function useLazyScene(pick: (m: SceneModule) => ComponentType): ComponentType | null {
   const [Scene, setScene] = useState<ComponentType | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `pick` is a module-level selector
   useEffect(() => {
     let alive = true;
     const cancel = afterPaintWhenIdle(() => {
       import('./MenuSceneView')
         .then((m) => {
-          if (alive) setScene(() => m.MenuSceneView);
+          if (alive) setScene(() => pick(m));
         })
         .catch((err) => {
-          console.warn('Menu3DBackdrop: scene failed to load', err);
+          console.warn('Menu3D: scene failed to load', err);
         });
     });
     return () => {
@@ -58,5 +58,30 @@ export function Menu3DBackdrop() {
       cancel();
     };
   }, []);
+  return Scene;
+}
+
+const pickDrift = (m: SceneModule) => m.MenuSceneView;
+const pickHero = (m: SceneModule) => m.HeroSceneView;
+
+/**
+ * Zero-prop menu backdrop that fills its positioned parent: the drift
+ * field in the fixed canvas behind the page (`MenuSceneView`).
+ *
+ * Web-only — `src/three/entry.tsx` exports `null` on native. Whether
+ * to mount at all is `resolveMenuBackdrop()`'s call (`LobbyBackdrop`).
+ */
+export function Menu3DBackdrop() {
+  const Scene = useLazyScene(pickDrift);
+  return Scene ? <Scene /> : null;
+}
+
+/**
+ * Zero-prop hero canvas that fills its positioned parent — the lobby's
+ * hero band (`HeroBandSlot`), which is ScrollView content, so the rack
+ * + dice scroll with the title on the compositor (`HeroSceneView`).
+ */
+export function Menu3DHero() {
+  const Scene = useLazyScene(pickHero);
   return Scene ? <Scene /> : null;
 }

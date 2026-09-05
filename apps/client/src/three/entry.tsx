@@ -17,6 +17,8 @@ import type { Lobby3DViewProps } from './table/hud/LobbyGlass';
  */
 export const Table3DShell: ComponentType<Table3DShellProps> | null = null;
 export const Menu3DBackdrop: ComponentType<Record<string, never>> | null = null;
+/** The menu hero (rack + dice) canvas the lobby mounts inside its hero band. */
+export const Menu3DHero: ComponentType<Record<string, never>> | null = null;
 export const SettingsPreview3D: ComponentType<SettingsPreview3DProps> | null = null;
 export const Tutorial3D: ComponentType<Record<string, never>> | null = null;
 export const Lobby3DView: ComponentType<Lobby3DViewProps> | null = null;

@@ -502,6 +502,25 @@ CC0-only asset policy, verifier rules. Operational notes:
   feedback ("white band at the bottom when scrolling") was this. Sticky
   bars over the scrolling hero rack need a ≥ 0.94-alpha void fill, not
   quiet glass — blur over ivory tiles reads khaki.
+- **The menu hero scrolls as DOM, not as a re-aimed camera**: the rack +
+  dice render into a canvas mounted *inside* `HeroBandSlot` (ScrollView
+  content, `data-testid="menu-3d-hero"`), so the compositor moves them
+  with the title; only the drift field stays in the fixed backdrop
+  canvas (`menu-3d`). Round-3 phone feedback ("background tiles jitter
+  when scrolling") was the previous design re-applying `setViewOffset`
+  from scroll events a frame behind the compositor. The hero scene
+  (`three/menu/HeroScene.ts`) fits the rack in a *viewport-sized* frame
+  with the band at the origin and renders the band's sub-rectangle
+  (`setViewOffset(frameW, frameH, ox, oy, bandW, bandH)`, camera aspect =
+  viewport) — pixel-identical to the single-canvas rack, and the fit is
+  translation-invariant (layout test) so scroll position never enters.
+  Never subscribe the hero to `heroBand` / scroll; a re-fit is a resize
+  only (`__MAHJONG_MENU_DEBUG__.viewOffsetApplies` must stay flat across
+  a scroll — `three-menu.spec.ts` asserts it). `__MAHJONG_PERF__` is the
+  *sum* over live canvases (`core/perf.ts`), so a budget still judges the
+  page. A scene frame that writes poses must return `live` even when its
+  last tween just finished, or the final frame never renders (the hero
+  was captured "settled" half-way through its drop-in on SwiftShader).
 - **Overlays that hug a tile use the face rect**: `TableScene.tileRect`
   is the projection of the whole tile box (top bevel + back edge
   included, then floored to 44 px for the tap target).
