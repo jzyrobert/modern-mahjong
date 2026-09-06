@@ -1,11 +1,14 @@
-import { type Seat, tileLabel } from '@mahjong/game-logic';
+import { type Tile as MTile, type Seat, tileLabel } from '@mahjong/game-logic';
 import { type ReactNode, createContext, useContext } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import { type LogEntry, nameForSeat, useGame } from '../../state/game';
 import { Modal } from '../Modal';
+import { Tile } from '../Tile';
 import { COLORS } from '../colors';
 import { SEAT_WIND_GLYPH } from '../winds';
+import { SheetBody } from './SheetBody';
 import { GLASS_SHEET, type SheetTheme, seatColorFrom, sheetPalette } from './sheetTheme';
+import { useSheetPlacement } from './useSheetPlacement';
 
 interface GameLogProps {
   open: boolean;
@@ -35,6 +38,9 @@ export function GameLog({ open, onClose, mySeat = null, theme = 'paper' }: GameL
   const lobby = useGame((s) => s.lobby);
   const glass = theme === 'glass';
   const P = sheetPalette(theme);
+  // Glass: a bottom sheet on phones, a centred panel on desktop (a
+  // phone sheet pasted onto a 1440 px canvas read as the wrong UI).
+  const placement = useSheetPlacement();
   return (
     <Modal
       open={open}
@@ -42,10 +48,12 @@ export function GameLog({ open, onClose, mySeat = null, theme = 'paper' }: GameL
       onClose={onClose}
       maxWidth={520}
       variant={theme}
-      placement={glass ? 'bottom' : 'center'}
+      placement={glass ? placement : 'center'}
     >
       <LogThemeContext.Provider value={{ glass, mySeat }}>
-        <ScrollView
+        <SheetBody
+          theme={theme}
+          testID="game-log-body"
           contentContainerStyle={{
             padding: glass ? 14 : 18,
             paddingBottom: glass ? 24 : 18,
@@ -108,7 +116,7 @@ export function GameLog({ open, onClose, mySeat = null, theme = 'paper' }: GameL
               </View>
             ))
           )}
-        </ScrollView>
+        </SheetBody>
       </LogThemeContext.Provider>
     </Modal>
   );
@@ -141,6 +149,18 @@ function DescribeEvent({ entry, lobby }: { entry: LogEntry; lobby: Lobby }) {
         </Line>
       );
     case 'discarded':
+      if (glass) {
+        // The tile itself, not its code ("9p"): a face reads at a glance
+        // and matches the breakdown's felt strips.
+        return (
+          <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
+            <Line>
+              <SeatLabel seat={e.seat} lobby={lobby} /> discarded
+            </Line>
+            <TileFace tile={e.tile} />
+          </View>
+        );
+      }
       return (
         <Line>
           <SeatLabel seat={e.seat} lobby={lobby} /> discarded <TileChip label={tileLabel(e.tile)} />
@@ -261,6 +281,25 @@ function Strong({ children, color }: { children: ReactNode; color?: string }) {
     <Text style={{ fontWeight: '800', color: color ?? (glass ? GLASS_SHEET.text : COLORS.ink) }}>
       {children}
     </Text>
+  );
+}
+
+/** Glass rows: a small face-up tile on a felt-dark chip. */
+function TileFace({ tile }: { tile: MTile }) {
+  return (
+    <View
+      accessibilityLabel={tileLabel(tile)}
+      testID="game-log-tile"
+      style={{
+        padding: 2,
+        borderRadius: 5,
+        backgroundColor: GLASS_SHEET.feltCard,
+        borderWidth: 1,
+        borderColor: GLASS_SHEET.feltCardBorder,
+      }}
+    >
+      <Tile tile={tile} width={17} height={24} />
+    </View>
   );
 }
 

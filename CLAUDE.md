@@ -675,3 +675,40 @@ CC0-only asset policy, verifier rules. Operational notes:
   frame choice and hand-at-rest have settled, then reveals once
   (`revealed` seam; recipes wait on it) — never relayout after first
   paint.
+- **The hero rack is a drift keep-out on every viewport class**
+  (`DriftScene.sceneOccluders`, ramp `RACK_BAND_PX` 2 on phones /
+  `RACK_BAND_PX_WIDE` 12 on wide): round-5 found a far back sitting on
+  the desktop rack's 一萬 corner while the keep-out was phone-only — a
+  tile "peeking past the fan" is debris, not depth. Drift tiles also
+  fade against the *canvas edge* (`EDGE_FADE_R`: scale = d / 0.92 r, so
+  a scaled tile never crosses the edge) and the re-seed scores a spot by
+  the same fade, so no fragment clips in at a phone's edge and frozen
+  reduced-motion seeds never park half-cut. Re-fits coalesce over
+  `FIT_COALESCE_MS` (80 ms): a rotation is a canvas resize, then the
+  band's re-measure a frame later — the frame / band latch at once (view
+  offset with the new aspect immediately), the eased fit runs once.
+  `three-menu.spec.ts` asserts exactly +1 `driftRelayouts` per width
+  change. The lazy scene import also waits for the `first-contentful-
+  paint` entry (`Menu3DBackdrop.afterFirstContentfulPaint`, 3 s cap).
+- **In-match glass sheets follow the shell, not the phone**: placement
+  comes from `ui/match/sheetLayout.ts` (`sheetPlacementFor` — bottom
+  sheet under 768 × 600, centred panel above; the same breakpoint
+  `SettingsPanel` uses for its side sheet) through `useSheetPlacement`,
+  and every scrolling body is a `SheetBody` (ScrollView + bottom fade /
+  chevron while `sheetShowsCue`, `data-testid="sheet-scroll-cue"`, plus
+  an optional pinned `footer` — the breakdown's TOTAL row lives there so
+  it is always reachable). The glass `Modal` drives its own presence
+  tween (`useGlassPresence`: 280 ms in / 180 ms out, transform +
+  opacity, ≤ 120 ms under reduced motion; RN's `slide` / `fade` stay on
+  paper). The card is wrapped in an `Animated.View` that carries the
+  width / height caps — the title's grandparent is still the card.
+  Settings recipes measure the sheet *over the live table*, so the
+  `settings` budget in `shot-states.mjs` is a page total (18 programs /
+  20 textures), not the preview's own.
+- **Replay timeline cards carry a fixed base** (`TIMELINE_CARD_BASE`
+  18 px = 2 × padding + 2 × border): RN's `flex: weight` is
+  `flex-basis: 0` on a border-box, which floors at padding + border, so
+  a card is `base + share · free`. `ratioToX` / `xToRatio` include it;
+  with unequal weights (the compact strip doubles the current card) the
+  maths-only seam was ~4 px / 2 frames off. Chapter results split into
+  a shrinkable name run and a fixed faan run (`splitChapterResult`).

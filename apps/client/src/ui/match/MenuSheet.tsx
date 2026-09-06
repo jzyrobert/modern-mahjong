@@ -1,4 +1,4 @@
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
 import { useTransport } from '../../net/transport-context';
 import { useRecorder } from '../../replay/recorder';
@@ -9,6 +9,7 @@ import { COLORS } from '../colors';
 import { CheckIcon, TrophyIcon, TutorialIcon } from '../menu/icons';
 import { basicsLesson } from '../tutorial/lessons/basics';
 import { EMOTES } from './ChatBar';
+import { SheetBody } from './SheetBody';
 import { type SheetTheme, sheetPalette } from './sheetTheme';
 
 export interface MenuSheetProps {
@@ -107,18 +108,14 @@ export function MenuSheet({
       maxWidth={520}
       variant={theme}
     >
-      {/* `ScrollView` so short viewports (iPhone SE in landscape, or
-          mobile portrait once Tutorial / Save-match / Auto-record rows
-          stack above Leave) can still reach every row. The Modal's
-          90% maxHeight already caps the sheet; the ScrollView just
-          lets content beyond that height scroll instead of clipping
-          Leave off the bottom. `flexGrow: 0` keeps the ScrollView
-          from stealing extra height — it still hugs its content
-          when everything fits. */}
-      <ScrollView
-        style={{ flexGrow: 0 }}
-        contentContainerStyle={{ padding: 14, gap: glass ? 6 : 8 }}
-      >
+      {/* `SheetBody` (a ScrollView with a fold cue) so short viewports
+          (iPhone SE in landscape, or mobile portrait once Tutorial /
+          Save-match / Auto-record rows stack above Leave) can still
+          reach every row. The Modal's 90% maxHeight already caps the
+          sheet; the body just lets content beyond that height scroll
+          instead of clipping Leave off the bottom, and still hugs its
+          content when everything fits. */}
+      <SheetBody theme={theme} contentContainerStyle={{ padding: 14, gap: glass ? 6 : 8 }}>
         {/* Emote row temporarily disabled — the reaction system is being
             reworked. Re-enable (or replace with the new reaction surface)
             once the redesign lands. */}
@@ -141,7 +138,7 @@ export function MenuSheet({
           onLeave={onLeave}
           theme={theme}
         />
-      </ScrollView>
+      </SheetBody>
     </Modal>
   );
 }

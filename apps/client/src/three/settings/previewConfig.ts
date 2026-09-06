@@ -67,10 +67,13 @@ export const PREVIEW_HFOV_DEG = 60;
  * ~570×170 → 3.4:1). Holding the horizontal fov there would collapse
  * the vertical fov to ~15° and crop both rails, so the vertical fov is
  * floored at the value it has here and the extra width becomes void.
- * 2.3 (was 1.9) lets the letterbox stage use ~20 % more of its height
- * while the rail ring (depth 4.7) still clears both edges.
+ * 2.3 (was 1.9) let the letterbox stage use ~20 % more of its height;
+ * 2.6 fills ~12 % more again — the rail ring (depth 4.7) still clears
+ * both edges with a band of void (the letterbox spec samples them) and
+ * the void either side of the rail drops from ~38 % to ~30 % of the
+ * canvas (round-5 menu critic).
  */
-export const PREVIEW_MAX_ASPECT = 2.3;
+export const PREVIEW_MAX_ASPECT = 2.6;
 
 /**
  * Vertical fov (deg) that yields `PREVIEW_HFOV_DEG` at this aspect,
@@ -80,6 +83,17 @@ export function verticalFovFor(aspect: number, hfovDeg = PREVIEW_HFOV_DEG): numb
   const half = Math.tan((hfovDeg * Math.PI) / 360);
   const a = Math.min(PREVIEW_MAX_ASPECT, Math.max(0.1, aspect));
   return (Math.atan(half / a) * 360) / Math.PI;
+}
+
+/**
+ * Drawing-buffer scale for the preview canvas. Phones (dpr ≥ 2) render
+ * at 2×; a dpr-1 desktop display gets 3× — the stage is ~400 × 236 CSS
+ * px, so the buffer stays around a megapixel while tile edges and the
+ * 五 / 發 strokes stop stair-stepping (`antialias: true` is not
+ * honoured by every context; 2× still showed steps at 1440 × 900).
+ */
+export function previewPixelRatio(deviceDpr: number): number {
+  return deviceDpr < 1.5 ? 3 : 2;
 }
 
 /** Felt slab (under the rail) and rail ring dimensions, world units. */

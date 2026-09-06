@@ -125,3 +125,13 @@ function chapterResult(
 export function shortChapterResult(result: string): string {
   return result.replace(/ \(self-draw\)$/, '').replace(/ wins (\d+) faan/, ' wins · $1 faan');
 }
+
+/**
+ * Split a win result into the run that may ellipsise ("Mei Ling wins ·"
+ * / "Robert wins") and the faan that must not ("0 faan"), with the
+ * separating space kept on the faan side. `null` for any other result.
+ */
+export function splitChapterResult(result: string): { head: string; faan: string } | null {
+  const m = /^(.*\bwins(?: ·)?) (\d+ faan(?: \(self-draw\))?)$/.exec(result);
+  return m ? { head: m[1] ?? '', faan: ` ${m[2] ?? ''}` } : null;
+}

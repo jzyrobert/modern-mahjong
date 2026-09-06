@@ -184,7 +184,7 @@ export function ReplaySeatBadge({
         boxShadow: '0px 1px 4px rgba(177,77,58,0.45)',
       }}
     >
-      <Text style={[TYPE.serif, { fontSize: 9, color: 'white', lineHeight: 11 }]}>莊</Text>
+      <Text style={[TYPE.serif, { fontSize: 11, color: 'white', lineHeight: 13 }]}>莊</Text>
     </View>
   ) : null;
   const scoreText = (

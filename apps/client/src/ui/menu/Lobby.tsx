@@ -2,13 +2,14 @@ import { useTransport } from '@/src/net/transport-context';
 import { BOT_LABELS, generateMatchCode } from '@mahjong/protocol';
 import { useRouter } from 'expo-router';
 import { type ReactNode, useEffect, useState } from 'react';
-import { ScrollView, Text, View, useWindowDimensions } from 'react-native';
+import { Platform, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getDisplayName, setDisplayName } from '../../identity';
 import { listHeaders } from '../../replay/storage';
 import { useGame } from '../../state/game';
 import { LESSON_ORDER } from '../../state/tutorial';
 import { BrowseLobbyModal } from '../BrowseLobbyModal';
+import { FullscreenPrompt } from '../FullscreenPrompt';
 import { JoinLanModal } from '../JoinLanModal';
 import { useStableViewportHeight } from '../useStableViewportHeight';
 import { HeroBandSlot } from './HeroBandSlot';
@@ -66,6 +67,12 @@ function DesktopLobby() {
   }, []);
 
   const columns = width >= 960 ? 3 : 2;
+  // A landscape phone whose URL bar has retracted (915 × 512) lands
+  // here rather than in the phone lobby; the root fullscreen prompt's
+  // fixed corner chip would then sit on the identity pill and, once
+  // scrolled, on the LAN card's copy — host it in this header instead
+  // (it claims the root instance while mounted).
+  const inlinePrompt = Platform.OS === 'web' && height < 600;
   // Reserve the upper ~38 % for the hero: the title block sits at the
   // top of this band and the fan renders in the measured slot below it
   // (`HeroBandSlot` — the 3D rack is fitted into that slot). Together
@@ -283,13 +290,16 @@ function DesktopLobby() {
               }}
             >
               <BrandMark size={26} />
-              <IdentityPill
-                name={name}
-                onChangeName={(v) => {
-                  setName(v);
-                  setDisplayName(v);
-                }}
-              />
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                {inlinePrompt ? <FullscreenPrompt inline /> : null}
+                <IdentityPill
+                  name={name}
+                  onChangeName={(v) => {
+                    setName(v);
+                    setDisplayName(v);
+                  }}
+                />
+              </View>
             </View>
             <View style={{ alignItems: 'center', marginTop: 26 }}>
               <TitleBlock size="lg" align="center" />

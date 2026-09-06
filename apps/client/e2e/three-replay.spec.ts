@@ -214,6 +214,26 @@ test('small phone: the dock clears the held hand and names survive the strip', a
     const full = n.label.split(',')[0]!.replace(' (you)', '');
     expect(n.text).toContain(full);
   }
+  // The current chapter card keeps its faan on the 360 px strip: the
+  // name is the run that ellipsises ("Mei Ling wi… 0 faan"), never the
+  // faan (round-5 replay critic: "Mei Ling wins · 0 …").
+  const card = page.getByLabel(/^Chapter HAND 2/);
+  const faan = card.getByText(/^\s*\d+ faan/);
+  await expect(faan).toBeVisible();
+  const cardBox = (await card.boundingBox())!;
+  const faanBox = (await faan.boundingBox())!;
+  expect(faanBox.x + faanBox.width).toBeLessThanOrEqual(cardBox.x + cardBox.width);
+  expect(await faan.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+  // Micro type on the chrome meets the 11 px floor: speed / POV-All
+  // segments and the dealer 莊 chip (10 / 10 / 9 px before).
+  const px = (loc: import('@playwright/test').Locator) =>
+    loc.evaluate((el) => {
+      const text = el.querySelector('div,span') ?? el;
+      return Number.parseFloat(getComputedStyle(text).fontSize);
+    });
+  expect(await px(page.getByRole('button', { name: 'Speed 1x' }))).toBeGreaterThanOrEqual(11);
+  expect(await px(page.getByRole('button', { name: 'POV All' }))).toBeGreaterThanOrEqual(11);
+  expect(await px(page.getByLabel('Dealer').first())).toBeGreaterThanOrEqual(11);
   expect(errors, 'console / page errors').toEqual([]);
 });
 

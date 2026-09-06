@@ -18,6 +18,7 @@
  *   { setSettings: { felt: 'jade' } }      patches useGame.settings via the test hook
  *   { waitForPerf: true }                  waits until __MAHJONG_PERF__ published ≥ 2 samples
    { dismissDice: true }                  taps the opening-rolls overlay away if it is showing
+   { clickUntil: { click, text } }        click + wait for text, retried (dismissing dice) up to 6×
    { waitForOwnHand: true }               waits for the first own-hand-tile hit target
    { waitForDrawCue: true }               waits for wall-draw-next, passing incidental claims
    { waitForClaimButton: 'Chi' }          waits for that claim button, passing incidental claims that do not offer it
@@ -322,10 +323,9 @@ const RETINT_ROUNDTRIP = (away, back) => [
  * accessible name and waits for a string that only the opened sheet
  * renders.
  */
-const OPEN_MENU = [
-  { click: '[aria-label="Open menu"]', timeout: 20000 },
-  { waitForText: 'Leave match' },
-];
+// Retrying open (`clickUntil`): on a loaded desktop run the dice
+// overlay can land after `dismissDice` moved on and eat the ☰ tap.
+const OPEN_MENU = [{ clickUntil: { click: '[aria-label="Open menu"]', text: 'Leave match' } }];
 const OPEN_MENU_ROW = (row, readyText) => [
   ...OPEN_MENU,
   { click: `role=button[name="${row}"]`, timeout: 10000 },
@@ -1545,7 +1545,12 @@ export const DEFAULT_SEED = 5;
 export const BUDGETS = {
   table: { drawCalls: 40, triangles: 150_000, programs: 12, frameMsP95: 8, textures: 12 },
   menu: { drawCalls: 20, triangles: 80_000, programs: 10, frameMsP95: 8, textures: 10 },
-  settings: { drawCalls: 48, triangles: 160_000, programs: 14, frameMsP95: 8, textures: 14 },
+  // Settings states open the sheet *over the live 3D table*, so the
+  // page total is the table's programs / textures plus the preview's
+  // (`__MAHJONG_PERF__` sums live canvases): a 12 + 6 program ceiling,
+  // not the preview's own. 14 / 14 was the preview-alone number and
+  // failed `settings @ phone-landscape` (17 / 19) on the baseline build.
+  settings: { drawCalls: 48, triangles: 160_000, programs: 18, frameMsP95: 8, textures: 20 },
   tutorial: { drawCalls: 48, triangles: 160_000, programs: 14, frameMsP95: 8, textures: 14 },
   // The replay player mounts the match's TableScene: the table budget.
   replay: { drawCalls: 40, triangles: 150_000, programs: 12, frameMsP95: 8, textures: 12 },

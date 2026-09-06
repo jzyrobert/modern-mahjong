@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Platform, Pressable, Text, View, useWindowDimensions } from 'react-native';
 import { useGame } from '../state/game';
 import { useTutorial } from '../state/tutorial';
@@ -18,11 +18,40 @@ const GLASS_PROMPT = {
   border: 'rgba(216,168,90,0.55)',
   fg: 'rgba(255,255,255,0.92)',
   gold: '#d8a85a',
-  dismissBg: 'rgba(14,20,17,0.78)',
-  // ≥ 0.62-alpha secondary text at full pill opacity — the earlier
-  // 0.85 wrapper opacity pulled the label under 4.5:1 on dark glass.
-  dismissFg: 'rgba(255,255,255,0.72)',
+  dismissBg: 'rgba(14,20,17,0.9)',
+  // Secondary text that *measures* ≥ 0.62 alpha on screen: the label
+  // sits on a translucent pill over a bright felt, and 0.72 on a 0.78
+  // pill read as ~0.55 grey to the round-5 critic. A denser pill and
+  // 0.84 ink keep it a secondary label that still clears 4.5:1.
+  dismissFg: 'rgba(255,255,255,0.84)',
 } as const;
+
+/**
+ * Surfaces that host the prompt *inline* (the wide lobby's header on a
+ * short landscape viewport — 915 × 512 once Android Chrome's URL bar
+ * has gone — mounts the desktop layout, whose cards scroll under a
+ * fixed corner chip: round-4 critic, "the fullscreen prompt overlaps
+ * the LAN card copy") claim it here so the root, absolutely-positioned
+ * instance stands down while they are mounted.
+ */
+let inlineClaims = 0;
+const claimListeners = new Set<() => void>();
+function claimInlinePrompt(): () => void {
+  inlineClaims++;
+  for (const l of claimListeners) l();
+  return () => {
+    inlineClaims--;
+    for (const l of claimListeners) l();
+  };
+}
+function subscribeClaims(fn: () => void): () => void {
+  claimListeners.add(fn);
+  return () => {
+    claimListeners.delete(fn);
+  };
+}
+const readClaims = () => inlineClaims > 0;
+const readNoClaims = () => false;
 
 /**
  * Browsers reject `Element.requestFullscreen()` outside a user-activation
@@ -58,7 +87,7 @@ const GLASS_PROMPT = {
  * iOS / Android, and the OS already handles fullscreen via its own
  * shell). SSR-safe — every DOM access is gated on `typeof document`.
  */
-export function FullscreenPrompt() {
+export function FullscreenPrompt({ inline = false }: { inline?: boolean } = {}) {
   const { height } = useWindowDimensions();
   const isLandscape = useIsLandscape();
   const [inFullscreen, setInFullscreen] = useState(false);
@@ -66,6 +95,9 @@ export function FullscreenPrompt() {
   const tutorialShowing = useTutorial((s) => s.active !== null || s.justCompleted !== null);
   const rendererSetting = useGame((s) => s.settings.renderer);
   const glass = resolveRenderer(rendererSetting) === '3d';
+  const claimed = useSyncExternalStore(subscribeClaims, readClaims, readNoClaims);
+  // An inline host owns the prompt while mounted (see `claimInlinePrompt`).
+  useEffect(() => (inline ? claimInlinePrompt() : undefined), [inline]);
 
   // Subscribe to the browser's fullscreen-change event so the prompt
   // re-mounts when the user exits fullscreen via Esc / system chrome.
@@ -95,6 +127,7 @@ export function FullscreenPrompt() {
   if (inFullscreen) return null;
   if (dismissed) return null;
   if (tutorialShowing) return null;
+  if (!inline && claimed) return null;
 
   return (
     // Top-right corner. The post-V2_3 landscape layout puts the ☰
@@ -108,7 +141,13 @@ export function FullscreenPrompt() {
     // doesn't catch taps — only its Pressable children do.
     <View
       pointerEvents="box-none"
-      style={{ position: 'absolute', top: 8, right: 8, zIndex: 1000, alignItems: 'flex-end' }}
+      style={
+        inline
+          ? // In a header row: the two pills side by side, scrolling with
+            // the page, so no card ever passes under them.
+            { flexDirection: 'row-reverse', alignItems: 'center', gap: 6 }
+          : { position: 'absolute', top: 8, right: 8, zIndex: 1000, alignItems: 'flex-end' }
+      }
     >
       <Pressable
         onPress={requestWebFullscreen}
@@ -163,8 +202,8 @@ export function FullscreenPrompt() {
         accessibilityRole="button"
         accessibilityLabel="Dismiss fullscreen prompt"
         style={({ pressed }) => ({
-          marginTop: glass ? 4 : 2,
-          alignSelf: 'flex-end',
+          marginTop: inline ? 0 : glass ? 4 : 2,
+          alignSelf: inline ? 'center' : 'flex-end',
           paddingHorizontal: glass ? 9 : 6,
           paddingVertical: glass ? 3 : 2,
           opacity: pressed ? 0.55 : glass ? 1 : 0.85,

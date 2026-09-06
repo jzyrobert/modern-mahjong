@@ -1,13 +1,5 @@
 import { type ReactNode, useState } from 'react';
-import {
-  Platform,
-  Pressable,
-  ScrollView,
-  Switch,
-  Text,
-  View,
-  useWindowDimensions,
-} from 'react-native';
+import { Platform, Pressable, Switch, Text, View, useWindowDimensions } from 'react-native';
 import {
   type FeltSkin,
   type QualityChoice,
@@ -19,8 +11,9 @@ import {
 import { SettingsPreview3D } from '../../three/entry';
 import { hasWebGL2, rendererOverride, resolveRenderer } from '../../three/renderer';
 import { Modal } from '../Modal';
-import { COLORS, SWITCH_TRACK } from '../colors';
+import { COLORS } from '../colors';
 import { HOVER_TRANSITION } from '../menu/theme';
+import { SheetBody } from './SheetBody';
 import {
   CHIP_METRICS,
   QUALITY_OPTIONS,
@@ -32,6 +25,7 @@ import {
   qualityHint,
   rendererDetail,
 } from './settingsOptions';
+import { isWideSheetViewport } from './sheetLayout';
 import { GLASS_SHEET } from './sheetTheme';
 import { FELT_SKINS, TILE_BACK_SKINS } from './skins';
 
@@ -40,12 +34,18 @@ interface SettingsPanelProps {
   onClose: () => void;
 }
 
-/** Mirrors `Match.tsx`'s shell breakpoint so the sheet placement follows the shell. */
-const DESKTOP_WIDTH = 768;
-const DESKTOP_HEIGHT = 600;
-
 /** Glass HUD palette — shared with the in-match sheets (`sheetTheme`). */
 const G = GLASS_SHEET;
+
+/** Switch colours inside the glass sheet (see `ToggleRow`). */
+const GLASS_SWITCH = {
+  track: 'rgba(216,168,90,0.85)',
+  trackOff: 'rgba(255,255,255,0.18)',
+  knob: '#f3ead8',
+  // RN-web only: the knob colour while on (its default is teal). Not in
+  // RN's prop types, so it rides in as a spread.
+  webKnob: { activeThumbColor: '#fbf6ea' } as Record<string, string>,
+} as const;
 
 /**
  * In-match preferences panel — glass sheet (bottom on phone, right-hand
@@ -61,7 +61,8 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
   const settings = useGame((s) => s.settings);
   const setSettings = useGame((s) => s.setSettings);
   const { width, height } = useWindowDimensions();
-  const isDesktop = width >= DESKTOP_WIDTH && height >= DESKTOP_HEIGHT;
+  // Mirrors `Match.tsx`'s shell breakpoint so the sheet placement follows the shell.
+  const isDesktop = isWideSheetViewport(width, height);
   const webgl2 = Platform.OS === 'web' && hasWebGL2();
   const live3D = webgl2 && SettingsPreview3D !== null;
   const resolved = resolveRenderer(settings.renderer);
@@ -80,7 +81,8 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
       placement={isDesktop ? 'right' : 'bottom'}
       maxWidth={isDesktop ? 440 : 600}
     >
-      <ScrollView
+      <SheetBody
+        theme="glass"
         testID="settings-panel"
         contentContainerStyle={{
           padding: isDesktop ? 18 : 14,
@@ -188,7 +190,7 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
             />
           </Card>
         </Section>
-      </ScrollView>
+      </SheetBody>
     </Modal>
   );
 }
@@ -618,9 +620,13 @@ function ToggleRow({ label, hint, value, onChange, testID }: ToggleRowProps) {
         onValueChange={onChange}
         accessibilityLabel={label}
         accessibilityState={{ checked: value }}
-        trackColor={{ true: SWITCH_TRACK.true, false: 'rgba(255,255,255,0.22)' }}
-        thumbColor="#ffffff"
-        ios_backgroundColor="rgba(255,255,255,0.22)"
+        // Glass language: a gold track when on (the HUD's one accent),
+        // ivory knob both ways — RN-web's default on-knob is teal and the
+        // classic coral track read as the old shell inside the sheet.
+        trackColor={{ true: GLASS_SWITCH.track, false: GLASS_SWITCH.trackOff }}
+        thumbColor={GLASS_SWITCH.knob}
+        {...GLASS_SWITCH.webKnob}
+        ios_backgroundColor={GLASS_SWITCH.trackOff}
       />
     </View>
   );

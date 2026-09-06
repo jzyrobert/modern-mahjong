@@ -1,9 +1,10 @@
 import type { FaanBreakdown, HandResult, Tile as MTile } from '@mahjong/game-logic';
 import { sortHand } from '@mahjong/game-logic';
-import { ScrollView, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import { Modal } from './Modal';
 import { Tile } from './Tile';
 import { COLORS } from './colors';
+import { SheetBody } from './match/SheetBody';
 import { type SheetPalette, type SheetTheme, microLabel, sheetPalette } from './match/sheetTheme';
 
 type WinResult = Extract<HandResult, { kind: 'win' }>;
@@ -84,31 +85,17 @@ export function ScoringBreakdownModal({
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 18, gap: 8 }}>
-        {breakdown.length === 0 ? (
-          <Text
-            style={{
-              fontSize: 12,
-              color: glass ? P.text2 : COLORS.ink3,
-              fontWeight: glass ? '500' : '600',
-              paddingVertical: 8,
-            }}
-          >
-            No bonus patterns — base hand only.
-          </Text>
-        ) : (
-          <>
-            {breakdown.map((b, i) => (
-              <BreakdownRow
-                // Stable per-row key — `name` alone isn't unique because
-                // the engine can emit duplicate-named entries.
-                key={`${b.name}-${i}`}
-                entry={b}
-                P={P}
-                glass={glass}
-              />
-            ))}
+      <SheetBody
+        theme={theme}
+        testID="breakdown-body"
+        contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 8, gap: 8 }}
+        footer={
+          breakdown.length > 0 ? (
+            // Pinned under the scroll region so the total is reachable
+            // however many patterns fired — on a landscape phone it
+            // used to sit below the fold with nothing to say so.
             <View
+              testID="breakdown-total"
               style={{
                 flexDirection: 'row',
                 justifyContent: 'space-between',
@@ -116,7 +103,8 @@ export function ScoringBreakdownModal({
                 borderTopWidth: glass ? 1 : 2,
                 borderColor: glass ? P.goldBorder : COLORS.ink,
                 paddingTop: 10,
-                marginTop: 4,
+                paddingBottom: 16,
+                marginHorizontal: 18,
               }}
             >
               <Text
@@ -139,9 +127,33 @@ export function ScoringBreakdownModal({
                 +{faan}
               </Text>
             </View>
-          </>
+          ) : null
+        }
+      >
+        {breakdown.length === 0 ? (
+          <Text
+            style={{
+              fontSize: 12,
+              color: glass ? P.text2 : COLORS.ink3,
+              fontWeight: glass ? '500' : '600',
+              paddingVertical: 8,
+            }}
+          >
+            No bonus patterns — base hand only.
+          </Text>
+        ) : (
+          breakdown.map((b, i) => (
+            <BreakdownRow
+              // Stable per-row key — `name` alone isn't unique because
+              // the engine can emit duplicate-named entries.
+              key={`${b.name}-${i}`}
+              entry={b}
+              P={P}
+              glass={glass}
+            />
+          ))
         )}
-      </ScrollView>
+      </SheetBody>
     </Modal>
   );
 }

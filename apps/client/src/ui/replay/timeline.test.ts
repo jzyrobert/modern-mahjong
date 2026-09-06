@@ -1,7 +1,14 @@
 import { describe, expect, test } from 'vitest';
 import type { ReplayChapter } from './chapters';
-import { shortChapterResult } from './chapters';
-import { pressX, ratioToX, timelineSegments, xToCursor, xToRatio } from './timeline';
+import { shortChapterResult, splitChapterResult } from './chapters';
+import {
+  TIMELINE_CARD_BASE,
+  pressX,
+  ratioToX,
+  timelineSegments,
+  xToCursor,
+  xToRatio,
+} from './timeline';
 
 function chapter(from: number, to: number, current: boolean, index = 1): ReplayChapter {
   return {
@@ -25,14 +32,21 @@ describe('timeline mapping', () => {
     const segs = timelineSegments(TWO_HANDS, true);
     expect(segs[0]!.weight).toBeCloseTo((105 / 189) * 2, 6);
     const width = 400;
-    const cardsW = width - 3;
-    const edge = (segs[0]!.weight / (segs[0]!.weight + segs[1]!.weight)) * cardsW;
+    // Each card is its padding + border (`TIMELINE_CARD_BASE`) plus its
+    // weighted share of what is left once the gap and both bases are out.
+    const freeW = width - 3 - 2 * TIMELINE_CARD_BASE;
+    const edge =
+      TIMELINE_CARD_BASE + (segs[0]!.weight / (segs[0]!.weight + segs[1]!.weight)) * freeW;
     // Cursor 105 (the first frame of hand 2) sits at the start of card 2.
     expect(ratioToX(segs, 105 / 189, width)).toBeCloseTo(edge + 3, 6);
     // Cursor 99 is 94 % through hand 1: 94 % across card 1, not 52 % of the strip.
     const x99 = ratioToX(segs, 99 / 189, width);
     expect(x99 / edge).toBeCloseTo(99 / 105, 6);
     expect(x99).toBeGreaterThan(width * 0.6);
+    // A border-box flex card floors at its base: with the base ignored
+    // the seam lands ~6 px early on a doubled current card.
+    const naive = (segs[0]!.weight / (segs[0]!.weight + segs[1]!.weight)) * (width - 3) + 3;
+    expect(Math.abs(edge + 3 - naive)).toBeGreaterThan(4);
   });
 
   test('x → ratio is the inverse of ratio → x inside every card', () => {
@@ -61,16 +75,22 @@ describe('timeline mapping', () => {
     expect(xToCursor(segs, 100, 0, total)).toBe(0);
     expect(xToCursor([], 200, 400, total)).toBe(Math.round(0.5 * (total - 1)));
     // A tap in the 3 px gap lands on a card edge.
-    const cardsW = 397;
-    const edge = (segs[0]!.weight / (segs[0]!.weight + segs[1]!.weight)) * cardsW;
+    const freeW = 397 - 2 * TIMELINE_CARD_BASE;
+    const edge =
+      TIMELINE_CARD_BASE + (segs[0]!.weight / (segs[0]!.weight + segs[1]!.weight)) * freeW;
     expect(xToRatio(segs, edge + 0.5, 400)).toBeCloseTo(105 / 189, 6);
     expect(xToRatio(segs, edge + 2.5, 400)).toBeCloseTo(105 / 189, 6);
   });
 
-  test('a single chapter maps linearly', () => {
+  test('a single chapter maps linearly across the card (base included)', () => {
     const segs = timelineSegments([chapter(0, 1, true)], true);
     expect(ratioToX(segs, 0.25, 200)).toBeCloseTo(50, 6);
     expect(xToCursor(segs, 150, 200, 101)).toBe(75);
+  });
+
+  test('equal weights cancel the base: the seam is the naive midpoint', () => {
+    const segs = timelineSegments([chapter(0, 0.5, false, 1), chapter(0.5, 1, true, 2)], false);
+    expect(ratioToX(segs, 0.5, 400)).toBeCloseTo((400 - 3) / 2 + 3, 6);
   });
 });
 
@@ -95,5 +115,20 @@ describe('shortChapterResult', () => {
     expect(shortChapterResult('Robert wins 5 faan')).toBe('Robert wins · 5 faan');
     expect(shortChapterResult('Drawn game')).toBe('Drawn game');
     expect(shortChapterResult('IN PROGRESS')).toBe('IN PROGRESS');
+  });
+});
+
+describe('splitChapterResult', () => {
+  test('keeps the faan as its own run, the name as the shrinkable one', () => {
+    expect(splitChapterResult('Mei Ling wins · 0 faan')).toEqual({
+      head: 'Mei Ling wins ·',
+      faan: ' 0 faan',
+    });
+    expect(splitChapterResult('Robert wins 5 faan (self-draw)')).toEqual({
+      head: 'Robert wins',
+      faan: ' 5 faan (self-draw)',
+    });
+    expect(splitChapterResult('Drawn game')).toBeNull();
+    expect(splitChapterResult('IN PROGRESS')).toBeNull();
   });
 });

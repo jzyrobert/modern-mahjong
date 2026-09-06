@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FeltSkin, TileBackSkin } from '../../state/game';
 import { type SceneContext, type SceneHandle, SceneHost } from '../core/SceneHost';
 import { PreviewScene } from './PreviewScene';
-import { PREVIEW_CAMERA } from './previewConfig';
+import { PREVIEW_CAMERA, previewPixelRatio } from './previewConfig';
 
 /**
  * Live 3D preview at the top of the settings panel — felt swatch, wood
@@ -48,6 +48,7 @@ export function SettingsPreview3D({ felt, tileBack, height = 210 }: SettingsPrev
 
   if (fatal) return null;
 
+  const dpr = useMemo(() => previewPixelRatio(globalThis.devicePixelRatio ?? 1), []);
   return (
     <div
       data-testid="settings-preview-3d"
@@ -72,10 +73,10 @@ export function SettingsPreview3D({ felt, tileBack, height = 210 }: SettingsPrev
         releaseContextOnUnmount
         // Full sharpness on every tier: the canvas is small and the
         // scene is ~6.6k triangles, and the face glyphs must stay crisp.
-        // `minDpr` supersamples 2× on dpr-1 desktops (stair-step edges
+        // `minDpr` supersamples dpr-1 desktops (stair-step edges
         // otherwise — software / non-MSAA contexts ignore `antialias`).
-        maxDpr={2}
-        minDpr={2}
+        maxDpr={dpr}
+        minDpr={dpr}
         onFatal={setFatal}
         testID="settings-preview-scene"
       />

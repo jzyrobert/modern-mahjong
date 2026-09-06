@@ -15,6 +15,7 @@ import {
   compensateBackColor,
   honorCell,
   linearLuminance,
+  previewPixelRatio,
   suitCell,
   verticalFovFor,
 } from './previewConfig';
@@ -118,5 +119,14 @@ describe('settings preview config', () => {
     expect(verticalFovFor(1.7)).toBeLessThan(38);
     // Degenerate aspect never divides by zero.
     expect(Number.isFinite(verticalFovFor(0))).toBe(true);
+  });
+});
+
+describe('previewPixelRatio', () => {
+  test('supersamples dpr-1 displays 3× and keeps phones at 2×', () => {
+    expect(previewPixelRatio(1)).toBe(3);
+    expect(previewPixelRatio(1.25)).toBe(3);
+    expect(previewPixelRatio(2)).toBe(2);
+    expect(previewPixelRatio(2.625)).toBe(2);
   });
 });

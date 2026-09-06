@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { type PlaybackPov, usePlayback } from '../../replay/playback';
 import { HOVER_TRANSITION, MENU, TYPE, glass } from '../menu/theme';
-import { type ReplayChapter, shortChapterResult } from './chapters';
+import { type ReplayChapter, shortChapterResult, splitChapterResult } from './chapters';
 import { MICRO } from './glassParts';
 import {
   PauseIcon,
@@ -19,7 +19,14 @@ import {
   StepBackIcon,
   StepForwardIcon,
 } from './icons';
-import { TIMELINE_GAP, pressX, ratioToX, timelineSegments, xToCursor } from './timeline';
+import {
+  TIMELINE_CARD_BASE,
+  TIMELINE_GAP,
+  pressX,
+  ratioToX,
+  timelineSegments,
+  xToCursor,
+} from './timeline';
 
 /**
  * Glass scrubber for the 3D replay player. The chapter cards *are* the
@@ -248,7 +255,9 @@ function ChapterCard({
         flex: weight,
         minWidth: 0,
         height,
-        paddingHorizontal: 8,
+        // `TIMELINE_CARD_BASE` = 2 × padding + 2 × border: the playhead
+        // and tap maths add it back per card.
+        paddingHorizontal: (TIMELINE_CARD_BASE - 2) / 2,
         borderRadius: 8,
         borderWidth: 1,
         borderColor: c.current ? 'rgba(216,168,90,0.6)' : MENU.hairlineSoft,
@@ -277,21 +286,34 @@ function ChapterCard({
       >
         {full ? label : String(c.index)}
       </Text>
-      {full ? (
-        <Text
-          style={{
-            fontSize: 11,
-            lineHeight: 13,
-            fontWeight: '600',
-            color: MENU.text3,
-            flexShrink: 1,
-            minWidth: 0,
-          }}
-          numberOfLines={1}
-        >
-          {compact ? shortChapterResult(c.result) : c.result}
-        </Text>
-      ) : null}
+      {full ? <ChapterResult text={compact ? shortChapterResult(c.result) : c.result} /> : null}
+    </View>
+  );
+}
+
+/**
+ * The card's result copy. A win is two runs — "<name> wins ·" and
+ * "<n> faan" — so a card too narrow for both ellipsises the *name* and
+ * keeps the faan (the 360 px strip showed "Mei Ling wins · 0 …").
+ */
+function ChapterResult({ text }: { text: string }) {
+  const parts = splitChapterResult(text);
+  const base = { fontSize: 11, lineHeight: 13, fontWeight: '600' as const, color: MENU.text3 };
+  if (!parts) {
+    return (
+      <Text style={[base, { flexShrink: 1, minWidth: 0 }]} numberOfLines={1}>
+        {text}
+      </Text>
+    );
+  }
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 1, minWidth: 0 }}>
+      <Text style={[base, { flexShrink: 1, minWidth: 0 }]} numberOfLines={1}>
+        {parts.head}
+      </Text>
+      <Text style={[base, { flexShrink: 0 }]} numberOfLines={1}>
+        {parts.faan}
+      </Text>
     </View>
   );
 }
@@ -495,7 +517,7 @@ function SpeedPicker({
             style={[
               MICRO,
               {
-                fontSize: 10,
+                fontSize: 11,
                 letterSpacing: 0.4,
                 color: speed === s ? MENU.goldHi : MENU.text2,
                 textTransform: 'none',
@@ -541,7 +563,7 @@ function PovPicker({
                   ? [
                       MICRO,
                       {
-                        fontSize: 10,
+                        fontSize: 11,
                         letterSpacing: 0.6,
                         color: active ? MENU.goldHi : MENU.text2,
                       },

@@ -1,8 +1,10 @@
-import { ScrollView, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import { Modal } from '../Modal';
 import { COLORS } from '../colors';
+import { SheetBody } from './SheetBody';
 import { TileReference } from './TileReference';
 import { type SheetTheme, sheetPalette } from './sheetTheme';
+import { useSheetPlacement } from './useSheetPlacement';
 
 interface TileReferenceSheetProps {
   open: boolean;
@@ -17,22 +19,27 @@ interface TileReferenceSheetProps {
  * the match `TopBar`'s 📖 button. Anchors to the bottom of the viewport
  * via the `Modal` primitive's `placement="bottom"` so on portrait phones
  * the user's thumb naturally sits near the close button without the
- * card hovering mid-screen. The reference itself scrolls if its content
- * overflows the sheet's `maxHeight`.
+ * card hovering mid-screen (the glass sheet centres itself on desktop-
+ * class viewports). The reference itself scrolls if its content
+ * overflows the sheet's `maxHeight`, with a fold cue while it does.
  */
 export function TileReferenceSheet({ open, onClose, theme = 'paper' }: TileReferenceSheetProps) {
   const glass = theme === 'glass';
   const P = sheetPalette(theme);
+  const placement = useSheetPlacement();
   return (
     <Modal
       open={open}
       title="Tile reference"
       onClose={onClose}
-      placement="bottom"
+      placement={glass ? placement : 'bottom'}
       maxWidth={560}
       variant={theme}
     >
-      <ScrollView contentContainerStyle={{ padding: glass ? 14 : 18, paddingBottom: 28, gap: 18 }}>
+      <SheetBody
+        theme={theme}
+        contentContainerStyle={{ padding: glass ? 14 : 18, paddingBottom: 28, gap: 18 }}
+      >
         <Text
           style={{
             fontSize: glass ? 13 : 12,
@@ -45,7 +52,7 @@ export function TileReferenceSheet({ open, onClose, theme = 'paper' }: TileRefer
           tile shown below has 3 invisible siblings of the same face.
         </Text>
         <TileReference theme={theme} />
-      </ScrollView>
+      </SheetBody>
       <View style={{ height: 8 }} />
     </Modal>
   );

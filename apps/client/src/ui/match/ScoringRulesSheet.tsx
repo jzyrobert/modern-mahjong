@@ -6,12 +6,16 @@ import {
   type ScoringRuleCategory,
   tileId,
 } from '@mahjong/game-logic';
-import { useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Animated, Easing, type LayoutChangeEvent, Pressable, Text, View } from 'react-native';
 import { Modal } from '../Modal';
 import { Tile } from '../Tile';
 import { COLORS } from '../colors';
+import { useReducedMotion } from '../tutorial/useReducedMotion';
+import { SheetBody } from './SheetBody';
+import { EXAMPLE_TILE_GAP, exampleTileWidth } from './sheetLayout';
 import { type SheetPalette, type SheetTheme, microLabel, sheetPalette } from './sheetTheme';
+import { useSheetPlacement } from './useSheetPlacement';
 
 interface ScoringRulesSheetProps {
   open: boolean;
@@ -72,16 +76,19 @@ export function ScoringRulesSheet({ open, onClose, theme = 'paper' }: ScoringRul
   // Glass accordion: the first category starts open, the rest fold to
   // their header row (title, fan range, chevron).
   const [openCat, setOpenCat] = useState<ScoringRuleCategory | null>(CATEGORY_ORDER[0] ?? null);
+  const placement = useSheetPlacement();
   return (
     <Modal
       open={open}
       title="Scoring rules"
       onClose={onClose}
-      placement="bottom"
+      placement={glass ? placement : 'bottom'}
       maxWidth={620}
       variant={theme}
     >
-      <ScrollView
+      <SheetBody
+        theme={theme}
+        testID="scoring-rules-body"
         contentContainerStyle={{
           padding: glass ? 14 : 18,
           paddingBottom: 28,
@@ -152,11 +159,11 @@ export function ScoringRulesSheet({ open, onClose, theme = 'paper' }: ScoringRul
                   </Text>
                 </Pressable>
                 {expanded ? (
-                  <View style={{ gap: 8, paddingHorizontal: 10, paddingBottom: 10 }}>
+                  <Expand>
                     {rules.map((r) => (
                       <RuleCard key={`${r.name}-${r.english}`} rule={r} P={P} glass />
                     ))}
-                  </View>
+                  </Expand>
                 ) : null}
               </View>
             );
@@ -186,9 +193,52 @@ export function ScoringRulesSheet({ open, onClose, theme = 'paper' }: ScoringRul
             </View>
           );
         })}
-      </ScrollView>
+      </SheetBody>
       <View style={{ height: 8 }} />
     </Modal>
+  );
+}
+
+/** How long an opened section takes to settle in (opacity + 8 px rise). */
+const EXPAND_MS = 220;
+
+/**
+ * The glass accordion's opened body: mounts at opacity 0 / 8 px down
+ * and settles over `EXPAND_MS` (transform / opacity only), instead of
+ * snapping open (round-5 settings critic). Instant under reduced
+ * motion.
+ */
+function Expand({ children }: { children: React.ReactNode }) {
+  const reduce = useReducedMotion();
+  const progress = useRef(new Animated.Value(reduce ? 1 : 0)).current;
+  useEffect(() => {
+    if (reduce) {
+      progress.setValue(1);
+      return;
+    }
+    const anim = Animated.timing(progress, {
+      toValue: 1,
+      duration: EXPAND_MS,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    });
+    anim.start();
+    return () => anim.stop();
+  }, [progress, reduce]);
+  return (
+    <Animated.View
+      style={{
+        gap: 8,
+        paddingHorizontal: 10,
+        paddingBottom: 10,
+        opacity: progress,
+        transform: [
+          { translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }) },
+        ],
+      }}
+    >
+      {children}
+    </Animated.View>
   );
 }
 
@@ -290,18 +340,25 @@ interface ExampleHandProps {
  * Renders an example hand as: a row of concealed-tile faces, the
  * highlighted winning tile separated by a small gap, and any exposed
  * melds laid out underneath. No interactivity — this is pure
- * documentation. The tiles use small 24×34 dimensions so a 14-tile
- * hand fits across a 320 px iPhone SE viewport without wrapping.
+ * documentation. The tiles size themselves to the row
+ * (`exampleTileWidth`) so a 14-tile hand stays on one line down to a
+ * 320 px viewport instead of wrapping.
  */
 function ExampleHand({ concealed, melds, winningTile, note, P, glass }: ExampleHandProps) {
+  const [rowW, setRowW] = useState(0);
+  const pad = glass ? 8 : 0;
+  const tileW = exampleTileWidth(rowW - 2 * pad, concealed.length);
+  const tileH = Math.round((tileW * 34) / 24);
+  const onLayout = (e: LayoutChangeEvent) => setRowW(e.nativeEvent.layout.width);
   return (
     <View style={{ gap: 6 }}>
       <View
+        onLayout={onLayout}
         style={{
           flexDirection: 'row',
           flexWrap: 'wrap',
           alignItems: 'center',
-          gap: 4,
+          gap: EXAMPLE_TILE_GAP,
           ...(glass && {
             padding: 8,
             borderRadius: 10,
@@ -312,7 +369,7 @@ function ExampleHand({ concealed, melds, winningTile, note, P, glass }: ExampleH
         }}
       >
         {concealed.map((t, i) => (
-          <Tile key={`c-${i}-${tileId(t)}`} tile={t} width={24} height={34} />
+          <Tile key={`c-${i}-${tileId(t)}`} tile={t} width={tileW} height={tileH} />
         ))}
         <View style={{ width: 6 }} />
         <View
@@ -325,7 +382,7 @@ function ExampleHand({ concealed, melds, winningTile, note, P, glass }: ExampleH
             ...(glass && { boxShadow: '0 0 10px rgba(216,168,90,0.5)' }),
           }}
         >
-          <Tile tile={winningTile} width={24} height={34} />
+          <Tile tile={winningTile} width={tileW} height={tileH} />
         </View>
       </View>
       {melds.length > 0 ? (

@@ -57,7 +57,12 @@ async function openSettings(page: import('@playwright/test').Page) {
       .catch(() => false);
     if (!opened) continue;
     const row = page.getByTestId('open-settings');
-    if (await row.isVisible({ timeout: 6_000 }).catch(() => false)) {
+    // `waitFor` (see `openMenuRow`): `isVisible` never waits.
+    const shown = await row
+      .waitFor({ state: 'visible', timeout: 6_000 })
+      .then(() => true)
+      .catch(() => false);
+    if (shown) {
       await row.click();
       await expect(page.getByTestId('settings-panel')).toBeVisible();
       return;
@@ -477,7 +482,14 @@ test.describe('3D in-match sheets', () => {
         .catch(() => false);
       if (!opened) continue;
       const btn = page.getByRole('button', { name: row, exact: true });
-      if (await btn.isVisible({ timeout: 6_000 }).catch(() => false)) {
+      // `waitFor`, not `isVisible` — the latter never waits, and the side
+      // panel mounts its rows a frame after the tap; a false negative
+      // sent the retry's ☰ tap straight back to close the panel.
+      const shown = await btn
+        .waitFor({ state: 'visible', timeout: 6_000 })
+        .then(() => true)
+        .catch(() => false);
+      if (shown) {
         await btn.click();
         return;
       }
@@ -559,6 +571,111 @@ test.describe('3D in-match sheets', () => {
     ).toBe(GLASS_TEXT);
     await closeSheet(page);
 
+    expect(errors).toEqual([]);
+  });
+
+  /** The sheet card (title row's grandparent) as a bounding box. */
+  async function sheetCardBox(page: import('@playwright/test').Page, title: string) {
+    // Newest dialog only: the ☰ sheet that opened this one can still be
+    // fading out with a same-named row button.
+    const card = page
+      .locator('[aria-modal="true"]')
+      .last()
+      .getByText(title, { exact: true })
+      .locator('..')
+      .locator('..');
+    const box = await card.boundingBox();
+    if (!box) throw new Error(`missing sheet card for ${title}`);
+    return box;
+  }
+
+  test('desktop: players and game log open as centred glass panels, not phone sheets', async ({
+    page,
+  }) => {
+    test.setTimeout(150_000);
+    const errors = collectErrors(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await startSolo(page);
+    await expect(page.getByTestId('table-3d-scene')).toBeVisible({ timeout: 20_000 });
+
+    await dismissDice(page, 300);
+    await page.getByLabel('Open players panel').first().click();
+    await expect(page.getByText('East · seat 0')).toBeVisible();
+    // Centred on the canvas with air below it — a bottom sheet pasted
+    // onto a 1440 × 900 canvas was the round-5 settings critic's lead.
+    let box = await sheetCardBox(page, 'Players');
+    expect(Math.abs(box.x + box.width / 2 - 720)).toBeLessThanOrEqual(4);
+    expect(box.y).toBeGreaterThanOrEqual(40);
+    expect(box.y + box.height).toBeLessThanOrEqual(900 - 40);
+    expect(box.width).toBeLessThanOrEqual(520);
+    await closeSheet(page);
+
+    await openMenuRow(page, 'Game log');
+    await expect(page.getByText('Last actions', { exact: true })).toBeVisible();
+    box = await sheetCardBox(page, 'Last actions');
+    expect(Math.abs(box.x + box.width / 2 - 720)).toBeLessThanOrEqual(4);
+    expect(box.y + box.height).toBeLessThanOrEqual(900 - 40);
+    await closeSheet(page);
+    expect(errors).toEqual([]);
+  });
+
+  test('phone landscape: a long sheet body cues its fold and clears the cue at the end', async ({
+    page,
+  }) => {
+    test.setTimeout(150_000);
+    const errors = collectErrors(page);
+    await page.setViewportSize({ width: 915, height: 412 });
+    await startSolo(page);
+    await expect(page.getByTestId('table-3d-scene')).toBeVisible({ timeout: 20_000 });
+    // Still a bottom sheet on a landscape phone (wide, but short).
+    await openMenuRow(page, 'Scoring rules');
+    await expect(page.getByTestId('scoring-cat-win-condition')).toBeVisible();
+    const box = await sheetCardBox(page, 'Scoring rules');
+    expect(box.y + box.height).toBeGreaterThanOrEqual(412 - 1);
+    // The catalogue overflows the 90 %-height sheet: the fold is marked.
+    const cue = page.getByTestId('sheet-scroll-cue');
+    await expect(cue).toBeVisible();
+    const cueBox = await cue.boundingBox();
+    if (!cueBox) throw new Error('missing cue box');
+    expect(cueBox.y + cueBox.height).toBeLessThanOrEqual(box.y + box.height);
+    // Scrolled to the end, nothing is hidden and the cue goes.
+    await page.getByTestId('scoring-rules-body').evaluate((el) => {
+      el.scrollTop = el.scrollHeight;
+    });
+    await expect(cue).toHaveCount(0, { timeout: 5_000 });
+    await closeSheet(page);
+    expect(errors).toEqual([]);
+  });
+
+  test('phone landscape: the breakdown total is pinned under the scrolling patterns', async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    const errors = collectErrors(page);
+    await page.setViewportSize({ width: 915, height: 412 });
+    await page.goto('/');
+    await page.getByText('Modern Mahjong').first().waitFor();
+    await page.evaluate(() => {
+      const g = globalThis as { __MAHJONG_TEST_START_TUTORIAL__?: (id: string) => void };
+      if (!g.__MAHJONG_TEST_START_TUTORIAL__) throw new Error('no tutorial entry');
+      g.__MAHJONG_TEST_START_TUTORIAL__('scoring-intro');
+    });
+    await page.getByTestId('own-hand-tile').first().waitFor({ timeout: 20_000 });
+    await page.getByTestId('tutorial-next').first().click({ timeout: 10_000 });
+    await page.getByTestId('winning-hand').waitFor({ timeout: 15_000 });
+    await page.getByRole('button', { name: 'View breakdown' }).click();
+    await expect(page.getByText(/wins — \d+ faan/)).toBeVisible();
+    // TOTAL sits below the scroll region, inside the viewport, however
+    // many patterns fired (it used to scroll off the 412 px sheet).
+    const total = page.getByTestId('breakdown-total');
+    await expect(total).toBeVisible();
+    const tBox = await total.boundingBox();
+    if (!tBox) throw new Error('missing total box');
+    expect(tBox.y + tBox.height).toBeLessThanOrEqual(412);
+    const body = await page.getByTestId('breakdown-body').boundingBox();
+    if (!body) throw new Error('missing breakdown body box');
+    expect(tBox.y).toBeGreaterThanOrEqual(body.y + body.height - 1);
+    await closeSheet(page);
     expect(errors).toEqual([]);
   });
 

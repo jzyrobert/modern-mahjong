@@ -393,7 +393,7 @@ function fitLayoutToBox(
   let fp = rackFootprint(layout, W, H, centre);
   for (let i = 0; i < 3; i++) {
     const s = Math.min(1, box.w / fp.all.w, box.h / fp.all.h);
-    if (s > 0.995) break;
+    if (s > 0.999) break;
     layout = build(layout.distance / s, centre);
     fp = rackFootprint(layout, W, H, centre);
   }

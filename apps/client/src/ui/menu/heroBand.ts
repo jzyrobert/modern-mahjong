@@ -68,8 +68,10 @@ export function resetHeroBand(): void {
 
 /** Clearance the rack keeps under the title block's last line. */
 export const HERO_GAP_TOP_PX = 16;
-/** Clearance the rack keeps above the first card. */
-export const HERO_GAP_BOTTOM_PX = 8;
+/** Clearance the rack keeps above the first card: ≥ 8 px on screen.
+ *  The fit converges to within 0.1 % and the view offset rounds to
+ *  whole px, so the box is inset one px more than the target. */
+export const HERO_GAP_BOTTOM_PX = 9;
 /** A band shorter / narrower than this is treated as unmeasured. */
 const MIN_BOX_H = 40;
 const MIN_BOX_W = 80;

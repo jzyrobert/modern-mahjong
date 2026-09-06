@@ -1,12 +1,14 @@
 import { SEATS, type Seat, type Wind, seatWindFor } from '@mahjong/game-logic';
 import { type BotKind, botDisplayName } from '@mahjong/protocol';
-import { ScrollView, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import { type LobbyState, nameForSeat, playerForSeat, useGame } from '../../state/game';
 import { computeInitials } from '../../util';
 import { Modal } from '../Modal';
 import { COLORS } from '../colors';
 import { WIND_GLYPH, WIND_NAME } from '../winds';
+import { SheetBody } from './SheetBody';
 import { type SheetPalette, type SheetTheme, microLabel, sheetPalette } from './sheetTheme';
+import { useSheetPlacement } from './useSheetPlacement';
 
 interface PlayersSheetProps {
   open: boolean;
@@ -47,17 +49,23 @@ export function PlayersSheet({ open, onClose, mySeat, theme = 'paper' }: Players
   const lobby = useGame((s) => s.lobby);
   const glass = theme === 'glass';
   const P = sheetPalette(theme);
+  // Glass: bottom sheet on phones, centred panel on desktop.
+  const placement = useSheetPlacement();
 
   return (
     <Modal
       open={open}
       title="Players"
       onClose={onClose}
-      placement="bottom"
+      placement={glass ? placement : 'bottom'}
       maxWidth={520}
       variant={theme}
     >
-      <ScrollView contentContainerStyle={{ padding: glass ? 14 : 18, paddingBottom: 28, gap: 10 }}>
+      <SheetBody
+        theme={theme}
+        testID="players-body"
+        contentContainerStyle={{ padding: glass ? 14 : 18, paddingBottom: 28, gap: 10 }}
+      >
         {state ? (
           <View style={{ gap: 8 }}>
             {SEATS.map((seat) => (
@@ -87,7 +95,7 @@ export function PlayersSheet({ open, onClose, mySeat, theme = 'paper' }: Players
             Waiting for the match to start.
           </Text>
         )}
-      </ScrollView>
+      </SheetBody>
     </Modal>
   );
 }

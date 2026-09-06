@@ -18,6 +18,17 @@ export interface TimelineSegment {
 
 /** Card gap on the strip, CSS px. */
 export const TIMELINE_GAP = 3;
+/**
+ * Fixed width every card carries before its flex share, CSS px: the
+ * card's horizontal padding (2 × 8) plus its border (2 × 1). RN's
+ * `flex: weight` is `flex-basis: 0` on a border-box, which the layout
+ * floors at padding + border, so a card is `base + share · free`, not
+ * `share · strip` — unequal weights (the compact strip doubles the
+ * current card) put the maths-only seam ~4 px / 2 frames off the
+ * rendered card edge (round-5 replay critic; equal weights cancel out,
+ * which is why the desktop strip was exact).
+ */
+export const TIMELINE_CARD_BASE = 18;
 
 /** Flex weight per card: its share of the record, doubled for the current card on compact strips. */
 export function timelineSegments(
@@ -41,15 +52,16 @@ export function ratioToX(
   ratio: number,
   width: number,
   gap: number = TIMELINE_GAP,
+  base: number = TIMELINE_CARD_BASE,
 ): number {
   const r = clamp01(ratio);
   if (segments.length === 0 || width <= 0) return r * Math.max(0, width);
-  const cardsW = Math.max(0, width - gap * (segments.length - 1));
+  const freeW = Math.max(0, width - (gap + base) * segments.length + gap);
   const total = totalWeight(segments);
   let x = 0;
   for (let i = 0; i < segments.length; i++) {
     const s = segments[i]!;
-    const w = (s.weight / total) * cardsW;
+    const w = base + (s.weight / total) * freeW;
     const last = i === segments.length - 1;
     // A ratio on the seam between two cards belongs to the later one
     // (a chapter's first frame draws at its card's left edge).
@@ -69,16 +81,17 @@ export function xToRatio(
   x: number,
   width: number,
   gap: number = TIMELINE_GAP,
+  base: number = TIMELINE_CARD_BASE,
 ): number {
   if (width <= 0) return 0;
   const px = Math.max(0, Math.min(width, x));
   if (segments.length === 0) return px / width;
-  const cardsW = Math.max(0, width - gap * (segments.length - 1));
+  const freeW = Math.max(0, width - (gap + base) * segments.length + gap);
   const total = totalWeight(segments);
   let left = 0;
   for (let i = 0; i < segments.length; i++) {
     const s = segments[i]!;
-    const w = (s.weight / total) * cardsW;
+    const w = base + (s.weight / total) * freeW;
     const last = i === segments.length - 1;
     if (px <= left + w || last) {
       const t = w > 0 ? clamp01((px - left) / w) : 0;
@@ -103,10 +116,11 @@ export function xToCursor(
   width: number,
   totalFrames: number,
   gap: number = TIMELINE_GAP,
+  base: number = TIMELINE_CARD_BASE,
 ): number {
   const last = Math.max(0, totalFrames - 1);
   if (!Number.isFinite(x) || !Number.isFinite(width) || width <= 0 || last === 0) return 0;
-  const ratio = xToRatio(segments, x, width, gap);
+  const ratio = xToRatio(segments, x, width, gap, base);
   const cursor = Math.round(clamp01(ratio) * last);
   return Number.isFinite(cursor) ? Math.max(0, Math.min(last, cursor)) : 0;
 }

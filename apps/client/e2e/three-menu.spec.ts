@@ -523,6 +523,17 @@ test.describe('three: menu backdrop', () => {
     // No ghost tiles behind the desktop glass: at 40 % size under a 16 px
     // blur they read as smudges under the card copy, not as depth.
     expect(tilesOver(debug, tutorial)).toEqual([]);
+    // The rack is a keep-out on every class (round-5 critic: a drift
+    // back sat on the desktop rack's 一萬 corner while it was phone-only).
+    expect(debug.rack.w).toBeGreaterThan(100);
+    expect(
+      discsOver(shownTiles(debug), {
+        x: debug.rack.x,
+        y: debug.rack.y,
+        width: debug.rack.w,
+        height: debug.rack.h,
+      }),
+    ).toEqual([]);
 
     // Desktop lobby contract.
     await expect(page.getByRole('button', { name: 'Create new match' })).toBeVisible();
@@ -711,6 +722,45 @@ test.describe('three: menu backdrop', () => {
     expect(errors()).toEqual([]);
   });
 
+  test('replay library, desktop: the shelf spans the card and supersamples a dpr-1 display', async ({
+    page,
+  }) => {
+    const errors = collectErrors(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/replays');
+    await expect(page.getByRole('heading', { name: 'Replays' })).toBeVisible();
+    const canvas = page.getByTestId('replay-shelf-3d').locator('canvas');
+    await expect(canvas).toBeAttached({ timeout: 15_000 });
+    await page.waitForFunction(
+      () =>
+        (globalThis as { __MAHJONG_SHELF_DEBUG__?: ShelfDebug }).__MAHJONG_SHELF_DEBUG__?.settled,
+      null,
+      { timeout: 20_000 },
+    );
+    // The seven tiles fill most of the 620 px card's content box (they
+    // used to be a 380 px strip adrift in it) …
+    const box = await canvas.boundingBox();
+    if (!box) throw new Error('missing shelf canvas box');
+    expect(box.width).toBeGreaterThanOrEqual(480);
+    expect(box.width).toBeLessThanOrEqual(560);
+    const shelf = await readShelfDebug(page);
+    if (!shelf) throw new Error('shelf debug never published');
+    expect(shelf.right - shelf.left).toBeGreaterThanOrEqual(box.width * 0.8);
+    expect(shelf.top).toBeGreaterThanOrEqual(0);
+    expect(shelf.bottom).toBeLessThanOrEqual(box.height);
+    // … and the drawing buffer is 3× the CSS box on this dpr-1 display,
+    // so tile edges and glyph strokes are supersampled, not stair-stepped.
+    const scale = await canvas.evaluate(
+      (c: HTMLCanvasElement) => c.width / c.getBoundingClientRect().width,
+    );
+    expect(scale).toBeGreaterThanOrEqual(2.9);
+    expect(scale).toBeLessThanOrEqual(3.1);
+    const perf = await readPerf(page);
+    expect(perf.drawCalls).toBeLessThanOrEqual(MENU_BUDGET.drawCalls);
+    expect(perf.triangles).toBeLessThan(10_000);
+    expect(errors()).toEqual([]);
+  });
+
   test('page chrome: everything behind the app root is the void, including the strip a retracting URL bar exposes', async ({
     page,
   }) => {
@@ -849,7 +899,10 @@ test.describe('three: menu backdrop', () => {
     const widthChanged = await readMenuDebug(page);
     if (!widthChanged) throw new Error('menu debug lost');
     expect(widthChanged.heroRelayouts).toBeGreaterThan(before.heroRelayouts);
-    expect(widthChanged.driftRelayouts).toBeGreaterThan(before.driftRelayouts);
+    // …and the drift field re-fits exactly once: the canvas resize and
+    // the hero band's re-measure a frame later coalesce (a rotation
+    // used to cost three eased re-fits).
+    expect(widthChanged.driftRelayouts).toBe(before.driftRelayouts + 1);
     expect(widthChanged.heroBuilds).toBe(1);
     expect((await canvasSizes(page)).drift.w).toBe(390);
     expect(errors()).toEqual([]);

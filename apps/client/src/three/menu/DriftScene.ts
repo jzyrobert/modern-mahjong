@@ -7,7 +7,6 @@ import {
   getOccluders,
   occluderFactor,
   occluderVersion,
-  rectSignedDistance,
 } from '../../ui/menu/menuOccluders';
 import type { SceneContext, SceneHandle } from '../core/SceneHost';
 import { buildLights } from '../core/lights';
@@ -95,16 +94,18 @@ const FRAME_SLACK = 0.5;
  *  band's narrow side margins, and the disc is ~2× the tile's area. */
 const FRAME_SLACK_FROZEN = -1.0;
 const FRAME_SLACK_FROZEN_PORTRAIT = -0.4;
-/** Phones: the hero rack's projected silhouette (tiles + dice) is a
- *  solid keep-out with this fade ramp, so a drifting tile is gone
- *  before any part of it can poke out from under the rack's edge
- *  (slivers there read as debris). The drift disc (`TILE_R`) already
- *  over-bounds the tile's silhouette, so a disc merely tangent to the
- *  rack is clear of it; the ramp only needs to cover projection slop,
- *  and staying short keeps the hero band's ~40 px side margins open
- *  for whole far tiles. Wide viewports let tiles pass behind the fan:
- *  one peeking past its edge there is real depth. */
+/** The hero rack's projected silhouette (tiles + dice) is a solid
+ *  keep-out on every viewport class, so a drifting tile is gone before
+ *  any part of it can poke out from under the rack's edge (slivers
+ *  there read as debris — a far back sat on the desktop rack's 一萬
+ *  corner while the keep-out was phone-only). The drift disc (`TILE_R`)
+ *  already over-bounds the tile's silhouette, so a disc merely tangent
+ *  to the rack is clear of it; the ramp only needs to cover projection
+ *  slop. Phones keep it short so the hero band's ~40 px side margins
+ *  stay open for whole far tiles; wide viewports have room for a
+ *  gentler ramp that also clears the rack's contact shadow. */
 const RACK_BAND_PX = 2;
+const RACK_BAND_PX_WIDE = 12;
 /** Re-seed lattice columns: portrait's only open ground is the hero
  *  band's narrow side margins, which a 14-column lattice (~30 px
  *  steps on a 412 px phone) skips right over. */
@@ -121,6 +122,24 @@ const PARK_BELOW = 0.75;
 const SPREAD = 1.6;
 /** Fade / keep-out disc radius in world units. */
 const TILE_R = TILE_H * 0.72;
+/**
+ * Frame-edge fade: a tile shrinks as its disc reaches the canvas edge
+ * and is gone before any of it is cut (round-4 critic: fragments
+ * clipping in at both edges of the 360 px phone, level with the rack).
+ * The disc over-bounds the tile — its projected half-diagonal is ≤ 0.9
+ * of `TILE_R` — so scaling by `d / (0.92 · r)` (d = the centre's
+ * distance inside the edge) keeps the scaled tile inside the frame
+ * for every d, and a tile whose disc is wholly inside is untouched.
+ */
+const EDGE_FADE_R = 0.92;
+/**
+ * Re-fits coalesce over this window: a rotation arrives as a canvas
+ * resize, then the hero band's re-measure a frame later, then the
+ * title's reflow — three eased camera moves in ~100 ms read as a
+ * stutter (round-4 critic). The frame / band are latched at once (the
+ * view offset uses the new aspect straight away); the fit runs once.
+ */
+const FIT_COALESCE_MS = 80;
 /** The field's tiles are ≤ ~45 CSS px across and fogged: half-size
  *  atlas cells (128 × 176) are still oversampled, at a quarter of the
  *  texture memory the hero canvas's full atlas costs. */
@@ -263,7 +282,7 @@ export function buildDriftScene(ctx: SceneContext, opts: DriftSceneOptions): Sce
       w: rackLocal.w,
       h: rackLocal.h,
       kind: 'solid',
-      band: RACK_BAND_PX,
+      band: layout.cls === 'wide' ? RACK_BAND_PX_WIDE : RACK_BAND_PX,
     };
   };
 
@@ -295,6 +314,12 @@ export function buildDriftScene(ctx: SceneContext, opts: DriftSceneOptions): Sce
     );
   };
 
+  /** Visibility of a disc against the canvas edges (`EDGE_FADE_R`). */
+  const edgeFade = (x: number, y: number, r: number): number => {
+    const d = Math.min(x, ctx.size.width - x, y, ctx.size.height - y);
+    return clamp01(d / (EDGE_FADE_R * Math.max(1e-6, r)));
+  };
+
   /** Exact screen position (CSS px) + projected radius of a disc of
    *  `worldRadius` at a world point through the live camera (view
    *  offset included). The canvas is the viewport, so canvas px are
@@ -318,11 +343,11 @@ export function buildDriftScene(ctx: SceneContext, opts: DriftSceneOptions): Sce
 
   /**
    * Keep-outs the DOM never registers: the root FULLSCREEN / DISMISS
-   * chip in the top-right corner of landscape phones, and — on phones
-   * — the hero rack itself, so a drifting tile fades out before any
-   * part of it can poke out from under the rack's edge (a blue corner
-   * under the bottom-right 中 read as debris). Wide viewports let tiles
-   * pass behind the fan: a tile peeking past its edge there is depth.
+   * chip in the top-right corner of landscape phones, and the hero
+   * rack itself on every class, so a drifting tile fades out before
+   * any part of it can poke out from under the rack's edge (a blue
+   * corner under the phone's bottom-right 中, a back on the desktop
+   * rack's 一萬 corner — both read as debris, not depth).
    */
   const chromeOccluders = (): OccluderRect[] =>
     layout.cls === 'landscape-phone'
@@ -330,10 +355,8 @@ export function buildDriftScene(ctx: SceneContext, opts: DriftSceneOptions): Sce
       : [];
   const sceneOccluders = (): OccluderRect[] => {
     const out = chromeOccluders();
-    if (layout.cls !== 'wide') {
-      const rack = rackRect();
-      if (rack) out.push(rack);
-    }
+    const rack = rackRect();
+    if (rack) out.push(rack);
     return out;
   };
   const refreshOccluders = () => {
@@ -364,13 +387,9 @@ export function buildDriftScene(ctx: SceneContext, opts: DriftSceneOptions): Sce
     reseeded = true;
     const rnd = seededRandom(97);
     const proj = { x: 0, y: 0, r: 0 };
-    // The rack's own screen footprint. On wide viewports a seed whose
-    // centre is behind the hero tiles is hidden by them, so the seeding
-    // avoids it — a tile peeking out from behind the fan's edge is real
-    // depth and stays allowed. On phones the rack is already a solid
-    // keep-out in `occluders` (`sceneOccluders`), so every disc that
-    // touches it scores zero through `occluderFactor` as well.
-    const rack = rackRect();
+    // The rack is a solid keep-out in `occluders` (`sceneOccluders`) on
+    // every class, so a disc that touches it scores zero through
+    // `occluderFactor` and the seeding steers clear of it.
     const solid: OccluderRect[] = occluders.map((r) => ({ ...r, kind: 'solid' as const }));
     const W = ctx.size.width;
     const H = ctx.size.height;
@@ -385,7 +404,6 @@ export function buildDriftScene(ctx: SceneContext, opts: DriftSceneOptions): Sce
       x - r * slack > W ||
       y + r * slack < 0 ||
       y - r * slack > H ||
-      (layout.cls === 'wide' && rack !== null && rectSignedDistance(x, y, rack) < -r * 0.3) ||
       taken.some((t) => Math.hypot(t.x - x, t.y - y) < (t.r + r) * SPREAD);
     const factorAt = (
       d: DriftState,
@@ -397,7 +415,12 @@ export function buildDriftScene(ctx: SceneContext, opts: DriftSceneOptions): Sce
       if (inKeepOut(ux, uy, layout.keepOut)) return 0;
       projectPoint(driftWorldPos(d, ux, uy, 0, 0, _vWorld), TILE_R, proj);
       if (blocked(proj.x, proj.y, proj.r)) return 0;
-      return occluderFactor(proj.x, proj.y, proj.r, rects, OCCLUDER_BAND_PX, interior);
+      // The frame edge fades a tile like a rect does (`edgeFade`), so a
+      // seed hugging the edge scores what it will actually show at.
+      return Math.min(
+        edgeFade(proj.x, proj.y, proj.r),
+        occluderFactor(proj.x, proj.y, proj.r, rects, OCCLUDER_BAND_PX, interior),
+      );
     };
     const cands = driftCandidates(layout.cls === 'portrait' ? LATTICE_COLS_PORTRAIT : undefined);
     const interior = GLASS_INTERIOR;
@@ -529,6 +552,7 @@ export function buildDriftScene(ctx: SceneContext, opts: DriftSceneOptions): Sce
         domOccluders.length > 0
           ? occluderFactor(_proj.x, _proj.y, _proj.r, occluders, OCCLUDER_BAND_PX, GLASS_INTERIOR)
           : 1;
+      fade = Math.min(fade, edgeFade(_proj.x, _proj.y, _proj.r));
       if (d.parked) fade = 0;
       p.scale = 0.001 + 0.999 * e * fade;
       debugFades[j] = fade;
@@ -595,6 +619,16 @@ export function buildDriftScene(ctx: SceneContext, opts: DriftSceneOptions): Sce
   // Initial view offset (SceneHost sizes the renderer right after build).
   applyViewOffset();
 
+  /** One re-fit for every trigger inside `FIT_COALESCE_MS` (see there). */
+  let fitTimer: ReturnType<typeof setTimeout> | null = null;
+  const scheduleLayout = () => {
+    if (fitTimer !== null) clearTimeout(fitTimer);
+    fitTimer = setTimeout(() => {
+      fitTimer = null;
+      applyLayout();
+    }, FIT_COALESCE_MS);
+  };
+
   /**
    * The lobby re-measures its hero band on scroll, on resize, when the
    * web fonts land and when the title reflows. A band that changed
@@ -606,7 +640,7 @@ export function buildDriftScene(ctx: SceneContext, opts: DriftSceneOptions): Sce
     const band = getHeroBand();
     if (bandSizeChanged(fitBand, band)) {
       fitBand = band;
-      applyLayout();
+      scheduleLayout();
       return;
     }
     bandMoved = true;
@@ -668,11 +702,17 @@ export function buildDriftScene(ctx: SceneContext, opts: DriftSceneOptions): Sce
         loop.requestRender();
         return;
       }
+      // A width change: latch the frame now so this synchronous redraw
+      // already has the new aspect, and re-fit once the band that
+      // follows a rotation has re-measured too.
       frame = { width, height: Math.max(1, height) };
-      applyLayout();
+      applyViewOffset();
+      loop.requestRender();
+      scheduleLayout();
     },
     dispose() {
       publishDriftDebug(null);
+      if (fitTimer !== null) clearTimeout(fitTimer);
       unsubscribeBand();
       if (parallaxOn) window.removeEventListener('pointermove', onPointer);
       lights.dispose();

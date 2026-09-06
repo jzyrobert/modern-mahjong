@@ -179,6 +179,37 @@ async function runStep(page, step, ctx) {
       .locator(step.click)
       .first()
       .click({ timeout: scaled(step.timeout ?? 10_000) });
+  if (step.clickUntil) {
+    // `{ clickUntil: { click, text, attempts } }`: click, then wait a
+    // short while for `text`; retry when it does not show. The opening
+    // rolls overlay can land *after* `dismissDice` gave up waiting on a
+    // loaded desktop run and swallow the ☰ tap, stalling the recipe on
+    // its 20 s `waitForText` — the retry taps the overlay away first.
+    const { click, text, attempts = 6 } = step.clickUntil;
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      const hint = page.getByText('Tap anywhere to dismiss', { exact: true });
+      if (await hint.isVisible().catch(() => false)) {
+        const vp = page.viewportSize() ?? { width: 412, height: 700 };
+        await page.mouse.click(vp.width / 2, vp.height / 2).catch(() => {});
+        await hint.waitFor({ state: 'hidden', timeout: scaled(5000) }).catch(() => {});
+      }
+      const clicked = await page
+        .locator(click)
+        .first()
+        .click({ timeout: scaled(5000) })
+        .then(() => true)
+        .catch(() => false);
+      if (!clicked) continue;
+      const shown = await page
+        .getByText(text, { exact: false })
+        .first()
+        .waitFor({ timeout: scaled(step.timeout ?? 6000) })
+        .then(() => true)
+        .catch(() => false);
+      if (shown) return;
+    }
+    throw new Error(`clickUntil: "${text}" never appeared after ${click}`);
+  }
   if (step.clickTestId)
     return page
       .getByTestId(step.clickTestId)

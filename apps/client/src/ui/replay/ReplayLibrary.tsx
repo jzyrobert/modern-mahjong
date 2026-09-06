@@ -288,6 +288,9 @@ function AutoRecordRibbon({ enabled, onToggle }: { enabled: boolean; onToggle: (
 
 // ─── Empty state ───────────────────────────────────────────────────
 
+/** Reference tile width of the empty-state shelf on wide viewports. */
+export const WIDE_TILE_W = 58;
+
 function EmptyState({ onImport }: { onImport: () => void }) {
   const { width, height } = useWindowDimensions();
   const rendererSetting = useGame((s) => s.settings.renderer);
@@ -303,8 +306,11 @@ function EmptyState({ onImport }: { onImport: () => void }) {
   const wide = width > 720 && height >= 600;
   // Phones: as wide as the card's content box allows (the 3D shelf
   // canvas is 8.6 tile widths across; 20 px card + 20 px page inset
-  // each side), so the tiles are the card's focal object.
-  const tileWidth = wide ? 44 : Math.max(30, Math.min(44, Math.floor((width - 80) / 8.6)));
+  // each side), so the tiles are the card's focal object. Wide: the
+  // shelf spans most of the 620 px card's content box (`WIDE_TILE_W`
+  // × 8.6 ≈ 500 px) — at 44 px the seven tiles read as a 380 px strip
+  // adrift in the card (round-5 menu critic: "small and aliased").
+  const tileWidth = wide ? WIDE_TILE_W : Math.max(30, Math.min(44, Math.floor((width - 80) / 8.6)));
   return (
     <GlassCard
       hover={false}
