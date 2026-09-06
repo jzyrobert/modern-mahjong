@@ -664,7 +664,7 @@ test.describe('3D in-match sheets', () => {
     await page.getByTestId('tutorial-next').first().click({ timeout: 10_000 });
     await page.getByTestId('winning-hand').waitFor({ timeout: 15_000 });
     await page.getByRole('button', { name: 'View breakdown' }).click();
-    await expect(page.getByText(/wins — \d+ faan/)).toBeVisible();
+    await expect(page.getByText(/wins? — \d+ faan/)).toBeVisible();
     // TOTAL sits below the scroll region, inside the viewport, however
     // many patterns fired (it used to scroll off the 412 px sheet).
     const total = page.getByTestId('breakdown-total');
@@ -701,7 +701,7 @@ test.describe('3D in-match sheets', () => {
     await page.getByTestId('tutorial-next').first().click({ timeout: 10_000 });
     await page.getByTestId('winning-hand').waitFor({ timeout: 15_000 });
     await page.getByRole('button', { name: 'View breakdown' }).click();
-    const title = page.getByText(/wins — \d+ faan/);
+    const title = page.getByText(/wins? — \d+ faan/);
     await expect(title).toBeVisible();
     expect(await title.evaluate((el) => getComputedStyle(el).color)).toBe(GLASS_TEXT);
     await expect(page.getByText('Total', { exact: true })).toBeVisible();

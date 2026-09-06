@@ -2413,12 +2413,17 @@ test('the river zoom sinks the walls through the felt and raises them back, neve
   // walls and the side seats' rows when the portrait zoom lays none out —
   // sink under the felt at full size (`vanish`) and rise back up through
   // it (`rise`) instead of blinking off and popping in from scale 0.
-  // Slow motion ×8 stretches the 360 ms sink to ~2.9 s; the samplers run
+  // Slow motion ×12 stretches the 360 ms sink to ~4.3 s; the samplers run
   // alongside the taps because on a loaded SwiftShader shard a click
-  // returns seconds later, after the motion has finished.
-  await page.addInitScript(() => {
-    (globalThis as { __MAHJONG_TEST_MOTION_SLOWMO__?: number }).__MAHJONG_TEST_MOTION_SLOWMO__ = 8;
-  });
+  // returns seconds later, after the motion has finished, and the debug
+  // snapshot (every tile's rect) takes the better part of a second to
+  // read there, so the sink is sampled for as long as it lasts and the
+  // first sample is compared with the last.
+  const SLOWMO = 12;
+  await page.addInitScript((slow) => {
+    (globalThis as { __MAHJONG_TEST_MOTION_SLOWMO__?: number }).__MAHJONG_TEST_MOTION_SLOWMO__ =
+      slow;
+  }, SLOWMO);
   await page.setViewportSize({ width: 412, height: 915 });
   const errors: string[] = [];
   await startSolo(page, errors);
@@ -2490,19 +2495,31 @@ test('the river zoom sinks the walls through the felt and raises them back, neve
   expect(before.wallIds.length).toBeGreaterThan(60);
   const restY = new Map(before.ys);
   const zoomIn = page.getByRole('button', { name: 'Zoom into the discards' }).click();
-  const sinking = await collect('vanishing', 3);
+  // Sample the sink from its first frame until no tile is sinking any more.
+  const sinking: Summary[] = [];
+  await expect
+    .poll(
+      async () => {
+        const s = await summary();
+        if (s && s.vanishing.length > 0) sinking.push(s);
+        return sinking.length > 0 && (s?.vanishing.length ?? 0) === 0 ? 'sunk' : 'sinking';
+      },
+      { timeout: 40_000, intervals: [40, 40, 60, 100, 100, 200] },
+    )
+    .toBe('sunk');
   await zoomIn;
   await expect(table).toHaveAttribute('data-river-zoom', 'true');
+  expect(sinking.length, 'samples taken while the walls sank').toBeGreaterThanOrEqual(2);
   // Mid-sink: every wall tile is still rendered, full size, on its way
-  // down under slow motion (360 ms × 8). The sink eases in, so compare
-  // the first sample with the last (the snapshot rounds y to 0.01).
+  // down under slow motion. The sink eases in, so compare the first
+  // sample with the last (the snapshot rounds y to 0.01).
   const s0 = sinking[0]!;
   const s1 = sinking[sinking.length - 1]!;
   const sinkingIds = new Set(s0.vanishing.map((t) => t.id));
   for (const id of before.wallIds) expect(sinkingIds.has(id), `wall tile ${id} sinks`).toBe(true);
   for (const t of s0.vanishing) {
     expect(t.scale).toBe(1);
-    expect(t.ms).toBe(360 * 8);
+    expect(t.ms).toBe(360 * SLOWMO);
     expect(t.y).toBeLessThanOrEqual(restY.get(t.id)! + 1e-6);
   }
   // Shadow pass (round-5: light speckles where a stack crossed the felt):
@@ -2522,9 +2539,6 @@ test('the river zoom sinks the walls through the felt and raises them back, neve
   }
   expect(dropped, 'tiles lower in the last sample than the first').toBeGreaterThan(0);
   // Sunk: hidden — and no wall tile was ever drawn at scale 0 in view.
-  await expect
-    .poll(async () => (await summary())?.vanishing.length ?? -1, { timeout: 20_000 })
-    .toBe(0);
   const gone = (await summary())!;
   for (const id of before.wallIds) expect(gone.visible).not.toContain(id);
   // Zoom out: the walls rise from under the felt, full size, back to rest.
@@ -2537,7 +2551,7 @@ test('the river zoom sinks the walls through the felt and raises them back, neve
   for (const id of before.wallIds) expect(risingIds.has(id), `wall tile ${id} rises`).toBe(true);
   for (const t of r0.rising) {
     expect(t.scale).toBe(1);
-    expect(t.ms).toBe(320 * 8);
+    expect(t.ms).toBe(320 * SLOWMO);
     expect(t.y).toBeLessThan(restY.get(t.id)!);
     expect(t.casts).toBe(t.top > FLOOR);
   }
