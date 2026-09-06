@@ -12,7 +12,9 @@ import {
   diceCandidateOffsets,
   diceSlots,
   driftCandidates,
+  driftDepthRange,
   driftField,
+  driftFogDensity,
   driftKeepOut,
   driftKeepOutFor,
   driftVisible,
@@ -242,7 +244,7 @@ describe('menu layout', () => {
   });
 
   test('driftVisible thins the field on phones and never exceeds the pool', () => {
-    expect(driftVisible('portrait')).toBeLessThan(driftVisible('landscape-phone'));
+    expect(driftVisible('portrait')).toBeLessThanOrEqual(driftVisible('landscape-phone'));
     expect(driftVisible('landscape-phone')).toBeLessThan(driftVisible('wide'));
     expect(driftVisible('wide')).toBe(DRIFT_COUNT);
     expect(driftVisible('portrait')).toBeGreaterThanOrEqual(12);
@@ -281,6 +283,66 @@ describe('menu layout', () => {
     expect(moved.uy).toBeLessThan(DRIFT_LIMIT);
     // A seed already outside is returned unchanged.
     expect(placeOutsideKeepOut({ ux: 0, uy: 0.5 }, wide)).toEqual({ ux: 0, uy: 0.5 });
+    // No class floors the field on its own: the floor is the padded edge.
+    for (const cls of ['portrait', 'landscape-phone', 'wide'] as const)
+      expect(driftKeepOut(cls).y2).toBe(DRIFT_LIMIT);
+  });
+
+  test('portrait floors the field at the hero band: wraps re-enter at the band top, seeds below are lifted in', () => {
+    // 412×700 phone: title ends at 0.21 of the height, band ends at 0.41.
+    const vc = { x: 0.5, y: 0.31 };
+    const k = driftKeepOutFor('portrait', vc, 0.21, 0.41);
+    expect(k.y1).toBeCloseTo(screenToField(0.21, vc.y), 9);
+    expect(k.y2).toBeCloseTo(screenToField(0.41, vc.y), 9);
+    expect(k.y2).toBeGreaterThan(k.y1);
+    expect(k.y2).toBeLessThan(DRIFT_LIMIT);
+    // Below the floor counts as keep-out, the rows between are open.
+    expect(inKeepOut(0, k.y2 + 0.01, k)).toBe(true);
+    expect(inKeepOut(0, (k.y1 + k.y2) / 2, k)).toBe(false);
+    expect(inKeepOut(0, k.y1 - 0.01, k)).toBe(true);
+    // A tile drifting past the floor re-enters at the band's top.
+    expect(wrapDriftY(k.y2 + 0.03, 0, k)).toBeCloseTo(k.y1 + 0.03, 9);
+    expect(wrapDriftY(k.y2 - 0.01, 0, k)).toBeCloseTo(k.y2 - 0.01, 9);
+    // Every seed lands inside the open rows, in order.
+    const placed = driftField(DRIFT_COUNT).map((d) => placeOutsideKeepOut(d, k));
+    for (const t of placed) {
+      expect(t.uy).toBeGreaterThanOrEqual(k.y1);
+      expect(t.uy).toBeLessThanOrEqual(k.y2);
+    }
+    const below = placeOutsideKeepOut({ ux: 0, uy: 1.0 }, k);
+    const lower = placeOutsideKeepOut({ ux: 0, uy: 0.9 }, k);
+    expect(below.uy).toBeGreaterThan(lower.uy);
+    // Other classes ignore the band bottom.
+    expect(driftKeepOutFor('wide', { x: 0.5, y: 0.33 }, 0.2, 0.4).y2).toBe(DRIFT_LIMIT);
+    expect(driftKeepOutFor('landscape-phone', { x: 0.16, y: 0.58 }, 0.3, 0.9).y2).toBe(DRIFT_LIMIT);
+    // A floor that would meet the ceiling still leaves a sliver of rows.
+    expect(driftKeepOutFor('portrait', vc, 0.5, 0.5).y2).toBeGreaterThan(
+      driftKeepOutFor('portrait', vc, 0.5, 0.5).y1,
+    );
+  });
+
+  test('portrait sits the drift plane deeper and thins its fog to match', () => {
+    const wide = driftDepthRange('wide');
+    const portrait = driftDepthRange('portrait');
+    expect(driftDepthRange('landscape-phone')).toEqual(wide);
+    expect(portrait.near).toBeGreaterThan(wide.far);
+    expect(portrait.far).toBeGreaterThan(portrait.near);
+    // Fog: the far plane of each class ends up about equally present.
+    const fogged = (rho: number, depth: number) => 1 - Math.exp(-((rho * depth) ** 2));
+    const d = 27; // portrait hero distance on a 412 px phone
+    const wideFar = fogged(driftFogDensity('wide', d), d + wide.far / Math.cos(0.64));
+    const portraitFar = fogged(driftFogDensity('portrait', d), d + portrait.far / Math.cos(0.64));
+    expect(Math.abs(portraitFar - wideFar)).toBeLessThan(0.12);
+    expect(portraitFar).toBeLessThan(0.5);
+    expect(driftFogDensity('wide', d)).toBeCloseTo(fogDensityFor(d), 9);
+    const l = menuLayout(412 / 700, {
+      width: 412,
+      height: 700,
+      band: { x: 16, y: 147, w: 380, h: 140 },
+    });
+    expect(l.drift.near).toBe(portrait.near);
+    expect(l.drift.fog).toBeCloseTo(driftFogDensity('portrait', l.distance), 9);
+    expect(l.fogDensity).toBeCloseTo(fogDensityFor(l.distance), 9);
   });
 
   test('drift field is deterministic, bounded and mixes faces with backs', () => {
@@ -492,6 +554,25 @@ describe('menu layout', () => {
     }
   });
 
+  test('the footprint lists each die disc, inside the joint box and clear of the tiles', () => {
+    const band = { x: 16, y: 147, w: 380, h: 140 };
+    const l = menuLayout(412 / 700, { width: 412, height: 700, band });
+    const fp = l.footprint!;
+    expect(fp.dice).toHaveLength(2);
+    for (const d of fp.dice) {
+      expect(d.r).toBeGreaterThan(4);
+      expect(d.x - d.r).toBeGreaterThanOrEqual(fp.all.x - 1e-6);
+      expect(d.x + d.r).toBeLessThanOrEqual(fp.all.x + fp.all.w + 1e-6);
+      expect(d.y - d.r).toBeGreaterThanOrEqual(fp.all.y - 1e-6);
+      expect(d.y + d.r).toBeLessThanOrEqual(fp.all.y + fp.all.h + 1e-6);
+      // Portrait tucks the dice past the rack's right end, in the row
+      // gap: the corners of the joint box above and below them are open.
+      expect(d.x).toBeGreaterThan(fp.tiles.x + fp.tiles.w);
+      expect(d.y - d.r).toBeGreaterThan(fp.tiles.y + 8);
+      expect(d.y + d.r).toBeLessThan(fp.tiles.y + fp.tiles.h - 8);
+    }
+  });
+
   test('the dice discs are part of the footprint', () => {
     const l = menuLayout(1440 / 900);
     const fp = rackFootprint(l, 1440, 900);
@@ -547,7 +628,7 @@ describe('hero canvas fit (the band as its own canvas)', () => {
     },
   );
 
-  test('the class follows the viewport aspect, never the band aspect', () => {
+  test('the class follows the viewport, never the band aspect', () => {
     // A phone's band is a wide strip (380 × 140 ≈ 2.7) — classified on
     // its own it would be a landscape phone and get the wrong fan.
     const l = menuLayout(412 / 700, {
@@ -558,5 +639,29 @@ describe('hero canvas fit (the band as its own canvas)', () => {
     expect(l.cls).toBe('portrait');
     expect(l.aspect).toBeCloseTo(412 / 700, 9);
     expect(l.fan.rows).toBe(2);
+  });
+
+  test('a rotated 412×700 phone is a landscape phone: two-row rack fitted to the title column', () => {
+    // 700×412 is aspect 1.7 — `wide` by aspect alone, whose one-row rack
+    // fitted into the landscape lobby's 216 px title column came out
+    // 216×34 px (round-6 menu critic). The view's size decides.
+    const band = { x: 16, y: 146, w: 216, h: 217 };
+    const l = menuLayout(700 / 412, { width: 700, height: 412, band });
+    expect(l.cls).toBe('landscape-phone');
+    expect(l.fan.rows).toBe(2);
+    expect(menuLayout(700 / 412).cls).toBe('wide');
+    const fp = l.footprint!;
+    const box = heroBox(band)!;
+    expect(fp.all.x).toBeGreaterThanOrEqual(box.x - 0.5);
+    expect(fp.all.x + fp.all.w).toBeLessThanOrEqual(box.x + box.w + 0.5);
+    expect(fp.all.y).toBeGreaterThanOrEqual(box.y - 0.5);
+    expect(fp.all.y + fp.all.h).toBeLessThanOrEqual(box.y + box.h + 0.5);
+    // A rack, not a strip: two rows stand about a third as tall as wide.
+    expect(fp.tiles.h / fp.tiles.w).toBeGreaterThan(0.3);
+    expect(fp.tiles.h).toBeGreaterThan(50);
+    for (const v of heroVisibility(l, 0.74)) {
+      expect(v.occluded).toBe(0);
+      expect(v.facing).toBeGreaterThan(0.75);
+    }
   });
 });

@@ -39,6 +39,7 @@ interface MenuDebug {
   dice: number[];
   diceRects: { x: number; y: number; r: number }[];
   rack: { x: number; y: number; w: number; h: number };
+  rackTiles: { x: number; y: number; w: number; h: number };
   band: { x: number; y: number; w: number; h: number } | null;
   rackGoal: { x: number; y: number; w: number; h: number } | null;
   /** Hero camera `setViewOffset` re-applies since build (resize only). */
@@ -304,6 +305,22 @@ function readMenuDebug(page: import('@playwright/test').Page): Promise<MenuDebug
   );
 }
 
+/**
+ * Shown drift tiles touching the hero: the tiles' own box or either
+ * die's disc. The keep-out is that union, not the joint `rack` box —
+ * on a phone the corners of the joint box above and below the dice are
+ * open ground the field may use.
+ */
+function overRack(debug: MenuDebug): { x: number; y: number; r: number }[] {
+  const shown = shownTiles(debug);
+  const t = debug.rackTiles;
+  const onTiles = discsOver(shown, { x: t.x, y: t.y, width: t.w, height: t.h });
+  const onDice = shown.filter((s) =>
+    debug.diceRects.some((d) => Math.hypot(d.x - s.x, d.y - s.y) < d.r + s.r),
+  );
+  return [...new Set([...onTiles, ...onDice])];
+}
+
 /** Drift tiles whose visible disc overlaps `box` (fade > 0.05 counts). */
 function tilesOver(
   debug: MenuDebug,
@@ -430,14 +447,7 @@ test.describe('three: menu backdrop', () => {
     for (const f of debug.dice) expect(f).toBeGreaterThanOrEqual(0.9);
     // No drift disc touches the hero rack's footprint (a far back used to
     // poke out from under the bottom-right 中 and read as debris).
-    expect(
-      discsOver(shownTiles(debug), {
-        x: debug.rack.x,
-        y: debug.rack.y,
-        width: debug.rack.w,
-        height: debug.rack.h,
-      }),
-    ).toEqual([]);
+    expect(overRack(debug)).toEqual([]);
 
     // Tutorial row expands into the lesson rail with the testIDs the
     // verifier's `startTutorial` step uses.
@@ -526,14 +536,7 @@ test.describe('three: menu backdrop', () => {
     // The rack is a keep-out on every class (round-5 critic: a drift
     // back sat on the desktop rack's 一萬 corner while it was phone-only).
     expect(debug.rack.w).toBeGreaterThan(100);
-    expect(
-      discsOver(shownTiles(debug), {
-        x: debug.rack.x,
-        y: debug.rack.y,
-        width: debug.rack.w,
-        height: debug.rack.h,
-      }),
-    ).toEqual([]);
+    expect(overRack(debug)).toEqual([]);
 
     // Desktop lobby contract.
     await expect(page.getByRole('button', { name: 'Create new match' })).toBeVisible();
@@ -615,11 +618,12 @@ test.describe('three: menu backdrop', () => {
     if (!debug) throw new Error('menu debug never published');
     expect(debug.reseeded).toBe(true);
     // The frozen portrait field is whatever fits whole in the hero band's
-    // side margins, clear of the rack and every card — and nothing else:
-    // a tile that could only show as a half-cut disc at the frame edge or
-    // a sliver under the rack is parked (round-3 critic), which on a
-    // 412 px phone usually means the frame shows the rack alone.
+    // side margins (and, on this tall phone, the strip under the rack),
+    // clear of the rack, the dice and every card — and nothing else: a
+    // tile that could only show as a half-cut disc at the frame edge or
+    // a sliver under the rack is parked (round-3 critic).
     const shown = shownTiles(debug);
+    expect(shown.length).toBeGreaterThanOrEqual(4);
     const online = await page.getByTestId('mode-online').boundingBox();
     if (!online) throw new Error('missing online card box');
     for (const t of shown) {
@@ -629,15 +633,147 @@ test.describe('three: menu backdrop', () => {
       expect(t.x - 0.4 * t.r).toBeGreaterThanOrEqual(0);
       expect(t.x + 0.4 * t.r).toBeLessThanOrEqual(412);
     }
-    expect(
-      discsOver(shown, {
-        x: debug.rack.x,
-        y: debug.rack.y,
-        width: debug.rack.w,
-        height: debug.rack.h,
-      }),
-    ).toEqual([]);
+    expect(overRack(debug)).toEqual([]);
     expect(shown.length + debug.parked).toBe(debug.visible);
+    expect(errors()).toEqual([]);
+  });
+
+  for (const reduced of [false, true]) {
+    test(`phone 412×700${reduced ? ', reduced motion' : ''}: the field shows whole tiles down the rack's margins, clear of the rack, dice, title and cards`, async ({
+      page,
+    }) => {
+      // Round-6 menu critic: 1 of 14 tiles visible on the browser phone —
+      // the rack keep-out, the 24 px DOM ramps and the wide field's depth
+      // left no spot an r ≈ 14–26 px disc could fill. The portrait field
+      // now sits deeper (r ≈ 8–13 px), keeps out of the tiles' box and
+      // the two dice discs rather than their joint box, and packs the
+      // band's two margin columns.
+      const errors = collectErrors(page);
+      if (reduced) {
+        await page.addInitScript(() => {
+          try {
+            const key = 'mj.settings.v1';
+            const cur = JSON.parse(localStorage.getItem(key) || '{}');
+            localStorage.setItem(key, JSON.stringify({ ...cur, animations: false }));
+          } catch {
+            /* private mode */
+          }
+        });
+      }
+      await page.setViewportSize({ width: 412, height: 700 });
+      await page.goto('/');
+      await expect(page.getByRole('heading', { name: 'Modern Mahjong' })).toBeVisible();
+      await expect(page.getByTestId('menu-3d').locator('canvas')).toBeAttached({
+        timeout: 15_000,
+      });
+      await page.waitForFunction(
+        () =>
+          (globalThis as { __MAHJONG_MENU_INTRO__?: string }).__MAHJONG_MENU_INTRO__ === 'settled',
+        null,
+        { timeout: 8000 },
+      );
+      await expect.poll(() => allRevealsSettled(page), { timeout: 2500 }).toBe(true);
+      await page.waitForTimeout(600);
+      const debug = await readMenuDebug(page);
+      if (!debug) throw new Error('menu debug never published');
+      expect(debug.reseeded).toBe(true);
+      const shown = shownTiles(debug);
+      // Whole tiles: a shown tile is one the re-seed found room for (≥ 0.75
+      // visibility; the debug `r` is already the faded disc). The frozen
+      // field's tiles are never mid-fade, so every one is at full size.
+      const whole = shown.filter((t) => t.fade >= 0.75);
+      expect(whole.length).toBeGreaterThanOrEqual(reduced ? 4 : 6);
+      if (reduced) expect(shown.length).toBe(whole.length);
+      const title = await titleBoxes(page);
+      const kicker = await page.getByText('Hong Kong Mahjong', { exact: true }).boundingBox();
+      const online = await page.getByTestId('mode-online').boundingBox();
+      const bar = await page.getByTestId('lobby-app-bar').boundingBox();
+      if (!kicker || !online || !bar) throw new Error('missing lobby boxes');
+      // Never over the rack's tiles or dice, the title copy, the app bar
+      // or a card — and every disc wholly inside the frame.
+      expect(overRack(debug)).toEqual([]);
+      expect(tilesOver(debug, title.heading)).toEqual([]);
+      if (title.tagline) expect(tilesOver(debug, title.tagline)).toEqual([]);
+      expect(tilesOver(debug, kicker)).toEqual([]);
+      expect(tilesOver(debug, online)).toEqual([]);
+      expect(tilesOver(debug, bar)).toEqual([]);
+      for (const t of shown) {
+        expect(t.x - t.r).toBeGreaterThanOrEqual(-1);
+        expect(t.x + t.r).toBeLessThanOrEqual(413);
+        expect(t.y - t.r).toBeGreaterThanOrEqual(-1);
+        expect(t.y + t.r).toBeLessThanOrEqual(701);
+        // Inside the hero band's rows — the field is floored there.
+        expect(t.y).toBeGreaterThan(title.bottom);
+        expect(t.y).toBeLessThan(online.y);
+      }
+      // Both margins carry tiles: the field is a frame around the rack,
+      // not a single column.
+      const midX = debug.rackTiles.x + debug.rackTiles.w / 2;
+      expect(whole.some((t) => t.x < midX)).toBe(true);
+      expect(whole.some((t) => t.x > midX)).toBe(true);
+      // Frozen: every visible-slot tile is either shown or parked. (In
+      // motion a tile can be mid-fade under a card without being parked.)
+      if (reduced) expect(shown.length + debug.parked).toBe(debug.visible);
+      expect(errors()).toEqual([]);
+    });
+  }
+
+  test('rotated phone (700×412): the landscape lobby keeps its two-row rack and whole row titles', async ({
+    page,
+  }) => {
+    // 700×412 is aspect 1.7 — `wide` by aspect alone, so the hero got the
+    // one-row rack (216×34 px in the title column) while the card column,
+    // 440 px split three ways, broke "Replays" mid-word (round-6 menu
+    // critic). The class now follows the viewport's size and the third
+    // secondary row wraps to its own line.
+    const errors = collectErrors(page);
+    await page.setViewportSize({ width: 700, height: 412 });
+    await page.goto('/');
+    await expect(page.getByRole('heading', { name: 'Modern Mahjong' })).toBeVisible();
+    await expect(page.getByTestId('menu-3d').locator('canvas')).toBeAttached({ timeout: 15_000 });
+    await page.waitForFunction(
+      () =>
+        (globalThis as { __MAHJONG_MENU_INTRO__?: string }).__MAHJONG_MENU_INTRO__ === 'settled',
+      null,
+      { timeout: 8000 },
+    );
+    await expect.poll(() => allRevealsSettled(page), { timeout: 2500 }).toBe(true);
+    const debug = await readMenuDebug(page);
+    if (!debug?.band) throw new Error('menu debug never published a band');
+    // A rack, not a strip: two rows of seven stand over a third as tall
+    // as wide (the one-row strip was 0.16), and the tiles are ≥ 22 px wide.
+    const tiles = debug.rackTiles;
+    expect(tiles.h / tiles.w).toBeGreaterThan(0.3);
+    expect(tiles.w / 7).toBeGreaterThanOrEqual(22);
+    expect(tiles.h).toBeGreaterThan(60);
+    // Left of the card column, inside its band.
+    const online = await page.getByTestId('mode-online').boundingBox();
+    if (!online) throw new Error('missing online card box');
+    expect(debug.rack.x + debug.rack.w).toBeLessThanOrEqual(online.x + 1.5);
+    expect(debug.rack.x).toBeGreaterThanOrEqual(debug.band.x - 1.5);
+    // Row titles stay on one line; the rows never overlap.
+    for (const label of ['Tutorial', 'LAN / offline', 'Replays']) {
+      const box = await page.getByText(label, { exact: true }).first().boundingBox();
+      if (!box) throw new Error(`missing ${label} title`);
+      expect(box.height, `${label} wraps`).toBeLessThan(24);
+    }
+    const rows = await Promise.all(
+      ['mode-tutorial', 'mode-lan', 'mode-replays'].map((id) => page.getByTestId(id).boundingBox()),
+    );
+    for (let i = 0; i < rows.length; i++) {
+      const a = rows[i];
+      if (!a) throw new Error('missing row box');
+      expect(a.x + a.width).toBeLessThanOrEqual(700 - 12 + 1.5);
+      for (let j = i + 1; j < rows.length; j++) {
+        const b = rows[j];
+        if (!b) throw new Error('missing row box');
+        const overlapX = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
+        const overlapY = Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y);
+        expect(Math.min(overlapX, overlapY)).toBeLessThanOrEqual(0);
+      }
+    }
+    const perf = await readPerf(page);
+    expect(perf.drawCalls).toBeLessThanOrEqual(MENU_BUDGET.drawCalls);
     expect(errors()).toEqual([]);
   });
 

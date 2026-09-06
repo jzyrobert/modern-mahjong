@@ -23,6 +23,7 @@ import { clamp01, easeOutCubic, lerp } from '../core/tween';
 import { TilePool } from '../tiles/TilePool';
 import { TILE_D, TILE_H, TILE_W } from '../tiles/geometry';
 import { createDice } from './dice';
+import { publishHeroDice } from './heroDice';
 import {
   DIE_R,
   HERO_COUNT,
@@ -298,7 +299,7 @@ export function buildHeroScene(ctx: SceneContext, opts: HeroSceneOptions): Scene
    * at its resting pose, plus the dice pair's discs), canvas CSS px
    * through the live camera.
    */
-  const rackRect = (): ScreenRect => {
+  const rackRect = (withDice = true): ScreenRect => {
     rig.camera.updateMatrixWorld();
     const proj = { x: 0, y: 0, r: 0 };
     let x0 = Number.POSITIVE_INFINITY;
@@ -321,9 +322,11 @@ export function buildHeroScene(ctx: SceneContext, opts: HeroSceneOptions): Scene
         grow(proj.x, proj.y, 0);
       }
     }
-    for (const d of layout.dice) {
-      projectPoint(_vWorld.set(d.x, d.y, d.z), DIE_R, proj);
-      grow(proj.x, proj.y, proj.r);
+    if (withDice) {
+      for (const d of layout.dice) {
+        projectPoint(_vWorld.set(d.x, d.y, d.z), DIE_R, proj);
+        grow(proj.x, proj.y, proj.r);
+      }
     }
     return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
   };
@@ -353,11 +356,16 @@ export function buildHeroScene(ctx: SceneContext, opts: HeroSceneOptions): Scene
     const proj = { x: 0, y: 0, r: 0 };
     _vWorld.set(slot.x, slot.y, slot.z);
     projectPoint(_vWorld, DIE_R, proj);
+    // The fit lays the footprint's edge on the band's edge, so the outer
+    // die's disc is *tangent* to the canvas: half a pixel of slack keeps
+    // rounding from reading that as "off the canvas" and nudging the
+    // pair back for nothing.
+    const slack = 0.5;
     if (
-      proj.x - proj.r < 0 ||
-      proj.x + proj.r > ctx.size.width ||
-      proj.y - proj.r < 0 ||
-      proj.y + proj.r > ctx.size.height
+      proj.x - proj.r < -slack ||
+      proj.x + proj.r > ctx.size.width + slack ||
+      proj.y - proj.r < -slack ||
+      proj.y + proj.r > ctx.size.height + slack
     )
       return 0;
     return occluderFactor(proj.x, proj.y, proj.r, rects, OCCLUDER_BAND_PX, 1);
@@ -473,6 +481,10 @@ export function buildHeroScene(ctx: SceneContext, opts: HeroSceneOptions): Scene
       projectPoint(_obj.position, DIE_R, debugDiceRects[i]!);
     }
     dice.instanceMatrix.needsUpdate = true;
+    // The drift field keeps out of the dice where they *are* (the
+    // keep-out nudge moves them off the layout's slots) — canvas-local,
+    // like the debug seam.
+    if (fitted) publishHeroDice(debugDiceRects);
     return live;
   };
 
@@ -585,6 +597,7 @@ export function buildHeroScene(ctx: SceneContext, opts: HeroSceneOptions): Scene
   setHeroDebugProvider({
     canvasRect,
     rack: rackRect,
+    rackTiles: () => rackRect(false),
     rackGoal: () => (layout.footprint ? { ...layout.footprint.all } : null),
     diceRects: () => debugDiceRects.map((r) => ({ ...r })),
     dice: () => [...debugDice],
@@ -649,6 +662,7 @@ export function buildHeroScene(ctx: SceneContext, opts: HeroSceneOptions): Scene
     dispose() {
       globalThis.__MAHJONG_MENU_INTRO__ = undefined;
       setHeroDebugProvider(null);
+      publishHeroDice([]);
       window.removeEventListener('resize', onWindowResize);
       if (parallaxOn) window.removeEventListener('pointermove', onPointer);
       lights.dispose();

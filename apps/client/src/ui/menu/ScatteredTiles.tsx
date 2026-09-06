@@ -2,7 +2,7 @@ import type { Tile as MTile } from '@mahjong/game-logic';
 import { View, useWindowDimensions } from 'react-native';
 import { Tile } from '../Tile';
 import { useHeroBand } from './HeroBandSlot';
-import { DOM_FAN_TILES, classifyAspect, domFan } from './heroAnchor';
+import { DOM_FAN_TILES, type ViewportClass, classifyViewport, domFan } from './heroAnchor';
 
 // Tile only renders the back when `faceDown`, so the engine value here
 // is a placeholder — the tile-back skin gradient is what paints.
@@ -18,7 +18,7 @@ interface ScatteredTile {
   opacity: number;
 }
 
-type Backs = Record<ReturnType<typeof classifyAspect>, ScatteredTile[]>;
+type Backs = Record<ViewportClass, ScatteredTile[]>;
 
 /** Tile-back positions per viewport class for the menu, kept clear of
  *  the title block, the fan (`heroAnchor`) and the card stack so
@@ -92,9 +92,7 @@ export function ScatteredTiles({
 }: { fan?: boolean; variant?: 'menu' | 'library' }) {
   const { width, height } = useWindowDimensions();
   const band = useHeroBand();
-  const tiles = (variant === 'menu' ? MENU_BACKS : LIBRARY_BACKS)[
-    classifyAspect(width / Math.max(1, height))
-  ];
+  const tiles = (variant === 'menu' ? MENU_BACKS : LIBRARY_BACKS)[classifyViewport(width, height)];
   // Centred in the lobby's measured hero band when it has one, so the
   // fan sits under the title's last line like the 3D rack does.
   const fan = showFan ? domFan(width, height, { band }) : [];

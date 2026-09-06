@@ -26,7 +26,7 @@ import {
   rendererDetail,
 } from './settingsOptions';
 import { isWideSheetViewport } from './sheetLayout';
-import { GLASS_SHEET } from './sheetTheme';
+import { GLASS_SHEET, glassSwitchProps } from './sheetTheme';
 import { FELT_SKINS, TILE_BACK_SKINS } from './skins';
 
 interface SettingsPanelProps {
@@ -36,16 +36,6 @@ interface SettingsPanelProps {
 
 /** Glass HUD palette — shared with the in-match sheets (`sheetTheme`). */
 const G = GLASS_SHEET;
-
-/** Switch colours inside the glass sheet (see `ToggleRow`). */
-const GLASS_SWITCH = {
-  track: 'rgba(216,168,90,0.85)',
-  trackOff: 'rgba(255,255,255,0.18)',
-  knob: '#f3ead8',
-  // RN-web only: the knob colour while on (its default is teal). Not in
-  // RN's prop types, so it rides in as a spread.
-  webKnob: { activeThumbColor: '#fbf6ea' } as Record<string, string>,
-} as const;
 
 /**
  * In-match preferences panel — glass sheet (bottom on phone, right-hand
@@ -620,13 +610,8 @@ function ToggleRow({ label, hint, value, onChange, testID }: ToggleRowProps) {
         onValueChange={onChange}
         accessibilityLabel={label}
         accessibilityState={{ checked: value }}
-        // Glass language: a gold track when on (the HUD's one accent),
-        // ivory knob both ways — RN-web's default on-knob is teal and the
-        // classic coral track read as the old shell inside the sheet.
-        trackColor={{ true: GLASS_SWITCH.track, false: GLASS_SWITCH.trackOff }}
-        thumbColor={GLASS_SWITCH.knob}
-        {...GLASS_SWITCH.webKnob}
-        ios_backgroundColor={GLASS_SWITCH.trackOff}
+        // Glass language: gold track when on, ivory knob (`sheetTheme`).
+        {...glassSwitchProps()}
       />
     </View>
   );

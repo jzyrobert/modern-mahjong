@@ -16,6 +16,23 @@ export function classifyAspect(aspect: number): ViewportClass {
   return 'wide';
 }
 
+/** Short edge at or under this is a phone — the lobby's own gate
+ *  (`MobileLobby.useIsPhoneViewport`). */
+export const PHONE_SHORT_EDGE_MAX = 480;
+
+/**
+ * Class of a viewport by its size, not its aspect alone: a phone turned
+ * on its side is a landscape phone however wide it is. The 412×700
+ * browser phone rotated (700×412, aspect 1.7) classified `wide` by
+ * aspect and got the one-row rack — 14 tiles fitted into the landscape
+ * lobby's 216 px title column came out 34 px tall (round-6 menu
+ * critic) — while the DOM around it was the landscape phone layout.
+ */
+export function classifyViewport(width: number, height: number): ViewportClass {
+  if (width > height && Math.min(width, height) <= PHONE_SHORT_EDGE_MAX) return 'landscape-phone';
+  return classifyAspect(width / Math.max(1, height));
+}
+
 export interface HeroAnchor {
   cls: ViewportClass;
   /** Horizontal centre, 0..1 of the viewport width. */
@@ -24,8 +41,10 @@ export interface HeroAnchor {
   y: number;
 }
 
-export function heroAnchor(aspect: number): HeroAnchor {
-  const cls = classifyAspect(aspect);
+export function heroAnchor(
+  aspect: number,
+  cls: ViewportClass = classifyAspect(aspect),
+): HeroAnchor {
   if (cls === 'portrait') return { cls, x: 0.5, y: 0.3 };
   // Landscape phone: title column on the left (≈ 30 % of the width),
   // cards on the right from x ≈ 0.32 — the fan lives under the title
@@ -88,7 +107,7 @@ const DOM_FAN_MIN_TILE_W = 28;
  */
 export function domFan(width: number, height: number, opts: DomFanOptions = {}): DomFanSlot[] {
   const aspect = width / Math.max(1, height);
-  const a = heroAnchor(aspect);
+  const a = heroAnchor(aspect, classifyViewport(width, height));
   const count = opts.count ?? (a.cls === 'wide' ? 9 : 7);
   const box = heroBox(opts.band);
   const baseW = domFanTileWidth(a.cls);

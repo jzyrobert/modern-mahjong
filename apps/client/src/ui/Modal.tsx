@@ -8,9 +8,11 @@ import {
   Text,
   View,
   type ViewStyle,
+  useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS as SHARED_COLORS } from './colors';
+import { SHEET_MAX_FRAC, sheetMaxHeightFrac } from './match/sheetLayout';
 import { useReducedMotion } from './tutorial/useReducedMotion';
 
 interface ModalProps {
@@ -153,6 +155,10 @@ export function Modal({
   const insets = useSafeAreaInsets();
   const reduce = useReducedMotion();
   const { visible, progress } = useGlassPresence(open, glass, reduce);
+  const { width, height } = useWindowDimensions();
+  // Glass bottom sheets stop at 78 % on portrait phones (`sheetLayout`);
+  // the paper sheets of the classic shells keep their 90 %.
+  const maxFrac = glass && isBottom ? sheetMaxHeightFrac(width, height) : SHEET_MAX_FRAC;
   const motion = glass
     ? {
         opacity: progress,
@@ -223,7 +229,7 @@ export function Modal({
           style={{
             width: '100%',
             maxWidth,
-            maxHeight: isRight ? '100%' : '90%',
+            maxHeight: isRight ? '100%' : `${Math.round(maxFrac * 100)}%`,
             ...(isRight && { height: '100%' }),
             ...motion,
           }}

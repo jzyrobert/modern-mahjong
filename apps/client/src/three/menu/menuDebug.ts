@@ -43,6 +43,9 @@ export interface MenuDebug {
   diceRects: { x: number; y: number; r: number }[];
   /** The hero rack's live projected footprint (tiles + dice). */
   rack: ScreenRect;
+  /** The hero tiles' own footprint — the drift keep-out is this box
+   *  plus the `diceRects` discs, not the joint `rack` box. */
+  rackTiles: ScreenRect;
   /** The hero band the rack is fitted into — the hero canvas's rect. */
   band: ScreenRect | null;
   /** Where the pure layout maths expects the settled rack (tiles +
@@ -81,6 +84,7 @@ export type DriftDebug = Pick<
 export interface HeroDebugProvider {
   canvasRect(): ScreenRect;
   rack(): ScreenRect;
+  rackTiles(): ScreenRect;
   rackGoal(): ScreenRect | null;
   diceRects(): { x: number; y: number; r: number }[];
   dice(): number[];
@@ -135,6 +139,10 @@ function rebuild(): void {
     get rack() {
       if (!h) return { x: 0, y: 0, w: 0, h: 0 };
       return shifted(h.rack(), h.canvasRect());
+    },
+    get rackTiles() {
+      if (!h) return { x: 0, y: 0, w: 0, h: 0 };
+      return shifted(h.rackTiles(), h.canvasRect());
     },
     get band() {
       return h ? h.canvasRect() : null;

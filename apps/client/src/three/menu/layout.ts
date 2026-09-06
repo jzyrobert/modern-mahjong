@@ -1,4 +1,9 @@
-import { type ViewportClass, classifyAspect, heroAnchor } from '../../ui/menu/heroAnchor';
+import {
+  type ViewportClass,
+  classifyAspect,
+  classifyViewport,
+  heroAnchor,
+} from '../../ui/menu/heroAnchor';
 import { type HeroBand, heroBox } from '../../ui/menu/heroBand';
 import type { CameraPreset } from '../core/camera';
 import { TILE_D, TILE_H, TILE_W } from '../tiles/geometry';
@@ -78,8 +83,10 @@ export interface MenuLayout {
   viewCenter: { x: number; y: number };
   fogDensity: number;
   /** Half-extents of the drift field at the hero depth; grows with
-   *  depth in `driftField`. */
-  drift: { halfW: number; halfH: number; near: number; far: number };
+   *  depth in `driftField`. `near` / `far` are the field plane's depth
+   *  range behind the hero (`driftDepthRange`); `fog` is the drift
+   *  canvas's own density (`driftFogDensity`). */
+  drift: { halfW: number; halfH: number; near: number; far: number; fog: number };
   /** Normalised drift-field rect the tiles must stay out of (the DOM
    *  title block) — see `driftKeepOut`. */
   keepOut: DriftKeepOut;
@@ -103,15 +110,17 @@ export interface MenuView {
 }
 
 /**
- * The field is seeded for a wide frame; a portrait phone shows the same
- * tiles across a quarter of the area, and the title keep-out squeezes
- * them into the lower two thirds. Cap the visible count per class so
- * the field reads as a few tiles adrift in fog, not a shower behind
- * the cards.
+ * The field is seeded for a wide frame; a phone shows the same tiles
+ * across a quarter of the area, and the title keep-out squeezes them
+ * into the lower two thirds. Cap the visible count per class so the
+ * field reads as a few tiles adrift in fog, not a shower behind the
+ * cards. Portrait's open ground is two narrow columns beside the rack
+ * (`DriftScene.reseedForOccluders` parks whatever finds no spot), so
+ * its cap is the pool the re-seed packs from — the phone's count is
+ * what fits, not the cap.
  */
 export function driftVisible(cls: ViewportClass): number {
-  if (cls === 'portrait') return 14;
-  if (cls === 'landscape-phone') return 18;
+  if (cls === 'portrait' || cls === 'landscape-phone') return 18;
   return DRIFT_COUNT;
 }
 
@@ -128,6 +137,12 @@ export interface DriftKeepOut {
   x1: number;
   /** Lower edge of the band (tiles must have uy ≥ y1 while inside x0..x1). */
   y1: number;
+  /** Floor of the open rows (tiles must have uy ≤ y2 while inside
+   *  x0..x1): the field's whole padded height unless the class confines
+   *  the field — portrait keeps it in the hero band's rows
+   *  (`driftKeepOutFor`), so a wrap re-enters at the band's top and the
+   *  tiles keep cycling through the only open ground a phone has. */
+  y2: number;
 }
 
 export const DRIFT_LIMIT = 1.15;
@@ -139,13 +154,14 @@ export function driftKeepOut(cls: ViewportClass): DriftKeepOut {
   // the full width down to y ≈ 0.16 → band to y1 −0.62 (≈ 0.18). The
   // hero band below it stays open so the field has somewhere visible
   // to live (the card stack covers everything from y ≈ 0.37).
-  if (cls === 'portrait') return { x0: -DRIFT_LIMIT, x1: DRIFT_LIMIT, y1: -0.62 };
+  const y2 = DRIFT_LIMIT;
+  if (cls === 'portrait') return { x0: -DRIFT_LIMIT, x1: DRIFT_LIMIT, y1: -0.62, y2 };
   // Landscape phone (vc 0.16 / 0.58): identity pill + title column,
   // x < 0.36, down to y ≈ 0.31 → x1 −0.3, y1 −0.25 (≈ 0.36).
-  if (cls === 'landscape-phone') return { x0: -DRIFT_LIMIT, x1: -0.3, y1: -0.25 };
+  if (cls === 'landscape-phone') return { x0: -DRIFT_LIMIT, x1: -0.3, y1: -0.25, y2 };
   // Wide (vc 0.5 / 0.33): centred title block, x 0.26..0.74, tagline
   // ends y ≈ 0.21 → y1 −0.5 (≈ 0.28).
-  return { x0: -0.44, x1: 0.44, y1: -0.5 };
+  return { x0: -0.44, x1: 0.44, y1: -0.5, y2 };
 }
 
 /**
@@ -162,43 +178,84 @@ export function screenToField(frac: number, vc: number): number {
  * stretches from the top of the field to `titleBottom` (a screen
  * fraction) across the same columns `driftKeepOut` uses, but mapped
  * through the actual view centre instead of the class's default anchor.
+ * Portrait also floors the field at `bandBottom` (the hero band's lower
+ * edge as a screen fraction): everything below it is the card column,
+ * where the field is always faded out, so the tiles cycle through the
+ * band's rows — the rack's side margins — instead of spending most of a
+ * lap hidden under glass (round-6 menu critic: 1 of 14 tiles visible).
  */
 export function driftKeepOutFor(
   cls: ViewportClass,
   vc: { x: number; y: number },
   titleBottom: number,
+  bandBottom = 1,
 ): DriftKeepOut {
   const y1 = Math.max(-DRIFT_LIMIT + 0.05, Math.min(0, screenToField(titleBottom, vc.y)));
-  if (cls === 'portrait') return { x0: -DRIFT_LIMIT, x1: DRIFT_LIMIT, y1 };
-  if (cls === 'landscape-phone') return { x0: -DRIFT_LIMIT, x1: screenToField(0.36, vc.x), y1 };
-  return { x0: screenToField(0.26, vc.x), x1: screenToField(0.74, vc.x), y1 };
+  if (cls === 'portrait') {
+    const y2 = Math.min(DRIFT_LIMIT, Math.max(y1 + 0.1, screenToField(bandBottom, vc.y)));
+    return { x0: -DRIFT_LIMIT, x1: DRIFT_LIMIT, y1, y2 };
+  }
+  const y2 = DRIFT_LIMIT;
+  if (cls === 'landscape-phone') return { x0: -DRIFT_LIMIT, x1: screenToField(0.36, vc.x), y1, y2 };
+  return { x0: screenToField(0.26, vc.x), x1: screenToField(0.74, vc.x), y1, y2 };
 }
 
 export function inKeepOut(ux: number, uy: number, k: DriftKeepOut): boolean {
-  return ux >= k.x0 && ux <= k.x1 && uy < k.y1;
+  return ux >= k.x0 && ux <= k.x1 && (uy < k.y1 || uy > k.y2);
 }
 
-/** Remap a seed that starts inside the keep-out band to the same
- *  relative position in the free range below it. */
+/** Remap a seed that starts inside the keep-out (above the band's
+ *  floor `y1`, or below its ceiling `y2`) to the same relative position
+ *  in the open rows between them. */
 export function placeOutsideKeepOut<T extends { ux: number; uy: number }>(
   t: T,
   k: DriftKeepOut,
 ): T {
   if (!inKeepOut(t.ux, t.uy, k)) return t;
-  const rel = (t.uy + DRIFT_LIMIT) / (k.y1 + DRIFT_LIMIT);
-  return { ...t, uy: k.y1 + rel * (DRIFT_LIMIT - k.y1) };
+  const rel =
+    t.uy < k.y1
+      ? (t.uy + DRIFT_LIMIT) / (k.y1 + DRIFT_LIMIT)
+      : (t.uy - k.y2) / Math.max(1e-6, DRIFT_LIMIT - k.y2);
+  return { ...t, uy: k.y1 + rel * (k.y2 - k.y1) };
 }
 
 /** Vertical wrap for a drifting tile: past the bottom it re-enters at
  *  the top — or just below the keep-out band when its `ux` is inside
- *  the band, so the title never gains a tile behind it. */
+ *  the band, so the title never gains a tile behind it; a class that
+ *  floors the field (`y2`) wraps at the floor. */
 export function wrapDriftY(uy: number, ux: number, k: DriftKeepOut, limit = DRIFT_LIMIT): number {
-  if (uy > limit) {
-    const lo = ux >= k.x0 && ux <= k.x1 ? k.y1 : -limit;
-    return lo + (uy - limit);
+  const inCols = ux >= k.x0 && ux <= k.x1;
+  const hi = inCols ? Math.min(k.y2, limit) : limit;
+  if (uy > hi) {
+    const lo = inCols ? k.y1 : -limit;
+    return lo + (uy - hi);
   }
   if (uy < -limit) return limit - (-limit - uy);
   return uy;
+}
+
+/**
+ * Depth range of the drift plane behind the hero, world units. Portrait
+ * sits the field ~5× deeper than the wide viewports: its only open
+ * ground is the hero band's two side margins (≈ 36 and 16 px on a 412 px
+ * phone beside a rack that fills the band), where a tile projected at the
+ * wide field's depth (r ≈ 14–26 px) parks; at 34–66 units it projects
+ * to r ≈ 8–12 px and a column of five or six fits the left margin, with
+ * one or two above and below the dice on the right.
+ */
+export function driftDepthRange(cls: ViewportClass): { near: number; far: number } {
+  return cls === 'portrait' ? { near: 34, far: 66 } : { near: 6, far: 28 };
+}
+
+/**
+ * Fog density for the drift canvas. The hero's density
+ * (`fogDensityFor`) leaves a tile 28 units back ~45 % fogged, which at
+ * portrait's 60-unit far plane would be ~75 % — a ghost on the void — so
+ * portrait thins the fog to keep its far tiles about as present as the
+ * wide field's (≈ 20–42 % across its depth range).
+ */
+export function driftFogDensity(cls: ViewportClass, distance: number): number {
+  return fogDensityFor(distance) * (cls === 'portrait' ? 0.6 : 1);
 }
 
 /** Default camera elevation (wide viewports). Two-tier racks look down
@@ -289,8 +346,14 @@ export function heroCells(rows: number): readonly number[] {
 export { classifyAspect, type ViewportClass };
 
 export function menuLayout(aspect: number, view?: MenuView): MenuLayout {
-  const anchor = heroAnchor(aspect);
-  const cls = anchor.cls;
+  // The class follows the viewport: with a measured view its size
+  // (`classifyViewport` — a rotated phone is a landscape phone whatever
+  // its aspect), else the aspect alone.
+  const cls =
+    view && view.width > 0 && view.height > 0
+      ? classifyViewport(view.width, view.height)
+      : classifyAspect(aspect);
+  const anchor = heroAnchor(aspect, cls);
   let fan: FanParams;
   let fov: number;
   let margin: number;
@@ -354,8 +417,8 @@ export function menuLayout(aspect: number, view?: MenuView): MenuLayout {
       drift: {
         halfW: frameWidth * 0.55,
         halfH: frameHeight * 0.7,
-        near: 6,
-        far: 28,
+        ...driftDepthRange(cls),
+        fog: driftFogDensity(cls, distance),
       },
       keepOut: driftKeepOut(cls),
       driftVisible: driftVisible(cls),
@@ -411,7 +474,7 @@ function fitLayoutToBox(
   const band = view.band as HeroBand;
   return {
     ...fitted,
-    keepOut: driftKeepOutFor(fitted.cls, viewCenter, band.y / H + 0.02),
+    keepOut: driftKeepOutFor(fitted.cls, viewCenter, band.y / H + 0.02, (band.y + band.h) / H),
     band: { ...band },
     footprint: rackFootprint(fitted, W, H, viewCenter),
   };
@@ -707,6 +770,10 @@ export interface RackFootprint {
   tiles: ScreenRect;
   /** Tiles plus the dice pair's discs — everything the hero covers. */
   all: ScreenRect;
+  /** The dice pair's projected discs (`DIE_R`), CSS px. The drift field
+   *  keeps out of `tiles` and of each disc — not of the joint `all` box,
+   *  whose corners beside the dice are open ground on a phone. */
+  dice: { x: number; y: number; r: number }[];
 }
 
 /**
@@ -753,9 +820,12 @@ export function rackFootprint(
       }
     }
   }
+  const dice: { x: number; y: number; r: number }[] = [];
   for (const d of layout.dice) {
     const sp = projectToScreen(layout, [d.x, d.y, d.z], width, height, vc);
-    grow(all, sp.x, sp.y, DIE_R * sp.pxPerUnit);
+    const r = DIE_R * sp.pxPerUnit;
+    grow(all, sp.x, sp.y, r);
+    dice.push({ x: sp.x, y: sp.y, r });
   }
   const rect = (b: ReturnType<typeof bounds>): ScreenRect => ({
     x: b.x0,
@@ -763,7 +833,7 @@ export function rackFootprint(
     w: b.x1 - b.x0,
     h: b.y1 - b.y0,
   });
-  return { tiles: rect(tiles), all: rect(all) };
+  return { tiles: rect(tiles), all: rect(all), dice };
 }
 
 export interface SlotVisibility {

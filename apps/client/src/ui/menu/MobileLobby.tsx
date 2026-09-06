@@ -24,6 +24,7 @@ import { LobbyPreview } from './LobbyPreview';
 import { GlassButton, GoldButton, MenuTextField } from './MenuButtons';
 import { CardHeader, IconSwatch, ModeCard } from './ModeCard';
 import { Reveal } from './Reveal';
+import { PHONE_SHORT_EDGE_MAX } from './heroAnchor';
 import {
   BotIcon,
   BoxIcon,
@@ -58,6 +59,15 @@ const PHONE_RADIUS = 12;
 const LANDSCAPE_HEADER_H = 44;
 /** Width of the top-right strip reserved for that chip. */
 const LANDSCAPE_CHIP_W = 220;
+/**
+ * Landscape secondary rows (Tutorial / LAN / Replays) share one line
+ * only while each gets at least this: icon swatch + gaps + chevron take
+ * ~90 px, and "LAN / offline" needs ~90 more. A 700 px-wide phone's
+ * ~440 px card column split three ways gave each 141 px and broke
+ * "Replays" mid-word (round-6 menu critic); there the third row wraps
+ * to a full-width second line.
+ */
+const LANDSCAPE_ROW_MIN_W = 184;
 
 /**
  * Portrait hero band height: the slot under the title block that the
@@ -344,10 +354,10 @@ export function MobileLobby({ isLandscape }: MobileLobbyProps) {
                   </View>
                 </Reveal>
                 <Reveal index={1}>
-                  <View style={{ flexDirection: 'row', gap: 10 }}>
-                    <View style={{ flex: 1, minWidth: 0 }}>{tutorialRow}</View>
-                    <View style={{ flex: 1, minWidth: 0 }}>{lanRow}</View>
-                    <View style={{ flex: 1, minWidth: 0 }}>{replaysRow}</View>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+                    <View style={LANDSCAPE_ROW_CELL}>{tutorialRow}</View>
+                    <View style={LANDSCAPE_ROW_CELL}>{lanRow}</View>
+                    <View style={LANDSCAPE_ROW_CELL}>{replaysRow}</View>
                   </View>
                 </Reveal>
                 {lobby ? <LobbyPreview lobby={lobby} matchCode={null} /> : null}
@@ -420,6 +430,10 @@ export function MobileLobby({ isLandscape }: MobileLobbyProps) {
     </View>
   );
 }
+
+/** A landscape secondary row's cell: grows to share the line, wraps
+ *  below `LANDSCAPE_ROW_MIN_W`. */
+const LANDSCAPE_ROW_CELL = { flexGrow: 1, flexBasis: LANDSCAPE_ROW_MIN_W, minWidth: 0 } as const;
 
 // ─── App bar (portrait) ─────────────────────────────────────────────
 
@@ -560,5 +574,5 @@ function ExpandedCard({ icon, title, subtitle, onCollapse, children }: ExpandedC
 export function useIsPhoneViewport(): { isPhone: boolean; isLandscape: boolean } {
   const { width, height } = useWindowDimensions();
   const isLandscape = useIsLandscape();
-  return { isPhone: Math.min(width, height) <= 480, isLandscape };
+  return { isPhone: Math.min(width, height) <= PHONE_SHORT_EDGE_MAX, isLandscape };
 }

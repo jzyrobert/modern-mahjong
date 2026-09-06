@@ -849,3 +849,39 @@ CC0-only asset policy, verifier rules. Operational notes:
   seat *after* the claimer, so bot 1 moves twice before bot 3 does) and
   `match-river-zoom-sink` (×200 slow motion, 45 s) are the new table
   recipes.
+- **Portrait drift field lives in the hero band's margins** (round-6
+  menu). A 412×700 phone's only open ground beside the title, rack and
+  card column is the band's two side margins (≈ 36 / 16 px) plus the
+  corners above and below the dice, so portrait: sits the plane deeper
+  (`layout.driftDepthRange` 34–66 units → r ≈ 8–12 px) with thinner
+  fog (`driftFogDensity` 0.6×; the hero's `fogDensity` is untouched),
+  floors the field at the band's bottom edge (`DriftKeepOut.y2` from
+  `driftKeepOutFor(..., bandBottom)` — wraps re-enter at the band top
+  so tiles cycle through the margins instead of a lap under glass),
+  drifts vertically only, keeps out of the tiles' box **and each die's
+  disc** (`RackFootprint.dice`, `DriftScene.rackRects`) rather than the
+  joint box, fades DOM rects over a 10 px ramp
+  (`OCCLUDER_BAND_PX_PORTRAIT`), and packs the columns far-first in
+  lattice order (`SPREAD_PORTRAIT` 1.2, 56 × 96 lattice — a drifting
+  column always has a tile mid-fade at an end, so the margins hold 8–9
+  spots for 6 whole tiles at any moment). The dice in that keep-out are
+  the hero's *live* discs (`heroDice.ts`, published from `writeDice`):
+  the dice keep-out nudge moves them off the layout's slots. Reduced
+  motion caps the frozen tilt (`FROZEN_TILT`) so no tile freezes
+  edge-on. `__MAHJONG_MENU_DEBUG__.rackTiles` is the tiles-only box;
+  `three-menu.spec.ts`'s `overRack` checks that plus `diceRects`, and
+  asserts ≥ 6 whole tiles at 412×700 (≥ 4 frozen). A viewport's class
+  is `classifyViewport(width, height)` — a rotated phone (700×412,
+  aspect 1.7) is a landscape phone, not `wide`, so it keeps the two-row
+  rack; the landscape lobby's secondary rows wrap below
+  `LANDSCAPE_ROW_MIN_W` (`phone-landscape-short` is the 700×412 shot
+  viewport).
+- **Sheet fold cue ends in a flat strip; portrait sheets stop at 78 %**
+  (round-6 settings). `SheetBody`'s chevron sits in the fade's bottom
+  `SHEET_CUE_STRIP_PX` (16) at `SHEET_CUE_STRIP_ALPHA` (0.96) of the
+  sheet fill (`sheetCueGradient`), so copy scrolls under the glyph;
+  glass bottom sheets on portrait phones cap at `SHEET_PHONE_MAX_FRAC`
+  (`sheetMaxHeightFrac` — landscape phones and the centred / side
+  panels keep 90 %); every glass `Switch` (settings rows, the lobby's
+  `RulePanel`) takes `sheetTheme.glassSwitchProps()` — gold track,
+  ivory knob (RN-web's default on-knob is teal).

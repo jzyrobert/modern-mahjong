@@ -9,6 +9,7 @@ describe('menu debug seam', () => {
     setHeroDebugProvider({
       canvasRect: () => ({ x: 16, y: top, w: 380, h: 140 }),
       rack: () => ({ x: 10, y: 20, w: 300, h: 100 }),
+      rackTiles: () => ({ x: 10, y: 20, w: 260, h: 100 }),
       rackGoal: () => ({ x: 11, y: 21, w: 300, h: 100 }),
       diceRects: () => [{ x: 5, y: 6, r: 7 }],
       dice: () => [1, 0.95],
@@ -20,6 +21,7 @@ describe('menu debug seam', () => {
     });
     const d = globalThis.__MAHJONG_MENU_DEBUG__;
     expect(d?.rack).toEqual({ x: 26, y: 320, w: 300, h: 100 });
+    expect(d?.rackTiles).toEqual({ x: 26, y: 320, w: 260, h: 100 });
     expect(d?.rackGoal).toEqual({ x: 27, y: 321, w: 300, h: 100 });
     expect(d?.band).toEqual({ x: 16, y: 300, w: 380, h: 140 });
     expect(d?.diceRects).toEqual([{ x: 21, y: 306, r: 7 }]);
@@ -51,6 +53,7 @@ describe('menu debug seam', () => {
     setHeroDebugProvider({
       canvasRect: () => ({ x: 0, y: 0, w: 1, h: 1 }),
       rack: () => ({ x: 0, y: 0, w: 1, h: 1 }),
+      rackTiles: () => ({ x: 0, y: 0, w: 1, h: 1 }),
       rackGoal: () => null,
       diceRects: () => [],
       dice: () => [1, 1],

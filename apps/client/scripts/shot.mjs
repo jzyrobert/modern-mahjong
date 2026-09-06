@@ -5,7 +5,7 @@
  *
  *   node scripts/shot.mjs --state match-my-turn [--state menu ...]
  *        [--all] [--owner table] [--renderer 3d|classic]
- *        [--viewport phone|phone-tall|phone-small|phone-landscape|tablet|desktop] [--dist dist]
+ *        [--viewport phone|phone-tall|phone-small|phone-landscape|phone-landscape-short|tablet|desktop] [--dist dist]
  *        [--out shots/<label>] [--label round1] [--port 0]
  *        [--seed 5] [--headed]
  *   SHOT_TIMEOUT_SCALE=3 stretches every step timeout (shared / loaded CPU).
