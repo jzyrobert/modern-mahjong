@@ -154,6 +154,10 @@ export interface SyncInput {
   sideWallIn?: number | undefined;
   /** Felt between the left seat's far-end melds and its rack — see `LayoutOptions.leftMeldGap`. */
   leftMeldGap?: number | undefined;
+  /** Camera the side seats' meld → rack seam is sized from (portrait) — see `LayoutOptions.sideSeamCamera`. */
+  sideSeamCamera?: readonly [number, number, number] | undefined;
+  /** Cloth to show at that seam (world units) — see `LayoutOptions.sideSeamFelt`. */
+  sideSeamFelt?: number | undefined;
   /** Side seats' meld scale — see `LayoutOptions.sideMeldScale`. */
   sideMeldScale?: number | undefined;
   /** Far seat's melds stood on the rail — see `LayoutOptions.farMeldsOnRail`. */
@@ -191,11 +195,21 @@ export interface TableDebugHint {
   markerRect: ScreenRect | null;
 }
 
+/** The dealer chip's pose: shown, its top's height over the felt, and its projected rect (`tileRect`-style, CSS px). */
+export interface TableDebugChip {
+  visible: boolean;
+  top: number;
+  castsShadow: boolean;
+  rect: ScreenRect | null;
+}
+
 export interface TableDebugSnapshot {
   now: number;
   tiles: TableDebugTile[];
   flights: number;
   hint: TableDebugHint | null;
+  /** Dealer chip; null while no dealer is marked (the waiting table). */
+  chip: TableDebugChip | null;
 }
 
 function round2(v: number): number {
@@ -293,6 +307,16 @@ const ZOOM_FELT_SCALE = 2.0;
 /** How far the rail sinks for the zoom: its whole height plus a margin under the felt plane. */
 const RAIL_SINK = RAIL_H + 0.1;
 /**
+ * How far the dealer chip sinks for the zoom (`applyZoomBlend`): its
+ * portrait spot is in front of the near wall's heel (`dealerChipLocal`),
+ * which the plan view puts in the held hand's band — the round-6 critic
+ * found it on the hand's first tile (a full 7-tile row overlapped it by
+ * ~30 px). It goes down through the felt with the walls and rail on the
+ * same beat and comes back with them; nothing marks the dealer while
+ * the zoom lasts (the seat strip's badges carry the wind).
+ */
+const CHIP_SINK = CHIP_H + 0.1;
+/**
  * Discard-hint frame (the `glow` mesh's second quad), world units: glow margin past
  * the face on each side, stroke bleed past the face edge as a fraction
  * of the face size, the hinted tile's steady lift along its up axis,
@@ -317,10 +341,13 @@ const HINT_QUAD_H = TILE_H + 2 * HINT_PAD;
  * presets; the portrait hand is held, and the tray's turn chip carries
  * its state), so this is the wide presets' value: 0.55 read as two
  * faint end pools and a sliver from the 44° desktop camera (round-5
- * critic); 0.65 keeps the light under the feet legible without turning
- * back into the bar on the felt round-FB4 rejected.
+ * critic), and 0.65 with the narrow band texture gained only 8 % of
+ * luminance in the feet band (round-6). 0.75 with the wider across-
+ * falloff (`textures.buildCueBandTexture`) keeps the light under the
+ * feet legible along the whole row without turning back into the bar
+ * on the felt round-FB4 rejected: the quad still ends at the rail's foot.
  */
-const CUE_HALO_BAND_OPACITY = 0.65;
+const CUE_HALO_BAND_OPACITY = 0.75;
 /**
  * The glow atlas: the cue halo's disc, its hand-row band and the
  * discard-hint frame drawn into one canvas (`buildGlowAtlas`), so the
@@ -887,6 +914,8 @@ export class TableScene {
       rows: input.rows,
       sideWallIn: input.sideWallIn,
       leftMeldGap: input.leftMeldGap,
+      sideSeamCamera: input.sideSeamCamera,
+      sideSeamFelt: input.sideSeamFelt,
       sideMeldScale: input.sideMeldScale,
       farMeldsOnRail: input.farMeldsOnRail,
       hideSideSeats: input.hideSideSeats,
@@ -966,7 +995,6 @@ export class TableScene {
       const [mx, mz] = toWorld(rel, lx, lz);
       this.marker.position.set(mx, CHIP_H / 2, mz);
       this.marker.quaternion.setFromAxisAngle(Y_AXIS, (rel * Math.PI) / 2);
-      this.marker.visible = true;
     }
     const rolls = waiting ? undefined : state.openingRolls;
     const pair = rolls
@@ -991,21 +1019,28 @@ export class TableScene {
     // rail did. Both blend in `update` (`applyZoomBlend`) on the beat the
     // walls take to sink through the felt, rather than switching.
     this.zoomTarget = input.hideWalls === true ? 1 : 0;
-    if (this.choreo.reducedMotion) this.applyZoomBlend(this.zoomTarget);
+    // The chip's visibility follows the blend (re-applied here so a chip
+    // that just appeared, or moved seats, takes the current blend).
+    this.applyZoomBlend(this.choreo.reducedMotion ? this.zoomTarget : this.zoomBlend);
     this.ctx.renderer.shadowMap.needsUpdate = true;
     this.ctx.loop.requestRender();
   }
 
   /**
-   * Felt scale 1 → `ZOOM_FELT_SCALE` and the rail sunk under the felt
-   * plane (its top ends `RAIL_SINK − RAIL_H` below it) at blend 1; the
-   * rail is only culled once fully under.
+   * Felt scale 1 → `ZOOM_FELT_SCALE`, the rail sunk under the felt plane
+   * (its top ends `RAIL_SINK − RAIL_H` below it) and the dealer chip
+   * `CHIP_SINK` under it at blend 1; both are only culled once fully
+   * under, and the chip stops casting once its top is within
+   * `SHADOW_CAST_FLOOR` of the felt (the same rule as a sinking tile).
    */
   private applyZoomBlend(blend: number): void {
     this.zoomBlend = blend;
     this.feltMesh.scale.setScalar(1 + (ZOOM_FELT_SCALE - 1) * blend);
     this.railMesh.position.y = -RAIL_SINK * blend;
     this.railMesh.visible = blend < 1;
+    this.marker.position.y = CHIP_H / 2 - CHIP_SINK * blend;
+    this.marker.visible = this.markerRel !== null && blend < 1;
+    this.marker.castShadow = this.marker.position.y + CHIP_H / 2 > SHADOW_CAST_FLOOR;
   }
 
   /**
@@ -1506,7 +1541,41 @@ export class TableScene {
             faceRect: this.tileFaceRect(this.hintTileId),
             markerRect: this.hintMarkerRect(),
           };
-    return { now, tiles, flights: tiles.filter((t) => t.flight !== null).length, hint };
+    const chip: TableDebugChip | null =
+      this.markerRel === null
+        ? null
+        : {
+            visible: this.marker.visible,
+            top: round2(this.marker.position.y + CHIP_H / 2),
+            castsShadow: this.marker.castShadow,
+            rect: this.marker.visible ? this.chipRect() : null,
+          };
+    return { now, tiles, flights: tiles.filter((t) => t.flight !== null).length, hint, chip };
+  }
+
+  /** Screen rect of the dealer chip's top disc (CSS px), from the live camera. */
+  private chipRect(): ScreenRect | null {
+    const cam = this.ctx.rig.camera;
+    const { width, height } = this.ctx.size;
+    const p = this.marker.position;
+    const y = p.y + CHIP_H / 2;
+    let minX = Number.POSITIVE_INFINITY;
+    let minY = Number.POSITIVE_INFINITY;
+    let maxX = Number.NEGATIVE_INFINITY;
+    let maxY = Number.NEGATIVE_INFINITY;
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2;
+      const v = new Vector3(p.x + Math.cos(a) * CHIP_RADIUS, y, p.z + Math.sin(a) * CHIP_RADIUS);
+      v.project(cam);
+      if (v.z > 1) return null;
+      const sx = (v.x * 0.5 + 0.5) * width;
+      const sy = (-v.y * 0.5 + 0.5) * height;
+      minX = Math.min(minX, sx);
+      maxX = Math.max(maxX, sx);
+      minY = Math.min(minY, sy);
+      maxY = Math.max(maxY, sy);
+    }
+    return { left: minX, top: minY, width: maxX - minX, height: maxY - minY };
   }
 
   get layout(): Layout | null {

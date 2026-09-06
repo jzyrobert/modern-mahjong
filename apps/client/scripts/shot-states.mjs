@@ -265,13 +265,26 @@ globalThis.__MAHJONG_TEST_BOT_CLAIM_DELAY_MS__ = 300;
 const CLAIM_TOAST_INIT = botClaimInit(9);
 
 /**
+ * `match-left-meld`: seed 33 deals the user (dealer) a 4-man that seat 3
+ * — the left seat — holds two of; seat 3 is scripted to peng it, so its
+ * meld lands at the far end of its row beyond its rack (round-6: the
+ * rack's silhouette hid the meld's near end at the seam).
+ */
+const LEFT_MELD_INIT = `
+globalThis.__MAHJONG_TEST_SEED__ = 33;
+globalThis.__MAHJONG_TEST_BOT_SCRIPTS__ = { 1: {}, 2: {}, 3: {} };
+globalThis.__MAHJONG_TEST_BOT_CLAIM_DELAY_MS__ = 300;
+`;
+
+/**
  * Bot-claim setup (`match-claim-toast`, `match-far-meld`,
- * `match-left-meld`): find a face the user holds one of and `seat` holds
- * two of, script that seat to peng it (the scripted bots accept a
- * `claims` list to issue when legal) and discard it from the user's
- * hand. The seed must make the user dealer (so their discard comes
- * first) and deal such a pair: 9 for seat 1, 25 for seat 2, 49 for seat
- * 3 — each with that seat's own wall still standing after the deal.
+ * `match-left-meld`, `match-left-meld-heel`): find a face the user holds
+ * one of and `seat` holds two of, script that seat to peng it (the
+ * scripted bots accept a `claims` list to issue when legal) and discard
+ * it from the user's hand. The seed must make the user dealer (so their
+ * discard comes first) and deal such a pair: 9 for seat 1, 25 for seat
+ * 2, 33 / 49 for seat 3 — each with that seat's own wall still standing
+ * after the deal.
  */
 const botPengSetup = (seat) => `
 (() => {
@@ -1401,7 +1414,7 @@ export const STATES = {
       { waitMs: 1400 },
     ],
   },
-  'match-left-meld': {
+  'match-left-meld-heel': {
     owner: 'table',
     // The left seat's exposed meld (seed 49: seat 3 holds two of a face
     // the user (dealer) was dealt; the left wall stands whole): lies flat at the
@@ -1433,6 +1446,24 @@ export const STATES = {
       { evaluate: BOT_PENG_SETUP },
       { waitFor: '[data-testid="claim-toast-glyph"]', timeout: 20000 },
       { waitMs: 500 },
+    ],
+  },
+  'match-left-meld': {
+    owner: 'table',
+    // The left seat's peng (seed 33, seat 3 scripted — `LEFT_MELD_INIT`):
+    // its meld lies at the far end of its row, beyond its rack from the
+    // camera, a camera-sized seam past it (`layout.sideMeldGapFor`). Seat
+    // 3 discards next and play returns to the user, so the table holds;
+    // the toast has cleared by the time the shot lands.
+    steps: [
+      { initScript: LEFT_MELD_INIT },
+      ...START_SOLO,
+      { waitForOwnHand: true },
+      { waitMs: 1600 },
+      { evaluate: botPengSetup(3) },
+      { waitFor: '[data-testid="claim-toast-glyph"]', timeout: 20000 },
+      { waitMs: 3200 },
+      { waitForPerf: true },
     ],
   },
   'match-win-celebration': {

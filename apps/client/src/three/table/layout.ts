@@ -247,15 +247,23 @@ function feltShadow(
 }
 /**
  * Row gaps for a camera position (world units) — see `RowTuning`.
+ * `overhangFelt` is the visible felt past the tip's projected top edge
+ * (`ROW_OVERHANG_FELT` by default; the shell passes
+ * `cameraPresets.rowOverhangFeltFor`'s value, which lifts it where 0.4
+ * projects under `ROW_OVERHANG_FELT_PX` — the 360×640 phone).
  * `sideWallIn` is the side walls' inward step (`LayoutOptions.
  * sideWallIn`): the left wall's tip, whose inner face the user's row
  * keeps its corner shadow off, stands that much nearer the centre.
  */
-export function rowTuningFor(cam: readonly [number, number, number], sideWallIn = 0): RowTuning {
+export function rowTuningFor(
+  cam: readonly [number, number, number],
+  overhangFelt: number = ROW_OVERHANG_FELT,
+  sideWallIn = 0,
+): RowTuning {
   // Near wall's tip, top inner corner: where its shadow ends behind the
   // wall is where the right seat's row may begin (plus visible felt).
   const shadowZ = feltShadow(cam, [WALL_END, 2 * TILE_D, WALL_OVERHANG_INNER])[1];
-  const overhangGap = Math.max(ROW_OVERHANG_GAP, WALL_OVERHANG_INNER - shadowZ + ROW_OVERHANG_FELT);
+  const overhangGap = Math.max(ROW_OVERHANG_GAP, WALL_OVERHANG_INNER - shadowZ + overhangFelt);
   // The user's row: its top-left front corner (x, topY, topZ) casts to
   // x · cy / (cy − topY); solve for the corner x that lands
   // `OWN_ROW_OVERHANG_FELT` inside the left wall's inner face.
@@ -265,6 +273,72 @@ export function rowTuningFor(cam: readonly [number, number, number], sideWallIn 
   const cornerX = (-tipInner + OWN_ROW_OVERHANG_FELT) / k;
   const ownOverhangGap = Math.max(OWN_ROW_OVERHANG_GAP, cornerX + tipInner);
   return { overhangGap, ownOverhangGap };
+}
+/**
+ * Visible felt kept on screen between a side seat's flat melds and its
+ * standing rack (`sideMeldGapFor`'s default, world units): ≈ 4 CSS px
+ * at the far end of a 412×700 phone's table (9.7 px per unit of depth
+ * there). The shell passes a px-sized value instead
+ * (`cameraPresets.sideSeamFeltFor`, `SIDE_SEAM_FELT_PX`).
+ */
+export const SIDE_MELD_RACK_FELT = 0.4;
+/** Top edge height of a standing opponent tile leaned `OPP_TILT`. */
+function oppTopY(): number {
+  return TILE_H / 2 + (TILE_H / 2) * Math.cos(OPP_TILT) + (TILE_D / 2) * Math.sin(OPP_TILT);
+}
+/**
+ * Along-row felt between a side seat's melds (at its left end,
+ * `sideMeldsNear`, `meldScale` × a flat tile high) and its rack, sized
+ * by projection for a camera at `cam` with the seam (the melds' right
+ * edge, owner's frame x) at `seamLx`, so that `felt` of cloth shows on
+ * screen between the two — never under `MELD_GAP`. The world-space gap
+ * reads as nothing from the pitched portrait cameras (round-6 critic:
+ * "0–0.8 px of felt at the seam", the rack's column read as a wall
+ * stack wedged against the meld):
+ *
+ * - Left seat (rel 3): its melds lie at its *far* end, beyond the rack
+ *   from the camera. The rack's far-end tile stands `oppTopY()` high and
+ *   its top corner casts `(cz − z) · h / (cy − h)` further along the
+ *   row onto the felt — 1.4 units on a 412×700 phone (camera 46 up,
+ *   46 back from a seam at z −3) — over the meld's near end (its side
+ *   face and 0.2 of its top). The felt that counts is between that
+ *   silhouette and the meld's near *bottom* edge (the flat tile's 0.7
+ *   side face is ivory too, so a gap that only clears its top face
+ *   still reads as touching): the gap grows until the rack's shadow
+ *   ends `felt` short of the meld — ≈ 1.8 at 412×700, 2.1 at 360×640,
+ *   1.05 on the 70° tall phone. A row that would then run past
+ *   `ROW_END_LIMIT` gives the seam back (`computeLayout`).
+ * - Right seat (rel 1): its melds lie at its *near* end, nearer the
+ *   camera than the rack, so only the meld's own top face casts onto the
+ *   gap (≈ 0.6 at 412×700): ≈ 1.0 / 1.1 / 0.55 (the floor).
+ *
+ * Portrait only — the shell passes `LayoutOptions.sideSeamCamera` for
+ * the held-hand table; the low landscape camera would ask for ~5 units
+ * (its side rows are seen almost edge-on) and keeps `MELD_GAP`.
+ */
+export function sideMeldGapFor(
+  cam: readonly [number, number, number],
+  rel: 1 | 3,
+  seamLx: number,
+  meldScale = 1,
+  felt: number = SIDE_MELD_RACK_FELT,
+): number {
+  const cy = cam[1];
+  const cz = cam[2];
+  if (rel === 1) {
+    // Owner's +x runs toward world −z: the seam is at world z = −seamLx.
+    const hM = TILE_D * meldScale;
+    const kM = hM / Math.max(1e-6, cy - hM);
+    const zM = -seamLx;
+    return Math.max(MELD_GAP, felt + kM * (cz - zM));
+  }
+  // Owner's +x runs toward world +z: the seam is at world z = seamLx; the
+  // rack begins `gap` nearer the camera than the meld's edge, and its top
+  // corner's shadow must end `felt` short of that edge.
+  const hR = oppTopY();
+  const kR = hR / Math.max(1e-6, cy - hR);
+  const zM = seamLx;
+  return Math.max(MELD_GAP, (felt + kR * (cz - zM)) / (1 + kR));
 }
 /** Opponent hand rows sit just outside the wall. */
 export const HAND_Z = 10.55;
@@ -390,6 +464,12 @@ export const RIVER_CORNER_GAP = 0.15;
 export const RIVER_ROWS = 3;
 /** Felt half-size and rail dimensions, shared with `TableScene`. */
 export const FELT_HALF = 11.9;
+/**
+ * Owner-frame x an opponent's row may run to at its right end (the felt
+ * edge less a margin): a camera-sized seam (`sideMeldGapFor`) never
+ * pushes a rack onto the rail.
+ */
+export const ROW_END_LIMIT = FELT_HALF - 0.4;
 export const RAIL_WIDTH = 1.1;
 /** Height of the wood rail above the felt. */
 export const RAIL_H = 0.55;
@@ -763,6 +843,15 @@ export interface LayoutOptions extends HandOrderOptions {
    */
   leftMeldGap?: number | undefined;
   /**
+   * Camera position the side seats' meld → rack seam is sized from
+   * (`sideMeldGapFor`, portrait); the world-space `MELD_GAP` applies when
+   * absent. `sideSeamFelt` is the cloth to show at the seam (world
+   * units; `SIDE_MELD_RACK_FELT` when absent — the shell passes a
+   * px-sized value, `cameraPresets.sideSeamFeltFor`).
+   */
+  sideSeamCamera?: readonly [number, number, number] | undefined;
+  sideSeamFelt?: number | undefined;
+  /**
    * Uniform scale for the *side* seats' (rel 1 / 3) exposed melds. The
    * side melds are the smallest readable thing on the table: their
    * glyphs run sideways and, on the width-bound portrait camera, a flat
@@ -867,12 +956,17 @@ export const SIDE_MELD_GAP_BEHIND = 1.8;
 export const SIDE_SEAT_OUT_DESKTOP = 0.45;
 
 /**
- * Side-seat outward shift on the portrait table. The left seat's 1.15×
- * melds (`SIDE_MELD_SCALE_PORTRAIT`) lie at its near end — the half of
- * its wall the yaw swings toward them — so their inner edge (9.72 at
- * `MELD_Z`) would sit 0.16 short of the outermost stack (9.88). 0.25
- * puts it at 9.97 while the meld's outer edge (11.53) stays inside the
- * ±11.6 portrait frame and the rack's base (11.11) inside the rail.
+ * Side-seat outward shift on the portrait table. A side seat's 1.15×
+ * melds (`SIDE_MELD_SCALE_PORTRAIT`) lie at its left end beside its
+ * wall's heel half (`sideMeldsNear`, outer face 9.16–9.52); the rack
+ * runs on past the wall's centre toward the out-swinging half (9.88),
+ * so the row's inner edge (9.72 at `MELD_Z`) would sit 0.16 short of
+ * the outermost stack. 0.25 puts it at 9.97 while the meld's outer edge
+ * (11.53) stays inside the ±11.6 portrait frame and the rack's base
+ * (11.11) inside the rail — the frame leaves no room for more (a bigger
+ * step crops the melds at the viewport edge), so the seam between a
+ * side seat's melds and its rack is closed along the row instead
+ * (`sideMeldGapFor`).
  */
 export const SIDE_SEAT_OUT_PORTRAIT = 0.25;
 
@@ -1129,10 +1223,31 @@ export function computeLayout(state: GameState, me: Seat, opts: LayoutOptions): 
     // ends stand at the side walls' tips, which `sideWallIn` steps in.
     const gap = isMe ? opts.rows?.ownOverhangGap : rel === 1 ? opts.rows?.overhangGap : undefined;
     const tipIn = rel === 0 || rel === 2 ? (opts.sideWallIn ?? 0) : 0;
-    let cursor = Math.max(-total / 2, rowLeftLimit(isMe, gap, tipIn));
+    const limit = rowLeftLimit(isMe, gap, tipIn);
+    // Side seats with melds first: the meld → rack seam is camera-sized
+    // (`sideMeldGapFor`, portrait) at the seam's own position — found from
+    // the row as it would centre with the world gap (the gap's effect on
+    // the seam's position is a hundredth of itself). The landscape left
+    // seat keeps its wider world gap instead (`leftMeldGap`).
+    let seamGap = meldGap;
+    if (meldsFirst && hand.length > 0 && opts.sideSeamCamera) {
+      const seamLx = Math.max(-total / 2, limit) + meldsWidth;
+      seamGap = sideMeldGapFor(
+        opts.sideSeamCamera,
+        rel as 1 | 3,
+        seamLx,
+        meldScale,
+        opts.sideSeamFelt,
+      );
+      // …but never so wide that the row's right end leaves the felt.
+      const room = ROW_END_LIMIT - (Math.max(-total / 2, limit) + total);
+      seamGap = Math.max(meldGap, Math.min(seamGap, meldGap + Math.max(0, room)));
+    }
+    const rowWidth = total + (seamGap - meldGap) * (meldsFirst && hand.length > 0 ? 1 : 0);
+    let cursor = Math.max(-rowWidth / 2, limit);
     if (meldsFirst) {
       cursor = placeMelds(layout, melds, seat, rel, yaw, meldZ, cursor, meldScale);
-      if (hand.length > 0) cursor += meldGap;
+      if (hand.length > 0) cursor += seamGap;
     }
 
     const revealOpp = !isMe && opts.reveal;
@@ -1194,6 +1309,14 @@ export function meldsRowWidth(melds: readonly Meld[], owner: Seat): number {
 export interface ZoomShelfBlock {
   xHalf: number;
   near: number;
+  /**
+   * Far edge (owner's z) of the user's own river's last row *present*
+   * — the line the meld shelf lies `SHELF_GAP` past, so the melds read
+   * as the river's next row rather than as a row attached to the hand.
+   * `near` reserves one more row beyond it (`cameraPresets.riverZoomBlock`);
+   * the shelf takes that reserved row. Defaults to `near`.
+   */
+  ownNear?: number | undefined;
 }
 
 /**
@@ -1213,7 +1336,7 @@ export interface ZoomMeldShelf {
   right: number;
   /** Uniform tile scale of the shelf's melds. */
   scale: number;
-  /** Felt the shelf adds past the river's far edge (0 with no melds). */
+  /** Felt the shelf adds past the block's near edge (0 with no melds, or when the shelf lies inside the block). */
   depth: number;
 }
 
@@ -1234,8 +1357,16 @@ export interface ZoomMeldShelf {
  * (`cameraPresets.riverZoomBlock`), default the reserved one. Round-5
  * critic: with a one-row near river the shelf on the reserved line lay
  * 58–72 px under the block but 13–14 px above the hand, reading as
- * attached to the hand — following the block's near edge (its rows
- * present plus one, `riverZoomBlock`) keeps it part of the block. Pure.
+ * attached to the hand; following the block's near edge (its rows
+ * present plus one, `riverZoomBlock`) still left it 39–75 px under the
+ * river's last row and 13–38 above the hand (round-6). The shelf now
+ * lies `SHELF_GAP` past the user's *own* river's last row present
+ * (`block.ownNear`) — in the row the block reserves for the next
+ * discard — so it reads as the river's next row (≈ 5 px of felt) and
+ * the room the frame keeps is between the shelf and the hand; a discard
+ * landing in that row grows the block and moves the shelf out with it.
+ * `depth` is the felt the shelf takes past the block's near edge (0
+ * while it lies inside the block). Pure.
  */
 export function zoomMeldShelf(
   riverScale: number,
@@ -1244,15 +1375,17 @@ export function zoomMeldShelf(
 ): ZoomMeldShelf {
   const farEdge = riverMetrics(riverScale).farEdge;
   const nearEdge = block?.near ?? farEdge;
+  const rowEdge = block?.ownNear ?? nearEdge;
   const right = (block?.xHalf ?? farEdge + ZOOM_BLOCK_PAD) - SHELF_MARGIN;
   const room = 2 * right;
   const scale =
     meldsWidthAt1 * OWN_MELD_SCALE_HELD > room ? room / meldsWidthAt1 : OWN_MELD_SCALE_HELD;
+  const z = rowEdge + SHELF_GAP + (TILE_H / 2) * scale;
   return {
-    z: nearEdge + SHELF_GAP + (TILE_H / 2) * scale,
+    z,
     right,
     scale,
-    depth: meldsWidthAt1 > 0 ? SHELF_GAP + TILE_H * scale : 0,
+    depth: meldsWidthAt1 > 0 ? Math.max(0, z + (TILE_H / 2) * scale - nearEdge) : 0,
   };
 }
 

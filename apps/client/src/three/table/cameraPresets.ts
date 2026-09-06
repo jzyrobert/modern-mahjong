@@ -3,6 +3,7 @@ import type { CameraPreset } from '../core/camera';
 import { TILE_D, TILE_H, TILE_W } from '../tiles/geometry';
 import {
   FELT_HALF,
+  HAND_Z,
   HELD_ROW_GAP,
   HELD_ROW_UNITS,
   type HeldHandFrame,
@@ -11,7 +12,11 @@ import {
   RIVER_COLS,
   RIVER_NEAR_EDGE,
   RIVER_ROWS,
+  ROW_OVERHANG_FELT,
+  SIDE_MELD_RACK_FELT,
   WALL_D,
+  WALL_END,
+  WALL_OVERHANG_INNER,
   ZOOM_BLOCK_PAD,
   type ZoomShelfBlock,
   relOf,
@@ -237,6 +242,7 @@ export const ZOOM_BLOCK_RESERVED: RiverZoomBlock = {
   xHalf: ZOOM_X_HALF_MIN,
   far: riverMetrics(PORTRAIT_RIVER_SCALE).farEdge,
   near: riverMetrics(PORTRAIT_RIVER_SCALE).farEdge,
+  ownNear: riverMetrics(PORTRAIT_RIVER_SCALE).farEdge,
 };
 
 /**
@@ -250,6 +256,8 @@ export const ZOOM_BLOCK_RESERVED: RiverZoomBlock = {
  * world space (`toWorld`) and unioned — so the side rivers' arms bound
  * the far / near edges once they fill, and the near / far rivers' rows
  * bound the width. No discards at all reads as the first row coming.
+ * `ownNear` is the user's own river's last row *present* (no reserved
+ * row) — the line the zoom's meld shelf lies past (`layout.zoomMeldShelf`).
  * `growZoomBlock` gives the frame its grow-only hysteresis: a claim
  * takes a tile back out of a river, and the frame must not zoom back
  * in. Pure.
@@ -266,11 +274,13 @@ export function riverZoomBlock(
   let maxX = 0;
   let far = 0;
   let near = 0;
+  let ownNear = 0;
   for (let seat = 0; seat < 4; seat++) {
     const n = discardCounts[seat] ?? 0;
     const rowsNow = n <= 0 ? 0 : Math.min(RIVER_ROWS, Math.ceil(n / RIVER_COLS));
     const colsNow = n >= RIVER_COLS ? RIVER_COLS : n;
     const rows = Math.min(RIVER_ROWS, Math.max(1, rowsNow) + 1);
+    if (seat === me) ownNear = z0 + (Math.max(1, rowsNow) - 1) * m.pitchZ + halfH;
     const cols = Math.min(RIVER_COLS, Math.max(1, colsNow) + 1);
     // Owner's frame: the rows march toward the owner (+lz), the columns
     // run to the owner's right (+lx), every row shifted by `m.shift`.
@@ -294,6 +304,7 @@ export function riverZoomBlock(
     xHalf: Math.min(ZOOM_X_HALF_MIN, maxX + ZOOM_BLOCK_PAD),
     far: Math.min(m.farEdge, far),
     near: Math.min(m.farEdge, near),
+    ownNear: Math.min(m.farEdge, ownNear),
   };
 }
 
@@ -310,11 +321,20 @@ export function fitZoomBlockToShelf(block: RiverZoomBlock, meldsWidthAt1: number
 /** Grow-only hysteresis for the zoom block: `prev` grown to cover `next` (same object when nothing grew). */
 export function growZoomBlock(prev: RiverZoomBlock | null, next: RiverZoomBlock): RiverZoomBlock {
   if (!prev) return next;
-  if (next.xHalf <= prev.xHalf && next.far <= prev.far && next.near <= prev.near) return prev;
+  const prevOwn = prev.ownNear ?? prev.near;
+  const nextOwn = next.ownNear ?? next.near;
+  if (
+    next.xHalf <= prev.xHalf &&
+    next.far <= prev.far &&
+    next.near <= prev.near &&
+    nextOwn <= prevOwn
+  )
+    return prev;
   return {
     xHalf: Math.max(prev.xHalf, next.xHalf),
     far: Math.max(prev.far, next.far),
     near: Math.max(prev.near, next.near),
+    ownNear: Math.max(prevOwn, nextOwn),
   };
 }
 /**
@@ -807,6 +827,51 @@ export function riverZoomCameraFor(
  * waiting-table backdrop keeps its own gentler setting.
  */
 export const TABLE_PARALLAX = { strength: 0.08, halfLife: 0.5 } as const;
+
+// ─── Row felt in screen px ─────────────────────────────────────────
+/**
+ * Visible felt (CSS px) the right seat's near end keeps under the near
+ * wall tip's projected top edge. `layout.ROW_OVERHANG_FELT` (0.4 units)
+ * is 5.7–6.5 px on a 412×700 phone but 4.7–5.0 at 360×640, where the
+ * lower camera foreshortens the row's depth more (round-6 critic: "at
+ * the 5 px floor"); 5 px of *projected depth* at the tip's inner face
+ * lifts the small phone's felt to ≈ 0.5 units and leaves the other
+ * presets on the world floor (the critic's column scans read ≈ 1 px
+ * more than the projection, the stack's bevel).
+ */
+export const ROW_OVERHANG_FELT_PX = 5;
+/**
+ * World felt past the tip's projected top edge that shows as at least
+ * `ROW_OVERHANG_FELT_PX` on `preset` at `width × height` — never under
+ * `ROW_OVERHANG_FELT`. Measured along the row (world z) at the tip's
+ * inner face, where the seam is. Feeds `layout.rowTuningFor`. Pure.
+ */
+/**
+ * Visible felt (CSS px) between a side seat's melds and its rack
+ * (`layout.sideMeldGapFor`). Sized at the far end of a side row (world
+ * z −6 at x −10.8 — the shallowest depth scale a seam has: 9.2 px per
+ * unit at 412×700, 7.2 at 360×640, 13.3 on the tall phone), so a seam
+ * nearer the camera shows a little more.
+ */
+export const SIDE_SEAM_FELT_PX = 4;
+const SIDE_SEAM_PROBE: [number, number] = [-(HAND_Z + 0.25), -6];
+/** World felt for `SIDE_SEAM_FELT_PX` at the side seams on `preset` — never under `SIDE_MELD_RACK_FELT`. Pure. */
+export function sideSeamFeltFor(preset: CameraPreset, width: number, height: number): number {
+  const [x, z] = SIDE_SEAM_PROBE;
+  const a = projectPreset(preset, width, height, [x, 0, z + 0.5]);
+  const b = projectPreset(preset, width, height, [x, 0, z - 0.5]);
+  const pxPerUnit = a.y - b.y;
+  if (!(pxPerUnit > 1e-6)) return SIDE_MELD_RACK_FELT;
+  return Math.max(SIDE_MELD_RACK_FELT, SIDE_SEAM_FELT_PX / pxPerUnit);
+}
+export function rowOverhangFeltFor(preset: CameraPreset, width: number, height: number): number {
+  // Depth scale where the row's end lands (1–2 units behind the face).
+  const a = projectPreset(preset, width, height, [WALL_END, 0, WALL_OVERHANG_INNER - 1]);
+  const b = projectPreset(preset, width, height, [WALL_END, 0, WALL_OVERHANG_INNER - 2]);
+  const pxPerUnit = a.y - b.y;
+  if (!(pxPerUnit > 1e-6)) return ROW_OVERHANG_FELT;
+  return Math.max(ROW_OVERHANG_FELT, ROW_OVERHANG_FELT_PX / pxPerUnit);
+}
 
 // ─── Held hand (phone portrait) ────────────────────────────────────
 /**

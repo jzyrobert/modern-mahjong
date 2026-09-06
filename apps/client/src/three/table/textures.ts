@@ -365,19 +365,26 @@ export function buildCueHaloTexture(size = 128): Texture {
 
 /**
  * The cue halo's *band* variant (`TableScene.cueHalo` under the user's
- * hand row): a soft across-falloff (gaussian, σ = 0.24 of the depth, so
- * the 0.9-unit band still glows at 13–19 % at its back edge and at the
- * rail's foot) under a plateau that runs the row's full width, with
- * ends feathered over 7 % (≈ 1.1 units — the pad past the end tiles),
- * so the glow pools briefly beyond the row instead of pinching to an
- * ellipse the way the stretched radial disc did.
+ * hand row): a soft across-falloff (gaussian, σ = `CUE_BAND_SIGMA` of
+ * the depth) under a plateau that runs the row's full width, with ends
+ * feathered over 7 % (≈ 1.1 units — the pad past the end tiles), so the
+ * glow pools briefly beyond the row instead of pinching to an ellipse
+ * the way the stretched radial disc did. σ 0.24 left the 0.9-unit band
+ * at 11 % at its edges: from the 44° desktop camera the standing tiles
+ * hide the band's bright centre line and what showed was the two end
+ * pools and a faint line under the lip (round-5 / round-6 critics). At
+ * 0.32 the edges hold 30 % — the sliver between the lip and the rail
+ * and the gaps between tiles carry the light along the whole row — and
+ * the quad's extent is unchanged, so nothing reaches the felt behind
+ * the tiles' back edge.
  */
+export const CUE_BAND_SIGMA = 0.32;
 export function buildCueBandTexture(w = 256, h = 64): Texture {
   const [c, ctx] = canvas2d(w, h);
   const img = ctx.createImageData(w, h);
   for (let y = 0; y < h; y++) {
     const v = (y + 0.5) / h - 0.5;
-    const across = Math.exp(-(v * v) / (2 * 0.24 * 0.24));
+    const across = Math.exp(-(v * v) / (2 * CUE_BAND_SIGMA * CUE_BAND_SIGMA));
     for (let x = 0; x < w; x++) {
       const u = (x + 0.5) / w;
       const edge = Math.min(u, 1 - u) / 0.07;

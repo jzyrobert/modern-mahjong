@@ -124,6 +124,48 @@ function usePortraitRulesCollapse(
   return collapsed;
 }
 
+/**
+ * Phone portrait: the scroll region's fold snaps to a row boundary. The
+ * panel is capped by the felt band and the Start row, so where its fold
+ * lands on the content is chance — on a 360×640 phone it cut the SEAT 3
+ * skill control mid-row, half under the fade (round-6). When a row
+ * (`data-lobby-row`: a bot-skill row, a seat card) straddles the fold at
+ * rest, the region shrinks to end `FOLD_ROW_GAP` above that row, so what
+ * shows is whole rows and the fade dims the gap, not a control. Measured
+ * unconstrained once per size / content key (the same discipline as
+ * `usePortraitRulesCollapse`); a scrolled region is left alone.
+ */
+const FOLD_ROW_GAP = 6;
+function useFoldSnap(
+  ref: { current: HTMLDivElement | null },
+  enabled: boolean,
+  key: string,
+): number | undefined {
+  const [snap, setSnap] = useState<{ key: string; maxHeight: number | undefined } | null>(null);
+  const current = enabled && snap?.key === key ? snap.maxHeight : undefined;
+  useLayoutEffect(() => {
+    if (!enabled || snap?.key === key) return;
+    const el = ref.current;
+    if (!el) return;
+    const fold = el.clientHeight;
+    let maxHeight: number | undefined;
+    if (el.scrollHeight - fold > 2 && el.scrollTop === 0) {
+      const top = el.getBoundingClientRect().top;
+      for (const row of Array.from(el.querySelectorAll<HTMLElement>('[data-lobby-row]'))) {
+        const r = row.getBoundingClientRect();
+        const rowTop = r.top - top;
+        const rowBottom = r.bottom - top;
+        if (rowTop + 1 < fold && rowBottom - 1 > fold) {
+          maxHeight = Math.max(48, Math.floor(rowTop - FOLD_ROW_GAP));
+          break;
+        }
+      }
+    }
+    setSnap({ key, maxHeight });
+  }, [ref, enabled, key, snap]);
+  return current;
+}
+
 /** Mirrors the server's `startHand` SEATS gate. */
 function allSeatsFilled(lobby: { players: readonly PublicPlayer[] } | null): boolean {
   if (!lobby) return false;
@@ -168,6 +210,13 @@ export function LobbyGlass(props: Lobby3DViewProps) {
   const panelRef = useRef<HTMLDivElement | null>(null);
   const moreBelow = useOverflowBelow(panelRef, shortWide || phonePortrait);
   const rulesCollapsed = usePortraitRulesCollapse(panelRef, phonePortrait, width, height, insets);
+  const foldMaxHeight = useFoldSnap(
+    panelRef,
+    phonePortrait,
+    `${width}x${height}+${insets.top}+${insets.bottom}|${rulesCollapsed ? 'c' : 'x'}|${
+      lobby?.players.length ?? 0
+    }|${matchCode ?? ''}`,
+  );
   const isSolo = matchCode === 'SOLO';
   const isLanHost = !!(isHost && joinInfo?.kind === 'lan' && joinInfo.hostUrl && matchCode);
   const joinUrl =
@@ -233,6 +282,7 @@ export function LobbyGlass(props: Lobby3DViewProps) {
           return (
             <div
               key={s}
+              data-lobby-row=""
               style={{
                 borderRadius: 14,
                 padding: compact ? '8px 10px' : '10px 12px',
@@ -317,6 +367,7 @@ export function LobbyGlass(props: Lobby3DViewProps) {
             <div
               key={s}
               data-testid="lobby-bot-row"
+              data-lobby-row=""
               style={
                 stacked
                   ? { display: 'grid', gap: 6 }
@@ -756,12 +807,16 @@ export function LobbyGlass(props: Lobby3DViewProps) {
                   <div
                     ref={panelRef}
                     data-testid="lobby-portrait-scroll"
+                    data-fold-snapped={foldMaxHeight !== undefined ? 'true' : 'false'}
                     style={{
                       padding: `${PHONE_PANEL_PAD + 2}px ${PHONE_PANEL_PAD + 2}px`,
                       display: 'grid',
                       gap: 12,
                       minHeight: 0,
                       overflowY: 'auto',
+                      // The snapped height is the region's whole box (padding included).
+                      boxSizing: 'border-box',
+                      ...(foldMaxHeight !== undefined ? { maxHeight: foldMaxHeight } : null),
                     }}
                   >
                     {inviteCard}

@@ -49,7 +49,9 @@ import {
   portraitMetrics,
   riverZoomBlock,
   riverZoomCameraFor,
+  rowOverhangFeltFor,
   sheetCameraFor,
+  sideSeamFeltFor,
   zoomNearPoint,
 } from './cameraPresets';
 import {
@@ -543,7 +545,9 @@ export function Table3DShell(props: Table3DShellProps) {
     } = inputRef.current;
     // The camera the rows are sized for: the rig's goal preset (every
     // caller sets it before syncing), so the gaps follow viewport + zoom.
-    const goal = ctxRef.current?.rig.goalCamera().position;
+    const ctx = ctxRef.current;
+    const goalPreset = ctx?.rig.goalPreset;
+    const goal = goalPreset?.position;
     scene.sync(
       {
         state: p.state,
@@ -593,7 +597,14 @@ export function Table3DShell(props: Table3DShellProps) {
         // Rows keep camera-sized felt from the wall overhangs (the right
         // seat's near end under the near wall's tip; the 14-tile hand at
         // the left wall's tip on landscape).
-        rows: goal ? rowTuningFor([goal.x, goal.y, goal.z], ls ? SIDE_WALL_IN_LOW : 0) : undefined,
+        rows:
+          goalPreset && ctx
+            ? rowTuningFor(
+                goalPreset.position,
+                rowOverhangFeltFor(goalPreset, ctx.size.width, ctx.size.height),
+                ls ? SIDE_WALL_IN_LOW : 0,
+              )
+            : undefined,
         // Landscape: the side walls step toward the centre so their two-
         // high silhouettes end inside the side seats' flat melds' inner
         // edges from the low camera (`SIDE_WALL_IN_LOW`); the near and far
@@ -603,6 +614,14 @@ export function Table3DShell(props: Table3DShellProps) {
         // low camera; a wider gap keeps the rack's end tile off them
         // (`SIDE_MELD_GAP_BEHIND`).
         leftMeldGap: ls ? SIDE_MELD_GAP_BEHIND : undefined,
+        // Portrait: a side seat's meld → rack seam is sized by projection
+        // too (`sideMeldGapFor`) — the rack's standing tiles hid the
+        // meld's end from the pitched cameras.
+        sideSeamCamera: cp && !ls && goal ? goal : undefined,
+        sideSeamFelt:
+          cp && !ls && goalPreset && ctx
+            ? sideSeamFeltFor(goalPreset, ctx.size.width, ctx.size.height)
+            : undefined,
         sideMeldScale: heldRef.current ? SIDE_MELD_SCALE_PORTRAIT : 1,
         // Wide presets: the user's melds stand in the hand row, faces to
         // the camera (the held portrait hand keeps its flat felt melds).
