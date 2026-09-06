@@ -182,10 +182,11 @@ export const TABLE_BACK_FINISH = { clearcoat: 0.12, roughness: 0.72 } as const;
  * to near-white against the ivory bevel under the key + env, so the live
  * and dead-wall segments read as one set at two shades (round-4 #5).
  * Note the "step" the critic saw at the desktop near wall's right end is
- * the pinwheel corner, not a jog: the right wall's near-end stack stands
- * directly behind the near wall's last stack (verified from the debug
- * poses — every stack at z 8.8, y 0.31 / 0.93) and its ivory side shows
- * above that stack's top face.
+ * the pinwheel corner, not a jog: the near wall's overhanging end runs
+ * `WALL_STAGGER` past the right wall's inner face (`layout.WALL_END`),
+ * so the right wall's near-end stack stands behind and inboard of it
+ * (every stack at y 0.31 / 0.93) and its ivory side shows above the
+ * near wall's top face.
  */
 export const TABLE_BACK_GRADIENT = 0.55;
 /**

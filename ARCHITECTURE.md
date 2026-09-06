@@ -56,7 +56,14 @@ apps/client/src/three/
 │   ├── TableScene.ts      Scene graph: felt, rail, four walls, four hands,
 │   │                      discards, melds, dice, centre marker.
 │   ├── layout.ts          World-space slots for every tile given GameState
-│   │                      + user seat (pure function; unit-tested).
+│   │                      + user seat (pure function; unit-tested). The
+│   │                      four walls sit `WALL_D` from the centre as a
+│   │                      pinwheel: each 17-stack run is staggered
+│   │                      `WALL_STAGGER` along its own axis toward its
+│   │                      owner's right (same sense for all four), so one
+│   │                      end overhangs the neighbouring wall's inner face
+│   │                      (`WALL_END`) and the other stops short of it —
+│   │                      the staggered square of an automatic table.
 │   ├── choreography.ts    Diffs successive GameStates into tile motions
 │   │                      (draw, discard, claim, dispense, gang).
 │   ├── picking.ts         Raycast → tile / wall-slot; hover + press.

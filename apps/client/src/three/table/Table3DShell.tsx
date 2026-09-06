@@ -71,6 +71,7 @@ import {
   SIDE_MELD_SCALE_PORTRAIT,
   SIDE_SEAT_OUT_DESKTOP,
   SIDE_SEAT_OUT_LOW,
+  WALL_D,
   orderOwnHand,
   toWorld,
 } from './layout';
@@ -212,6 +213,15 @@ const ZOOM_EDGE_W = 28;
 const ZOOM_EDGE_SOLID = 12;
 /** River zoom: side-wall stacks beyond this world z (far side) are hidden. */
 const ZOOM_HIDE_SIDE_WALLS_Z = -6.5;
+/**
+ * Wide presets: the user's seat badge hangs off this world x on the own
+ * hand's line, its right edge 14 px further left. The left wall's
+ * pinwheel overhang (`layout.WALL_STAGGER`) runs down to z ≈ 10.7 in
+ * the x band [−9.48, −8.12], so the badge anchors a third of a tile
+ * outside the wall's outer face rather than on the old −8.6, which put
+ * its right edge under the overhanging stack (round-4 pinwheel).
+ */
+const BOTTOM_BADGE_X = -(WALL_D + TILE_H / 2) - 0.3;
 
 const EMPTY_RECTS: HudRects = {
   ownHand: null,
@@ -541,7 +551,7 @@ export function Table3DShell(props: Table3DShellProps) {
           const rel = REL_OF_POSITION[pos];
           const [ax, az] = toWorld(
             rel,
-            pos === 'bottom' ? -8.6 : 0,
+            pos === 'bottom' ? BOTTOM_BADGE_X : 0,
             pos === 'bottom' ? OWN_HAND_Z : HAND_Z + 1.1,
           );
           const q = scene.projectPoint(ax, 0.9, az);

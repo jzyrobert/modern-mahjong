@@ -571,6 +571,15 @@ CC0-only asset policy, verifier rules. Operational notes:
   ink (round-FB3 "tiles fade toward the right"). Moving the light only
   moves the wash; keep the finish and the e2e luminance guard in
   `three-table.spec.ts` (face spread ≤ 12, darkest-ink spread ≤ 28).
+- **Walls are a pinwheel** (`layout.WALL_STAGGER`, round-4 feedback):
+  every 17-stack run is shifted 2.0 units along its own axis toward its
+  owner's right, so from the user's seat the near wall overhangs on
+  their right (`WALL_END` = 10.74, 1.16 inside the felt edge) and its
+  left end stops 1.38 short of the left wall — like an automatic table.
+  `wallSlotRefs` (break / dead / live bookkeeping) is untouched; only
+  `wallSlotPosition` carries the stagger, so anything that hard-codes a
+  wall *end* (lobby framing tests, HUD anchors near a corner) must read
+  `WALL_END` rather than assume a centred ±8.74 run.
 - **Dead wall = darker back shade only; own melds = plain aligned rows**
   (round-4 feedback). The 14 dead tiles are told apart by `aBackVariant`
   selecting `uDeadBack*` (`materials.deadBackColors`, same hue, darker)
