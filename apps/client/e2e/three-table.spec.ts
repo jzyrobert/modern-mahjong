@@ -714,6 +714,18 @@ for (const [w, h] of [
     const scroll = page.getByTestId('lobby-portrait-scroll');
     const overflow = await scroll.evaluate((el) => el.scrollHeight - el.clientHeight > 2);
     await expect(page.getByTestId('lobby-panel-fade')).toHaveCount(overflow ? 1 : 0);
+    // The collapsed Rules summary pins as the panel's footer row: whole
+    // inside the panel, under the scroll region's fade — never the line
+    // that sinks below the fold (round-6: clipped under the fade at 360×640).
+    const rulesRow = page.getByTestId('lobby-portrait-rules');
+    await expect(rulesRow).toBeVisible();
+    const summary = (await page.getByText(/Min \d faan/).boundingBox())!;
+    expect(summary.y + summary.height).toBeLessThanOrEqual(panelBox.y + panelBox.height + 0.5);
+    expect(summary.y).toBeGreaterThanOrEqual(panelBox.y);
+    if (overflow) {
+      const fade = (await page.getByTestId('lobby-panel-fade').boundingBox())!;
+      expect(summary.y).toBeGreaterThanOrEqual(fade.y + fade.height - 1);
+    }
     const pageScrolls = await page.evaluate(
       () => (document.scrollingElement?.scrollHeight ?? 0) > window.innerHeight + 1,
     );
@@ -859,17 +871,32 @@ test('360×640 scoring step: result card pinned top, caption below the winning h
   const cta = page.getByTestId('tutorial-next');
   await expect(cta).toBeVisible();
   const ctaBox = (await cta.boundingBox())!;
-  // The lesson card docks snugly *below* the spotlit band (header +
-  // winning hand + View breakdown), so it starts under the hand and
-  // stays wholly on screen.
+  // The lesson card docks *below* the spotlit band (header + winning
+  // hand + View breakdown), so it starts under the hand and stays
+  // wholly on screen. With the winning hand on one row (round-6,
+  // `resultHandTileWidth`) the card is 28 px shorter and the placement
+  // finds room under the whole result card — its dimmed Rules row and
+  // Start / Leave buttons stay uncovered between the band and the
+  // lesson card — so the gap to the band is no longer the snug ≤ 14.5.
   await expect
     .poll(async () => {
       const l = await page.evaluate(() => globalThis.__MAHJONG_TEST_TUTORIAL_LAYOUT__);
-      return l ? `${l.placement.kind}:${(l.placement.gap ?? 99) <= 14.5}` : 'none';
+      return l ? l.placement.kind : 'none';
     })
-    .toBe('below:true');
+    .toBe('below');
   expect(ctaBox.y).toBeGreaterThan(hand.y + hand.height);
   expect(ctaBox.y + ctaBox.height).toBeLessThanOrEqual(640);
+  // The 14 concealed tiles sit on one row (19 px tiles from
+  // `resultHandTileWidth`): at the 22 px default they wrapped 12 + 2.
+  const rows = await page.getByTestId('winning-hand').evaluate((el) => {
+    const row = el.lastElementChild as HTMLElement;
+    const tops = Array.from(row.children).map((c) => c.getBoundingClientRect().top);
+    return { tiles: tops.length, spread: Math.max(...tops) - Math.min(...tops) };
+  });
+  expect(rows.tiles).toBe(14);
+  // One row: only the winning tile's 3 px frame lifts its box; a second
+  // row would sit a whole tile (≥ 26 px) lower.
+  expect(rows.spread).toBeLessThan(10);
   expect(errors, 'page errors').toEqual([]);
 });
 
@@ -2549,3 +2576,223 @@ for (const [w, h] of [
     expect(errors, 'console / page errors').toEqual([]);
   });
 }
+
+/** Live tile poses from the scene (`TableDebugSnapshot.tiles`, world units). */
+async function readTablePoses(page: Page) {
+  return page.evaluate(() => {
+    const dbg = (
+      globalThis as {
+        __MAHJONG_TABLE_3D_DEBUG__?: () => {
+          tiles: {
+            id: number;
+            zone: string | null;
+            x: number;
+            y: number;
+            z: number;
+            scale: number;
+          }[];
+        } | null;
+      }
+    ).__MAHJONG_TABLE_3D_DEBUG__?.();
+    return dbg ? dbg.tiles : [];
+  });
+}
+
+/**
+ * Round-6 wall-overhang contacts, as the shell wires `rowTuningFor`
+ * (`layout.RowTuning`) into the scene: the right seat's near-end melds
+ * start past the near wall tip's *projected* top edge, not 1.0 behind
+ * its face (0–2 px of felt on the phone cameras), and on landscape the
+ * dealer's 14-tile hand slides off the left wall's tip, whose inner
+ * face its raised corner used to overlap.
+ */
+for (const [w, h, nearEnd] of [
+  [412, 700, 7.14],
+  [360, 640, 6.94],
+] as const) {
+  test(`phone ${w}×${h}: the right seat’s melds start past the near wall tip’s projected top edge`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: w, height: h });
+    await page.addInitScript(() => {
+      const g = globalThis as {
+        __MAHJONG_TEST_SEED__?: number;
+        __MAHJONG_TEST_BOT_SCRIPTS__?: Record<number, object>;
+      };
+      // Seed 9: the break is on the near wall (n 9), so its two tip
+      // stacks are the live tail — up until the wall runs out — and the
+      // user (dealer) holds a face bot 1 holds two of.
+      g.__MAHJONG_TEST_SEED__ = 9;
+      g.__MAHJONG_TEST_BOT_SCRIPTS__ = { 1: {}, 2: {}, 3: {} };
+    });
+    const errors: string[] = [];
+    await startSolo(page, errors);
+    await waitForDealSettled(page);
+    // Bot 1 pengs the user's first discard (the `match-claim-toast` setup).
+    await page.evaluate(() => {
+      type T = { kind: string; suit?: string; rank?: number; honor?: string };
+      const g = globalThis as {
+        __MAHJONG_TEST_GET_STATE__?: () => { state: { hands: Record<number, T[]> }; you: number };
+        __MAHJONG_TEST_BOT_SCRIPTS__?: Record<number, { claims?: { kind: string }[] }>;
+      };
+      const s = g.__MAHJONG_TEST_GET_STATE__!();
+      const key = (t: T) => (t.kind === 'suit' ? `s:${t.suit}:${t.rank}` : `h:${t.honor}`);
+      const botCounts = new Map<string, number>();
+      for (const t of s.state.hands[1]!) botCounts.set(key(t), (botCounts.get(key(t)) ?? 0) + 1);
+      const target = s.state.hands[s.you]!.find((t) => (botCounts.get(key(t)) ?? 0) >= 2)!;
+      g.__MAHJONG_TEST_BOT_SCRIPTS__![1] = { claims: [{ kind: 'peng' }] };
+      const names: Record<string, string> = {
+        E: 'East wind',
+        S: 'South wind',
+        W: 'West wind',
+        N: 'North wind',
+        Z: 'Red dragon',
+        F: 'Green dragon',
+        B: 'White dragon',
+      };
+      const want = target.kind === 'suit' ? `${target.rank} ${target.suit}` : names[target.honor!]!;
+      const btn = Array.from(
+        document.querySelectorAll<HTMLElement>('[data-testid="own-hand-tile"]'),
+      ).find((b) => (b.getAttribute('aria-label') || '').startsWith(want))!;
+      btn.click();
+    });
+    // Right seat (world x ≈ 10.75): its meld lies flat at its near (+z) end.
+    const rightMelds = (poses: Awaited<ReturnType<typeof readTablePoses>>) =>
+      poses.filter((t) => t.zone === 'meld' && t.x > 10.2 && Math.abs(t.z) < 9);
+    await expect
+      .poll(async () => rightMelds(await readTablePoses(page)).length, { timeout: 30_000 })
+      .toBeGreaterThanOrEqual(3);
+    await waitForDealSettled(page);
+    const poses = await readTablePoses(page);
+    const melds = rightMelds(poses);
+    // The near wall's tip (x > 9.6, z 8.4–10) still stands.
+    const tip = poses.filter(
+      (t) => (t.zone === 'wall' || t.zone === 'deadWall') && t.x > 9.6 && t.z > 8.3 && t.z < 10,
+    );
+    expect(tip.length).toBeGreaterThanOrEqual(2);
+    // The row's near end (the claimed tile, turned, reaches TILE_H / 2 ×
+    // 1.15 past its centre) sits at −rowLeftLimit(false, overhangGap):
+    // 8.48 − 1.34 = 7.14 at 412×700, 8.48 − 1.54 = 6.94 at 360×640 —
+    // 0.34 / 0.54 behind the 1.0 floor that met the tip's top edge.
+    const nearest = Math.max(...melds.map((t) => t.z));
+    const edge = nearest + (1.36 / 2) * 1.15;
+    expect(edge).toBeGreaterThan(nearEnd - 0.08);
+    expect(edge).toBeLessThan(nearEnd + 0.08);
+    expect(edge).toBeLessThan(7.3);
+    expect(errors, 'console / page errors').toEqual([]);
+  });
+}
+
+test('phone landscape: the dealer’s 14-tile hand slides off the left wall’s tip', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 915, height: 412 });
+  // Seed 33: dealer 0, break 8 on the left wall, whose tip stack (right
+  // of the dead wall) is live tail and stands through the deal.
+  await page.addInitScript(() => {
+    (globalThis as { __MAHJONG_TEST_SEED__?: number }).__MAHJONG_TEST_SEED__ = 33;
+  });
+  const errors: string[] = [];
+  await startSolo(page, errors);
+  await waitForDealSettled(page);
+  const poses = await readTablePoses(page);
+  const hand = poses.filter((t) => t.zone === 'hand');
+  expect(hand).toHaveLength(14);
+  const tip = poses.filter(
+    (t) => (t.zone === 'wall' || t.zone === 'deadWall') && t.x < -8.3 && t.z > 9.5,
+  );
+  expect(tip.length).toBeGreaterThanOrEqual(2);
+  // Centred, 14 tiles reach x −7.39; the landscape own gap (≈ 1.5 from
+  // the tip's inner face at −8.48) starts the row at ≈ −6.98 instead.
+  const left = Math.min(...hand.map((t) => t.x)) - 0.5;
+  expect(left).toBeGreaterThan(-7.1);
+  expect(left).toBeLessThan(-6.9);
+  // On screen the leftmost tile's hit-target starts ≥ 12 px right of the
+  // tip stack's inner face (base corner at x ≈ 123): the row used to meet it.
+  const tiles = await page
+    .getByTestId('own-hand-tile')
+    .evaluateAll((els) => els.map((el) => el.getBoundingClientRect().left));
+  expect(Math.min(...tiles)).toBeGreaterThanOrEqual(135);
+  expect(errors, 'console / page errors').toEqual([]);
+});
+
+test('phone in a browser: a strip toast shrinks the seat badges to wind discs instead of hiding them', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 412, height: 700 });
+  const errors: string[] = [];
+  await startSolo(page, errors);
+  await waitForDealSettled(page);
+  const strip = page.getByTestId('seat-strip');
+  const badges = strip.locator('[aria-label*=" seat, "]');
+  await expect(badges).toHaveCount(3);
+  const fullWidths = await badges.evaluateAll((els) =>
+    els.map((el) => el.getBoundingClientRect().width),
+  );
+  await page.evaluate(() => {
+    (
+      globalThis as {
+        __MAHJONG_TEST_GET_STATE__?: () => {
+          flashClaimAnnouncement: (a: { seat: number; kind: string }) => void;
+        };
+      }
+    ).__MAHJONG_TEST_GET_STATE__!().flashClaimAnnouncement({ seat: 1, kind: 'chi' });
+  });
+  const glyph = page.getByTestId('claim-toast-glyph');
+  await expect(glyph).toBeVisible();
+  await expect(page.getByTestId('table-3d')).toHaveAttribute('data-toast-slot', 'strip');
+  await expect(strip).toHaveAttribute('data-cleared', 'true');
+  // All three badges stay visible as ≤ 40 px discs, none under the toast.
+  await expect(badges).toHaveCount(3);
+  // The glyph's parent is the toast card.
+  const toast = await glyph.evaluate((el) => {
+    const r = el.parentElement!.getBoundingClientRect();
+    return { x: r.left, right: r.right };
+  });
+  const boxes = await badges.evaluateAll((els) =>
+    els.map((el) => {
+      const r = el.getBoundingClientRect();
+      return { x: r.left, right: r.right, width: r.width, opacity: getComputedStyle(el).opacity };
+    }),
+  );
+  for (const [i, b] of boxes.entries()) {
+    expect(b.opacity).toBe('1');
+    expect(b.width).toBeLessThanOrEqual(40);
+    expect(b.width).toBeLessThan(fullWidths[i]!);
+    expect(b.right <= toast.x - 2 || b.x >= toast.right + 2, `badge ${i} clear of the toast`).toBe(
+      true,
+    );
+  }
+  expect(errors, 'console / page errors').toEqual([]);
+});
+
+test('desktop: the user’s badge hangs below the hand line, clear of the left wall’s tip', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.addInitScript(() => {
+    (globalThis as { __MAHJONG_TEST_SEED__?: number }).__MAHJONG_TEST_SEED__ = 33;
+  });
+  const errors: string[] = [];
+  await startSolo(page, errors);
+  await waitForDealSettled(page);
+  // Seed 33 makes the user the dealer: theirs is the badge marked dealer.
+  const badge = page.locator('[aria-label*=", dealer"]');
+  await expect(badge).toHaveCount(1);
+  const b = (await badge.boundingBox())!;
+  const handBoxes = await page
+    .getByTestId('own-hand-tile')
+    .evaluateAll((els) => els.map((el) => el.getBoundingClientRect().toJSON() as DOMRect));
+  const handTop = Math.min(...handBoxes.map((r) => r.top));
+  const handBottom = Math.max(...handBoxes.map((r) => r.bottom));
+  const handLeft = Math.min(...handBoxes.map((r) => r.left));
+  // Beside the hand's left end, on the near rail (`BOTTOM_BADGE_Z`): its
+  // top starts below the hand row's centre line — where the tip stack's
+  // base corner projects on this camera — and it stays above the footer.
+  // Anchored on the hand line it spanned the stack's band (top ≈ 728,
+  // the stack 686–758).
+  expect(b.x + b.width).toBeLessThan(handLeft);
+  expect(b.y).toBeGreaterThanOrEqual((handTop + handBottom) / 2);
+  expect(b.y + b.height).toBeLessThanOrEqual(900 - 12 - 40);
+  expect(errors, 'console / page errors').toEqual([]);
+});

@@ -38,6 +38,19 @@ interface ResultVeilProps {
  * every example step (`Lesson.suppressWinCelebration`) skip the stamp,
  * the same rule the classic celebration follows.
  */
+/**
+ * Winning-hand tile width (CSS px) that fits 14 concealed tiles on one
+ * row of the compact glass card: the card's width less its 6 px
+ * padding, the panel's 10 px padding, 13 two-px gaps and the winning
+ * tile's 6 px frame, over 14 — clamped to the 22 px compact default
+ * (412 px phones) and a 16 px floor. A 360 px phone lands at 19 × 26
+ * instead of wrapping the row 12 + 2 (round-6).
+ */
+export function resultHandTileWidth(cardWidth: number): number {
+  const room = cardWidth - 2 * 6 - 2 * 10 - 13 * 2 - 6;
+  return Math.max(16, Math.min(22, Math.floor(room / 14)));
+}
+
 export function ResultVeil({ onAction, seat, isHost, onLeave, vpClass }: ResultVeilProps) {
   const portrait = vpClass === 'phone-portrait';
   const result = useGame((s) => s.state?.lastResult);
@@ -53,6 +66,7 @@ export function ResultVeil({ onAction, seat, isHost, onLeave, vpClass }: ResultV
   const { width, height } = useWindowDimensions();
   const cardRef = useRef<HTMLDivElement | null>(null);
   const [panelH, setPanelH] = useState<number | null>(null);
+  const [panelW, setPanelW] = useState<number | null>(null);
   // Measure the card before paint (web): the pin decision needs its
   // height, and a card that first painted at the bottom and then jumped
   // to the top would flash.
@@ -60,8 +74,9 @@ export function ResultVeil({ onAction, seat, isHost, onLeave, vpClass }: ResultV
     const el = cardRef.current;
     if (!el) return;
     const measure = () => {
-      const h = el.getBoundingClientRect().height;
-      if (h > 0) setPanelH(h);
+      const r = el.getBoundingClientRect();
+      if (r.height > 0) setPanelH(r.height);
+      if (r.width > 0) setPanelW(r.width);
     };
     measure();
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
@@ -116,7 +131,7 @@ export function ResultVeil({ onAction, seat, isHost, onLeave, vpClass }: ResultV
             onLeave={onLeave}
             theme="glass"
             compact={compact}
-            handTileWidth={compact ? undefined : 40}
+            handTileWidth={compact ? resultHandTileWidth(panelW ?? Math.min(width - 24, 560)) : 40}
           />
         </TutorialTarget>
       </div>

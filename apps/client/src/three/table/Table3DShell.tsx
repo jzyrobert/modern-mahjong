@@ -69,7 +69,8 @@ import {
   FELT_HALF,
   HAND_Z,
   type HeldHandFrame,
-  OWN_HAND_Z,
+  RAIL_MELD_Z,
+  RAIL_TOP,
   RAIL_WIDTH,
   type Rel,
   SIDE_MELD_SCALE_PORTRAIT,
@@ -79,6 +80,7 @@ import {
   WALL_OVERHANG_OUTER,
   meldsRowWidth,
   orderOwnHand,
+  rowTuningFor,
   toWorld,
   zoomMeldShelf,
 } from './layout';
@@ -236,6 +238,18 @@ const ZOOM_EDGE_SOLID = 12;
  * overhanging stack (round-4 pinwheel).
  */
 const BOTTOM_BADGE_X = -WALL_OVERHANG_OUTER - 0.3;
+/**
+ * Desktop: the user's badge is anchored on the near *rail's* top, not
+ * the own-hand line. On the hand line (y 0.9, z 11.05) it shared the
+ * left wall's tip stack's screen band — the stack's near end stands at
+ * z 10.76, its silhouette runs to the badge's right edge — and read as
+ * crowding the stack (round-6). The rail's centre line (`RAIL_MELD_Z`,
+ * 1.4 nearer the camera, `RAIL_TOP` 0.53 up) projects ≈ 50 px lower:
+ * the badge's top clears the stack's base corner by ~20 px and the
+ * glass sits on wood, the one table surface that never holds a tile
+ * (the portrait toast's rule).
+ */
+const BOTTOM_BADGE_Z = RAIL_MELD_Z;
 
 const EMPTY_RECTS: HudRects = {
   ownHand: null,
@@ -458,6 +472,9 @@ export function Table3DShell(props: Table3DShellProps) {
       landscape: ls,
       compact: cp,
     } = inputRef.current;
+    // The camera the rows are sized for: the rig's goal preset (every
+    // caller sets it before syncing), so the gaps follow viewport + zoom.
+    const goal = ctxRef.current?.rig.goalCamera().position;
     scene.sync(
       {
         state: p.state,
@@ -502,6 +519,10 @@ export function Table3DShell(props: Table3DShellProps) {
         // camera (the largest projection on all three cameras), and 1.15×
         // on the width-bound portrait table.
         sideMeldsNear: true,
+        // Rows keep camera-sized felt from the wall overhangs (the right
+        // seat's near end under the near wall's tip; the 14-tile hand at
+        // the left wall's tip on landscape).
+        rows: goal ? rowTuningFor([goal.x, goal.y, goal.z]) : undefined,
         sideMeldScale: heldRef.current ? SIDE_MELD_SCALE_PORTRAIT : 1,
         // Wide presets: the user's melds stand in the hand row, faces to
         // the camera (the held portrait hand keeps its flat felt melds).
@@ -594,9 +615,9 @@ export function Table3DShell(props: Table3DShellProps) {
           const [ax, az] = toWorld(
             rel,
             pos === 'bottom' ? BOTTOM_BADGE_X : 0,
-            pos === 'bottom' ? OWN_HAND_Z : HAND_Z + 1.1,
+            pos === 'bottom' ? BOTTOM_BADGE_Z : HAND_Z + 1.1,
           );
-          const q = scene.projectPoint(ax, 0.9, az);
+          const q = scene.projectPoint(ax, pos === 'bottom' ? RAIL_TOP : 0.9, az);
           const bw = el.offsetWidth;
           const bh = el.offsetHeight;
           let left: number;
@@ -912,8 +933,11 @@ export function Table3DShell(props: Table3DShellProps) {
   // Short phones (full table): the pitched camera parks the far rail
   // ~10 px under the strip, so the rail slot cannot hold a toast — it
   // would land on the far rack + wall (round-6). The toast takes the
-  // seat strip's row instead and the three badges step aside (opacity)
-  // while it shows: HUD replacing HUD, never HUD over tiles.
+  // seat strip's row instead and the three badges shrink to their wind
+  // discs at the row's ends (the far seat's beside the left seat's, out
+  // from under the centred toast) while it shows — they stay legible
+  // through the hold instead of fading out (round-6): HUD replacing
+  // HUD, never HUD over tiles.
   // The rail slot holds a toast when one parked at `stripBottom + 6`
   // still clears the far rack's tops by ≥ 4 px (`PORTRAIT_FAR_RAIL_GAP`
   // was derived for a 6 px clearance that rounds to a 2 px tie).
@@ -1206,10 +1230,12 @@ export function Table3DShell(props: Table3DShellProps) {
                     lobby={lobby}
                     compact
                     dense
-                    style={{
-                      opacity: stripCleared ? 0 : 1,
-                      transition: 'opacity 160ms ease-out',
-                    }}
+                    glyphOnly={stripCleared}
+                    style={
+                      // The far seat's disc steps beside the left seat's
+                      // (an auto margin keeps the right seat's at the end).
+                      stripCleared && pos === 'top' ? { marginLeft: 6, marginRight: 'auto' } : {}
+                    }
                   />
                 ) : (
                   <span key={pos} />

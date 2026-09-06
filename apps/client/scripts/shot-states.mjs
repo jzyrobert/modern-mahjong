@@ -145,6 +145,18 @@ const TWO_MELDS_DISCARD_KEEP_RUN = `
 })();
 `;
 
+/**
+ * `match-own-meld-near-wall`: seed 36 rolls dealer 0 with the break on
+ * the *far* wall (seat 2), so the near wall's overhanging tip is the
+ * last part of the ring to be drawn (untouched through the first 54
+ * draws) and stands full when the user's peng lands; the seed also
+ * deals the user a pair bot 1 holds one of, so `CLAIM_SETUP` applies.
+ */
+const NEAR_WALL_MELD_INIT = `
+globalThis.__MAHJONG_TEST_SEED__ = 36;
+globalThis.__MAHJONG_TEST_BOT_SCRIPTS__ = { 1: {}, 2: {}, 3: {} };
+`;
+
 const CLAIM_TOAST_INIT = `
 globalThis.__MAHJONG_TEST_SEED__ = 9;
 globalThis.__MAHJONG_TEST_BOT_SCRIPTS__ = { 1: {}, 2: {}, 3: {} };
@@ -1204,6 +1216,26 @@ export const STATES = {
     // step); the turn chip under the hand reads DISCARD.
     steps: [
       { initScript: CLAIM_INIT },
+      ...START_SOLO,
+      { waitForOwnHand: true },
+      { waitMs: 1600 },
+      { evaluate: CLAIM_SETUP },
+      { waitFor: '[data-testid="claim-bar"]', timeout: 20000 },
+      { click: 'role=button[name="Peng"]', timeout: 10000 },
+      { waitFor: '[data-testid="claim-bar"]', state: 'hidden', timeout: 10000 },
+      { waitMs: 1400 },
+    ],
+  },
+  'match-own-meld-near-wall': {
+    owner: 'table',
+    // The user's peng with the near wall's overhanging tip still up
+    // (`NEAR_WALL_MELD_INIT`). Portrait: the held hand's 1.3× felt melds
+    // lie right-aligned in front of that tip (`OWN_MELD_Z_HELD`), the
+    // round-4 residual `match-two-melds` could not show because its
+    // near wall is drawn down by then; landscape / desktop: the standing
+    // meld in the hand row beside the same tip.
+    steps: [
+      { initScript: NEAR_WALL_MELD_INIT },
       ...START_SOLO,
       { waitForOwnHand: true },
       { waitMs: 1600 },

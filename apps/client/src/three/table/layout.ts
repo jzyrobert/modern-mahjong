@@ -180,9 +180,77 @@ export function wallInnerFaceAt(lx: number): number {
  */
 export const ROW_OVERHANG_GAP = 1.0;
 export const OWN_ROW_OVERHANG_GAP = 0.6;
-/** Leftmost owner-frame x a rack + melds row may start at. */
-export function rowLeftLimit(own = false): number {
-  return -WALL_OVERHANG_INNER + (own ? OWN_ROW_OVERHANG_GAP : ROW_OVERHANG_GAP);
+/**
+ * Leftmost owner-frame x a rack + melds row may start at. `gap` is the
+ * felt kept from the overhang's inner face (default the world-space
+ * floors above; the shells pass the camera-sized `RowTuning` gaps).
+ */
+export function rowLeftLimit(own = false, gap?: number): number {
+  return -WALL_OVERHANG_INNER + (gap ?? (own ? OWN_ROW_OVERHANG_GAP : ROW_OVERHANG_GAP));
+}
+/**
+ * Per-camera row tuning (`LayoutOptions.rows`, from `rowTuningFor`).
+ * The world-space floors above keep the felt clear; the two overhang
+ * contacts the cameras actually show are projections (round-4 final
+ * critic, round-6 feedback):
+ *
+ * - The near wall's overhanging tip stands *between the camera and the
+ *   right seat's near end*. Its two-high top face (y = 2 · TILE_D)
+ *   hides the felt behind it out to `topInnerCornerShadow`, so a meld
+ *   whose base edge sits 1.0 behind the inner face still meets the
+ *   stack's top edge on screen (2 px at 412×700, 0 at 360×640 and
+ *   landscape, where the low 31° camera casts the shadow 1.87 deep).
+ *   `overhangGap` is that shadow plus `ROW_OVERHANG_FELT` of visible
+ *   felt: ≈ 1.34 on a 412×700 phone, 1.54 at 360×640, 2.27 landscape,
+ *   1.39 desktop, the 1.0 floor on the tall (70°) phone.
+ * - The user's 14-tile hand at the left wall's tip: the raised top-left
+ *   corner of the leaned row projects *onto the wall's inner face*
+ *   (its felt shadow lands under the stacks) from the landscape camera
+ *   — 0 px of felt at the row top with 0.88 of world clearance. The
+ *   row slides right until the corner's shadow keeps
+ *   `OWN_ROW_OVERHANG_FELT` off the inner face: ≈ 1.5 on landscape (a
+ *   14-tile hand with its drawn gap slides 0.63; a 13-tile hand stays
+ *   centred 0.12 inside the limit, so the draw moves the row's left end
+ *   0.12 instead of the centred 0.74 and the right end takes the rest);
+ *   0.74 on the 44° desktop, inside a centred 14-tile hand's 0.88, so
+ *   nothing slides there; the near-overhead portrait cameras sit on the
+ *   0.6 floor (the hand is held off the table anyway).
+ */
+export interface RowTuning {
+  /** Felt an opponent's row keeps past the overhang at its left end (≥ `ROW_OVERHANG_GAP`). */
+  overhangGap: number;
+  /** The same for the user's row (≥ `OWN_ROW_OVERHANG_GAP`). */
+  ownOverhangGap: number;
+}
+/** Visible felt kept between the tip stack's projected top edge and the right seat's near end. */
+export const ROW_OVERHANG_FELT = 0.4;
+/** Felt kept between the user's row's top-corner shadow and the left wall's inner face. */
+export const OWN_ROW_OVERHANG_FELT = 0.2;
+/**
+ * Felt point hidden behind `p` from a camera at `cam` (the ray through
+ * `p` continued to y = 0); `p` below the camera.
+ */
+function feltShadow(
+  cam: readonly [number, number, number],
+  p: readonly [number, number, number],
+): [number, number] {
+  const t = cam[1] / Math.max(1e-6, cam[1] - p[1]);
+  return [cam[0] + (p[0] - cam[0]) * t, cam[2] + (p[2] - cam[2]) * t];
+}
+/** Row gaps for a camera position (world units) — see `RowTuning`. */
+export function rowTuningFor(cam: readonly [number, number, number]): RowTuning {
+  // Near wall's tip, top inner corner: where its shadow ends behind the
+  // wall is where the right seat's row may begin (plus visible felt).
+  const shadowZ = feltShadow(cam, [WALL_END, 2 * TILE_D, WALL_OVERHANG_INNER])[1];
+  const overhangGap = Math.max(ROW_OVERHANG_GAP, WALL_OVERHANG_INNER - shadowZ + ROW_OVERHANG_FELT);
+  // The user's row: its top-left front corner (x, topY, topZ) casts to
+  // x · cy / (cy − topY); solve for the corner x that lands
+  // `OWN_ROW_OVERHANG_FELT` inside the left wall's inner face.
+  const topY = TILE_H / 2 + (TILE_H / 2) * Math.cos(HAND_TILT) + (TILE_D / 2) * Math.sin(HAND_TILT);
+  const k = cam[1] / Math.max(1e-6, cam[1] - topY);
+  const cornerX = (-WALL_OVERHANG_INNER + OWN_ROW_OVERHANG_FELT) / k;
+  const ownOverhangGap = Math.max(OWN_ROW_OVERHANG_GAP, cornerX + WALL_OVERHANG_INNER);
+  return { overhangGap, ownOverhangGap };
 }
 /** Opponent hand rows sit just outside the wall. */
 export const HAND_Z = 10.55;
@@ -247,10 +315,16 @@ export const OWN_MELD_SCALE_HELD = 1.3;
  * put the 1.3× group's inner edge at 9.62, 0.14 off a straight near
  * wall; the yawed wall's overhanging end swings out to 9.88
  * (`WALL_OVERHANG_OUTER`) exactly where the right-aligned group lies,
- * so the group steps 0.35 toward the camera: inner edge 9.97 (0.09 of
- * felt to the stack), outer edge 11.73, still 0.17 inside the rail.
+ * so the group steps 0.45 toward the camera: inner edge 10.07 (0.19 of
+ * felt to the stack — 0.35 left 0.09, round-4 residual), outer edge
+ * 11.83, 0.07 inside the felt edge. The near side of the group is
+ * behind the near rail's silhouette from every portrait camera anyway
+ * (the rail's top edge hides the felt from ≈ 11.54 on a 412×700 phone,
+ * 11.74 on the tall one), so the trade is 3 px of felt at the wall's
+ * foot for 2 px between the group's top face and the rail on the tall
+ * phone. `match-own-meld-near-wall` shoots it.
  */
-export const OWN_MELD_Z_HELD = MELD_Z + 0.35;
+export const OWN_MELD_Z_HELD = MELD_Z + 0.45;
 /**
  * Felt the portrait river zoom's frame keeps beyond the rivers' far
  * edges on each side (`cameraPresets.ZOOM_X_HALF_MIN` = the portrait
@@ -610,16 +684,24 @@ export interface LayoutOptions extends HandOrderOptions {
    */
   farSeatOut?: number | undefined;
   /**
-   * Lay the *right* seat's (rel 1) exposed melds at the near end of its
-   * row — before its concealed rack instead of after it — so both side
-   * seats' melds sit at the corners nearest the camera. From the low
-   * phone-landscape preset the far end of a side row projects ~1.4×
-   * smaller than the near end, and the right seat's melds (to its own
-   * right = the far end) read as ~12 CSS px sideways glyphs (round-4 #1).
-   * The left seat's melds are already at the near end. The group's
-   * internal order (claimed-tile rotation) is unchanged.
+   * Lay both *side* seats' (rel 1 / 3) exposed melds at the *left* end
+   * of their row — before the concealed rack instead of after it. A
+   * side seat's left end lies beside its own wall's heel, the half the
+   * yaw swings *in* (outer face 9.16 → 9.52), and its right end beside
+   * the overhanging half swung *out* (→ 9.88), whose two-high top face
+   * projects 0.3–1.6 further onto the felt from every camera: melds
+   * there read as wedged under the wall (round-6: "side-seat melds sit
+   * flush against the side walls"). For the right seat the left end is
+   * also the near end — the largest projection on the low landscape
+   * camera, where the far end reads ~1.4× smaller (round-4 #1). The
+   * group's internal order (claimed-tile rotation) is unchanged.
    */
   sideMeldsNear?: boolean | undefined;
+  /**
+   * Camera-sized row gaps (`rowTuningFor`); the world-space floors
+   * apply when absent.
+   */
+  rows?: RowTuning | undefined;
   /**
    * Uniform scale for the *side* seats' (rel 1 / 3) exposed melds. The
    * side melds are the smallest readable thing on the table: their
@@ -944,12 +1026,15 @@ export function computeLayout(state: GameState, me: Seat, opts: LayoutOptions): 
     const meldsWidth = railMelds ? 0 : meldGroupsWidth(groups) * meldScale;
     const total =
       handWidth + (groups.length > 0 && hand.length > 0 && !railMelds ? MELD_GAP : 0) + meldsWidth;
-    // Right seat: melds first (the near end), then the rack.
-    const meldsFirst = opts.sideMeldsNear === true && rel === 1 && melds.length > 0 && !railMelds;
+    // Side seats: melds first (their left end, beside their own wall's
+    // in-swinging heel), then the rack.
+    const meldsFirst = opts.sideMeldsNear === true && isSide && melds.length > 0 && !railMelds;
     // A row is centred on its seat unless its left end would run into
-    // the overhang standing there (`rowLeftLimit`): then the whole row
-    // slides right by the overrun.
-    let cursor = Math.max(-total / 2, rowLeftLimit(isMe));
+    // the overhang standing there (`rowLeftLimit`, the camera-sized gap
+    // when the shell passes one): then the whole row slides right by
+    // the overrun.
+    const gap = isMe ? opts.rows?.ownOverhangGap : opts.rows?.overhangGap;
+    let cursor = Math.max(-total / 2, rowLeftLimit(isMe, gap));
     if (meldsFirst) {
       cursor = placeMelds(layout, melds, seat, rel, yaw, meldZ, cursor, meldScale);
       if (hand.length > 0) cursor += MELD_GAP;
@@ -1327,11 +1412,16 @@ export function riverMetrics(scale: number): {
 const CHIP_X = -5.2;
 /**
  * Felt the chip keeps between its far edge and the near wall's inner
- * face before it moves out of the wall's shadow into the corner pocket.
+ * face before it moves out of the wall's shadow into the corner spot.
  */
 const CHIP_WALL_ROOM = 1.0;
-/** Felt the chip keeps from the walls' inner faces in the corner pocket. */
-export const CHIP_CORNER_GAP = 0.2;
+/**
+ * Portrait corner spot (`dealerChipLocal`): felt between the near
+ * wall's heel stack (its outer face) and the chip's far edge, and the
+ * chip's centre past the heel's left edge toward the left wall.
+ */
+export const CHIP_FRONT_GAP = 0.6;
+export const CHIP_HEEL_OVERLAP = 0.55;
 
 /**
  * Dealer chip centre in the dealer's seat frame (x right, z toward
@@ -1346,21 +1436,32 @@ export const CHIP_CORNER_GAP = 0.2;
  *   overhangs the felt by ≈ 0.22 from the cameras, never reaches it.
  * - Portrait (1.36×): the arm's end is at z 6.61 and the chip's far
  *   edge would sit at 7.93, past the yawed face — round-4 #3 nudged it
- *   toward the centre, which put it on the arm's twelfth discard. It
- *   parks instead in the corner pocket the pinwheel leaves between the
- *   left wall's inner face and the near wall's retreated end
- *   (`wallRunPoint(−tip)`), centred on that gap (≈ 0.24 each side at
- *   `CHIP_RADIUS`), the same z: 0.2 above the arm's end, under no stack.
+ *   toward the centre, which put it on the arm's twelfth discard. Round
+ *   4 parked it in the pocket the pinwheel leaves between the left
+ *   wall's inner face and the near wall's retreated end, but that
+ *   pocket is 1.72 wide for a 1.12 chip: 0.24 of felt (2–3 CSS px) each
+ *   side, wedged (round-6). It parks instead *in front of* the near
+ *   wall's heel, on the felt strip between the wall and the rail that
+ *   the held hand leaves empty at its left: `CHIP_FRONT_GAP` past the
+ *   heel stack's outer face (nearer the camera than the wall, so no
+ *   stack's top face can project onto it), its right edge under the
+ *   heel's left edge (`CHIP_HEEL_OVERLAP` = the chip's radius − 0.01):
+ *   0.62 of felt to the left wall's tip (inner face −8.48, standing to
+ *   `WALL_END` 10.76 — its top face projects *outward*, away from the
+ *   chip), 1.0 to the near rail (11.9), and clear of the held hand's
+ *   right-aligned melds up to three groups (left edge −3.4) or four
+ *   concealed gangs (−6.4); four claimed melds (a fully open hand
+ *   waiting on its pair, 18.9 wide) reach −8.25 and lie over it.
  */
 export function dealerChipLocal(riverScale: number, chipRadius: number): [number, number] {
   const m = riverMetrics(riverScale);
   const lz = m.rightEdge + chipRadius + 0.2;
   if (wallInnerFaceAt(CHIP_X) - (lz + chipRadius) >= CHIP_WALL_ROOM) return [CHIP_X, lz];
-  // Left wall (rel 3 from the dealer): its along-axis is our z, its
-  // inner face our −x; the near wall's heel is our stack 0's left edge.
-  const leftFace = -wallInnerFaceAt(lz);
-  const heel = wallRunPoint(-WALL_TIP_DX)[0] - WALL_ALONG_HALF;
-  return [(leftFace + heel) / 2, lz];
+  // The near wall's heel (stack 0): left edge along x, outer face along z.
+  const [heelX, heelZ] = wallRunPoint(-WALL_TIP_DX);
+  const heelEdge = heelX - WALL_ALONG_HALF;
+  const heelOuter = heelZ + WALL_ACROSS_HALF;
+  return [heelEdge - CHIP_HEEL_OVERLAP, heelOuter + CHIP_FRONT_GAP + chipRadius];
 }
 
 /**

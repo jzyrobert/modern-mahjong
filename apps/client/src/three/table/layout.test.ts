@@ -1,8 +1,10 @@
 import { type GameState, type Seat, emptyState, startHand, tileId } from '@mahjong/game-logic';
 import { describe, expect, test } from 'vitest';
 import { TILE_D, TILE_H, TILE_W } from '../tiles/geometry';
+import { TABLE_CAMERA, cameraFor, projectPreset } from './cameraPresets';
 import {
-  CHIP_CORNER_GAP,
+  CHIP_FRONT_GAP,
+  CHIP_HEEL_OVERLAP,
   DEAD_WALL_OFFSET,
   DRAWN_GAP,
   FAR_SEAT_OUT,
@@ -18,6 +20,7 @@ import {
   OWN_MELD_RIGHT,
   OWN_MELD_SCALE_HELD,
   OWN_MELD_Z_HELD,
+  OWN_ROW_OVERHANG_FELT,
   OWN_ROW_OVERHANG_GAP,
   RAIL_MELD_Z,
   RAIL_TOP,
@@ -25,7 +28,9 @@ import {
   RIVER_COLS,
   RIVER_NEAR_EDGE,
   RIVER_ROWS,
+  ROW_OVERHANG_FELT,
   ROW_OVERHANG_GAP,
+  type RowTuning,
   SHELF_GAP,
   SHELF_MARGIN,
   SIDE_MELD_SCALE_PORTRAIT,
@@ -60,6 +65,7 @@ import {
   riverMetrics,
   riverZ0,
   rowLeftLimit,
+  rowTuningFor,
   tileSheetLayout,
   toLocal,
   toWorld,
@@ -724,12 +730,12 @@ describe('computeLayout', () => {
       }
       // Inside the yawed left wall's inner face at the chip's z (its
       // along-axis is our z), and either under the near wall's line with
-      // felt to its inner face (wide presets) or beside its retreated end
-      // (portrait's corner pocket).
+      // felt to its inner face (wide presets) or in front of the wall,
+      // past its heel's outer face (portrait).
       expect(Math.abs(cx) + r).toBeLessThan(wallInnerFaceAt(cz) - 0.15);
-      const heel = wallRunPoint(-TIP_DX)[0] - WALL_ALONG_HALF;
-      if (cx + r >= heel) expect(cz + r).toBeLessThan(wallInnerFaceAt(cx) - 0.15);
-      else expect(cx + r).toBeLessThan(heel - 0.15);
+      const heelOuter = wallRunPoint(-TIP_DX)[1] + WALL_ACROSS_HALF;
+      if (cz + r < wallInnerFaceAt(cx)) expect(cz + r).toBeLessThan(wallInnerFaceAt(cx) - 0.15);
+      else expect(cz - r).toBeGreaterThan(heelOuter + 0.5);
     }
     // Wide presets keep the chip's near edge above the near wall's top
     // from a 30° camera: edge z ≤ 6.35 (see TableScene CHIP_RADIUS note).
@@ -960,8 +966,8 @@ describe('held hand (phone portrait)', () => {
       expect(m!.y).toBeCloseTo((TILE_D / 2) * OWN_MELD_SCALE_HELD, 5);
       const halfDepth = (TILE_H / 2) * OWN_MELD_SCALE_HELD;
       // Clear of the yawed near wall's outermost stack and of the rail.
-      expect(m!.z - halfDepth).toBeGreaterThan(WALL_OVERHANG_OUTER + 0.08);
-      expect(m!.z + halfDepth).toBeLessThan(FELT_HALF - 0.15);
+      expect(m!.z - halfDepth).toBeGreaterThan(WALL_OVERHANG_OUTER + 0.18);
+      expect(m!.z + halfDepth).toBeLessThan(FELT_HALF - 0.05);
     }
     // The group's right edge stays at the rail-side bound.
     const rightmost = melds.reduce((a, b) => (a!.x > b!.x ? a : b))!;
@@ -1103,7 +1109,7 @@ describe('low-camera side seats (phone landscape)', () => {
       }
     }
   });
-  test('sideMeldsNear puts the right seat’s melds at the near (+z) end, left seat unchanged', () => {
+  test('sideMeldsNear puts both side seats’ melds at their left end: right seat near (+z), left seat far (−z)', () => {
     const st = withMeldFor(1);
     const base = computeLayout(st, 0, OPTS);
     const near = computeLayout(st, 0, { ...OPTS, sideMeldsNear: true });
@@ -1137,13 +1143,36 @@ describe('low-camera side seats (phone landscape)', () => {
     for (let i = 1; i < dNear.length; i++) {
       expect(Math.sign(dNear[i]! - dNear[i - 1]!)).toBe(Math.sign(dBase[i]! - dBase[i - 1]!));
     }
-    // The left seat's melds are already at the near end and do not move.
+    // The left seat's melds move from the near end (beside its wall's
+    // out-swinging tip half) to the far end (beside the in-swinging heel).
     const st3 = withMeldFor(3);
-    const a = computeLayout(st3, 0, OPTS).filter((sl) => sl?.zone === 'meld');
-    const b = computeLayout(st3, 0, { ...OPTS, sideMeldsNear: true }).filter(
-      (sl) => sl?.zone === 'meld',
-    );
-    expect(b.map((sl) => [sl!.x, sl!.z])).toEqual(a.map((sl) => [sl!.x, sl!.z]));
+    const a = computeLayout(st3, 0, OPTS);
+    const b = computeLayout(st3, 0, { ...OPTS, sideMeldsNear: true });
+    const meldZ3 = (l: typeof a) =>
+      l.filter((sl) => sl?.zone === 'meld' && sl.seat === 3).map((sl) => sl!.z);
+    const rackZ3 = (l: typeof a) =>
+      l.filter((sl) => sl?.zone === 'oppHand' && sl.seat === 3).map((sl) => sl!.z);
+    expect(Math.min(...meldZ3(a))).toBeGreaterThan(Math.max(...rackZ3(a)));
+    expect(Math.max(...meldZ3(b))).toBeLessThan(Math.min(...rackZ3(b)));
+    // Both side seats' melds then lie beside their own wall's heel half,
+    // whose outer face (yawed inward) leaves ≥ 0.5 of felt to a 1.15×
+    // meld's inner edge at every preset — the tip half leaves ≤ 0.1.
+    for (const [name, preset] of Object.entries(PRESETS)) {
+      if (preset.farMeldsOnRail) continue; // landscape: see the low-camera tests
+      for (const seat of [1, 3] as Seat[]) {
+        const lay = computeLayout(withMeldFor(seat), 0, preset);
+        const rel = seat === 1 ? 1 : 3;
+        let minFelt = Number.POSITIVE_INFINITY;
+        for (const sl of lay) {
+          if (!sl || sl.zone !== 'meld' || sl.seat !== seat) continue;
+          const [lx, lz] = toLocal(rel, sl.x, sl.z);
+          const inner = lz - (TILE_H / 2) * (sl.scale ?? 1);
+          const outerFace = wallInnerFaceAt(lx) + 2 * WALL_ACROSS_HALF;
+          minFelt = Math.min(minFelt, inner - outerFace);
+        }
+        expect(minFelt, `${name} seat ${seat}`).toBeGreaterThan(0.5);
+      }
+    }
   });
 });
 
@@ -1614,8 +1643,8 @@ describe('wall yaw', () => {
     // Held hand's melds.
     expect(
       OWN_MELD_Z_HELD - (TILE_H / 2) * OWN_MELD_SCALE_HELD - WALL_OVERHANG_OUTER,
-    ).toBeGreaterThan(0.08);
-    expect(OWN_MELD_Z_HELD + (TILE_H / 2) * OWN_MELD_SCALE_HELD).toBeLessThan(FELT_HALF - 0.15);
+    ).toBeGreaterThan(0.18);
+    expect(OWN_MELD_Z_HELD + (TILE_H / 2) * OWN_MELD_SCALE_HELD).toBeLessThan(FELT_HALF - 0.05);
     // Racks' leaning tops (OPP_TILT) clear the out-swinging stacks' top edge.
     const rackFaceAtStackTop = HAND_Z - TILE_D / 2 - 2 * TILE_D * Math.tan(0.14);
     expect(rackFaceAtStackTop - WALL_OVERHANG_OUTER).toBeGreaterThan(0.15);
@@ -1668,29 +1697,38 @@ describe('dealer chip pocket', () => {
       if (sl && (sl.zone === 'wall' || sl.zone === 'deadWall') && sl.y < TILE_D)
         expect(discGap([x, z], chipR, slotFootprint(sl))).toBeGreaterThan(1);
   });
-  test('portrait: in the corner pocket between the left wall and the near wall’s retreated end', () => {
+  test('portrait: in front of the near wall’s heel, its right edge under the heel’s left edge', () => {
     const [x, z] = dealerChipLocal(1.36, chipR);
     // At x −5.2 the chip's far edge (7.93) would pass the yawed face (7.80).
-    expect(wallInnerFaceAt(-5.2) - (z + chipR)).toBeLessThan(0);
-    expect(x).toBeGreaterThan(-7.7);
-    expect(x).toBeLessThan(-7.4);
-    // Centred in the pocket: equal felt to the left wall's inner face and
-    // the near wall's heel, ≥ CHIP_CORNER_GAP each.
-    const leftFace = -wallInnerFaceAt(z);
-    const heel = wallRunPoint(-TIP_DX)[0] - WALL_ALONG_HALF;
-    expect(x - leftFace).toBeCloseTo(heel - x, 9);
-    expect(x - chipR - leftFace).toBeGreaterThanOrEqual(CHIP_CORNER_GAP);
+    const armSpotZ = riverMetrics(1.36).rightEdge + chipR + 0.2;
+    expect(wallInnerFaceAt(-5.2) - (armSpotZ + chipR)).toBeLessThan(0);
+    const [heelX, heelZ] = wallRunPoint(-TIP_DX);
+    const heelEdge = heelX - WALL_ALONG_HALF;
+    const heelOuter = heelZ + WALL_ACROSS_HALF;
+    expect(x).toBeCloseTo(heelEdge - CHIP_HEEL_OVERLAP, 9);
+    expect(z).toBeCloseTo(heelOuter + CHIP_FRONT_GAP + chipR, 9);
+    // In front of the wall (nearer the camera than every stack), so no
+    // stack's top face can project onto it; ≥ 0.6 of felt to the left
+    // wall's tip and ≥ 1.0 to the near rail.
+    expect(z - chipR - heelOuter).toBeCloseTo(CHIP_FRONT_GAP, 9);
+    expect(x - chipR + WALL_OVERHANG_INNER).toBeGreaterThanOrEqual(0.6);
+    expect(FELT_HALF - (z + chipR)).toBeGreaterThanOrEqual(1);
     let minStack = Number.POSITIVE_INFINITY;
     for (const poly of ring) minStack = Math.min(minStack, discGap([x, z], chipR, poly));
-    expect(minStack).toBeGreaterThanOrEqual(CHIP_CORNER_GAP);
-    expect(minStack).toBeLessThan(0.5);
-    // Above the arm's end (0.2, as at every scale) and never over a discard.
-    let minArm = Number.POSITIVE_INFINITY;
-    for (const poly of arm(1.36)) minArm = Math.min(minArm, discGap([x, z], chipR, poly));
-    expect(minArm).toBeCloseTo(0.2, 6);
-    // Nor over the dealer's own river.
+    expect(minStack).toBeGreaterThanOrEqual(0.55);
+    // Never over a river (its own or the arm's) …
+    for (const poly of arm(1.36)) expect(discGap([x, z], chipR, poly)).toBeGreaterThan(1);
     const m = riverMetrics(1.36);
-    expect(x + chipR).toBeLessThan(m.shift - m.halfWidth);
+    expect(z - chipR).toBeGreaterThan(m.farEdge);
+    // … nor under the held hand's right-aligned melds: three groups of
+    // any kind, or four concealed gangs, stay to its right.
+    const rotated = 2 * TILE_W + TILE_H + 2 * 0.03;
+    const three = OWN_MELD_RIGHT - (3 * rotated + 2 * 0.3) * OWN_MELD_SCALE_HELD;
+    const fourGangs =
+      OWN_MELD_RIGHT - (4 * (3 * TILE_W + 2 * 0.03) + 3 * 0.3) * OWN_MELD_SCALE_HELD;
+    expect(three - (x + chipR)).toBeGreaterThan(2);
+    expect(fourGangs - (x + chipR)).toBeGreaterThan(0.3);
+    expect(OWN_MELD_Z_HELD - (TILE_H / 2) * OWN_MELD_SCALE_HELD).toBeLessThan(z + chipR);
   });
   test('every preset scale leaves the chip clear of walls and rivers', () => {
     for (const scale of [1, 1.15, 1.36]) {
@@ -1700,5 +1738,112 @@ describe('dealer chip pocket', () => {
       for (const poly of arm(scale))
         expect(discGap(c, chipR, poly), `scale ${scale}`).toBeGreaterThan(0.15);
     }
+  });
+});
+
+describe('camera-sized row gaps (RowTuning)', () => {
+  const CAMS = {
+    phone: { cam: cameraFor(412, 700), w: 412, h: 700 },
+    'phone-small': { cam: cameraFor(360, 640), w: 360, h: 640 },
+    'phone-tall': { cam: cameraFor(412, 915), w: 412, h: 915 },
+    landscape: { cam: TABLE_CAMERA['phone-landscape'], w: 915, h: 412 },
+    desktop: { cam: TABLE_CAMERA.desktop, w: 1440, h: 900 },
+  } as const;
+  const tuning = (k: keyof typeof CAMS): RowTuning => rowTuningFor(CAMS[k].cam.position);
+  test('the opponent gap is the near tip’s top-face shadow plus visible felt, floored at 1.0', () => {
+    expect(tuning('phone-tall').overhangGap).toBe(ROW_OVERHANG_GAP);
+    expect(tuning('phone').overhangGap).toBeCloseTo(1.34, 1);
+    expect(tuning('phone-small').overhangGap).toBeCloseTo(1.54, 1);
+    expect(tuning('landscape').overhangGap).toBeCloseTo(2.27, 1);
+    expect(tuning('desktop').overhangGap).toBeCloseTo(1.39, 1);
+    // Lower camera → deeper shadow → wider gap.
+    expect(tuning('phone-small').overhangGap).toBeGreaterThan(tuning('phone').overhangGap);
+    for (const [name, { cam, w, h }] of Object.entries(CAMS)) {
+      const gap = rowTuningFor(cam.position).overhangGap;
+      expect(gap, name).toBeGreaterThanOrEqual(ROW_OVERHANG_GAP);
+      // On screen the tip stack's top inner corner sits *below* the right
+      // seat's near-end base edge (felt shows between them), by ≥ 3 px.
+      const corner = projectPreset(cam, w, h, [WALL_END, 2 * TILE_D, WALL_OVERHANG_INNER]);
+      const rowEnd = projectPreset(cam, w, h, [WALL_END, 0, WALL_OVERHANG_INNER - gap]);
+      expect(corner.y - rowEnd.y, name).toBeGreaterThanOrEqual(3);
+      // … whereas the 1.0 floor alone lets the corner reach the edge on
+      // every camera but the tall phone.
+      const floorEnd = projectPreset(cam, w, h, [
+        WALL_END,
+        0,
+        WALL_OVERHANG_INNER - ROW_OVERHANG_GAP,
+      ]);
+      if (name !== 'phone-tall') expect(corner.y - floorEnd.y, name).toBeLessThan(3);
+    }
+  });
+  test('the right seat’s row starts at the camera gap: its near end clears the tip on the phone', () => {
+    const rows = tuning('phone');
+    const along = (sl: TileSlot) => toLocal(sl.rel, sl.x, sl.z)[0];
+    const lay = computeLayout(withRow(1, 2, false).state, 0, { ...PRESETS.portrait, rows });
+    const row = lay.filter(
+      (sl) => sl && sl.seat === 1 && (sl.zone === 'oppHand' || sl.zone === 'meld'),
+    );
+    const left = Math.min(...row.map((sl) => along(sl!) - (TILE_W / 2) * (sl!.scale ?? 1)));
+    expect(left).toBeCloseTo(rowLeftLimit(false, rows.overhangGap), 6);
+    expect(left).toBeCloseTo(-WALL_OVERHANG_INNER + rows.overhangGap, 6);
+    // The row's right end stays on the felt at every preset and meld count.
+    for (const [name, preset] of Object.entries(PRESETS)) {
+      const camKey =
+        name === 'portrait' ? 'phone-small' : name === 'landscape' ? 'landscape' : 'desktop';
+      for (let k = 1; k <= 3; k++) {
+        const l = computeLayout(withRow(1, k, false).state, 0, { ...preset, rows: tuning(camKey) });
+        const r = l.filter(
+          (sl) => sl && sl.seat === 1 && (sl.zone === 'oppHand' || sl.zone === 'meld'),
+        );
+        const right = Math.max(...r.map((sl) => along(sl!) + (TILE_W / 2) * (sl!.scale ?? 1)));
+        expect(right, `${name} melds ${k}`).toBeLessThan(FELT_HALF - 0.4);
+      }
+    }
+  });
+  test('the own gap slides the landscape 14-tile hand off the left wall’s inner face; desktop stays centred', () => {
+    // Desktop (44°): 0.74 — inside the centred 14-tile hand's 0.88, so
+    // nothing slides; the near-overhead portrait cameras sit on the floor.
+    expect(tuning('desktop').ownOverhangGap).toBeCloseTo(0.74, 2);
+    expect(tuning('desktop').ownOverhangGap).toBeLessThan(0.88);
+    expect(tuning('phone-tall').ownOverhangGap).toBe(OWN_ROW_OVERHANG_GAP);
+    const ls = tuning('landscape');
+    expect(ls.ownOverhangGap).toBeGreaterThan(1.4);
+    expect(ls.ownOverhangGap).toBeLessThan(1.6);
+    const cam = CAMS.landscape.cam.position;
+    const shadowX = (x: number, y: number) => x * (cam[1] / (cam[1] - y));
+    const topY =
+      TILE_H / 2 + (TILE_H / 2) * Math.cos(HAND_TILT) + (TILE_D / 2) * Math.sin(HAND_TILT);
+    const edge = (drawn: boolean) => {
+      const { state, drawnId } = withRow(0, 0, drawn);
+      const lay = computeLayout(state, 0, { ...PRESETS.landscape, rows: ls, drawnTileId: drawnId });
+      const hand = lay.filter((sl) => sl?.zone === 'hand');
+      expect(hand).toHaveLength(drawn ? 14 : 13);
+      return Math.min(...hand.map((sl) => sl!.x)) - TILE_W / 2;
+    };
+    // 14 tiles + drawn gap: the left end sits at the limit, and the raised
+    // top-left corner's felt shadow keeps OWN_ROW_OVERHANG_FELT inside the
+    // wall's inner face (it landed 0.54 under the stacks when centred).
+    const left14 = edge(true);
+    expect(left14).toBeCloseTo(rowLeftLimit(true, ls.ownOverhangGap), 6);
+    expect(shadowX(left14, topY) + WALL_OVERHANG_INNER).toBeCloseTo(OWN_ROW_OVERHANG_FELT, 6);
+    expect(shadowX(-7.6, topY) + WALL_OVERHANG_INNER).toBeLessThan(-0.5);
+    // A 13-tile hand (half-width 6.86) stays centred 0.12 inside the
+    // limit, so the draw moves the row's left end 0.12 (0.74 centred).
+    expect(edge(false)).toBeCloseTo(-6.86, 6);
+    expect(edge(false) - left14).toBeLessThan(0.15);
+    // Desktop: the 14-tile hand stays centred (its corner's shadow is clear).
+    const { state, drawnId } = withRow(0, 0, true);
+    const desk = computeLayout(state, 0, {
+      ...PRESETS.desktop,
+      rows: tuning('desktop'),
+      drawnTileId: drawnId,
+    });
+    const xs = desk.filter((sl) => sl?.zone === 'hand').map((sl) => sl!.x);
+    expect(Math.min(...xs) + Math.max(...xs)).toBeCloseTo(0, 6);
+    expect(Math.min(...xs) - TILE_W / 2).toBeCloseTo(-7.6, 6);
+    const deskCam = CAMS.desktop.cam.position;
+    expect((-7.6 * deskCam[1]) / (deskCam[1] - topY) + WALL_OVERHANG_INNER).toBeGreaterThan(
+      OWN_ROW_OVERHANG_FELT,
+    );
   });
 });
