@@ -591,7 +591,9 @@ test('phone landscape keeps ≥ 44 px hand tiles above the footer with glass chr
   expect(rows.side.length).toBe(26);
   expect(rows.far.length).toBe(13);
   for (const x of rows.side) expect(x).toBeCloseTo(10.55 + 0.65, 1);
-  for (const z of rows.far) expect(z).toBeCloseTo(10.55, 1);
+  // The far row steps `FAR_SEAT_OUT` (0.3) outward on every preset so its
+  // flat melds clear the yawed far wall's out-swinging half (round-4).
+  for (const z of rows.far) expect(z).toBeCloseTo(10.55 + 0.3, 1);
   const perf = await readPerf(page);
   expect(perf.drawCalls).toBeLessThanOrEqual(BUDGET.drawCalls);
   expect(perf.triangles).toBeLessThanOrEqual(BUDGET.triangles);

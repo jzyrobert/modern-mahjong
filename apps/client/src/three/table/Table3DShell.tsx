@@ -64,6 +64,7 @@ import { TurnChip } from './hud/TurnChip';
 import { GLASS, GlassButton, HUD_CSS } from './hud/glass';
 import {
   CENTRE_PLATE_RADIUS,
+  FAR_SEAT_OUT,
   FELT_HALF,
   HAND_Z,
   type HeldHandFrame,
@@ -73,7 +74,8 @@ import {
   SIDE_MELD_SCALE_PORTRAIT,
   SIDE_SEAT_OUT_DESKTOP,
   SIDE_SEAT_OUT_LOW,
-  WALL_D,
+  SIDE_SEAT_OUT_PORTRAIT,
+  WALL_OVERHANG_OUTER,
   orderOwnHand,
   toWorld,
 } from './layout';
@@ -219,12 +221,13 @@ const ZOOM_EDGE_SOLID = 12;
 /**
  * Wide presets: the user's seat badge hangs off this world x on the own
  * hand's line, its right edge 14 px further left. The left wall's
- * pinwheel overhang (`layout.WALL_STAGGER`) runs down to z ≈ 10.7 in
- * the x band [−9.48, −8.12], so the badge anchors a third of a tile
- * outside the wall's outer face rather than on the old −8.6, which put
- * its right edge under the overhanging stack (round-4 pinwheel).
+ * pinwheel overhang (`layout.WALL_STAGGER`) runs down to z ≈ 10.8 and
+ * its yawed tip swings out to x ≈ −9.88 (`layout.WALL_OVERHANG_OUTER`),
+ * so the badge anchors a third of a tile outside that tip's outer face
+ * rather than on the old −8.6, which put its right edge under the
+ * overhanging stack (round-4 pinwheel).
  */
-const BOTTOM_BADGE_X = -(WALL_D + TILE_H / 2) - 0.3;
+const BOTTOM_BADGE_X = -WALL_OVERHANG_OUTER - 0.3;
 
 const EMPTY_RECTS: HudRects = {
   ownHand: null,
@@ -452,8 +455,13 @@ export function Table3DShell(props: Table3DShellProps) {
         // occlusion line (see `SIDE_SEAT_OUT_LOW`); the far seat's melds
         // stand on the far rail, clear of the far wall's silhouette.
         // Desktop: a smaller step so a side meld shows felt between
-        // itself and the wall's top-face overhang (`SIDE_SEAT_OUT_DESKTOP`).
-        sideSeatOut: ls ? SIDE_SEAT_OUT_LOW : cp ? 0 : SIDE_SEAT_OUT_DESKTOP,
+        // itself and the wall's top-face overhang (`SIDE_SEAT_OUT_DESKTOP`);
+        // portrait: enough for the 1.15× melds to clear the yawed wall's
+        // outermost stack (`SIDE_SEAT_OUT_PORTRAIT`).
+        sideSeatOut: ls ? SIDE_SEAT_OUT_LOW : cp ? SIDE_SEAT_OUT_PORTRAIT : SIDE_SEAT_OUT_DESKTOP,
+        // Every preset: the far row steps back from the far wall's
+        // out-swinging (yawed) half (`FAR_SEAT_OUT`).
+        farSeatOut: FAR_SEAT_OUT,
         farMeldsOnRail: ls,
         // River zoom (both phone classes): the side seats' rows would show
         // as slivers at the frame's edges — the rivers are what the zoom is for.

@@ -2,37 +2,48 @@ import { type GameState, type Seat, emptyState, startHand, tileId } from '@mahjo
 import { describe, expect, test } from 'vitest';
 import { TILE_D, TILE_H, TILE_W } from '../tiles/geometry';
 import {
-  CHIP_POCKET_NUDGE,
-  CHIP_POCKET_REACH,
+  CHIP_CORNER_GAP,
   DEAD_WALL_OFFSET,
   DRAWN_GAP,
+  FAR_SEAT_OUT,
   FELT_HALF,
   FLAT_Y,
   HAND_PITCH,
   HAND_TILT,
   HAND_Z,
   HELD_ROW_UNITS,
+  type LayoutOptions,
   MELD_Z,
   OWN_HAND_Z,
   OWN_MELD_RIGHT,
   OWN_MELD_SCALE_HELD,
+  OWN_MELD_Z_HELD,
+  OWN_ROW_OVERHANG_GAP,
   RAIL_MELD_Z,
   RAIL_TOP,
   RAIL_WIDTH,
   RIVER_COLS,
   RIVER_NEAR_EDGE,
   RIVER_ROWS,
+  ROW_OVERHANG_GAP,
   SIDE_MELD_SCALE_PORTRAIT,
   SIDE_SEAT_OUT_DESKTOP,
   SIDE_SEAT_OUT_LOW,
+  SIDE_SEAT_OUT_PORTRAIT,
   STACKS_PER_WALL,
   STAND_Y,
+  type TileSlot,
+  WALL_ACROSS_HALF,
+  WALL_ALONG_HALF,
   WALL_D,
   WALL_END,
+  WALL_OVERHANG_INNER,
+  WALL_OVERHANG_OUTER,
   WALL_PITCH,
   WALL_STAGGER,
+  WALL_YAW,
+  WALL_YAW_LIFT,
   computeLayout,
-  dealerChipBlocked,
   dealerChipLocal,
   fullWallLayout,
   heldHandSlots,
@@ -43,11 +54,16 @@ import {
   quatFromBasis,
   relOf,
   riverMetrics,
+  riverZ0,
+  rowLeftLimit,
   tileSheetLayout,
   toLocal,
   toWorld,
+  wallInnerFaceAt,
+  wallRunPoint,
   wallSlotPosition,
   wallSlotRefs,
+  yawOf,
 } from './layout';
 
 function dealt(seed = 5, dealer: Seat = 0): GameState {
@@ -65,6 +81,67 @@ const FRAME = {
   pxPerUnit: 48,
   rowPitch: TILE_H + 0.34,
 };
+
+type Poly = [number, number][];
+/**
+ * Felt footprint (four corners, world x / z) of a tile centred at
+ * (cx, cz) with half-extents `hx` along its local x and `hz` along its
+ * local z, turned by the slot's world yaw — the same
+ * `setFromAxisAngle(Y, yaw)` the scene applies, which maps local +x to
+ * (cos yaw, −sin yaw).
+ */
+function footprint(cx: number, cz: number, hx: number, hz: number, yaw: number): Poly {
+  const c = Math.cos(yaw);
+  const s = Math.sin(yaw);
+  const corners: Poly = [
+    [-hx, -hz],
+    [hx, -hz],
+    [hx, hz],
+    [-hx, hz],
+  ];
+  return corners.map(([a, b]) => [cx + a * c + b * s, cz - a * s + b * c]);
+}
+/** Footprint of a laid-out tile (flat tiles by W × H, standing ones by W × D at the base). */
+function slotFootprint(sl: TileSlot): Poly {
+  const k = sl.scale ?? 1;
+  const hz = sl.base === 'standing' ? TILE_D / 2 : (TILE_H / 2) * k;
+  return footprint(sl.x, sl.z, (TILE_W / 2) * k, hz, sl.yaw);
+}
+/** Footprint of a wall stack (level 0) from `wallSlotPosition`. */
+function stackFootprint(p: { x: number; z: number; yaw: number }): Poly {
+  return footprint(p.x, p.z, TILE_W / 2, TILE_H / 2, p.yaw);
+}
+/**
+ * Separating-axis gap between two convex footprints: the widest gap
+ * along any edge normal of either (negative → they overlap). A lower
+ * bound on the true distance, exact whenever an edge separates them.
+ */
+function separation(a: Poly, b: Poly): number {
+  let best = Number.NEGATIVE_INFINITY;
+  for (const poly of [a, b]) {
+    for (let i = 0; i < poly.length; i++) {
+      const p = poly[i]!;
+      const q = poly[(i + 1) % poly.length]!;
+      const len = Math.hypot(q[1] - p[1], q[0] - p[0]);
+      const ux = (q[1] - p[1]) / len;
+      const uz = -(q[0] - p[0]) / len;
+      const proj = (P: Poly) => P.map(([x, z]) => x * ux + z * uz);
+      const pa = proj(a);
+      const pb = proj(b);
+      best = Math.max(best, Math.min(...pb) - Math.max(...pa), Math.min(...pa) - Math.max(...pb));
+    }
+  }
+  return best;
+}
+/** Every stack of a full ring (17 × 4, bottom level) from seat `me`. */
+function fullRing(me: Seat): { x: number; z: number; yaw: number; rel: number }[] {
+  const out: { x: number; z: number; yaw: number; rel: number }[] = [];
+  for (const wallSeat of [0, 1, 2, 3] as Seat[])
+    for (let stack = 0; stack < STACKS_PER_WALL; stack++)
+      out.push(wallSlotPosition({ wallSeat, stack, level: 0, dead: false }, me));
+  return out;
+}
+const TIP_DX = ((STACKS_PER_WALL - 1) / 2) * WALL_PITCH;
 
 describe('toWorld / relOf', () => {
   test('rotates seat-local coordinates counter-clockwise per seat', () => {
@@ -179,28 +256,18 @@ describe('wallSlotPosition', () => {
     expect(dead.filter((d) => d.wallSeat === 0)).toHaveLength(6);
   });
   test('no two wall stacks intersect for any dealer + break position', () => {
-    // Flat tiles: half-extent TILE_W/2 along the wall, TILE_H/2 across.
-    const box = (p: { x: number; z: number; rel: number }) => {
-      const along = p.rel % 2 === 0 ? 'x' : 'z';
-      const hx = along === 'x' ? TILE_W / 2 : TILE_H / 2;
-      const hz = along === 'x' ? TILE_H / 2 : TILE_W / 2;
-      return { x0: p.x - hx, x1: p.x + hx, z0: p.z - hz, z1: p.z + hz };
-    };
     for (const dealer of [0, 1, 2, 3] as const) {
       for (let n = 2; n <= 12; n++) {
         const { live, dead } = wallSlotRefs(dealer, n, 122, 14);
-        const boxes = [...live, ...dead]
+        const polys = [...live, ...dead]
           .filter((r) => r.level === 0)
-          .map((r) => box(wallSlotPosition(r, 0)));
-        for (let i = 0; i < boxes.length; i++) {
-          for (let j = i + 1; j < boxes.length; j++) {
-            const a = boxes[i]!;
-            const b = boxes[j]!;
-            const overlap =
-              a.x0 < b.x1 - 1e-6 && b.x0 < a.x1 - 1e-6 && a.z0 < b.z1 - 1e-6 && b.z0 < a.z1 - 1e-6;
-            expect(overlap, `dealer ${dealer} roll ${n}: stacks ${i} and ${j} intersect`).toBe(
-              false,
-            );
+          .map((r) => stackFootprint(wallSlotPosition(r, 0)));
+        for (let i = 0; i < polys.length; i++) {
+          for (let j = i + 1; j < polys.length; j++) {
+            expect(
+              separation(polys[i]!, polys[j]!),
+              `dealer ${dealer} roll ${n}: stacks ${i} and ${j} intersect`,
+            ).toBeGreaterThanOrEqual(-1e-9);
           }
         }
       }
@@ -218,12 +285,12 @@ describe('wallSlotPosition', () => {
     expect(nearEnd.z - TILE_H / 2 - (rightNear.z + TILE_W / 2)).toBeGreaterThan(1);
     // The overhanging end passes the right wall's inner face by the
     // stagger and stays well inside the felt (`WALL_END`).
-    expect(nearEnd.x + TILE_W / 2).toBeCloseTo(WALL_END, 9);
+    expect(nearEnd.x + WALL_ALONG_HALF).toBeCloseTo(WALL_END, 9);
     expect(WALL_END).toBeGreaterThan(WALL_D - TILE_H / 2 + WALL_STAGGER);
     expect(WALL_END).toBeLessThan(FELT_HALF - TILE_H / 2);
     // The retreated (left) end stops short of the left wall's inner face.
     const nearLeft = wallSlotPosition({ wallSeat: 0, stack: 0, level: 0, dead: false }, 0);
-    expect(nearLeft.x - TILE_W / 2).toBeGreaterThan(-(WALL_D - TILE_H / 2) + 1);
+    expect(nearLeft.x - WALL_ALONG_HALF).toBeGreaterThan(-(WALL_D - TILE_H / 2) + 1);
     // The automatic-table look: about two stacks of stagger.
     expect(WALL_STAGGER).toBeGreaterThanOrEqual(1.5);
     expect(WALL_STAGGER).toBeLessThanOrEqual(2.5);
@@ -239,69 +306,73 @@ describe('wallSlotPosition', () => {
           expect(p.x).toBeCloseTo(x, 9);
           expect(p.z).toBeCloseTo(z, 9);
           expect(p.rel).toBe(rel);
-          // In its owner's frame every wall is the same staggered run.
+          // In its owner's frame every wall is the same staggered, yawed run.
           const [lx, lz] = toLocal(rel, p.x, p.z);
-          expect(lx).toBeCloseTo((stack - 8) * WALL_PITCH + WALL_STAGGER, 9);
-          expect(lz).toBeCloseTo(WALL_D, 9);
+          const [rx, rz] = wallRunPoint((stack - 8) * WALL_PITCH);
+          expect(lx).toBeCloseTo(rx, 9);
+          expect(lz).toBeCloseTo(rz, 9);
+          expect(p.yaw).toBeCloseTo(yawOf(rel) - WALL_YAW, 9);
         }
       }
     }
   });
   test('no stack ever reaches a perpendicular wall, for every dealer / break, from every seat', () => {
-    // Stacks on different walls must clear each other by a whole tile
-    // on at least one axis: the overhanging end passes in *front* of the
-    // neighbour's retreated end, never through it, and the retreated end
-    // stops short of the wall it runs toward.
+    // Stacks on different walls clear each other by a whole tile: the
+    // overhanging end passes in *front* of the neighbour's retreated
+    // end (its yaw swinging it further out), never through it, and the
+    // retreated end stops short of the wall it runs toward.
     const inner = WALL_D - TILE_H / 2;
     const outer = WALL_D + TILE_H / 2;
-    const box = (p: { x: number; z: number; rel: number }) => {
-      const alongX = p.rel % 2 === 0;
-      const hx = alongX ? TILE_W / 2 : TILE_H / 2;
-      const hz = alongX ? TILE_H / 2 : TILE_W / 2;
-      return { x0: p.x - hx, x1: p.x + hx, z0: p.z - hz, z1: p.z + hz, rel: p.rel };
-    };
+    let minGap = Number.POSITIVE_INFINITY;
     for (const me of [0, 1, 2, 3] as Seat[]) {
       for (const dealer of [0, 1, 2, 3] as Seat[]) {
         for (let n = 2; n <= 12; n++) {
           const { live, dead } = wallSlotRefs(dealer, n, 122, 14);
           const stacks = [...live, ...dead].filter((r) => r.level === 0);
-          const boxes = stacks.map((r) => box(wallSlotPosition(r, me)));
-          for (const ref of stacks) {
-            const p = wallSlotPosition(ref, me);
+          const placed = stacks.map((r) => wallSlotPosition(r, me));
+          for (const [i, ref] of stacks.entries()) {
+            const p = placed[i]!;
             const [lx] = toLocal(p.rel, p.x, p.z);
             // Retreated end: a whole tile short of the left neighbour's inner face.
-            expect(lx - TILE_W / 2).toBeGreaterThan(-inner + 1);
+            expect(lx - WALL_ALONG_HALF).toBeGreaterThan(-inner + 1);
             // Overhanging end: the last stack is entirely past the right
             // neighbour's outer face, never sitting on its footprint.
-            if (ref.stack === STACKS_PER_WALL - 1) expect(lx - TILE_W / 2).toBeGreaterThan(outer);
-            expect(lx + TILE_W / 2).toBeLessThanOrEqual(WALL_END + 1e-9);
+            if (ref.stack === STACKS_PER_WALL - 1)
+              expect(lx - WALL_ALONG_HALF).toBeGreaterThan(outer);
+            expect(lx + WALL_ALONG_HALF).toBeLessThanOrEqual(WALL_END + 1e-9);
           }
           // Pairwise clearance from one seat only: the other seats' rings
           // are pure rotations (the symmetry test above).
-          for (let i = 0; me === 0 && i < boxes.length; i++) {
-            for (let j = i + 1; j < boxes.length; j++) {
-              const a = boxes[i]!;
-              const b = boxes[j]!;
-              if (a.rel === b.rel) continue;
-              const gapX = Math.max(a.x0 - b.x1, b.x0 - a.x1);
-              const gapZ = Math.max(a.z0 - b.z1, b.z0 - a.z1);
+          if (me !== 0) continue;
+          const polys = placed.map(stackFootprint);
+          for (let i = 0; i < polys.length; i++) {
+            for (let j = i + 1; j < polys.length; j++) {
+              if (placed[i]!.rel === placed[j]!.rel) continue;
+              const gap = separation(polys[i]!, polys[j]!);
+              minGap = Math.min(minGap, gap);
               expect(
-                Math.max(gapX, gapZ),
-                `me ${me} dealer ${dealer} roll ${n}: walls ${a.rel}/${b.rel} touch`,
+                gap,
+                `me ${me} dealer ${dealer} roll ${n}: walls ${placed[i]!.rel}/${placed[j]!.rel} touch`,
               ).toBeGreaterThan(1);
             }
           }
         }
       }
     }
+    // Yawed pinwheel: a wall's tip swings out (toward its owner) while
+    // the neighbour's retreated end swings in, so the corner gap grows
+    // — 1.38 straight, ≈ 1.69 yawed.
+    expect(minGap).toBeGreaterThan(1.6);
+    expect(minGap).toBeLessThan(1.8);
   });
   test('every wall stack stays on the felt with a rail margin (overhang included)', () => {
     for (const me of [0, 1, 2, 3] as Seat[]) {
       const { live, dead } = wallSlotRefs(0, 7, 122, 14);
       for (const ref of [...live, ...dead]) {
-        const p = wallSlotPosition(ref, me);
-        expect(Math.abs(p.x) + TILE_H / 2).toBeLessThan(FELT_HALF - 0.5);
-        expect(Math.abs(p.z) + TILE_H / 2).toBeLessThan(FELT_HALF - 0.5);
+        for (const [x, z] of stackFootprint(wallSlotPosition(ref, me))) {
+          expect(Math.abs(x)).toBeLessThan(FELT_HALF - 0.5);
+          expect(Math.abs(z)).toBeLessThan(FELT_HALF - 0.5);
+        }
       }
     }
   });
@@ -638,16 +709,22 @@ describe('computeLayout', () => {
     expect(last.x).toBeGreaterThan(lastRegular.x + 1.5);
   });
   test('the dealer chip pocket clears every river and the wall', () => {
-    for (const scale of [1, 1.28]) {
-      const [cx, cz] = dealerChipLocal(scale, 0.62);
-      const r = 0.62;
+    for (const scale of [1, 1.36]) {
+      const [cx, cz] = dealerChipLocal(scale, 0.56);
+      const r = 0.56;
       for (const s of fullRivers(scale)) {
         const f = footprint(s);
         const hit = cx + r > f.x0 && cx - r < f.x1 && cz + r > f.z0 && cz - r < f.z1;
         expect(hit, `chip overlaps discard ${s.id} at scale ${scale}`).toBe(false);
       }
-      expect(cz + r).toBeLessThan(WALL_D - TILE_H / 2);
-      expect(Math.abs(cx) + r).toBeLessThan(WALL_D - TILE_H / 2);
+      // Inside the yawed left wall's inner face at the chip's z (its
+      // along-axis is our z), and either under the near wall's line with
+      // felt to its inner face (wide presets) or beside its retreated end
+      // (portrait's corner pocket).
+      expect(Math.abs(cx) + r).toBeLessThan(wallInnerFaceAt(cz) - 0.15);
+      const heel = wallRunPoint(-TIP_DX)[0] - WALL_ALONG_HALF;
+      if (cx + r >= heel) expect(cz + r).toBeLessThan(wallInnerFaceAt(cx) - 0.15);
+      else expect(cx + r).toBeLessThan(heel - 0.15);
     }
     // Wide presets keep the chip's near edge above the near wall's top
     // from a 30° camera: edge z ≤ 6.35 (see TableScene CHIP_RADIUS note).
@@ -869,7 +946,7 @@ describe('held hand (phone portrait)', () => {
     const melds = layout.filter((sl) => sl?.zone === 'meld' && sl.seat === 0);
     expect(melds).toHaveLength(3);
     for (const m of melds) {
-      expect(m!.z).toBeCloseTo(MELD_Z, 5);
+      expect(m!.z).toBeCloseTo(OWN_MELD_Z_HELD, 5);
       expect(m!.x).toBeLessThanOrEqual(OWN_MELD_RIGHT + 0.01);
       expect(m!.x).toBeGreaterThan(5);
       // Portrait: 1.3× so a meld tile reads at ~39 px, not ~30 — and the
@@ -877,8 +954,9 @@ describe('held hand (phone portrait)', () => {
       expect(m!.scale).toBeCloseTo(OWN_MELD_SCALE_HELD, 5);
       expect(m!.y).toBeCloseTo((TILE_D / 2) * OWN_MELD_SCALE_HELD, 5);
       const halfDepth = (TILE_H / 2) * OWN_MELD_SCALE_HELD;
-      expect(m!.z - halfDepth).toBeGreaterThan(WALL_D + TILE_H / 2);
-      expect(m!.z + halfDepth).toBeLessThan(FELT_HALF);
+      // Clear of the yawed near wall's outermost stack and of the rail.
+      expect(m!.z - halfDepth).toBeGreaterThan(WALL_OVERHANG_OUTER + 0.08);
+      expect(m!.z + halfDepth).toBeLessThan(FELT_HALF - 0.15);
     }
     // The group's right edge stays at the rail-side bound.
     const rightmost = melds.reduce((a, b) => (a!.x > b!.x ? a : b))!;
@@ -1194,39 +1272,344 @@ describe('desktop side-seat offset', () => {
   });
 });
 
+/**
+ * Seed 5 with `k` pengs laid out for `seat` (each claimed from the next
+ * seat, so its right-hand tile is turned and the group is 3.42 wide),
+ * the hand shortened to match, plus one drawn tile from the wall when
+ * `drawn` (the user's row shows it behind `DRAWN_GAP`).
+ */
+function withRow(
+  seat: Seat,
+  k: number,
+  drawn: boolean,
+): { state: GameState; drawnId: number | null } {
+  const s = dealt();
+  // The dealer (seat 0) is dealt 14; every row here starts from 13.
+  const hand = s.hands[seat].slice(0, 13);
+  const melds = Array.from({ length: k }, (_, i) => ({
+    kind: 'peng' as const,
+    tiles: hand.slice(i * 3, i * 3 + 3),
+    from: ((seat + 1) % 4) as Seat,
+  }));
+  const rest = hand.slice(k * 3);
+  const [t, ...wall] = s.wall;
+  const state = {
+    ...s,
+    wall: drawn ? wall : s.wall,
+    hands: { ...s.hands, [seat]: drawn ? [...rest, t] : rest },
+    melds: { ...s.melds, [seat]: melds },
+  } as GameState;
+  return { state, drawnId: drawn && t ? tileId(t) : null };
+}
+
+/** The three shells' `LayoutOptions` (`Table3DShell.sync` / `replaySyncTuning`). */
+const PRESETS: Record<'portrait' | 'desktop' | 'landscape', LayoutOptions> = {
+  portrait: {
+    ...OPTS,
+    heldHand: FRAME,
+    riverScale: 1.36,
+    sideSeatOut: SIDE_SEAT_OUT_PORTRAIT,
+    sideMeldScale: SIDE_MELD_SCALE_PORTRAIT,
+    farSeatOut: FAR_SEAT_OUT,
+    sideMeldsNear: true,
+    ownMeldsStanding: true,
+  },
+  desktop: {
+    ...OPTS,
+    sideSeatOut: SIDE_SEAT_OUT_DESKTOP,
+    farSeatOut: FAR_SEAT_OUT,
+    sideMeldsNear: true,
+    ownMeldsStanding: true,
+  },
+  landscape: {
+    ...OPTS,
+    sideSeatOut: SIDE_SEAT_OUT_LOW,
+    farSeatOut: FAR_SEAT_OUT,
+    farMeldsOnRail: true,
+    sideMeldsNear: true,
+    ownMeldsStanding: true,
+  },
+};
+
+describe('wall yaw', () => {
+  test('every run is turned 2.5°–4° about its centre, overhanging end outward, all in one sense', () => {
+    expect((WALL_YAW * 180) / Math.PI).toBeGreaterThanOrEqual(2.5);
+    expect((WALL_YAW * 180) / Math.PI).toBeLessThanOrEqual(4);
+    // The overhanging (right) end sits further from the centre than the
+    // retreated (left) end: the tip swings toward its owner's rail.
+    const [, tipZ] = wallRunPoint(TIP_DX);
+    const [, heelZ] = wallRunPoint(-TIP_DX);
+    expect(tipZ).toBeGreaterThan(WALL_D + 0.3);
+    expect(heelZ).toBeLessThan(WALL_D - 0.3);
+    expect(tipZ - heelZ).toBeCloseTo(2 * TIP_DX * Math.sin(WALL_YAW), 9);
+    // The stacks' along-axis follows the run: stack 16 − stack 8 is the
+    // pitch times (cos, sin), and the slot's yaw turns the tile with it.
+    const a = wallSlotPosition({ wallSeat: 0, stack: 8, level: 0, dead: false }, 0);
+    const b = wallSlotPosition({ wallSeat: 0, stack: 16, level: 0, dead: false }, 0);
+    expect(Math.atan2(b.z - a.z, b.x - a.x)).toBeCloseTo(WALL_YAW, 9);
+    expect(a.yaw).toBeCloseTo(-WALL_YAW, 9);
+    // `setFromAxisAngle(Y, yaw)` maps local +x to (cos, −sin): the tile's
+    // own along-axis matches the run's direction.
+    expect([Math.cos(a.yaw), -Math.sin(a.yaw)]).toEqual([
+      expect.closeTo(Math.cos(WALL_YAW), 9),
+      expect.closeTo(Math.sin(WALL_YAW), 9),
+    ]);
+    // Same rotational sense on every wall (the symmetry test covers
+    // positions; here the yaw): each wall's slot yaw is its seat's turn
+    // less the same WALL_YAW.
+    for (const me of [0, 1, 2, 3] as Seat[])
+      for (const wallSeat of [0, 1, 2, 3] as Seat[]) {
+        const p = wallSlotPosition({ wallSeat, stack: 3, level: 0, dead: false }, me);
+        expect(p.yaw).toBeCloseTo(yawOf(relOf(wallSeat, me)) - WALL_YAW, 9);
+      }
+    // The lift is a shade, not a re-tune of the wall line.
+    expect(WALL_YAW_LIFT).toBeGreaterThanOrEqual(0);
+    expect(WALL_YAW_LIFT).toBeLessThanOrEqual(0.05);
+  });
+  test('overhang faces, reach and the continuous inner-face helper agree with the stacks', () => {
+    const tip = wallSlotPosition({ wallSeat: 0, stack: 16, level: 0, dead: false }, 0);
+    const poly = stackFootprint(tip);
+    expect(Math.min(...poly.map(([, z]) => z))).toBeCloseTo(WALL_OVERHANG_INNER, 9);
+    expect(Math.max(...poly.map(([, z]) => z))).toBeCloseTo(WALL_OVERHANG_OUTER, 9);
+    expect(Math.max(...poly.map(([x]) => x))).toBeCloseTo(WALL_END, 9);
+    for (const stack of [0, 4, 8, 12, 16]) {
+      const p = wallSlotPosition({ wallSeat: 0, stack, level: 0, dead: false }, 0);
+      expect(wallInnerFaceAt(p.x)).toBeCloseTo(p.z - WALL_ACROSS_HALF, 9);
+    }
+    // Numbers the docs quote.
+    expect(WALL_END).toBeCloseTo(10.76, 2);
+    expect(WALL_OVERHANG_INNER).toBeCloseTo(8.48, 2);
+    expect(WALL_OVERHANG_OUTER).toBeCloseTo(9.88, 2);
+  });
+  test('no wall stack reaches any river block at the presets’ scales (1, 1.15, 1.36)', () => {
+    let minGap = Number.POSITIVE_INFINITY;
+    for (const scale of [1, 1.15, 1.36]) {
+      const m = riverMetrics(scale);
+      const z0 = riverZ0(scale);
+      const rivers: Poly[] = [];
+      for (const rel of [0, 1, 2, 3] as const)
+        for (let row = 0; row < RIVER_ROWS; row++)
+          for (let col = 0; col < RIVER_COLS; col++) {
+            const lx = (col - (RIVER_COLS - 1) / 2) * m.pitchX + m.shift;
+            const [x, z] = toWorld(rel, lx, z0 + row * m.pitchZ);
+            rivers.push(footprint(x, z, (TILE_W / 2) * scale, (TILE_H / 2) * scale, yawOf(rel)));
+          }
+      for (const st of fullRing(0)) {
+        const sp = stackFootprint(st);
+        for (const r of rivers) {
+          const gap = separation(sp, r);
+          minGap = Math.min(minGap, gap);
+          expect(gap, `scale ${scale}`).toBeGreaterThan(0.02);
+        }
+      }
+    }
+    // The in-swinging half's inner face vs the 1.36 river's third row —
+    // the tightest clearance the yaw leaves (`WALL_YAW_LIFT` buys it).
+    expect(minGap).toBeLessThan(0.06);
+  });
+  test('every stack keeps ≥ 1.0 from opponents’ racks + melds and ≥ 0.6 from the user’s row, every preset', () => {
+    // Full ring (all 68 stacks): a superset of every dealer / break.
+    const ring = fullRing(0).map((p) => ({ poly: stackFootprint(p), rel: p.rel }));
+    const perp = { own: Number.POSITIVE_INFINITY, opp: Number.POSITIVE_INFINITY };
+    let same = Number.POSITIVE_INFINITY;
+    for (const [name, preset] of Object.entries(PRESETS)) {
+      for (const seat of [0, 1, 2, 3] as Seat[]) {
+        for (let k = 0; k <= 3; k++) {
+          for (const drawn of [false, true]) {
+            for (const sortMode of ['suit', 'num'] as const) {
+              if (sortMode === 'num' && seat !== 0) continue;
+              const { state, drawnId } = withRow(seat, k, drawn);
+              const layout = computeLayout(state, 0, {
+                ...preset,
+                sortMode,
+                drawnTileId: seat === 0 ? drawnId : null,
+              });
+              for (const sl of layout) {
+                if (!sl || sl.seat !== seat) continue;
+                if (sl.zone !== 'hand' && sl.zone !== 'oppHand' && sl.zone !== 'meld') continue;
+                if (sl.y > 5) continue; // held hand: off the table
+                const poly = slotFootprint(sl);
+                for (const st of ring) {
+                  const gap = separation(poly, st.poly);
+                  const label = `${name} seat ${seat} melds ${k} drawn ${drawn} ${sl.zone} vs wall rel ${st.rel}`;
+                  if (st.rel === sl.rel) {
+                    // The row behind its own wall: never touching.
+                    same = Math.min(same, gap);
+                    expect(gap, label).toBeGreaterThan(0.08);
+                  } else if (seat === 0) {
+                    perp.own = Math.min(perp.own, gap);
+                    expect(gap, label).toBeGreaterThanOrEqual(OWN_ROW_OVERHANG_GAP);
+                  } else {
+                    perp.opp = Math.min(perp.opp, gap);
+                    expect(gap, label).toBeGreaterThanOrEqual(ROW_OVERHANG_GAP - 1e-9);
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    // The contacts round-4's critic measured: the user's 14-tile row vs
+    // the left wall's tip (0.52 straight → 0.88 yawed) and the right
+    // seat's near-end melds vs the near wall's tip (0.56 → 1.0, the row
+    // sliding right when it must).
+    expect(perp.own).toBeGreaterThanOrEqual(OWN_ROW_OVERHANG_GAP);
+    expect(perp.opp).toBeCloseTo(ROW_OVERHANG_GAP, 1);
+    expect(same).toBeLessThan(0.3);
+  });
+  test('an opponent’s row slides right when its left end would reach the overhang; a 14-tile rack stays centred', () => {
+    const along = (sl: TileSlot) => toLocal(sl.rel, sl.x, sl.z)[0];
+    // Right seat, portrait: two 1.15× melds first put the row's left end
+    // at −8.06 centred; it stops at `rowLeftLimit` (−7.48) instead.
+    const wide = computeLayout(withRow(1, 2, false).state, 0, PRESETS.portrait);
+    const row = wide.filter(
+      (sl) => sl && sl.seat === 1 && (sl.zone === 'oppHand' || sl.zone === 'meld'),
+    );
+    const left = Math.min(...row.map((sl) => along(sl!) - (TILE_W / 2) * (sl!.scale ?? 1)));
+    const right = Math.max(...row.map((sl) => along(sl!) + (TILE_W / 2) * (sl!.scale ?? 1)));
+    expect(left).toBeGreaterThanOrEqual(rowLeftLimit() - 1e-6);
+    expect(left).toBeCloseTo(rowLeftLimit(), 1);
+    expect(right).toBeGreaterThan(-left + 0.4);
+    expect(rowLeftLimit()).toBeCloseTo(-WALL_OVERHANG_INNER + ROW_OVERHANG_GAP, 9);
+    // The row's right end stays on the felt.
+    expect(right).toBeLessThan(FELT_HALF - 1);
+    // A 14-tile rack (7.39 half-width) is inside the limit: still centred.
+    const rack = computeLayout(withRow(2, 0, true).state, 0, PRESETS.desktop);
+    const tiles = rack.filter((sl) => sl && sl.seat === 2 && sl.zone === 'oppHand');
+    expect(tiles).toHaveLength(14);
+    const xs = tiles.map((sl) => along(sl!));
+    expect(Math.min(...xs) + Math.max(...xs)).toBeCloseTo(0, 6);
+    expect(Math.min(...xs) - TILE_W / 2).toBeGreaterThan(rowLeftLimit());
+  });
+  test('the user’s row keeps 0.6: 14 tiles + drawn gap stay centred, wide meld rows slide ≤ 0.25', () => {
+    const limit = rowLeftLimit(true);
+    expect(limit).toBeCloseTo(-WALL_OVERHANG_INNER + OWN_ROW_OVERHANG_GAP, 9);
+    for (const k of [0, 1, 2, 3]) {
+      const { state, drawnId } = withRow(0, k, true);
+      const layout = computeLayout(state, 0, { ...PRESETS.desktop, drawnTileId: drawnId });
+      const row = layout.filter(
+        (sl) => sl && sl.seat === 0 && (sl.zone === 'hand' || sl.zone === 'meld'),
+      );
+      const xs = row.map((sl) => sl!.x);
+      const left = Math.min(...xs) - TILE_W / 2;
+      expect(left).toBeGreaterThanOrEqual(limit - 1e-9);
+      const offCentre = (Math.min(...xs) + Math.max(...xs)) / 2;
+      if (k <= 1) expect(offCentre).toBeCloseTo(0, 6);
+      // Two standing melds slide the row 0.09, three 0.21.
+      expect(offCentre).toBeLessThan(0.25);
+    }
+    // The plain 14-tile hand: 0.88 to the left wall's tip.
+    const plain = computeLayout(withRow(0, 0, true).state, 0, {
+      ...PRESETS.desktop,
+      drawnTileId: withRow(0, 0, true).drawnId,
+    });
+    const hand = plain.filter((sl) => sl?.zone === 'hand');
+    expect(hand).toHaveLength(14);
+    expect(Math.min(...hand.map((sl) => sl!.x)) - TILE_W / 2 + WALL_OVERHANG_INNER).toBeCloseTo(
+      0.88,
+      2,
+    );
+  });
+  test('the portrait side / far / held-meld steps are what the yaw needs and stay in frame', () => {
+    // Left seat's 1.15× melds (its near end = the out-swinging half).
+    const meldInner = MELD_Z + SIDE_SEAT_OUT_PORTRAIT - (TILE_H / 2) * SIDE_MELD_SCALE_PORTRAIT;
+    expect(meldInner - WALL_OVERHANG_OUTER).toBeGreaterThan(0.08);
+    expect(MELD_Z + SIDE_SEAT_OUT_PORTRAIT + (TILE_H / 2) * SIDE_MELD_SCALE_PORTRAIT).toBeLessThan(
+      11.6,
+    );
+    expect(HAND_Z + SIDE_SEAT_OUT_PORTRAIT + TILE_D / 2).toBeLessThan(FELT_HALF - 0.7);
+    // Far seat's flat melds.
+    expect(MELD_Z + FAR_SEAT_OUT - TILE_H / 2 - WALL_OVERHANG_OUTER).toBeGreaterThan(0.2);
+    expect(HAND_Z + FAR_SEAT_OUT + TILE_D / 2).toBeLessThan(FELT_HALF - 0.7);
+    // Held hand's melds.
+    expect(
+      OWN_MELD_Z_HELD - (TILE_H / 2) * OWN_MELD_SCALE_HELD - WALL_OVERHANG_OUTER,
+    ).toBeGreaterThan(0.08);
+    expect(OWN_MELD_Z_HELD + (TILE_H / 2) * OWN_MELD_SCALE_HELD).toBeLessThan(FELT_HALF - 0.15);
+    // Racks' leaning tops (OPP_TILT) clear the out-swinging stacks' top edge.
+    const rackFaceAtStackTop = HAND_Z - TILE_D / 2 - 2 * TILE_D * Math.tan(0.14);
+    expect(rackFaceAtStackTop - WALL_OVERHANG_OUTER).toBeGreaterThan(0.15);
+  });
+});
+
 describe('dealer chip pocket', () => {
   const chipR = 0.56;
-  test('the wide presets’ chip never counts a full wall as blocking', () => {
-    for (const dealer of [0, 1, 2, 3] as const) {
-      const st = dealt(5, dealer);
-      const full = fullWallLayout(st, 0);
-      const rel = relOf(dealer, 0);
-      expect(dealerChipBlocked(full, rel, dealerChipLocal(1, chipR), chipR)).toBe(false);
+  /** Clearance between a disc and a convex footprint (negative → overlap). */
+  const discGap = ([cx, cz]: readonly [number, number], r: number, poly: Poly): number => {
+    let inside = true;
+    let minEdge = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < poly.length; i++) {
+      const [ax, az] = poly[i]!;
+      const [bx, bz] = poly[(i + 1) % poly.length]!;
+      const cross = (bx - ax) * (cz - az) - (bz - az) * (cx - ax);
+      if (cross > 0) inside = false;
+      const len2 = (bx - ax) ** 2 + (bz - az) ** 2;
+      const t = Math.max(0, Math.min(1, ((cx - ax) * (bx - ax) + (cz - az) * (bz - az)) / len2));
+      minEdge = Math.min(minEdge, Math.hypot(cx - (ax + t * (bx - ax)), cz - (az + t * (bz - az))));
     }
+    return (inside ? -minEdge : minEdge) - r;
+  };
+  /** The left neighbour's river block (rel 3 from the dealer at seat 0), as footprints. */
+  const arm = (scale: number): Poly[] => {
+    const m = riverMetrics(scale);
+    const z0 = riverZ0(scale);
+    const out: Poly[] = [];
+    for (let row = 0; row < RIVER_ROWS; row++)
+      for (let col = 0; col < RIVER_COLS; col++) {
+        const [x, z] = toWorld(
+          3,
+          (col - (RIVER_COLS - 1) / 2) * m.pitchX + m.shift,
+          z0 + row * m.pitchZ,
+        );
+        out.push(footprint(x, z, (TILE_W / 2) * scale, (TILE_H / 2) * scale, yawOf(3)));
+      }
+    return out;
+  };
+  const ring = fullRing(0).map(stackFootprint);
+  test('wide presets: beside the arm’s end, a tile of felt under the near wall’s yawed face', () => {
+    const [x, z] = dealerChipLocal(1, chipR);
+    expect(x).toBe(-5.2);
+    expect(wallInnerFaceAt(x) - (z + chipR)).toBeGreaterThanOrEqual(1);
+    for (const poly of ring) expect(discGap([x, z], chipR, poly)).toBeGreaterThan(1);
+    for (const poly of arm(1)) expect(discGap([x, z], chipR, poly)).toBeGreaterThan(0.15);
+    // Full wall or not, the chip never sits under a stack: no nudge to decide.
+    const full = fullWallLayout(dealt(5, 0), 0);
+    for (const sl of full)
+      if (sl && (sl.zone === 'wall' || sl.zone === 'deadWall') && sl.y < TILE_D)
+        expect(discGap([x, z], chipR, slotFootprint(sl))).toBeGreaterThan(1);
   });
-  test('the portrait-scale chip is blocked by a full wall and free once the pocket’s stacks are gone', () => {
-    const st = dealt(5, 0);
-    const full = fullWallLayout(st, 0);
-    const local = dealerChipLocal(1.36, chipR);
-    // Near edge within reach of the near wall's inner edge (8.12).
-    expect(WALL_D - TILE_H / 2 - (local[1] + chipR)).toBeLessThan(CHIP_POCKET_REACH);
-    expect(dealerChipBlocked(full, 0, local, chipR)).toBe(true);
-    // Strip the near wall's stacks along the pocket: no longer blocked.
-    const open = full.map((sl) =>
-      sl &&
-      sl.rel === 0 &&
-      (sl.zone === 'wall' || sl.zone === 'deadWall') &&
-      Math.abs(sl.x - local[0]) < 2.5
-        ? null
-        : sl,
-    );
-    expect(dealerChipBlocked(open, 0, local, chipR)).toBe(false);
-    // A stack on another wall at the same along-coordinate does not count.
-    const other = full.map((sl) => (sl && sl.rel === 0 ? null : sl));
-    expect(dealerChipBlocked(other, 0, local, chipR)).toBe(false);
-    // Stepping in by the nudge leaves ≥ 0.45 of felt to the wall's overhang.
-    expect(WALL_D - TILE_H / 2 - 0.22 - (local[1] - CHIP_POCKET_NUDGE + chipR)).toBeGreaterThan(
-      0.45,
-    );
+  test('portrait: in the corner pocket between the left wall and the near wall’s retreated end', () => {
+    const [x, z] = dealerChipLocal(1.36, chipR);
+    // At x −5.2 the chip's far edge (7.93) would pass the yawed face (7.80).
+    expect(wallInnerFaceAt(-5.2) - (z + chipR)).toBeLessThan(0);
+    expect(x).toBeGreaterThan(-7.7);
+    expect(x).toBeLessThan(-7.4);
+    // Centred in the pocket: equal felt to the left wall's inner face and
+    // the near wall's heel, ≥ CHIP_CORNER_GAP each.
+    const leftFace = -wallInnerFaceAt(z);
+    const heel = wallRunPoint(-TIP_DX)[0] - WALL_ALONG_HALF;
+    expect(x - leftFace).toBeCloseTo(heel - x, 9);
+    expect(x - chipR - leftFace).toBeGreaterThanOrEqual(CHIP_CORNER_GAP);
+    let minStack = Number.POSITIVE_INFINITY;
+    for (const poly of ring) minStack = Math.min(minStack, discGap([x, z], chipR, poly));
+    expect(minStack).toBeGreaterThanOrEqual(CHIP_CORNER_GAP);
+    expect(minStack).toBeLessThan(0.5);
+    // Above the arm's end (0.2, as at every scale) and never over a discard.
+    let minArm = Number.POSITIVE_INFINITY;
+    for (const poly of arm(1.36)) minArm = Math.min(minArm, discGap([x, z], chipR, poly));
+    expect(minArm).toBeCloseTo(0.2, 6);
+    // Nor over the dealer's own river.
+    const m = riverMetrics(1.36);
+    expect(x + chipR).toBeLessThan(m.shift - m.halfWidth);
+  });
+  test('every preset scale leaves the chip clear of walls and rivers', () => {
+    for (const scale of [1, 1.15, 1.36]) {
+      const c = dealerChipLocal(scale, chipR);
+      for (const poly of ring)
+        expect(discGap(c, chipR, poly), `scale ${scale}`).toBeGreaterThan(0.15);
+      for (const poly of arm(scale))
+        expect(discGap(c, chipR, poly), `scale ${scale}`).toBeGreaterThan(0.15);
+    }
   });
 });

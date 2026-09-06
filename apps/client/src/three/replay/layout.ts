@@ -13,6 +13,7 @@ import {
   projectPreset,
 } from '../table/cameraPresets';
 import {
+  FAR_SEAT_OUT,
   FELT_HALF,
   HAND_Z,
   type HeldHandFrame,
@@ -22,6 +23,7 @@ import {
   SIDE_MELD_SCALE_PORTRAIT,
   SIDE_SEAT_OUT_DESKTOP,
   SIDE_SEAT_OUT_LOW,
+  SIDE_SEAT_OUT_PORTRAIT,
   seatAnchor,
 } from '../table/layout';
 import { TILE_D, TILE_H } from '../tiles/geometry';
@@ -133,6 +135,7 @@ export function replaySyncTuning(
   | 'riverScale'
   | 'nearWallDim'
   | 'sideSeatOut'
+  | 'farSeatOut'
   | 'farMeldsOnRail'
   | 'sideMeldsNear'
   | 'sideMeldScale'
@@ -143,7 +146,12 @@ export function replaySyncTuning(
   return {
     riverScale: held ? PORTRAIT_RIVER_SCALE : 1,
     nearWallDim: landscape ? 0.85 : 1,
-    sideSeatOut: landscape ? SIDE_SEAT_OUT_LOW : compact ? 0 : SIDE_SEAT_OUT_DESKTOP,
+    sideSeatOut: landscape
+      ? SIDE_SEAT_OUT_LOW
+      : compact
+        ? SIDE_SEAT_OUT_PORTRAIT
+        : SIDE_SEAT_OUT_DESKTOP,
+    farSeatOut: FAR_SEAT_OUT,
     farMeldsOnRail: landscape,
     sideMeldsNear: true,
     sideMeldScale: held ? SIDE_MELD_SCALE_PORTRAIT : 1,

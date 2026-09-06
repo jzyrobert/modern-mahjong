@@ -91,7 +91,7 @@ export const WALL_D = 8.8;
  * the ring reads like an automatic table's — one end of each wall
  * overhangs past the neighbouring wall's inner face
  * (`WALL_D − TILE_H / 2` = 8.12; the run's own end reaches
- * `WALL_END` = 10.74, 2.6 units past it and 1.16 inside the felt edge)
+ * `WALL_END` ≈ 10.76, 2.6 units past it and 1.14 inside the felt edge)
  * and the other end stops `WALL_STAGGER − 0.62` = 1.38 units short of
  * the opposite neighbour, so no stack can touch a perpendicular wall
  * for any break. Round-4 feedback asked for the staggered square of a
@@ -103,10 +103,87 @@ export const WALL_D = 8.8;
  * once the draw reaches that wall (`wallSlotRefs`).
  */
 export const WALL_STAGGER = 2.0;
+/**
+ * Wall yaw (round-4 follow-up: "staggered, but not at a slight angle
+ * like a real table"): every run is turned this far about its own
+ * centre, in the same rotational sense on all four walls, so the ring
+ * keeps its symmetry but no wall lies parallel to its rail. The sense
+ * is *overhang out*: the owner's right (overhanging) end swings toward
+ * the owner's rail and the retreated left end toward the table centre.
+ * That is the sign the rows need — the overhang's tip stands in the
+ * next seat's row corridor, and swinging it outward opens the gap to
+ * that row's end (`WALL_OVERHANG_INNER`, `ROW_OVERHANG_GAP`) and to
+ * the user's own hand at the left wall (0.52 → 0.88). 2.5° puts the
+ * ends 0.36 either side of the wall line, which is what the rows
+ * around the wall can give: the in-swinging half stays 0.03 off the
+ * portrait river's third row (7.92, `riverMetrics(1.36)`) thanks to
+ * `WALL_YAW_LIFT`, and the out-swinging half is what the portrait side
+ * rows (`SIDE_SEAT_OUT_PORTRAIT`), the far row (`FAR_SEAT_OUT`) and the
+ * held hand's melds (`OWN_MELD_Z_HELD`) step out for.
+ */
+export const WALL_YAW = (2.5 * Math.PI) / 180;
+/**
+ * The yawed run's centre sits this far outside `WALL_D` (toward its
+ * owner): 0.02 traded from the outer rows' clearance to keep the
+ * in-swinging half's inner face ≥ 0.03 off the portrait river.
+ */
+export const WALL_YAW_LIFT = 0.02;
 /** Half-length of a full 17-stack run (edge to edge), world units. */
 export const WALL_HALF = ((STACKS_PER_WALL - 1) / 2) * WALL_PITCH + TILE_W / 2;
+/** Along-offset of the outermost stacks' centres from the run's centre. */
+const WALL_TIP_DX = WALL_HALF - TILE_W / 2;
+/**
+ * Owner-frame centre `[lx, lz]` of a wall stack whose centre sits `dx`
+ * along the run from the run's centre (stack 8 is `dx` 0): the stagger
+ * shift, then the yaw about the lifted centre. Every wall is this run
+ * rotated by its seat (`toWorld`).
+ */
+export function wallRunPoint(dx: number): [number, number] {
+  return [WALL_STAGGER + dx * Math.cos(WALL_YAW), WALL_D + WALL_YAW_LIFT + dx * Math.sin(WALL_YAW)];
+}
+/** Half-extent of a yawed flat stack across the wall (owner's z). */
+export const WALL_ACROSS_HALF =
+  (TILE_H / 2) * Math.cos(WALL_YAW) + (TILE_W / 2) * Math.sin(WALL_YAW);
+/** Half-extent of a yawed flat stack along the wall (owner's x). */
+export const WALL_ALONG_HALF =
+  (TILE_W / 2) * Math.cos(WALL_YAW) + (TILE_H / 2) * Math.sin(WALL_YAW);
 /** Along-axis reach of a wall's overhanging end in its owner's frame (edge). */
-export const WALL_END = WALL_HALF + WALL_STAGGER;
+export const WALL_END = wallRunPoint(WALL_TIP_DX)[0] + WALL_ALONG_HALF;
+/**
+ * Inner (centre-facing) and outer faces of the overhanging tip stack,
+ * owner's frame z. The tip stands in the *next* seat's row corridor
+ * (x ≈ 10.24–11.18 across, z 8.12–9.48 along that row), so that row's
+ * near end keeps `ROW_OVERHANG_GAP` from `WALL_OVERHANG_INNER` — in the
+ * row owner's frame the face sits at lx = −WALL_OVERHANG_INNER.
+ */
+export const WALL_OVERHANG_INNER = wallRunPoint(WALL_TIP_DX)[1] - WALL_ACROSS_HALF;
+export const WALL_OVERHANG_OUTER = wallRunPoint(WALL_TIP_DX)[1] + WALL_ACROSS_HALF;
+/**
+ * Owner-frame z of a wall's inner face at along-coordinate `lx`, the
+ * run treated as continuous (scene helpers that sample the walls'
+ * felt-contact lines — the river-interior rect — read it).
+ */
+export function wallInnerFaceAt(lx: number): number {
+  const dx = (lx - WALL_STAGGER) / Math.cos(WALL_YAW);
+  return wallRunPoint(dx)[1] - WALL_ACROSS_HALF;
+}
+/**
+ * Felt a seat's row keeps between its left end and the inner face of
+ * the overhang standing at that end (round-4 critic: the right seat's
+ * near-end melds abutted the near wall's overhang, its top face
+ * projecting onto the meld's edge on every camera, and the user's
+ * 14-tile hand ran to 0.52 of the left wall's tip). A row whose left
+ * end would come closer slides right by the overrun (`rowLeftLimit`).
+ * Opponents keep a whole tile; the user's row keeps 0.6 — 14 tiles
+ * plus the drawn gap (−7.6) stay centred at 0.88, only a hand with two
+ * or more standing melds ever slides (0.09 with two, 0.21 with three).
+ */
+export const ROW_OVERHANG_GAP = 1.0;
+export const OWN_ROW_OVERHANG_GAP = 0.6;
+/** Leftmost owner-frame x a rack + melds row may start at. */
+export function rowLeftLimit(own = false): number {
+  return -WALL_OVERHANG_INNER + (own ? OWN_ROW_OVERHANG_GAP : ROW_OVERHANG_GAP);
+}
 /** Opponent hand rows sit just outside the wall. */
 export const HAND_Z = 10.55;
 /**
@@ -161,10 +238,19 @@ export const OWN_MELD_RIGHT = 10.7;
  * Scale of the user's flat melds while the hand is held off the table
  * (phone portrait). At 1× a meld tile projects to ~30 px there — barely
  * legible under the near rail's shadow; 1.3× brings it to ~39 px while
- * the group (z 9.62–11.38) still clears the near wall (9.48) and the
- * rail (11.9).
+ * the group (z 9.97–11.73 on `OWN_MELD_Z_HELD`) still clears the near
+ * wall's yawed end (9.88) and the rail (11.9).
  */
 export const OWN_MELD_SCALE_HELD = 1.3;
+/**
+ * Rack line of the user's flat melds while the hand is held. `MELD_Z`
+ * put the 1.3× group's inner edge at 9.62, 0.14 off a straight near
+ * wall; the yawed wall's overhanging end swings out to 9.88
+ * (`WALL_OVERHANG_OUTER`) exactly where the right-aligned group lies,
+ * so the group steps 0.35 toward the camera: inner edge 9.97 (0.09 of
+ * felt to the stack), outer edge 11.73, still 0.17 inside the rail.
+ */
+export const OWN_MELD_Z_HELD = MELD_Z + 0.35;
 export const MELD_GAP = 0.55;
 export const MELD_GROUP_GAP = 0.3;
 export const MELD_PITCH = TILE_W + 0.03;
@@ -326,16 +412,18 @@ export function wallSlotRefs(
  * `TableScene`'s warm 0.5 tint alone (`DEAD_WALL_OFFSET` is 0: the
  * earlier fifth-of-a-tile step read as misaligned stacks rather than a
  * marker); the break gap grows naturally as tiles leave. Every stack
- * carries the `WALL_STAGGER` pinwheel shift along its owner's x.
+ * sits on its owner's staggered, yawed run (`wallRunPoint`).
  */
 export function wallSlotPosition(
   ref: WallRef,
   me: Seat,
 ): { x: number; y: number; z: number; yaw: number; rel: Rel } {
   const rel = relOf(ref.wallSeat, me);
-  const lx = (ref.stack - (STACKS_PER_WALL - 1) / 2) * WALL_PITCH + WALL_STAGGER;
-  const [x, z] = toWorld(rel, lx, WALL_D + (ref.dead ? DEAD_WALL_OFFSET : 0));
-  return { x, y: FLAT_Y + ref.level * TILE_D, z, yaw: yawOf(rel), rel };
+  const [lx, lz] = wallRunPoint((ref.stack - (STACKS_PER_WALL - 1) / 2) * WALL_PITCH);
+  const [x, z] = toWorld(rel, lx, lz + (ref.dead ? DEAD_WALL_OFFSET : 0));
+  // `setFromAxisAngle(Y, yaw)` turns local +x to (cos, −sin) in (x, z);
+  // the run climbs +z with x, so the tile turns by −WALL_YAW.
+  return { x, y: FLAT_Y + ref.level * TILE_D, z, yaw: yawOf(rel) - WALL_YAW, rel };
 }
 
 // ─── Hands + melds ─────────────────────────────────────────────────
@@ -485,6 +573,14 @@ export interface LayoutOptions extends HandOrderOptions {
    */
   sideSeatOut?: number | undefined;
   /**
+   * Outward offset (world units) for the *far* seat's (rel 2) row — rack
+   * and flat melds together. Its melds lie at its own right, the half
+   * of the far wall that the yaw swings toward them (`WALL_YAW`): at
+   * `MELD_Z` a flat tile's inner edge (9.82) would sit 0.06 off the
+   * outermost stack, so the row steps `FAR_SEAT_OUT` back. Default 0.
+   */
+  farSeatOut?: number | undefined;
+  /**
    * Lay the *right* seat's (rel 1) exposed melds at the near end of its
    * row — before its concealed rack instead of after it — so both side
    * seats' melds sit at the corners nearest the camera. From the low
@@ -570,6 +666,24 @@ export const SIDE_SEAT_OUT_LOW = 0.65;
  * (10.55 → 11.0, base to ≈ 11.3) stays inside the rail (11.9).
  */
 export const SIDE_SEAT_OUT_DESKTOP = 0.45;
+
+/**
+ * Side-seat outward shift on the portrait table. The left seat's 1.15×
+ * melds (`SIDE_MELD_SCALE_PORTRAIT`) lie at its near end — the half of
+ * its wall the yaw swings toward them — so their inner edge (9.72 at
+ * `MELD_Z`) would sit 0.16 short of the outermost stack (9.88). 0.25
+ * puts it at 9.97 while the meld's outer edge (11.53) stays inside the
+ * ±11.6 portrait frame and the rack's base (11.11) inside the rail.
+ */
+export const SIDE_SEAT_OUT_PORTRAIT = 0.25;
+
+/**
+ * Far-seat outward shift, every preset (`LayoutOptions.farSeatOut`):
+ * the far seat's flat melds at `MELD_Z` (inner edge 9.82) meet the far
+ * wall's out-swinging half (outermost stack 9.88); 0.3 keeps 0.24 of
+ * felt between them, with the rack's base at 11.16 inside the rail.
+ */
+export const FAR_SEAT_OUT = 0.3;
 
 /**
  * Side-seat meld scale on the width-bound portrait table (see
@@ -741,7 +855,7 @@ export function computeLayout(state: GameState, me: Seat, opts: LayoutOptions): 
       placeRiver(layout, state, seat, rel, yaw, opts.riverScale ?? 1);
       continue;
     }
-    const sideOut = isSide ? (opts.sideSeatOut ?? 0) : 0;
+    const sideOut = isSide ? (opts.sideSeatOut ?? 0) : rel === 2 ? (opts.farSeatOut ?? 0) : 0;
     const handZ = (isMe ? OWN_HAND_Z : HAND_Z) + sideOut;
     const meldZ = MELD_Z + sideOut;
 
@@ -769,7 +883,7 @@ export function computeLayout(state: GameState, me: Seat, opts: LayoutOptions): 
         seat,
         rel,
         yaw,
-        MELD_Z,
+        OWN_MELD_Z_HELD,
         OWN_MELD_RIGHT - meldsWidth,
         OWN_MELD_SCALE_HELD,
       );
@@ -793,7 +907,10 @@ export function computeLayout(state: GameState, me: Seat, opts: LayoutOptions): 
       handWidth + (groups.length > 0 && hand.length > 0 && !railMelds ? MELD_GAP : 0) + meldsWidth;
     // Right seat: melds first (the near end), then the rack.
     const meldsFirst = opts.sideMeldsNear === true && rel === 1 && melds.length > 0 && !railMelds;
-    let cursor = -total / 2;
+    // A row is centred on its seat unless its left end would run into
+    // the overhang standing there (`rowLeftLimit`): then the whole row
+    // slides right by the overrun.
+    let cursor = Math.max(-total / 2, rowLeftLimit(isMe));
     if (meldsFirst) {
       cursor = placeMelds(layout, melds, seat, rel, yaw, meldZ, cursor, meldScale);
       if (hand.length > 0) cursor += MELD_GAP;
@@ -1113,59 +1230,44 @@ export function riverMetrics(scale: number): {
   return { pitchX, pitchZ, halfWidth, shift, nearEdge, farEdge, rightEdge: shift + halfWidth };
 }
 
+/** Along-x of the dealer chip beside the left neighbour's river arm (dealer's frame). */
+const CHIP_X = -5.2;
+/**
+ * Felt the chip keeps between its far edge and the near wall's inner
+ * face before it moves out of the wall's shadow into the corner pocket.
+ */
+const CHIP_WALL_ROOM = 1.0;
+/** Felt the chip keeps from the walls' inner faces in the corner pocket. */
+export const CHIP_CORNER_GAP = 0.2;
+
 /**
  * Dealer chip centre in the dealer's seat frame (x right, z toward
- * them): the near-*left* corner pocket, just beyond the right end of
- * the left neighbour's pinwheel arm (which runs along our left side at
+ * them): the near-*left* corner, just beyond the right end of the left
+ * neighbour's pinwheel arm (which runs along our left side at
  * z ≤ `rightEdge`) and left of our own river (which starts at
- * lx ≥ shift − halfWidth). Depends on the river scale, so the phone
- * portrait table (1.25×) parks it a little further out than the wide
- * presets; both stay well inside the wall's inner edge.
+ * lx ≥ shift − halfWidth). Two spots, by river scale:
+ *
+ * - Wide presets (1×): beside the arm's end at x −5.2, z ≈ 5.1 — a
+ *   whole tile of felt (`CHIP_WALL_ROOM`) under the near wall's yawed
+ *   inner face (7.80 there), so the two-high stacks' top face, which
+ *   overhangs the felt by ≈ 0.22 from the cameras, never reaches it.
+ * - Portrait (1.36×): the arm's end is at z 6.61 and the chip's far
+ *   edge would sit at 7.93, past the yawed face — round-4 #3 nudged it
+ *   toward the centre, which put it on the arm's twelfth discard. It
+ *   parks instead in the corner pocket the pinwheel leaves between the
+ *   left wall's inner face and the near wall's retreated end
+ *   (`wallRunPoint(−tip)`), centred on that gap (≈ 0.24 each side at
+ *   `CHIP_RADIUS`), the same z: 0.2 above the arm's end, under no stack.
  */
 export function dealerChipLocal(riverScale: number, chipRadius: number): [number, number] {
   const m = riverMetrics(riverScale);
-  return [-5.2, m.rightEdge + chipRadius + 0.2];
-}
-
-/**
- * How far the dealer chip steps toward the table centre when wall stacks
- * still stand in its pocket (`dealerChipBlocked`). At the portrait river
- * scale the chip's near edge (7.94) sits 0.18 off the wall's inner edge
- * (8.12) and the two-high stacks' top face, seen from 70°, overhangs the
- * felt by ≈ 0.22 — the chip's lower fifth hid behind the stacks and read
- * as wedged into the wall (round-4 #3). 0.7 leaves ≈ 0.5 units of felt
- * between the chip and the overhang; the pinwheel arm it sits beyond is
- * unaffected (the step is along z, away from the wall).
- */
-export const CHIP_POCKET_NUDGE = 0.7;
-/** Reach (world units) within which a wall stack counts as occupying the chip's pocket. */
-export const CHIP_POCKET_REACH = 1.2;
-
-/**
- * Is a wall / dead-wall stack standing in the dealer chip's corner
- * pocket? `[lx, lz]` is the chip centre in the dealer's frame
- * (`dealerChipLocal`); a stack on the dealer's own wall whose centre is
- * within `CHIP_POCKET_REACH` of the chip's near edge along the wall and
- * whose inner edge is within reach across it blocks the pocket. The deal
- * empties the pocket on some break positions and not others, so the
- * chip either parks in the pocket or steps `CHIP_POCKET_NUDGE` in; the
- * caller keeps the decision for the hand (stacks only ever leave).
- */
-export function dealerChipBlocked(
-  layout: Layout,
-  dealerRel: Rel,
-  [lx, lz]: readonly [number, number],
-  chipRadius: number,
-): boolean {
-  for (const slot of layout) {
-    if (!slot || (slot.zone !== 'wall' && slot.zone !== 'deadWall') || slot.rel !== dealerRel)
-      continue;
-    const [sx, sz] = toLocal(dealerRel, slot.x, slot.z);
-    if (Math.abs(sx - lx) > TILE_W / 2 + chipRadius + CHIP_POCKET_REACH * 0.5) continue;
-    // Stack inner edge (toward the centre) vs the chip's near edge.
-    if (sz - TILE_H / 2 - (lz + chipRadius) < CHIP_POCKET_REACH) return true;
-  }
-  return false;
+  const lz = m.rightEdge + chipRadius + 0.2;
+  if (wallInnerFaceAt(CHIP_X) - (lz + chipRadius) >= CHIP_WALL_ROOM) return [CHIP_X, lz];
+  // Left wall (rel 3 from the dealer): its along-axis is our z, its
+  // inner face our −x; the near wall's heel is our stack 0's left edge.
+  const leftFace = -wallInnerFaceAt(lz);
+  const heel = wallRunPoint(-WALL_TIP_DX)[0] - WALL_ALONG_HALF;
+  return [(leftFace + heel) / 2, lz];
 }
 
 /**
