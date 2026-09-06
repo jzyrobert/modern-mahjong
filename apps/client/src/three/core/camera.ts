@@ -56,6 +56,11 @@ export class CameraRig {
     this.goal = p;
   }
 
+  /** The preset the rig is easing toward (what `goalCamera` is parked at). */
+  get goalPreset(): CameraPreset {
+    return this.goal;
+  }
+
   /**
    * A scratch camera parked at the *goal* preset (no spring lag, no
    * parallax), sharing this rig's aspect. Projections through it give

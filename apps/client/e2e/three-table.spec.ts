@@ -734,6 +734,28 @@ for (const [w, h] of [
       const fade = (await page.getByTestId('lobby-panel-fade').boundingBox())!;
       expect(summary.y).toBeGreaterThanOrEqual(fade.y + fade.height - 1);
     }
+    // The fold lands on a row boundary: at rest no seat card or bot-skill
+    // row is cut by the scroll region's bottom edge (round-6: the SEAT 3
+    // control sat half under the fade at 360×640) — each row is either
+    // whole inside the region or wholly below it.
+    const cut = await scroll.evaluate((el) => {
+      const fold = el.getBoundingClientRect().top + el.clientHeight;
+      return Array.from(el.querySelectorAll<HTMLElement>('[data-lobby-row]'))
+        .map((row) => row.getBoundingClientRect())
+        .filter((r) => r.top + 1 < fold && r.bottom - 1 > fold)
+        .map((r) => `${Math.round(r.top)}-${Math.round(r.bottom)} vs fold ${Math.round(fold)}`);
+    });
+    expect(cut).toEqual([]);
+    if (overflow) {
+      // Something overflows, so at least the last row is below the fold whole.
+      const below = await scroll.evaluate((el) => {
+        const fold = el.getBoundingClientRect().top + el.clientHeight;
+        return Array.from(el.querySelectorAll<HTMLElement>('[data-lobby-row]')).filter(
+          (row) => row.getBoundingClientRect().top >= fold - 1,
+        ).length;
+      });
+      expect(below).toBeGreaterThan(0);
+    }
     const pageScrolls = await page.evaluate(
       () => (document.scrollingElement?.scrollHeight ?? 0) > window.innerHeight + 1,
     );
@@ -2541,6 +2563,16 @@ test('the river zoom sinks the walls through the felt and raises them back, neve
   // Sunk: hidden — and no wall tile was ever drawn at scale 0 in view.
   const gone = (await summary())!;
   for (const id of before.wallIds) expect(gone.visible).not.toContain(id);
+  // The dealer chip went down with them (round-6: its portrait spot in
+  // front of the near wall's heel lands in the held hand's band under
+  // the plan view): hidden, under the felt, no longer a shadow caster.
+  await expect
+    .poll(async () => (await readChip(page))?.visible ?? null, { timeout: 20_000 })
+    .toBe(false);
+  const sunkChip = (await readChip(page))!;
+  expect(sunkChip.top).toBeLessThan(0);
+  expect(sunkChip.castsShadow).toBe(false);
+  expect(sunkChip.rect).toBeNull();
   // Zoom out: the walls rise from under the felt, full size, back to rest.
   const zoomOut = page.getByTestId('river-zoom-exit').click();
   const risingSamples = await collect('rising', 1);
@@ -2564,6 +2596,14 @@ test('the river zoom sinks the walls through the felt and raises them back, neve
   );
   for (const [id, y] of after.ys)
     if (before.wallIds.includes(id)) expect(Math.abs(y - restY.get(id)!)).toBeLessThan(0.02);
+  // …and the chip is back on the felt, casting again.
+  await expect
+    .poll(async () => (await readChip(page))?.visible ?? null, { timeout: 20_000 })
+    .toBe(true);
+  const chipBack = (await readChip(page))!;
+  expect(chipBack.top).toBeCloseTo(0.22, 1);
+  expect(chipBack.castsShadow).toBe(true);
+  expect(chipBack.rect).not.toBeNull();
   expect(errors, 'console / page errors').toEqual([]);
 });
 /**
@@ -2648,10 +2688,21 @@ for (const [w, h] of [
       // no hand tile (projected box) and no hand hit-target (44 px floor).
       expect(m.top).toBeGreaterThanOrEqual(riverBottom - 1);
       expect(bottom(m)).toBeLessThanOrEqual(handTop);
+      // Round-6: the shelf lies in the row the block reserves past the
+      // own river's last row — ≤ 12 px under it (it read as attached to
+      // the hand at 39–75 px) — and every meld tile keeps ≥ 8 px above
+      // the hand's band.
+      expect(m.top).toBeLessThanOrEqual(riverBottom + 12);
+      expect(bottom(m)).toBeLessThanOrEqual(handTop - 8);
       for (const hr of hand) expect(hit(m, hr)).toBe(false);
       for (const b of handBoxes)
         expect(hit(m, { left: b.x, top: b.y, width: b.width, height: b.height })).toBe(false);
     }
+    // The dealer chip is not in the plan view at all (its portrait spot
+    // in front of the near wall's heel projects into the hand's band).
+    const zoomedChip = await readChip(page);
+    expect(zoomedChip).not.toBeNull();
+    expect(zoomedChip!.visible).toBe(false);
     // The shelf's near edge is what the frame pins above the hand's band,
     // so no toast can fit under it here: the toast slot is the header's.
     await expect(table).toHaveAttribute('data-toast-slot', 'strip');
@@ -2675,6 +2726,17 @@ for (const [w, h] of [
         { timeout: 10_000 },
       )
       .toBe('rack');
+    // …and the chip rises back onto the felt, clear of every hand tile.
+    await expect
+      .poll(async () => (await readChip(page))?.visible ?? null, { timeout: 20_000 })
+      .toBe(true);
+    await waitForDealSettled(page);
+    const chip = (await readChip(page))!;
+    expect(chip.rect).not.toBeNull();
+    for (const b of await handTileBoxes(page))
+      expect(hit(chip.rect!, { left: b.x, top: b.y, width: b.width, height: b.height })).toBe(
+        false,
+      );
     const perf = await readPerf(page);
     expect(perf.drawCalls).toBeLessThanOrEqual(BUDGET.drawCalls);
     expect(errors, 'console / page errors').toEqual([]);
@@ -2702,6 +2764,25 @@ async function readTablePoses(page: Page) {
   });
 }
 
+/** The dealer chip's pose from the scene (`TableDebugSnapshot.chip`). */
+async function readChip(page: Page) {
+  return page.evaluate(() => {
+    const dbg = (
+      globalThis as {
+        __MAHJONG_TABLE_3D_DEBUG__?: () => {
+          chip: {
+            visible: boolean;
+            top: number;
+            castsShadow: boolean;
+            rect: { left: number; top: number; width: number; height: number } | null;
+          } | null;
+        } | null;
+      }
+    ).__MAHJONG_TABLE_3D_DEBUG__?.();
+    return dbg ? dbg.chip : null;
+  });
+}
+
 /**
  * Round-6 wall-overhang contacts, as the shell wires `rowTuningFor`
  * (`layout.RowTuning`) into the scene: the right seat's near-end melds
@@ -2711,8 +2792,8 @@ async function readTablePoses(page: Page) {
  * face its raised corner used to overlap.
  */
 for (const [w, h, nearEnd] of [
-  [412, 700, 7.14],
-  [360, 640, 6.94],
+  [412, 700, 7.13],
+  [360, 640, 6.82],
 ] as const) {
   test(`phone ${w}×${h}: the right seat’s melds start past the near wall tip’s projected top edge`, async ({
     page,
@@ -2776,13 +2857,128 @@ for (const [w, h, nearEnd] of [
     expect(tip.length).toBeGreaterThanOrEqual(2);
     // The row's near end (the claimed tile, turned, reaches TILE_H / 2 ×
     // 1.15 past its centre) sits at −rowLeftLimit(false, overhangGap):
-    // 8.48 − 1.34 = 7.14 at 412×700, 8.48 − 1.54 = 6.94 at 360×640 —
-    // 0.34 / 0.54 behind the 1.0 floor that met the tip's top edge.
+    // 8.48 − 1.35 = 7.13 at 412×700, 8.48 − 1.66 = 6.82 at 360×640 (the
+    // felt sized in px, `rowOverhangFeltFor`: 0.41 / 0.52 of it) —
+    // 0.35 / 0.66 behind the 1.0 floor that met the tip's top edge.
     const nearest = Math.max(...melds.map((t) => t.z));
     const edge = nearest + (1.36 / 2) * 1.15;
     expect(edge).toBeGreaterThan(nearEnd - 0.08);
     expect(edge).toBeLessThan(nearEnd + 0.08);
     expect(edge).toBeLessThan(7.3);
+    // Round-6: the meld → rack seam is camera-sized (`sideMeldGapFor`) —
+    // the meld's top face casts onto the world gap from the pitched
+    // camera, so the 0.55 read as 0–3 px of felt. The rack's near end
+    // now sits 0.95–1.15 past the meld's edge (its last tile is 0.575 or,
+    // turned, 0.78 half-wide): 1.5–1.95 centre to edge, not 1.13–1.33.
+    // (Right seat: its +x runs toward world −z, so the rack lies at smaller
+    // z than its near-end melds.)
+    const rack = poses.filter((t) => t.zone === 'oppHand' && t.x > 10.2 && Math.abs(t.z) < 12);
+    expect(rack.length).toBeGreaterThan(5);
+    const rackNearEdge = Math.max(...rack.map((t) => t.z)) + 0.5;
+    const meldFar = Math.min(...melds.map((t) => t.z));
+    expect(meldFar - rackNearEdge).toBeGreaterThan(1.45);
+    expect(meldFar - rackNearEdge).toBeLessThan(2.0);
+    expect(errors, 'console / page errors').toEqual([]);
+  });
+}
+
+/**
+ * The left seat's melds lie at its *far* end, beyond its rack from the
+ * camera: the rack's standing tiles cast onto the felt behind them, so
+ * the 0.55 world gap left the meld's near end under the rack's silhouette
+ * (round-6 critic: "0–0.8 px of felt at the seam", read as a wall stack
+ * wedged against the meld). The seam opens to the camera-sized gap
+ * (`sideMeldGapFor`: ≈ 1.15–1.4 on the phones in a browser).
+ */
+for (const [w, h] of [
+  [412, 700],
+  [360, 640],
+] as const) {
+  test(`phone ${w}×${h}: the left seat’s melds sit a camera-sized seam beyond its rack`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: w, height: h });
+    await page.addInitScript(() => {
+      const g = globalThis as {
+        __MAHJONG_TEST_SEED__?: number;
+        __MAHJONG_TEST_BOT_SCRIPTS__?: Record<number, object>;
+      };
+      // Seed 33: the user deals (dealer 0) and holds a 4-man that seat 3 holds two of.
+      g.__MAHJONG_TEST_SEED__ = 33;
+      g.__MAHJONG_TEST_BOT_SCRIPTS__ = { 1: {}, 2: {}, 3: {} };
+    });
+    const errors: string[] = [];
+    await startSolo(page, errors);
+    await waitForDealSettled(page);
+    // Bot 3 pengs the user's first discard.
+    await page.evaluate(() => {
+      type T = { kind: string; suit?: string; rank?: number; honor?: string };
+      const g = globalThis as {
+        __MAHJONG_TEST_GET_STATE__?: () => { state: { hands: Record<number, T[]> }; you: number };
+        __MAHJONG_TEST_BOT_SCRIPTS__?: Record<number, { claims?: { kind: string }[] }>;
+      };
+      const s = g.__MAHJONG_TEST_GET_STATE__!();
+      const key = (t: T) => (t.kind === 'suit' ? `s:${t.suit}:${t.rank}` : `h:${t.honor}`);
+      const botCounts = new Map<string, number>();
+      for (const t of s.state.hands[3]!) botCounts.set(key(t), (botCounts.get(key(t)) ?? 0) + 1);
+      const target = s.state.hands[s.you]!.find((t) => (botCounts.get(key(t)) ?? 0) >= 2)!;
+      g.__MAHJONG_TEST_BOT_SCRIPTS__![3] = { claims: [{ kind: 'peng' }] };
+      const names: Record<string, string> = {
+        E: 'East wind',
+        S: 'South wind',
+        W: 'West wind',
+        N: 'North wind',
+        Z: 'Red dragon',
+        F: 'Green dragon',
+        B: 'White dragon',
+      };
+      const want = target.kind === 'suit' ? `${target.rank} ${target.suit}` : names[target.honor!]!;
+      const btn = Array.from(
+        document.querySelectorAll<HTMLElement>('[data-testid="own-hand-tile"]'),
+      ).find((b) => (b.getAttribute('aria-label') || '').startsWith(want))!;
+      btn.click();
+    });
+    // Left seat (world x ≈ −10.75): its meld lies flat at its far (−z) end.
+    const leftMelds = (poses: Awaited<ReturnType<typeof readTablePoses>>) =>
+      poses.filter((t) => t.zone === 'meld' && t.x < -10.2 && Math.abs(t.z) < 12);
+    await expect
+      .poll(async () => leftMelds(await readTablePoses(page)).length, { timeout: 30_000 })
+      .toBeGreaterThanOrEqual(3);
+    await waitForDealSettled(page);
+    const poses = await readTablePoses(page);
+    const melds = leftMelds(poses);
+    const rack = poses.filter((t) => t.zone === 'oppHand' && t.x < -10.2 && Math.abs(t.z) < 12);
+    expect(rack.length).toBeGreaterThan(5);
+    const meldNear = Math.max(...melds.map((t) => t.z));
+    const rackFarEdge = Math.min(...rack.map((t) => t.z)) - 0.5;
+    // Melds beyond the rack (toward −z), one row (same x line).
+    expect(meldNear).toBeLessThan(rackFarEdge);
+    for (const m of melds) expect(Math.abs(m.x - rack[0]!.x)).toBeLessThan(0.6);
+    // Seam: 1.7–2.1 of row (the rack's far top corner casts ~1.4–1.7
+    // units up the row from these cameras, plus 4 px of felt) plus the
+    // meld's last half-tile (0.575 / 0.78) — 1.13–1.33 with the world gap.
+    expect(rackFarEdge - meldNear).toBeGreaterThan(2.2);
+    expect(rackFarEdge - meldNear).toBeLessThan(2.95);
+    // On screen the rack's silhouette ends ≥ 3 px below the meld's box.
+    const rects = await page.evaluate(() => {
+      const dbg = (
+        globalThis as {
+          __MAHJONG_TABLE_3D_DEBUG__?: () => {
+            tiles: {
+              zone: string | null;
+              x: number;
+              rect: { left: number; top: number; width: number; height: number } | null;
+            }[];
+          } | null;
+        }
+      ).__MAHJONG_TABLE_3D_DEBUG__?.();
+      return dbg ? dbg.tiles.filter((t) => t.x < -10.2 && t.rect) : [];
+    });
+    const meldBottom = Math.max(
+      ...rects.filter((t) => t.zone === 'meld').map((t) => t.rect!.top + t.rect!.height),
+    );
+    const rackTop = Math.min(...rects.filter((t) => t.zone === 'oppHand').map((t) => t.rect!.top));
+    expect(rackTop - meldBottom).toBeGreaterThanOrEqual(3);
     expect(errors, 'console / page errors').toEqual([]);
   });
 }

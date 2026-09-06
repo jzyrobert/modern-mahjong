@@ -849,3 +849,69 @@ CC0-only asset policy, verifier rules. Operational notes:
   seat *after* the claimer, so bot 1 moves twice before bot 3 does) and
   `match-river-zoom-sink` (×200 slow motion, 45 s) are the new table
   recipes.
+- **Portrait seams are projections too** (round-6 portrait follow-up).
+  Three more contacts the felt-space constants could not close:
+  - *A side seat's melds ↔ its rack* (`layout.sideMeldGapFor`, passed
+    through `LayoutOptions.sideSeamCamera` — portrait only). The round-6
+    critic's "left seat's meld row meets the left wall's heel stack
+    end-on" was the seat's own **rack**, not a wall: the left seat's
+    melds lie at its far end, and its standing rack's far-end tile
+    (1.4 high) casts `(cz − z) · h / (cy − h)` ≈ 1.4 units along the
+    row onto the felt from the 412×700 camera (46 up, 47 back) while
+    the flat meld's near top edge casts 0.65, so the 0.55 `MELD_GAP`
+    read as 0–0.8 px and the rack's silhouette ran over the meld's end.
+    The felt that counts is between the rack's shadow and the meld's
+    near *bottom* edge — the flat tile's ivory side face fills a gap
+    that only clears its top face, and the projected boxes then still
+    overlap (a first cut at 0.55 of "top-face felt" left the rack's
+    box 1.6–2.2 px over the meld's). The seam is now
+    `(felt + kR · (cz − z)) / (1 + kR)` with `felt` sized in px
+    (`cameraPresets.sideSeamFeltFor`, `SIDE_SEAM_FELT_PX` 4 at the far
+    seam's depth scale): ≈ 1.75 at 412×700, 1.95 at 360×640, 1.15 on
+    the 70° tall phone — a wide seam, but two objects; the right seat
+    (melds at its near end, only its own meld's top face casting onto
+    the gap) gets ≈ 0.95–1.15. A row that would run past `ROW_END_LIMIT`
+    (11.5) gives the seam back. Stepping the row *out* instead is not
+    available: the portrait frame is ±11.6 and a side meld's outer edge
+    is already at 11.53. The low landscape camera would ask ~5 units
+    and keeps `MELD_GAP`. `match-left-meld` (seed 33, bot 3 pengs)
+    shoots it.
+  - *The near tip's felt in px* (`cameraPresets.rowOverhangFeltFor`,
+    `ROW_OVERHANG_FELT_PX` 5 → `rowTuningFor(cam, felt)`): 0.4 world
+    units of felt is 4.8 px of depth at 412×700 but ~4 at 360×640;
+    the 360×640 phone now takes ≈ 0.52.
+  - *The held 1.3× melds against the near wall's overhang half* stay a
+    residual at 412×700 / 360×640 (0 px of felt, the meld's top face
+    overlapping the wall's foot by ~5 px): the strip between the yawed
+    wall's outer face (9.88) and the rail (11.9) is 2.02 units, a 1.3×
+    flat tile takes 1.77 of it and its 0.8-high top face casts another
+    0.57 toward the wall from the 55° camera — no step, alignment or
+    scale ≥ 1× fits with felt showing on both sides (a 1× tile at the
+    rail still overlaps by 0.1). Closing it needs the wall lower or the
+    melds elsewhere while the hand is held, not a constant.
+- **The zoom hides the dealer chip and seats the shelf in the reserved
+  row** (round-6 portrait follow-up). The chip's portrait spot (in front
+  of the near wall's heel) is in the held hand's band under the plan
+  view, so `TableScene.applyZoomBlend` sinks it `CHIP_SINK` with the rail
+  on the walls' beat (hidden once under, `castShadow` off within
+  `SHADOW_CAST_FLOOR`) — `TableDebugSnapshot.chip` exposes it. The meld
+  shelf lies `SHELF_GAP` past the user's *own* river's last row present
+  (`ZoomShelfBlock.ownNear`, filled by `riverZoomBlock` / grown by
+  `growZoomBlock`) — i.e. in the row the block reserves for the next
+  discard — so it reads as the river's next row (3–5 px under it, 11–12
+  above the hand at 412×700 / 360×640; 5.5 / 100 on the tall phone)
+  instead of 39–75 px under the river and 13 above the hand; the frame
+  pins `block.near` plus the shelf's overrun (0.08) above the hand, so a
+  short phone's zoom is tighter than before. A discard landing in that
+  row grows the block and moves the shelf out with it.
+- **Lobby fold snaps to a row** (`hud/LobbyGlass.useFoldSnap`,
+  `data-lobby-row` on seat cards and bot-skill rows): when the portrait
+  panel overflows and a row straddles the scroll region's bottom edge at
+  rest, the region's `maxHeight` ends `FOLD_ROW_GAP` above that row —
+  measured once per size / content key, like `usePortraitRulesCollapse`.
+- **Contact glow: widen before brightening** (`textures.CUE_BAND_SIGMA`
+  0.32, `CUE_HALO_BAND_OPACITY` 0.75): from the 44° desktop camera the
+  standing tiles hide the band's centre line, so a narrow gaussian
+  (σ 0.24, 11 % at the edges) showed as two end pools whatever the
+  opacity; the quad's extent is unchanged (tiles' back edge → rail
+  foot), only its edges carry more of the light.

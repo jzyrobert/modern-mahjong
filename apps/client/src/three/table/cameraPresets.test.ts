@@ -745,16 +745,38 @@ describe('river zoom block — the rows present (round-5: three empty rows frame
     expect(fitZoomBlockToShelf(ZOOM_BLOCK_RESERVED, four)).toBe(ZOOM_BLOCK_RESERVED);
     expect(fitZoomBlockToShelf(early, 40).xHalf).toBe(ZOOM_X_HALF_MIN);
   });
-  test('the meld shelf follows the fitted block: past its near edge, inside its width', () => {
+  test('the meld shelf follows the fitted block: in the row it reserves past the own river, inside its width', () => {
     const block = riverZoomBlock([6, 6, 6, 6], 0);
+    const m = riverMetrics(S);
     const width = 2 * 3.42 + 0.3;
     const shelf = zoomMeldShelf(S, width, block);
     const reservedShelf = zoomMeldShelf(S, width);
-    expect(shelf.z - (TILE_H / 2) * shelf.scale).toBeCloseTo(block.near + SHELF_GAP, 9);
+    // The block carries the own river's last row present (one row here)
+    // and reserves the next one; the shelf lies SHELF_GAP past the row
+    // present — inside the block, in the reserved row — not past the
+    // block's near edge (round-6: 39–75 px under the river, 13–38 above
+    // the hand, reading as attached to the hand).
+    expect(block.ownNear).toBeCloseTo(riverZ0(S) + (TILE_H / 2) * S, 9);
+    // (The near edge is the left arm's end here, past the reserved row.)
+    expect(block.near).toBeGreaterThanOrEqual(block.ownNear! + m.pitchZ - 1e-9);
+    expect(shelf.z - (TILE_H / 2) * shelf.scale).toBeCloseTo(block.ownNear! + SHELF_GAP, 9);
+    expect(shelf.z + (TILE_H / 2) * shelf.scale).toBeLessThan(block.near + 0.1);
+    expect(shelf.depth).toBeLessThan(0.1);
     expect(shelf.z).toBeLessThan(reservedShelf.z - 1);
     expect(shelf.right).toBeCloseTo(block.xHalf - SHELF_MARGIN, 9);
-    expect(shelf.depth).toBeCloseTo(reservedShelf.depth, 9);
-    // The frame pins the shelf's near edge above the hand on every phone.
+    // With every row present the reserved block's shelf is unchanged: past the third row.
+    expect(ZOOM_BLOCK_RESERVED.ownNear).toBe(ZOOM_BLOCK_RESERVED.near);
+    const full = riverZoomBlock([18, 18, 18, 18], 0);
+    expect(full.ownNear).toBeCloseTo(m.farEdge, 9);
+    expect(zoomMeldShelf(S, width, full).z).toBeCloseTo(reservedShelf.z, 9);
+    expect(zoomMeldShelf(S, width, full).depth).toBeCloseTo(reservedShelf.depth, 9);
+    // Grow-only hysteresis covers the own row too.
+    const two = riverZoomBlock([7, 6, 6, 6], 0);
+    expect(two.ownNear).toBeCloseTo(block.ownNear! + m.pitchZ, 9);
+    expect(growZoomBlock(two, block)).toBe(two);
+    expect(growZoomBlock(block, two).ownNear).toBeCloseTo(two.ownNear!, 9);
+    // The frame pins the block's near edge (plus the shelf's overrun)
+    // above the hand on every phone, and the shelf's tiles stay in frame.
     for (const [w, h] of [
       [412, 915],
       [412, 700],
@@ -766,9 +788,15 @@ describe('river zoom block — the rows present (round-5: three empty rows frame
       expect(p(...zoomNearPoint(shelf.depth, block.near)).y).toBeLessThanOrEqual(
         bandBottom - ZOOM_NEAR_RIVER_GAP + 0.5,
       );
-      expect(p(shelf.right, TILE_D * shelf.scale, block.near + shelf.depth).x).toBeLessThanOrEqual(
-        w - 2,
-      );
+      const shelfNear = shelf.z + (TILE_H / 2) * shelf.scale;
+      expect(p(shelf.right, TILE_D * shelf.scale, shelfNear).x).toBeLessThanOrEqual(w - 2);
+      // The shelf's tiles lie ≥ 8 px above the hand's band and ≤ 8 px
+      // under the own river's last row (its far edge, on the felt).
+      expect(p(0, TILE_D * shelf.scale, shelfNear).y).toBeLessThanOrEqual(bandBottom - 8);
+      const rowBottom = p(0, 0, block.ownNear!).y;
+      const shelfTop = p(0, TILE_D * shelf.scale, shelf.z - (TILE_H / 2) * shelf.scale).y;
+      expect(shelfTop - rowBottom).toBeGreaterThan(0);
+      expect(shelfTop - rowBottom).toBeLessThanOrEqual(8);
     }
   });
 });

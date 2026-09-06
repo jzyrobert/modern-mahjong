@@ -263,22 +263,34 @@ globalThis.__MAHJONG_TEST_BOT_CLAIM_DELAY_MS__ = 300;
 `;
 
 /**
- * Bot-claim setup (`match-claim-toast`): find a face the user holds one
- * of and seat 1 holds two of, script seat 1 to peng it (the scripted
- * bots accept a `claims` list to issue when legal) and discard
- * it from the user's hand.
+ * `match-left-meld`: seed 33 deals the user (dealer) a 4-man that seat 3
+ * — the left seat — holds two of; seat 3 is scripted to peng it, so its
+ * meld lands at the far end of its row beyond its rack (round-6: the
+ * rack's silhouette hid the meld's near end at the seam).
  */
-const BOT_PENG_SETUP = `
+const LEFT_MELD_INIT = `
+globalThis.__MAHJONG_TEST_SEED__ = 33;
+globalThis.__MAHJONG_TEST_BOT_SCRIPTS__ = { 1: {}, 2: {}, 3: {} };
+globalThis.__MAHJONG_TEST_BOT_CLAIM_DELAY_MS__ = 300;
+`;
+
+/**
+ * Bot-claim setup (`match-claim-toast`, `match-left-meld`): find a face
+ * the user holds one of and `seat` holds two of, script that seat to
+ * peng it (the scripted bots accept a `claims` list to issue when legal)
+ * and discard it from the user's hand.
+ */
+const botPengSetup = (seat) => `
 (() => {
   const s = globalThis.__MAHJONG_TEST_GET_STATE__();
   if (!s.state || s.you === null) throw new Error('no state');
   const key = (t) => (t.kind === 'suit' ? 's:' + t.suit + ':' + t.rank : 'h:' + t.honor);
   const mine = s.state.hands[s.you];
   const botCounts = new Map();
-  for (const t of s.state.hands[1]) botCounts.set(key(t), (botCounts.get(key(t)) ?? 0) + 1);
+  for (const t of s.state.hands[${seat}]) botCounts.set(key(t), (botCounts.get(key(t)) ?? 0) + 1);
   const target = mine.find((t) => (botCounts.get(key(t)) ?? 0) >= 2);
   if (!target) throw new Error('no bot-peng-able face in the dealt hand');
-  globalThis.__MAHJONG_TEST_BOT_SCRIPTS__[1] = { claims: [{ kind: 'peng' }] };
+  globalThis.__MAHJONG_TEST_BOT_SCRIPTS__[${seat}] = { claims: [{ kind: 'peng' }] };
   const name = (t) => (t.kind === 'suit' ? t.rank + ' ' + t.suit : ({ E: 'East wind', S: 'South wind', W: 'West wind', N: 'North wind', Z: 'Red dragon', F: 'Green dragon', B: 'White dragon' })[t.honor]);
   const want = name(target);
   const btn = [...document.querySelectorAll('[data-testid="own-hand-tile"]')].find((b) => (b.getAttribute('aria-label') || '').startsWith(want));
@@ -286,6 +298,7 @@ const BOT_PENG_SETUP = `
   btn.click();
 })();
 `;
+const BOT_PENG_SETUP = botPengSetup(1);
 
 /**
  * Tenpai claim window (`match-tenpai-claim`): the user is tenpai after
@@ -1391,6 +1404,24 @@ export const STATES = {
       { evaluate: BOT_PENG_SETUP },
       { waitFor: '[data-testid="claim-toast-glyph"]', timeout: 20000 },
       { waitMs: 500 },
+    ],
+  },
+  'match-left-meld': {
+    owner: 'table',
+    // The left seat's peng (seed 33, seat 3 scripted — `LEFT_MELD_INIT`):
+    // its meld lies at the far end of its row, beyond its rack from the
+    // camera, a camera-sized seam past it (`layout.sideMeldGapFor`). Seat
+    // 3 discards next and play returns to the user, so the table holds;
+    // the toast has cleared by the time the shot lands.
+    steps: [
+      { initScript: LEFT_MELD_INIT },
+      ...START_SOLO,
+      { waitForOwnHand: true },
+      { waitMs: 1600 },
+      { evaluate: botPengSetup(3) },
+      { waitFor: '[data-testid="claim-toast-glyph"]', timeout: 20000 },
+      { waitMs: 3200 },
+      { waitForPerf: true },
     ],
   },
   'match-win-celebration': {

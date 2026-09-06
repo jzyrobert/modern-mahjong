@@ -1,7 +1,13 @@
 import { type GameState, type Seat, emptyState, startHand, tileId } from '@mahjong/game-logic';
 import { describe, expect, test } from 'vitest';
 import { TILE_D, TILE_H, TILE_W } from '../tiles/geometry';
-import { TABLE_CAMERA, cameraFor, projectPreset } from './cameraPresets';
+import {
+  TABLE_CAMERA,
+  cameraFor,
+  projectPreset,
+  rowOverhangFeltFor,
+  sideSeamFeltFor,
+} from './cameraPresets';
 import {
   CHIP_FRONT_GAP,
   CHIP_HEEL_OVERLAP,
@@ -15,7 +21,9 @@ import {
   HAND_Z,
   HELD_ROW_UNITS,
   type LayoutOptions,
+  MELD_GAP,
   MELD_Z,
+  OPP_TILT,
   OWN_HAND_Z,
   OWN_MELD_RIGHT,
   OWN_MELD_SCALE_HELD,
@@ -28,11 +36,13 @@ import {
   RIVER_COLS,
   RIVER_NEAR_EDGE,
   RIVER_ROWS,
+  ROW_END_LIMIT,
   ROW_OVERHANG_FELT,
   ROW_OVERHANG_GAP,
   type RowTuning,
   SHELF_GAP,
   SHELF_MARGIN,
+  SIDE_MELD_RACK_FELT,
   SIDE_MELD_SCALE_PORTRAIT,
   SIDE_SEAT_OUT_DESKTOP,
   SIDE_SEAT_OUT_LOW,
@@ -66,6 +76,7 @@ import {
   riverZ0,
   rowLeftLimit,
   rowTuningFor,
+  sideMeldGapFor,
   tileSheetLayout,
   toLocal,
   toWorld,
@@ -1875,5 +1886,246 @@ describe('camera-sized row gaps (RowTuning)', () => {
     expect((-7.6 * deskCam[1]) / (deskCam[1] - topY) + WALL_OVERHANG_INNER).toBeGreaterThan(
       OWN_ROW_OVERHANG_FELT,
     );
+  });
+});
+
+describe('camera-sized felt at the near tip (rowOverhangFeltFor)', () => {
+  const CAMS = {
+    phone: { cam: cameraFor(412, 700), w: 412, h: 700 },
+    'phone-small': { cam: cameraFor(360, 640), w: 360, h: 640 },
+    'phone-tall': { cam: cameraFor(412, 915), w: 412, h: 915 },
+    landscape: { cam: TABLE_CAMERA['phone-landscape'], w: 915, h: 412 },
+    desktop: { cam: TABLE_CAMERA.desktop, w: 1440, h: 900 },
+  } as const;
+  test('the 360×640 phone lifts the felt to ≈ 0.5; the other cameras sit on (or a hair over) the 0.4 floor', () => {
+    expect(rowOverhangFeltFor(CAMS['phone-small'].cam, 360, 640)).toBeCloseTo(0.52, 1);
+    expect(rowOverhangFeltFor(CAMS['phone-small'].cam, 360, 640)).toBeGreaterThan(
+      ROW_OVERHANG_FELT + 0.08,
+    );
+    // A 412×700 phone's 0.4 is 4.8 px of depth: it lifts by a few hundredths.
+    expect(rowOverhangFeltFor(CAMS.phone.cam, 412, 700)).toBeGreaterThanOrEqual(ROW_OVERHANG_FELT);
+    expect(rowOverhangFeltFor(CAMS.phone.cam, 412, 700)).toBeLessThan(ROW_OVERHANG_FELT + 0.05);
+    for (const k of ['phone-tall', 'landscape', 'desktop'] as const) {
+      const { cam, w, h } = CAMS[k];
+      expect(rowOverhangFeltFor(cam, w, h), k).toBe(ROW_OVERHANG_FELT);
+    }
+  });
+  test('with it the right seat’s near end shows ≥ 5 px of felt under the tip’s top edge on every camera', () => {
+    for (const [name, { cam, w, h }] of Object.entries(CAMS)) {
+      const felt = rowOverhangFeltFor(cam, w, h);
+      const gap = rowTuningFor(cam.position, felt).overhangGap;
+      expect(gap, name).toBeGreaterThanOrEqual(rowTuningFor(cam.position).overhangGap);
+      const corner = projectPreset(cam, w, h, [WALL_END, 2 * TILE_D, WALL_OVERHANG_INNER]);
+      const rowEnd = projectPreset(cam, w, h, [WALL_END, 0, WALL_OVERHANG_INNER - gap]);
+      // The tall phone sits on the 1.0 world floor with more than that.
+      expect(corner.y - rowEnd.y, name).toBeGreaterThanOrEqual(5 - 0.05);
+    }
+    // 360×640: ~4 px of projected depth with the world felt (the critic's
+    // column scans read 4.7), 5 with the px floor.
+    const { cam, w, h } = CAMS['phone-small'];
+    const px = (gap: number) =>
+      projectPreset(cam, w, h, [WALL_END, 2 * TILE_D, WALL_OVERHANG_INNER]).y -
+      projectPreset(cam, w, h, [WALL_END, 0, WALL_OVERHANG_INNER - gap]).y;
+    expect(px(rowTuningFor(cam.position).overhangGap)).toBeLessThan(4.5);
+    expect(px(rowTuningFor(cam.position, rowOverhangFeltFor(cam, w, h)).overhangGap)).toBeCloseTo(
+      5,
+      0,
+    );
+  });
+});
+
+describe('side-seat meld → rack seam (sideMeldGapFor)', () => {
+  const CAMS = {
+    phone: { cam: cameraFor(412, 700), w: 412, h: 700 },
+    'phone-small': { cam: cameraFor(360, 640), w: 360, h: 640 },
+    'phone-tall': { cam: cameraFor(412, 915), w: 412, h: 915 },
+  } as const;
+  const along = (sl: TileSlot) => toLocal(sl.rel, sl.x, sl.z)[0];
+  const halfAlong = (sl: TileSlot) =>
+    (Math.abs(Math.sin(sl.yaw)) > 0.5 ? TILE_W / 2 : TILE_H / 2) * (sl.scale ?? 1);
+  const topY = TILE_H / 2 + (TILE_H / 2) * Math.cos(OPP_TILT) + (TILE_D / 2) * Math.sin(OPP_TILT);
+  test('the gap leaves `felt` between the shadows and the meld’s edge, never under MELD_GAP', () => {
+    for (const [name, { cam }] of Object.entries(CAMS)) {
+      const [, cy, cz] = cam.position;
+      const kR = topY / (cy - topY);
+      const kM = TILE_D / (cy - TILE_D);
+      for (const seam of [-5, -2, 1, 4]) {
+        const left = sideMeldGapFor(cam.position, 3, seam);
+        const right = sideMeldGapFor(cam.position, 1, seam);
+        expect(left, name).toBeGreaterThan(MELD_GAP);
+        expect(right, name).toBeGreaterThan(MELD_GAP);
+        // Left seat (melds at the far end): the rack's top corner casts
+        // from `gap` nearer the camera than the meld's edge; the felt
+        // between its shadow and the meld's near (bottom) edge is `felt`.
+        const rackShadow = seam + left - kR * (cz - seam - left);
+        expect(rackShadow - seam, name).toBeCloseTo(SIDE_MELD_RACK_FELT, 9);
+        // Right seat (melds at the near end): only the meld's top casts onto the gap.
+        const zM = -seam;
+        expect(right - kM * (cz - zM), name).toBeCloseTo(SIDE_MELD_RACK_FELT, 9);
+        // The felt argument scales the gap; a taller flat meld casts further.
+        expect(sideMeldGapFor(cam.position, 3, seam, 1, 0.6)).toBeGreaterThan(left);
+        expect(sideMeldGapFor(cam.position, 1, seam, 1.15)).toBeGreaterThan(right);
+      }
+    }
+    // Numbers the round-6 measurements predict (412×700: the rack's top
+    // casts 1.4 along the row from a seam 3 units far).
+    const near = (v: number, want: number) => expect(Math.abs(v - want)).toBeLessThan(0.1);
+    near(sideMeldGapFor(CAMS.phone.cam.position, 3, -3), 1.75);
+    near(sideMeldGapFor(CAMS['phone-small'].cam.position, 3, -3), 1.95);
+    near(sideMeldGapFor(CAMS['phone-tall'].cam.position, 3, -3), 1.15);
+    near(sideMeldGapFor(CAMS.phone.cam.position, 1, -3), 0.95);
+    // A camera far above (plan view) asks for nothing beyond the world gap.
+    expect(sideMeldGapFor([0, 1e6, 0], 3, -5)).toBeCloseTo(MELD_GAP, 3);
+    expect(sideMeldGapFor([0, 1e6, 0], 1, -5)).toBeCloseTo(MELD_GAP, 3);
+  });
+  test('the px-sized felt is 4 px of depth at the far seam: ≈ 0.43 / 0.55 / 0.4 (floor) by phone', () => {
+    const felt = (k: keyof typeof CAMS) => sideSeamFeltFor(CAMS[k].cam, CAMS[k].w, CAMS[k].h);
+    expect(felt('phone')).toBeGreaterThan(0.4);
+    expect(felt('phone')).toBeLessThan(0.47);
+    expect(felt('phone-small')).toBeGreaterThan(0.5);
+    expect(felt('phone-small')).toBeLessThan(0.6);
+    expect(felt('phone-tall')).toBe(SIDE_MELD_RACK_FELT);
+  });
+  test('the layout opens the seam by the camera gap and both seats show ≥ 4 px of felt at it', () => {
+    for (const [name, { cam, w, h }] of Object.entries(CAMS)) {
+      const felt = sideSeamFeltFor(cam, w, h);
+      for (const seat of [1, 3] as const) {
+        for (const k of [1, 2, 3]) {
+          const { state } = withRow(seat, k, false);
+          const plain = computeLayout(state, 0, { ...PRESETS.portrait });
+          const sized = computeLayout(state, 0, {
+            ...PRESETS.portrait,
+            sideSeamCamera: cam.position,
+            sideSeamFelt: felt,
+          });
+          const row = (lay: typeof plain, zone: string) =>
+            lay.filter((sl) => sl && sl.seat === seat && sl.zone === zone) as TileSlot[];
+          const seamOf = (lay: typeof plain) => {
+            const meldRight = Math.max(...row(lay, 'meld').map((sl) => along(sl) + halfAlong(sl)));
+            const rackLeft = Math.min(...row(lay, 'oppHand').map((sl) => along(sl) - TILE_W / 2));
+            return { meldRight, rackLeft, gap: rackLeft - meldRight };
+          };
+          const before = seamOf(plain);
+          const after = seamOf(sized);
+          const label = `${name} seat ${seat} melds ${k}`;
+          expect(before.gap, label).toBeCloseTo(MELD_GAP, 6);
+          expect(after.gap, label).toBeCloseTo(
+            sideMeldGapFor(cam.position, seat, after.meldRight, SIDE_MELD_SCALE_PORTRAIT, felt),
+            6,
+          );
+          expect(after.gap).toBeGreaterThan(MELD_GAP + 0.05);
+          // Rack + melds still one row (same rack line), the row still on the felt.
+          const zs = new Set(row(sized, 'oppHand').map((sl) => toLocal(sl.rel, sl.x, sl.z)[1]));
+          expect(zs.size).toBe(1);
+          const ends = [...row(sized, 'oppHand'), ...row(sized, 'meld')].map(
+            (sl) => along(sl) + halfAlong(sl),
+          );
+          expect(Math.max(...ends), label).toBeLessThanOrEqual(ROW_END_LIMIT + 1e-6);
+          // On screen: ≥ 4 CSS px of felt between the rack's silhouette and
+          // the meld's edge (0–3, or an overlap, with the world gap).
+          const rel = seat as 1 | 3;
+          const meldZ = MELD_Z + SIDE_SEAT_OUT_PORTRAIT;
+          const feltPx = (seam: ReturnType<typeof seamOf>) => {
+            const [mx, mz] = toWorld(rel, seam.meldRight, meldZ);
+            const [rx, rz] = toWorld(rel, seam.rackLeft, HAND_Z + SIDE_SEAT_OUT_PORTRAIT);
+            if (rel === 3) {
+              // Far end: the rack (nearer) draws over the meld; its top corner
+              // must land below the meld's near bottom edge on screen.
+              const rackTop = projectPreset(cam, w, h, [rx, topY, rz]);
+              const meldFoot = projectPreset(cam, w, h, [mx, 0, mz]);
+              return rackTop.y - meldFoot.y;
+            }
+            // Near end: the meld (nearer) draws over the rack's foot.
+            const meldEdge = projectPreset(cam, w, h, [mx, TILE_D * SIDE_MELD_SCALE_PORTRAIT, mz]);
+            const rackFoot = projectPreset(cam, w, h, [rx, 0, rz]);
+            return meldEdge.y - rackFoot.y;
+          };
+          if (name !== 'phone-tall') expect(feltPx(before), `${label} before`).toBeLessThan(3.5);
+          expect(feltPx(after), label).toBeGreaterThanOrEqual(4 - 0.05);
+        }
+      }
+    }
+  });
+  test('a row that would run off the felt gives the seam back', () => {
+    // Four melds and a one-tile rack: the seam shrinks toward MELD_GAP
+    // until the rack's near end stops at ROW_END_LIMIT.
+    const { cam, w, h } = CAMS['phone-small'];
+    const { state } = withRow(3, 4, false);
+    const lay = computeLayout(state, 0, {
+      ...PRESETS.portrait,
+      sideSeamCamera: cam.position,
+      sideSeamFelt: sideSeamFeltFor(cam, w, h),
+    });
+    const row = lay.filter((sl) => sl && sl.seat === 3) as TileSlot[];
+    const ends = row
+      .filter((sl) => sl.zone === 'oppHand' || sl.zone === 'meld')
+      .map((sl) => along(sl) + halfAlong(sl));
+    expect(Math.max(...ends)).toBeLessThanOrEqual(ROW_END_LIMIT + 1e-6);
+    const rackLeft = Math.min(
+      ...row.filter((sl) => sl.zone === 'oppHand').map((sl) => along(sl) - TILE_W / 2),
+    );
+    const meldRight = Math.max(
+      ...row.filter((sl) => sl.zone === 'meld').map((sl) => along(sl) + halfAlong(sl)),
+    );
+    expect(rackLeft - meldRight).toBeGreaterThanOrEqual(MELD_GAP - 1e-6);
+    expect(rackLeft - meldRight).toBeLessThan(sideMeldGapFor(cam.position, 3, meldRight, 1.15));
+  });
+});
+
+describe('zoom meld shelf in the reserved row (ZoomShelfBlock.ownNear)', () => {
+  test('the shelf lies SHELF_GAP past the own river’s last row present, its depth the overrun past the block', () => {
+    const scale = 1.36;
+    const m = riverMetrics(scale);
+    const two = 2 * 3.42 + 0.3;
+    // One row present, one reserved: the shelf takes the reserved row.
+    const rowFar = riverZ0(scale) + (TILE_H / 2) * scale;
+    const block = { xHalf: 7.2, near: rowFar + m.pitchZ, ownNear: rowFar };
+    const shelf = zoomMeldShelf(scale, two, block);
+    expect(shelf.z - (TILE_H / 2) * shelf.scale).toBeCloseTo(rowFar + SHELF_GAP, 9);
+    const shelfNear = shelf.z + (TILE_H / 2) * shelf.scale;
+    expect(shelf.depth).toBeCloseTo(Math.max(0, shelfNear - block.near), 9);
+    expect(shelf.depth).toBeLessThan(0.1);
+    // Without `ownNear` the shelf lies past the block's near edge, as before.
+    const past = zoomMeldShelf(scale, two, { xHalf: 7.2, near: block.near });
+    expect(past.z - (TILE_H / 2) * past.scale).toBeCloseTo(block.near + SHELF_GAP, 9);
+    expect(past.depth).toBeCloseTo(SHELF_GAP + TILE_H * past.scale, 9);
+    expect(shelf.z).toBeLessThan(past.z - 1.5);
+    // Nothing on the shelf: no depth.
+    expect(zoomMeldShelf(scale, 0, block).depth).toBe(0);
+    // The slots follow.
+    const s = dealt();
+    const withMelds: GameState = {
+      ...s,
+      hands: { ...s.hands, 0: s.hands[0].slice(3) },
+      melds: { ...s.melds, 0: [{ kind: 'peng', tiles: s.hands[0].slice(0, 3), from: 1 }] },
+    } as GameState;
+    const slots = computeLayout(withMelds, 0, {
+      ...OPTS,
+      heldHand: FRAME,
+      riverScale: scale,
+      heldMeldsShelf: true,
+      hideWalls: true,
+      zoomBlock: block,
+    }).filter((sl) => sl?.zone === 'meld' && sl.seat === 0);
+    expect(slots).toHaveLength(3);
+    for (const sl of slots) expect(sl!.z).toBeCloseTo(zoomMeldShelf(scale, 3.42, block).z, 5);
+    // …and clear of the own river's first row (one discard) and the side arms.
+    const discards = computeLayout(
+      {
+        ...withMelds,
+        discards: { ...withMelds.discards, 0: withMelds.wall.slice(0, 1) },
+      } as GameState,
+      0,
+      {
+        ...OPTS,
+        heldHand: FRAME,
+        riverScale: scale,
+        heldMeldsShelf: true,
+        hideWalls: true,
+        zoomBlock: block,
+      },
+    ).filter((sl) => sl?.zone === 'discard');
+    for (const d of discards)
+      expect(d!.z + (TILE_H / 2) * scale).toBeLessThanOrEqual(rowFar + 1e-6);
   });
 });
