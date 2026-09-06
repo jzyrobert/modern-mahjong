@@ -43,6 +43,13 @@ interface SeatBadgeProps {
    * to two or three letters (round-6).
    */
   shortName?: boolean | undefined;
+  /**
+   * Disc + wind glyph only (no name / score line, no dealer chip): the
+   * portrait seat strip while a claim toast holds its row on a short
+   * phone — the three badges shrink to ~30 px discs at the row's ends
+   * instead of fading out for the whole toast hold (round-6).
+   */
+  glyphOnly?: boolean | undefined;
   style?: CSSProperties | undefined;
 }
 
@@ -59,6 +66,7 @@ export function SeatBadge({
   dense = false,
   fluid = false,
   shortName = false,
+  glyphOnly = false,
   style,
 }: SeatBadgeProps) {
   const { name, botLabel } = oppIdentity(lobby, model.seat);
@@ -82,7 +90,13 @@ export function SeatBadge({
         display: 'inline-flex',
         alignItems: 'center',
         gap: dense ? 6 : compact ? 8 : 10,
-        padding: dense ? '4px 9px 4px 4px' : compact ? '5px 10px 5px 5px' : '6px 12px 6px 6px',
+        padding: glyphOnly
+          ? 3
+          : dense
+            ? '4px 9px 4px 4px'
+            : compact
+              ? '5px 10px 5px 5px'
+              : '6px 12px 6px 6px',
         borderRadius: 999,
         minWidth: 0,
         maxWidth: fluid ? '100%' : dense ? (model.isDealer ? 150 : 132) : undefined,
@@ -128,86 +142,90 @@ export function SeatBadge({
           boxShadow: 'inset 0 -2px 0 rgba(0,0,0,0.18)',
         }}
       >
-        {initials}
+        {glyphOnly ? WIND_GLYPH[model.seatWind] : initials}
       </span>
-      <span
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          lineHeight: 1.15,
-          minWidth: 0,
-          flex: fluid ? '1 1 auto' : undefined,
-        }}
-      >
-        <span style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
+      {glyphOnly ? null : (
+        <span
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            lineHeight: 1.15,
+            minWidth: 0,
+            flex: fluid ? '1 1 auto' : undefined,
+          }}
+        >
+          <span style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
+            <span
+              style={{
+                fontWeight: 800,
+                fontSize: compact ? 11 : 12,
+                color: GLASS.text,
+                maxWidth: fluid ? undefined : dense ? 56 : compact ? 96 : 110,
+                minWidth: 0,
+                flex: fluid ? '0 1 auto' : undefined,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {displayName}
+            </span>
+            <span
+              style={{
+                fontFamily: GLASS.serif,
+                fontSize: compact ? 11 : 13,
+                fontWeight: 700,
+                color: model.isDealer ? '#f0a08e' : GLASS.gold,
+                flexShrink: 0,
+              }}
+            >
+              {WIND_GLYPH[model.seatWind]}
+            </span>
+            {dense && model.isDealer ? (
+              // Dense rows carry the same 莊 chip as the full badge, one
+              // size down, at the end of the name line — a dot on the
+              // avatar read as a rendering glitch at this size.
+              <span
+                aria-label="Dealer"
+                style={{
+                  flexShrink: 0,
+                  padding: '1px 4px',
+                  borderRadius: 5,
+                  lineHeight: 1.2,
+                  background: GLASS.red,
+                  color: 'white',
+                  fontFamily: GLASS.serif,
+                  fontSize: 9,
+                  fontWeight: 700,
+                  boxShadow: '0 1px 4px rgba(177,77,58,0.45)',
+                }}
+              >
+                莊
+              </span>
+            ) : null}
+            {botLabel && !compact ? (
+              <span
+                style={{ fontSize: 9, fontWeight: 700, color: GLASS.text2, letterSpacing: 0.4 }}
+              >
+                {botLabel}
+              </span>
+            ) : null}
+          </span>
           <span
             style={{
-              fontWeight: 800,
-              fontSize: compact ? 11 : 12,
-              color: GLASS.text,
-              maxWidth: fluid ? undefined : dense ? 56 : compact ? 96 : 110,
-              minWidth: 0,
-              flex: fluid ? '0 1 auto' : undefined,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
+              fontSize: compact ? 9.5 : 10,
+              fontWeight: 700,
+              letterSpacing: 0.6,
+              color:
+                cue || (model.isActive && model.turnCountdown !== null) ? GLASS.gold : GLASS.text2,
               whiteSpace: 'nowrap',
             }}
           >
-            {displayName}
+            {sub}
           </span>
-          <span
-            style={{
-              fontFamily: GLASS.serif,
-              fontSize: compact ? 11 : 13,
-              fontWeight: 700,
-              color: model.isDealer ? '#f0a08e' : GLASS.gold,
-              flexShrink: 0,
-            }}
-          >
-            {WIND_GLYPH[model.seatWind]}
-          </span>
-          {dense && model.isDealer ? (
-            // Dense rows carry the same 莊 chip as the full badge, one
-            // size down, at the end of the name line — a dot on the
-            // avatar read as a rendering glitch at this size.
-            <span
-              aria-label="Dealer"
-              style={{
-                flexShrink: 0,
-                padding: '1px 4px',
-                borderRadius: 5,
-                lineHeight: 1.2,
-                background: GLASS.red,
-                color: 'white',
-                fontFamily: GLASS.serif,
-                fontSize: 9,
-                fontWeight: 700,
-                boxShadow: '0 1px 4px rgba(177,77,58,0.45)',
-              }}
-            >
-              莊
-            </span>
-          ) : null}
-          {botLabel && !compact ? (
-            <span style={{ fontSize: 9, fontWeight: 700, color: GLASS.text2, letterSpacing: 0.4 }}>
-              {botLabel}
-            </span>
-          ) : null}
         </span>
-        <span
-          style={{
-            fontSize: compact ? 9.5 : 10,
-            fontWeight: 700,
-            letterSpacing: 0.6,
-            color:
-              cue || (model.isActive && model.turnCountdown !== null) ? GLASS.gold : GLASS.text2,
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {sub}
-        </span>
-      </span>
-      {model.isDealer && !dense ? (
+      )}
+      {model.isDealer && !dense && !glyphOnly ? (
         <span
           aria-label="Dealer"
           style={{

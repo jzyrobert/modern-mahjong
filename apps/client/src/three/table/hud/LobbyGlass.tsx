@@ -722,11 +722,16 @@ export function LobbyGlass(props: Lobby3DViewProps) {
             </div>
           ) : phonePortrait ? (
             <>
-              {/* Phone portrait: Seats, Bot skill and the collapsed Rules
-                  share one panel split by hairlines, capped so the Start /
-                  Leave row and a band of the waiting table stay on screen;
-                  when it still overflows (invite card, long names) it
-                  scrolls inside with a fade as the cue. */}
+              {/* Phone portrait: Seats, Bot skill and the Rules share one
+                  panel split by hairlines, capped so the Start / Leave row
+                  and a band of the waiting table stay on screen; when it
+                  still overflows (invite card, long names) it scrolls
+                  inside with a fade as the cue. Collapsed Rules pin as the
+                  panel's own footer row *under* the scroll region, so the
+                  summary is never the line that sinks below the fold: on a
+                  360×640 phone it sat clipped under the fade cue (round-6).
+                  A tap expands it in place (its row grows, the scroll
+                  region above gives way). */}
               <GlassPanel
                 testID="lobby-portrait-panel"
                 style={{
@@ -740,49 +745,75 @@ export function LobbyGlass(props: Lobby3DViewProps) {
                 }}
               >
                 <div
-                  ref={panelRef}
-                  data-testid="lobby-portrait-scroll"
                   style={{
-                    padding: `${PHONE_PANEL_PAD + 2}px ${PHONE_PANEL_PAD + 2}px`,
-                    display: 'grid',
-                    gap: 12,
+                    position: 'relative',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    flex: '1 1 auto',
                     minHeight: 0,
-                    overflowY: 'auto',
                   }}
                 >
-                  {inviteCard}
-                  <div style={column}>{seatsBody}</div>
-                  {botsBody ? (
+                  <div
+                    ref={panelRef}
+                    data-testid="lobby-portrait-scroll"
+                    style={{
+                      padding: `${PHONE_PANEL_PAD + 2}px ${PHONE_PANEL_PAD + 2}px`,
+                      display: 'grid',
+                      gap: 12,
+                      minHeight: 0,
+                      overflowY: 'auto',
+                    }}
+                  >
+                    {inviteCard}
+                    <div style={column}>{seatsBody}</div>
+                    {botsBody ? (
+                      <div
+                        data-testid="lobby-portrait-bots"
+                        style={{
+                          ...column,
+                          paddingTop: 12,
+                          borderTop: '1px solid rgba(255,255,255,0.1)',
+                        }}
+                      >
+                        {botsBody}
+                      </div>
+                    ) : null}
+                    {rulesCollapsed ? null : (
+                      <div style={{ paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                        {rulesBody}
+                      </div>
+                    )}
+                  </div>
+                  {moreBelow ? (
                     <div
-                      data-testid="lobby-portrait-bots"
+                      data-testid="lobby-panel-fade"
+                      aria-hidden="true"
                       style={{
-                        ...column,
-                        paddingTop: 12,
-                        borderTop: '1px solid rgba(255,255,255,0.1)',
+                        position: 'absolute',
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        height: PANEL_FADE_H,
+                        pointerEvents: 'none',
+                        background:
+                          'linear-gradient(180deg, rgba(14,20,17,0) 0%, rgba(14,20,17,0.92) 100%)',
                       }}
-                    >
-                      {botsBody}
-                    </div>
+                    />
                   ) : null}
-                  <div style={{ paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                </div>
+                {rulesCollapsed ? (
+                  <div
+                    data-testid="lobby-portrait-rules"
+                    style={{
+                      flex: '0 0 auto',
+                      maxHeight: '75%',
+                      overflowY: 'auto',
+                      padding: `0 ${PHONE_PANEL_PAD + 2}px 4px`,
+                      borderTop: '1px solid rgba(255,255,255,0.1)',
+                    }}
+                  >
                     {rulesBody}
                   </div>
-                </div>
-                {moreBelow ? (
-                  <div
-                    data-testid="lobby-panel-fade"
-                    aria-hidden="true"
-                    style={{
-                      position: 'absolute',
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      height: PANEL_FADE_H,
-                      pointerEvents: 'none',
-                      background:
-                        'linear-gradient(180deg, rgba(14,20,17,0) 0%, rgba(14,20,17,0.92) 100%)',
-                    }}
-                  />
                 ) : null}
               </GlassPanel>
               <div data-testid="lobby-portrait-actions" style={{ flex: 'none' }}>

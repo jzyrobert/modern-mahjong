@@ -39,6 +39,7 @@ import {
   RAIL_H,
   RAIL_WIDTH,
   type Rel,
+  type RowTuning,
   computeLayout,
   dealerChipLocal,
   relOf,
@@ -115,8 +116,10 @@ export interface SyncInput {
   sideSeatOut?: number | undefined;
   /** Far seat's outward shift — see `LayoutOptions.farSeatOut`. */
   farSeatOut?: number | undefined;
-  /** Right seat's melds at the near end — see `LayoutOptions.sideMeldsNear`. */
+  /** Side seats' melds at their left (heel) end — see `LayoutOptions.sideMeldsNear`. */
   sideMeldsNear?: boolean | undefined;
+  /** Camera-sized row gaps — see `LayoutOptions.rows`. */
+  rows?: RowTuning | undefined;
   /** Side seats' meld scale — see `LayoutOptions.sideMeldScale`. */
   sideMeldScale?: number | undefined;
   /** Far seat's melds stood on the rail — see `LayoutOptions.farMeldsOnRail`. */
@@ -773,6 +776,7 @@ export class TableScene {
       sideSeatOut: input.sideSeatOut,
       farSeatOut: input.farSeatOut,
       sideMeldsNear: input.sideMeldsNear,
+      rows: input.rows,
       sideMeldScale: input.sideMeldScale,
       farMeldsOnRail: input.farMeldsOnRail,
       hideSideSeats: input.hideSideSeats,

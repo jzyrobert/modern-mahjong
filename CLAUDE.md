@@ -650,6 +650,64 @@ CC0-only asset policy, verifier rules. Operational notes:
   (lobby framing tests, HUD anchors near a corner, the river-interior
   rect) must read `WALL_END` / `WALL_OVERHANG_*` / `wallInnerFaceAt`
   rather than assume a straight ±8.74 run at z 8.12–9.48.
+- **Row gaps at the wall overhangs are sized by the camera, not the
+  felt** (`layout.RowTuning` / `rowTuningFor(camera.position)`, passed
+  as `LayoutOptions.rows` by the shell; round-6). The world-space
+  floors (`ROW_OVERHANG_GAP` 1.0 / `OWN_ROW_OVERHANG_GAP` 0.6) keep the
+  felt clear, but two overhang contacts are projections: the near
+  wall's tip stands *between the camera and the right seat's near end*,
+  so its two-high top face hides the felt out to its shadow (0–2 px of
+  felt at 1.0 on the phones, 0.87 deep on landscape) — the gap is that
+  shadow + `ROW_OVERHANG_FELT` (≈ 1.34 at 412×700, 1.54 at 360×640,
+  2.27 landscape, 1.39 desktop, the floor on the 70° tall phone); and
+  on landscape the *raised* top-left corner of the leaned 14-tile hand
+  casts onto the left wall's inner face (0 px of felt with 0.88 of
+  world clearance), so the own row slides right until the corner's
+  shadow keeps `OWN_ROW_OVERHANG_FELT` off the face (≈ 1.5 → the
+  14-tile hand slides 0.63; 0.74 on desktop, inside the centred hand).
+  Reason about these with `feltShadow` (camera → point → y = 0), never
+  with world distances alone — the round-4 side-seat note that "a ray
+  at 31° crosses the wall's outer edge at y ≈ 0.91" was wrong by 3×
+  (the ray descends 9.06 over ~20 units, so it crosses at ≈ 0.3).
+  `layout.test.ts` pins the numbers against the real presets.
+- **Side seats' melds go at the owner's *left* end** (`sideMeldsNear`,
+  both rel 1 and rel 3): a side row's left end lies beside its own
+  wall's *heel* half (yawed in, outer face 9.16–9.52), its right end
+  beside the overhanging half (out to 9.88) whose top face projects
+  0.3–1.6 further onto the felt — melds there read as wedged under the
+  wall on every camera (round-6). For the right seat the left end is
+  also the near end (round-4 #1 legibility); the left seat's melds
+  moved from its near end to its far end for this. Landscape residual:
+  even at the heel half the 31° camera hides ~0.1–0.25 of a flat
+  meld's inner edge behind the two-high stacks (nothing inside the
+  11.9 felt clears a 1.24-high wall from that angle).
+- **Portrait dealer chip sits in front of the near wall's heel**
+  (`dealerChipLocal`, `CHIP_FRONT_GAP` / `CHIP_HEEL_OVERLAP`): on the
+  felt strip between the wall and the rail that the held hand leaves
+  empty at its left — nearer the camera than every stack, so no top
+  face can project onto it; 0.62 to the left wall's tip, 1.0 to the
+  rail. The pinwheel pocket between the left wall and the heel is 1.72
+  wide for a 1.12 chip (round-6 "wedged"). Four *claimed* held melds
+  (18.9 wide, right-aligned at 10.7) reach −8.25 and lie over it — the
+  accepted edge case; three groups or four concealed gangs clear it.
+- **The landscape hand's silhouette top is ≈ 292 CSS px for any lean**
+  (round-6 item "hand row stands in front of the near wall's lower
+  row", 7–12 px of overlap): the tile's 1.36 face height sets the
+  silhouette — leaning it further back lowers the top-back edge but
+  raises the top-front edge onto the same screen line, and standing it
+  up reveals the top face at that line (measured: `HAND_TILT` 0.3 moved
+  nothing). Closing the seam needs the hand ≥ 10 px lower or the near
+  wall higher — the camera / footer
+  (`cameraPresets.TABLE_CAMERA['phone-landscape']`, 9 px of footer
+  slack), not `layout.ts`.
+- **Parallel agents share the session scratchpad.** Four worktrees
+  running from one session write to the same
+  `/tmp/claude-0/.../scratchpad`; a sibling clobbered an unprefixed
+  `before-shots.log` mid-run. Prefix scratch files with the worktree
+  slug (`r6t-*`) and keep PNG output under the worktree
+  (`apps/client/shots/<label>/`). Under 3–4 concurrent SwiftShader
+  runs the `START_SOLO` recipe clicks (20 s) time out sporadically —
+  re-shoot failures rather than treating them as regressions.
 - **Dead wall = darker back shade only; own melds = plain aligned rows**
   (round-4 feedback). The 14 dead tiles are told apart by `aBackVariant`
   selecting `uDeadBack*` (`materials.deadBackColors`, same hue, darker)
