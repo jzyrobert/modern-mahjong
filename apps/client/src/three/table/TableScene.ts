@@ -234,6 +234,9 @@ const CUE_HALO_HAND_PAD = 2.0;
 const CUE_HALO_HAND_FRONT = 0.45;
 /** Cue halo opacity at rest (pulses a little above and below it): the draw disc … */
 const CUE_HALO_OPACITY = 0.78;
+/** Felt scale while the portrait zoom hides the walls and rail: the
+ *  near edge moves from 12.2 to ~15.9 world units, under the held hand. */
+const ZOOM_FELT_SCALE = 1.3;
 /**
  * Discard-hint frame (see `hintFrame`), world units: glow margin past
  * the face on each side, stroke bleed past the face edge as a fraction
@@ -872,6 +875,11 @@ export class TableScene {
     // the held hand's two rows, so the back row read as lying on the
     // felt and the front row as off the table (round-4 critic).
     this.railMesh.visible = input.hideWalls !== true;
+    // …and the felt grows past its edge so the held hand's two rows both
+    // sit on cloth: from the plan view the felt's edge otherwise crossed
+    // between the rows the way the rail did.
+    const feltScale = input.hideWalls === true ? ZOOM_FELT_SCALE : 1;
+    if (this.feltMesh.scale.x !== feltScale) this.feltMesh.scale.setScalar(feltScale);
     this.ctx.renderer.shadowMap.needsUpdate = true;
     this.ctx.loop.requestRender();
   }
