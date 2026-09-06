@@ -235,9 +235,15 @@ const CUE_HALO_HAND_PAD = 2.0;
 const CUE_HALO_HAND_FRONT = 0.45;
 /** Cue halo opacity at rest (pulses a little above and below it): the draw disc … */
 const CUE_HALO_OPACITY = 0.78;
-/** Felt scale while the portrait zoom hides the walls and rail: the
- *  near edge moves from 12.2 to ~15.9 world units, under the held hand. */
-const ZOOM_FELT_SCALE = 1.3;
+/**
+ * Felt scale while the portrait zoom hides the walls and rail. The
+ * held hand's front row stands ~19 world units out from the plan
+ * camera's centre on the tall phone (its bottom at CSS y 743 of 915),
+ * so the felt's near edge — 12.2 at rest — must reach past 20 for both
+ * rows to sit on cloth on every phone; 1.3× (15.9) still cut the front
+ * row on the 412×915 / 360×640 phones (round-4 final critic).
+ */
+const ZOOM_FELT_SCALE = 2.0;
 /**
  * Discard-hint frame (see `hintFrame`), world units: glow margin past
  * the face on each side, stroke bleed past the face edge as a fraction

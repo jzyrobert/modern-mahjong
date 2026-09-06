@@ -38,11 +38,20 @@ Every subsystem passed its art-director critic before the manual play-tests; the
 - **manual feedback round 1** — 18/18 user items fixed; area critics: mobile 7.9 → 8.4 → 8; table 7.3 → 7.7 → 8.1; tutorial 7.4 → 8.2 → 8.5 pass; settings 8.6 pass; input 8.7 pass. Table and mobile stayed under 8.5 on critic-added residuals (listed under table below).
 - **manual feedback round 2** — 5/5 user items fixed (discard-hint ring on the tile face, menu cream underlay + hero rack under the title, replay player on the 3D table, 和 seal off the save control); area critics: menu 8.6 pass (follow-up fixed the khaki app bar), replay 7.5 → 9.0 pass.
 - **manual feedback round 3** — 3/3 user items fixed (menu rack scrolls natively with the page, satin tile finish so the held hand stays even, tutorial body takes the room it has); critics: menu 8.9 pass, tutorial 7.5 → 9.0 pass.
+- **manual feedback round 4** — 12/12 user items fixed + the wall-layout request and its angle follow-up (menu scroll flicker + gentler parallax; plan-view river zoom; 7-tile hand rows; table parallax as a drift; in-scene 3D discard hint; contact glow under the hand; aligned own melds; dead-wall inlay removed; pinwheel walls with a 2.5° yaw); critics: menu 8.9 pass; table 8.3 → 8.2 (all user items verified fixed — the score is held under 8.5 by the wall-overhang projection residuals below; the zoom felt-edge high was fixed after the critic and shot-verified).
 - **replay** (latest critic: **9.0/10, pass**; 7.5 → 9.0):
   - [ ] [low] Compact timeline seam ~4 px / 2 frames off the rendered card edge (flex min-content vs weight maths; desktop exact) — _replay-player @ phone, phone-small, phone-landscape (frame 105)_
   - [ ] [low] Chapter result clips its faan on the 360 px strip ("Mei Ling wins · 0 …") — _replay-player-end @ phone-small_
   - [ ] [low] Speed / POV-All segments at 10 px, dealer 莊 glyph at 9 px vs the 11 px spec — _scrubber and badges @ all viewports_
-- **table (desktop + mobile)** (latest critic: **8.1/10, below 8.5**; 8.3 → 8.6 → 8.6 → 8.1):
+- **table (desktop + mobile)** (latest critic: **8.2/10, below 8.5**; 8.3 → 8.6 → 8.6 → 8.1 → 8.3 → 8.2):
+  - [ ] [medium] [mobile] Right seat's lowest meld reads wedged under the near wall's overhanging stack on the phone cameras (world gap 1.19–1.28, but the 2-high stack's top face projects onto the meld's edge: 2 px at phone, 0 at phone-small / phone-landscape) — size the near-end stop by projection (≈1.8 units portrait, ≈2.0 landscape) — _match-mid-hand @ phone, phone-small, phone-landscape (round-4 final critic)_
+  - [ ] [medium] [mobile] User's 14-tile hand meets the left wall's overhanging tip corner on phone-landscape (0 px felt at the row top) — cap that wall's along-reach at z ≤ OWN_HAND_Z − TILE_D/2 − 0.3 or slide the row — _match-dealt-dead-left @ phone-landscape_
+  - [ ] [medium] [mobile] Portrait dealer chip is wedged in the pinwheel pocket (0.24 units / 2–3 CSS px each side) — park it x-centred on the arm with a 0.45 radius, or on the rail shelf — _match-dealt-dead-left @ phone, phone-small_
+  - [ ] [low] Held-hand melds sit 0.09 units off the near wall's yawed tip by the layout's numbers (not reproducible in `match-two-melds`, whose near wall is drawn down) — add a recipe with the break on the far wall — _portrait, own melds while the near overhang stands_
+  - [ ] [low] [desktop] User's badge crowds the left wall's tip stack — drop it 12–16 px or anchor to the rail — _match-dealt-dead-left @ desktop_
+  - [ ] [low] [mobile] Early-hand river zoom still frames three empty river rows (1.3× over resting on 412×700) — fit to the rows present with grow-only hysteresis — _match-river-zoom-draw @ phone, phone-tall_
+  - [ ] [low] [desktop] Hint states run 13 draw calls (the hint quad; inside `BUDGETS.table`) — merge with the cue-halo draw — _match-discard-hint @ desktop, phone-landscape_
+  - [ ] [low] [desktop] Contact glow under the hand is faint at desktop (two end pools + a sliver) — consider 0.65 opacity on wide presets — _match-discard-hint @ desktop_
   - [ ] [medium] [desktop] Portrait 'Watch the wall run out' card hides the entire table (tutorial-owned) — _tutorial-drawn-game-2.phone.3d.png_
   - [ ] [low] [desktop] Landscape breakdown modal clips the TOTAL row and overlaps the coach card — _match-result-breakdown.phone-landscape.3d.png_
   - [ ] [low] [desktop] Breakdown header uses seat index instead of the player name — _match-result-breakdown at all viewports: 'Seat 0 wins — 2 faan', 'DISCARDED BY SEAT 1'_
@@ -50,7 +59,7 @@ Every subsystem passed its art-director critic before the manual play-tests; the
   - [ ] [low] [desktop] Desktop sort control sits over the rail's bottom-right mitre — _critic-crops/corner-BR (match-my-turn.desktop)_
   - [ ] [medium] [mobile] Side-seat melds sit flush against the side walls (portrait + landscape) — _phone/match-mid-hand, phone-small/match-mid-hand, phone-landscape/match-claim + match-mid-hand_
   - [ ] [medium] [mobile] Landscape hand row stands in front of the near wall's lower row — _phone-landscape/match-dealt, match-mid-hand, match-claim — hand top ≈282 CSS, wall front face visible to the seam_
-  - [ ] [medium] [mobile] Portrait river-zoom toast lands on the near wall's tile backs — _phone/match-river-zoom (toast y≈350-392 CSS over wall backs y≈345-395), phone-small/match-river-zoom (same, mid-fade)_
+  - [x] [medium] [mobile] Portrait river-zoom toast lands on the near wall's tile backs — _fixed in round 4: the zoom lays out no wall; the toast slot is the felt under the block / the header row._
   - [ ] [medium] [mobile] 360x640 lobby: collapsed RULES summary row is buried under the panel fade — _phone-small/match-lobby — 'RULES Min 0 faan · no timer' clipped at the panel's bottom edge under the fade cue_
   - [ ] [low] [mobile] Result panel winning hand wraps 12 + 2 at 360 wide — _phone-small/match-result_
   - [ ] [low] [mobile] Seat badges vanish for the whole toast hold on short phones — _phone + phone-small: match-claim, match-mid-hand, match-claim-toast_
@@ -66,7 +75,10 @@ Every subsystem passed its art-director critic before the manual play-tests; the
   - [ ] [low] Landscape dice step leaves a sliver of hand tile tops between modal and card — _tutorial-basics-0 @ phone-landscape_
   - [ ] [low] Last live wall tile spotlight reads as a plain cream slab — _tutorial-drawn-game-2 @ desktop (1075-1120 x 640-700) and phone-landscape (1500-1570 x 500-580)_
   - [ ] [low] Phone dice step card hides the footer badge and sort control completely — _tutorial-basics-0 @ phone_
-- **menu** (latest critic: **8.9/10, pass**; 8.5 → 8.6 → 8.6 → 8.9):
+- **menu** (latest critic: **8.9/10, pass**; 8.5 → 8.6 → 8.6 → 8.9 → 8.9):
+  - [ ] [low] Drift-tile fragments clip in at both viewport edges level with the rack on the 360 px phone — _menu @ phone-small (round-4 critic)_
+  - [ ] [low] A rotation costs three drift re-fits (width change) — coalesce to one — _menu, rotate 412×700 → 700×412_
+  - [ ] [low] On a slow main thread the scene chunk can fetch before FCP (after first paint) — gate the idle import on FCP as well — _menu @ phone, CPU-throttled_
   - [x] Replay shelf could freeze mid-intro (last tween frame never rendered) — _fixed with the hero-canvas round (ShelfScene renders the landing frame)._
   - [ ] [low] Desktop rack sits 7.8 px above the first card (target ≥ 8) — _menu @ desktop_
   - [ ] [low] Portrait drift field is reduced to viewport-edge slivers at the rack's height — _menu @ phone, phone-small, phone-tall_

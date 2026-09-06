@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "updatedAt": "2026-09-05T03:59:09.435Z",
+  "updatedAt": "2026-09-06T02:59:48Z",
   "round": 4,
   "passThreshold": 8.5,
   "subsystems": {
@@ -1471,6 +1471,139 @@
           "item": "The text reserved for the current step is small vertically, so the user has to scroll a lot",
           "status": "fixed",
           "note": "Body cap derived from the room the placement has (bodyCap.ts), whole text when it fits, dense/tight frames on short phones, strips fill their band, card reveals once at final geometry. Critic: whole text on every 412-wide state (claims-0 4/4, scoring-0 7/7, basics-4 4/4); 360x640 >= 3 lines + cue; round 1 regression (basics-4 over the hand) fixed, 210 px clear."
+        }
+      ]
+    },
+    {
+      "id": "fb4",
+      "at": "2026-09-06T02:59:48Z",
+      "source": "fourth manual play-test on the Pages preview (Android phone + desktop browser); 12 items + a wall-layout request and a follow-up on its angle",
+      "areas": {
+        "menu": {
+          "rounds": [
+            {
+              "score": 8.9,
+              "pass": true,
+              "errors": 0,
+              "fixed": 2,
+              "total": 2
+            }
+          ],
+          "final": 8.9,
+          "pass": true,
+          "note": "scroll flicker (synchronous redraw after a real canvas resize; hero / drift fit and portrait band height keyed on viewport width) and 40 % pointer parallax both verified by probe: heroRelayouts / driftRelayouts / viewOffsetApplies flat across a +100 px URL-bar resize mid-scroll, 37 screencast frames with no blank canvas; rack +0.9 px, dice +8.5 px edge to edge at 1440x900"
+        },
+        "table": {
+          "rounds": [
+            {
+              "score": 8.3,
+              "pass": false,
+              "errors": 0,
+              "fixed": 7,
+              "total": 7,
+              "note": "all seven user items verified fixed (zoom plan view, 7-tile rows, parallax 3 px edge-to-edge, hint marker <= 0.27 px off the face, contact glow, aligned melds, 0 gold px on the walls); high: the near rail projected between the held hand's rows in the zoom"
+            },
+            {
+              "score": 8.2,
+              "pass": false,
+              "errors": 0,
+              "fixed": 1,
+              "total": 3,
+              "note": "final build: dead-wall shade fixed (dead/live top luminance 0.70-0.75, was 0.80-0.88); zoom rail gone but the 1.3x felt edge still crossed the front row on 412x915 / 360x640 (fixed after the critic: ZOOM_FELT_SCALE 2.0, shot-verified at phone-tall / phone-small / phone); wall yaw perceptible and natural, world clearances 0.88-1.28, but the phone cameras still project the near wall's overhang top face onto the right seat's lowest meld and the left tip's corner onto the user's 14th tile in landscape; portrait dealer chip 0.24 units each side in the pinwheel pocket"
+            }
+          ],
+          "final": 8.2,
+          "pass": false,
+          "note": "residuals carried in TODO.md (table); the felt-edge high was fixed after the final critic and verified by shot"
+        },
+        "walls": {
+          "rounds": [
+            {
+              "score": 7.8,
+              "pass": false,
+              "errors": 0,
+              "fixed": 1,
+              "total": 1,
+              "note": "pinwheel stagger 2.0 reads like the photo at every viewport; two overhang contacts (own 14-tile hand 0.20 from the left tip, right seat's melds 0.6-0.87 from the near tip) -> the yaw follow-up opened them to 0.88-1.28 and added the 2.5 deg wall yaw the user asked for; re-scored inside the final table critic"
+            }
+          ],
+          "final": null,
+          "pass": null,
+          "note": "folded into the final table critic round"
+        }
+      },
+      "userItems": [
+        {
+          "area": "Mobile",
+          "item": "Main menu background tiles don't jitter anymore but they flicker when scrolling",
+          "status": "fixed",
+          "note": "Android URL-bar retract fires resize mid-scroll: the hero canvas re-fitted (viewOffsetApplies 2->4), the drift canvas re-fitted and every setSize presented a cleared frame before the next rAF. Loop.renderNow redraws synchronously after a real resize; hero frame / drift fit / portrait band height keyed on viewport width; new e2e + 4 vitest files. Critic 8.9 pass."
+        },
+        {
+          "area": "Mobile",
+          "item": "Zooming into the table should present a more top-down close-up view of the discard tiles",
+          "status": "fixed",
+          "note": "84 deg plan view over the four rivers (riverZoomFrameFor): far river 4 px under the header, tight river block, no wall / side seat / rail laid out while zoomed, felt extended under the held hand, tray carries the Draw pill. Tiles 33 / 25 / 20 px on 412x915 / 412x700 / 360x640, glyphs face-on (aspect >= 0.97 TILE_H)."
+        },
+        {
+          "area": "Mobile",
+          "item": "With 7 tiles left they are shown in one row, so after a draw the outer tiles are only partially visible",
+          "status": "fixed",
+          "note": "heldRowSplit reserves the drawn slot: 7 -> 4+3 -> 4+4, back row stable across draw / discard; every hand tile inside the viewport at 412x700 and 360x640 (e2e)."
+        },
+        {
+          "area": "Desktop",
+          "item": "Moving the mouse left and right constantly rotates the table a little (nauseating)",
+          "status": "fixed",
+          "note": "Table + replay parallax 0.45 / 0.15 s -> 0.08 units / 0.5 s half-life (TABLE_PARALLAX, CameraRig.parallaxHalfLife): ~3 px edge-to-edge drift settling over ~1.7 s, no measurable movement from a 1 Hz sweep."
+        },
+        {
+          "area": "Desktop",
+          "item": "Menu animation on mouse movement should be reduced",
+          "status": "fixed",
+          "note": "three/menu/parallax.ts: camera 0.35 -> 0.14, hero 0.22/0.10 -> 0.09/0.04, drift 0.35+1.1d -> 0.14+0.44d, smoothing 0.16 -> 0.42 s. Critic: rack +0.9 px, dice +8.5 px, drift 22-29 px edge to edge."
+        },
+        {
+          "area": "Desktop",
+          "item": "Discard hint not correctly aligned; make it a 3D effect (mobile too)",
+          "status": "fixed",
+          "note": "In-scene gold frame quad following the hinted tile's pose every frame (+0.08 lift, breathing 6 s then still); marker vs face offset <= 0.27 px on desktop / phone / phone-small / landscape; DOM ring gone (zero-visual testid span kept). +1 draw call."
+        },
+        {
+          "area": "Desktop",
+          "item": "The golden glow behind the hand on your turn does not fit in; change it or move it below the tiles",
+          "status": "fixed",
+          "note": "Contact glow at the tiles' feet: centre +0.45 toward the camera (was -0.85 behind), depth 0.9, opacity 0.55, feathered ends; nothing behind the row, faces and rail untouched."
+        },
+        {
+          "area": "Desktop",
+          "item": "Own chi tiles show one tile incorrectly offset",
+          "status": "fixed",
+          "note": "OWN_MELD_CLAIM_STEP removed: standing own melds are one aligned row (peng + chi verified at desktop and landscape)."
+        },
+        {
+          "area": "General",
+          "item": "Peng / chi groups are not the same orientation for every player",
+          "status": "by design",
+          "note": "Kept at the user's request: own melds stand upright facing the player (round-1 item); opponents' melds lie flat with the claimed tile turned."
+        },
+        {
+          "area": "General",
+          "item": "Tiles on some sides have extra yellow stripes",
+          "status": "fixed",
+          "note": "The dead-wall gold inlay (uDeadInlay, aStackTop, TileSlot.stackTop) is removed; the dead wall is the darker back shade only (deadBackColors L x0.52, S x0.9): 0 gold pixels on the walls, dead/live top luminance 0.70-0.75."
+        },
+        {
+          "area": "General",
+          "item": "Display the tile walls like on a real (automatic) mahjong table",
+          "status": "fixed",
+          "note": "Pinwheel: WALL_STAGGER 2.0 along each wall's axis toward its owner's right, rotationally symmetric; overhang 1.14 inside the felt edge, retreated end 1.38 short of the perpendicular wall; live wall drains leftward and enters the next wall at its overhanging end."
+        },
+        {
+          "area": "General",
+          "item": "The walls are staggered but not at a slight angle like a real table",
+          "status": "fixed",
+          "note": "WALL_YAW 2.5 deg per wall about its centre (overhanging end toward the owner's rail), row clearances (rowLeftLimit, SIDE_SEAT_OUT_PORTRAIT, FAR_SEAT_OUT, OWN_MELD_Z_HELD); critic: perceptible, reads as a hand-pushed wall, consistent on all four walls; residual projection contacts on the phone cameras listed in TODO."
         }
       ]
     }
