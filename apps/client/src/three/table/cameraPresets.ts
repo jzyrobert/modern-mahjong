@@ -43,16 +43,24 @@ export function classifyViewport(width: number, height: number): ViewportClass {
  * held hand.
  */
 export const TABLE_CAMERA: Record<Exclude<ViewportClass, 'phone-portrait'>, CameraPreset> = {
-  // Solved numerically (30° camera elevation, 17.7 units from the
-  // target) for a 915×412 viewport: a hand tile is 45 CSS px wide with
-  // its bottom edge at y ≈ 360 — 9 px above the 37 px footer strip that
-  // hosts the claim bar (round-3: at y ≈ 364 the strip's border touched
-  // the tiles) — the near wall's backs at y ≈ 234–305 with the hand's
-  // top edge meeting their bottom, the far wall's top edge at y ≈ 57 —
-  // below the 46 px chrome row and its toast slot — and a ~62 px
-  // free-felt band between a one-row river and the near wall. The pan
-  // (target z 4.55, +0.27 vs. round 2) lifts the whole table 4 px.
-  'phone-landscape': { position: [0, 9.06, 20.25], target: [0, 0, 4.55], fov: 42 },
+  // Solved numerically (27° camera elevation, 19 units from the target)
+  // for a 915×412 viewport: a hand tile is 44.1 CSS px wide at its
+  // centre depth (45.3 across its projected box — the 44 px touch floor
+  // either way) with its bottom edge at y ≈ 359.5 — 7.5 px above the
+  // 45 px footer strip that hosts the claim bar (round-3: at y ≈ 364 the
+  // strip's border touched the tiles) — the far wall's top edge at
+  // y ≈ 79 and the far seat's rail-standing melds' tops at y ≈ 58, ≥ 8
+  // px under the 46 px chrome row (round-6: at 31° / 45 px tiles the
+  // melds stood at y ≈ 35, inside the row of pills). Lower than the
+  // round-3 31° by 4°: with the hand pinned to the footer the far side
+  // comes down as the table foreshortens (≈ 6 px per degree at the far
+  // rail), the one lever that moves it without shrinking the tiles; the
+  // river's flat faces lose 9 % of their height (sin 27° / sin 31°),
+  // which the landscape zoom exists for. Not higher: the hand's
+  // silhouette top (≈ 1.3 above the felt for any lean) meets the near
+  // wall's stack seam on every camera between 25° and 35° — see the
+  // CLAUDE.md note on the landscape hand / near-wall tangency.
+  'phone-landscape': { position: [0, 8.63, 20.67], target: [0, 0, 3.72], fov: 42 },
   // Cinematic 3/4 view with the full table in frame.
   desktop: { position: [0, 22, 25], target: [0, 0, 1.5], fov: 40 },
 };

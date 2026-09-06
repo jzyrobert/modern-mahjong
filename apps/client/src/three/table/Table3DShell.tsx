@@ -78,10 +78,12 @@ import {
   RAIL_TOP,
   RAIL_WIDTH,
   type Rel,
+  SIDE_MELD_GAP_BEHIND,
   SIDE_MELD_SCALE_PORTRAIT,
   SIDE_SEAT_OUT_DESKTOP,
   SIDE_SEAT_OUT_LOW,
   SIDE_SEAT_OUT_PORTRAIT,
+  SIDE_WALL_IN_LOW,
   WALL_OVERHANG_OUTER,
   meldsRowWidth,
   orderOwnHand,
@@ -89,7 +91,7 @@ import {
   toWorld,
   zoomMeldShelf,
 } from './layout';
-import { type ScreenRect, padRect, rectsClose, unionRects } from './picking';
+import { type ScreenRect, type TileCornerPoint, padRect, rectsClose, unionRects } from './picking';
 
 /**
  * The Three.js match shell `Match.tsx` mounts when the renderer
@@ -167,12 +169,22 @@ declare global {
   // eslint-disable-next-line no-var
   var __MAHJONG_DEBUG_TILE_SHEET__: boolean | undefined;
   // eslint-disable-next-line no-var
-  var __MAHJONG_TABLE_3D_DEBUG__: (() => TableDebugSnapshotWithRects | null) | undefined;
+  var __MAHJONG_TABLE_3D_DEBUG__:
+    | ((opts?: TableDebugOptions) => TableDebugSnapshotWithRects | null)
+    | undefined;
 }
 
-/** The scene's debug snapshot with every tile's projected screen rect (test seam). */
+/** `__MAHJONG_TABLE_3D_DEBUG__` options: `corners` adds every tile's box corners (`TableScene.tileCorners`). */
+export interface TableDebugOptions {
+  corners?: boolean | undefined;
+}
+/**
+ * The scene's debug snapshot with every tile's projected screen rect and,
+ * on request, its box corners (test seam). The corners are opt-in so the
+ * motion samplers, which poll this at 40 ms, keep their snapshot cheap.
+ */
 export interface TableDebugSnapshotWithRects extends TableDebugSnapshot {
-  tiles: (TableDebugTile & { rect: ScreenRect | null })[];
+  tiles: (TableDebugTile & { rect: ScreenRect | null; corners?: TileCornerPoint[] | null })[];
 }
 
 /**
@@ -274,8 +286,9 @@ const REL_OF_POSITION: Record<Position, Rel> = { bottom: 0, right: 1, top: 2, le
 const CHROME_H = 44;
 /**
  * Landscape chrome runs 38 px under an 8 px pad so the row's bottom edge
- * (y = 46) clears the far wall's projected top (y ≈ 54–61) by ≥ 8 px
- * instead of touching it.
+ * (y = 46) clears the far seat's rail-standing melds (tops at y ≈ 56 from
+ * the 27° preset) and the far wall's projected top (y ≈ 79) by ≥ 8 px
+ * instead of touching them.
  */
 const CHROME_H_LANDSCAPE = 38;
 /**
@@ -479,11 +492,18 @@ export function Table3DShell(props: Table3DShellProps) {
   // Test / debug seam: the e2e spec + the screenshot verifier read the
   // live tile poses through this (never used by the app itself).
   useEffect(() => {
-    globalThis.__MAHJONG_TABLE_3D_DEBUG__ = () => {
+    globalThis.__MAHJONG_TABLE_3D_DEBUG__ = (opts) => {
       const scene = sceneRef.current;
       if (!scene) return null;
       const snap = scene.debugSnapshot(performance.now());
-      return { ...snap, tiles: snap.tiles.map((t) => ({ ...t, rect: scene.tileRect(t.id) })) };
+      return {
+        ...snap,
+        tiles: snap.tiles.map((t) => ({
+          ...t,
+          rect: scene.tileRect(t.id),
+          ...(opts?.corners ? { corners: scene.tileCorners(t.id) } : {}),
+        })),
+      };
     };
     return () => {
       globalThis.__MAHJONG_TABLE_3D_DEBUG__ = undefined;
@@ -573,7 +593,16 @@ export function Table3DShell(props: Table3DShellProps) {
         // Rows keep camera-sized felt from the wall overhangs (the right
         // seat's near end under the near wall's tip; the 14-tile hand at
         // the left wall's tip on landscape).
-        rows: goal ? rowTuningFor([goal.x, goal.y, goal.z]) : undefined,
+        rows: goal ? rowTuningFor([goal.x, goal.y, goal.z], ls ? SIDE_WALL_IN_LOW : 0) : undefined,
+        // Landscape: the side walls step toward the centre so their two-
+        // high silhouettes end inside the side seats' flat melds' inner
+        // edges from the low camera (`SIDE_WALL_IN_LOW`); the near and far
+        // walls stay.
+        sideWallIn: ls ? SIDE_WALL_IN_LOW : 0,
+        // Landscape: the left seat's melds lie behind its rack from the
+        // low camera; a wider gap keeps the rack's end tile off them
+        // (`SIDE_MELD_GAP_BEHIND`).
+        leftMeldGap: ls ? SIDE_MELD_GAP_BEHIND : undefined,
         sideMeldScale: heldRef.current ? SIDE_MELD_SCALE_PORTRAIT : 1,
         // Wide presets: the user's melds stand in the hand row, faces to
         // the camera (the held portrait hand keeps its flat felt melds).
