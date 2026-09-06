@@ -1,3 +1,5 @@
+import '@/src/replay/fixture';
+
 import { ReplayLibrary } from '@/src/ui/replay/ReplayLibrary';
 
 /**

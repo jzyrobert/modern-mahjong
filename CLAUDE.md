@@ -248,6 +248,18 @@ Hosting: **do not** commit the PNGs to the PR branch — they'd land on
    the merged PR body will 404, but that's fine — reviewers only need
    them while the PR is open.
 
+**Keep every image URL under ~150 characters.** The GitHub MCP write
+path (`update_pull_request`, comments) code-wraps any URL longer than
+that in double backticks, which silently breaks the `<img>` / `![]()`
+and the screenshot renders as a broken link. Measured on PR #434: the
+125-char `github.com/<owner>/<repo>/raw/<branch>/<path>/` prefix plus a
+32-char filename was wrapped, 31 chars was not, and the same body was
+otherwise untouched. Use a short sidecar slug and folder
+(`claude/3d-screenshots` + `docs/screenshots/3d/`) rather than the
+long descriptive form, prefer `github.com/.../raw/...` over
+`raw.githubusercontent.com` (11 chars shorter), and read the PR back
+after updating to confirm no `` `` `` landed around a URL.
+
 Any ad-hoc Playwright spec written purely to drive these shots stays
 untracked — it's a capture tool, not test coverage, and committing it
 clutters the suite. Stash or delete it after the shots are saved.
@@ -413,3 +425,253 @@ short edge is near the breakpoint and the keyboard opens.
 - `pnpm test` covers the engine + server unit tests; the server tests in
   particular guard the snapshot/restore round-trip, the host-only action
   gate, and the spectator viewer count.
+
+## Three.js render layer (`apps/client/src/three/`)
+
+ARCHITECTURE.md is the contract: folder-per-subsystem, perf budget,
+CC0-only asset policy, verifier rules. Operational notes:
+
+- **Renderer switch**: `resolveRenderer(settings.renderer)` in
+  `src/three/renderer.ts`. Precedence: `__MAHJONG_TEST_RENDERER__`
+  global > `?renderer=classic|3d` query > persisted setting > auto
+  (3D on web with WebGL2, classic elsewhere / native). The legacy
+  Playwright suite pins `classic` through `e2e/_helpers.ts` (the
+  fixture also wraps `browser.newContext`, so every spec must import
+  `test` from `./_helpers`, never from `@playwright/test`). New 3D specs
+  are `e2e/three-*.spec.ts` and pin `'3d'` themselves.
+- **Platform split**: consumers import from `src/three/entry` (native
+  stub exporting `null`s) — Metro picks `entry.web.tsx` on web. Always
+  null-check the exports. Nothing under `src/three/` other than
+  `renderer.ts` and `entry.tsx` may be imported by universal code.
+- **Evidence rule**: no visual claim without a screenshot from
+  `node scripts/shot.mjs --state <name> --viewport
+  phone|phone-tall|phone-small|phone-landscape|desktop --renderer
+  3d|classic [--dist dist-x] [--label run]` (writes PNG + JSON with
+  console/page errors, `__MAHJONG_PERF__`, budget verdict to
+  `apps/client/shots/<label>/`). Recipes live in
+  `scripts/shot-states.mjs`; add a recipe rather than hand-driving. The
+  tool needs an export first (`npx expo export --platform web
+  [--output-dir dist-x]`, ~35 s). It runs on SwiftShader — gate on draw
+  calls / triangles / programs / JS frame time, not fps.
+- **Phone viewports are a phone *in a browser***: `phone` is 412×700
+  CSS px at dpr 2.625 (1080×1830 device px once Chrome's address bar
+  and the system bars take their share of a 1080×2400 panel). The
+  full-screen 412×915 (installed PWA / fullscreen) is `phone-tall`,
+  and `phone-small` is a 360×640 budget phone. Every portrait match
+  state must compose at `phone` and `phone-small`, not only at the tall
+  size (round-5 feedback: the tall-only tuning zoomed the table out into
+  a 280 px square with void columns on a real phone). A recipe pinned
+  to `viewport: 'phone'` shoots at whichever portrait phone size the
+  CLI asks for. Portrait maths that must give ground on short phones
+  goes through `cameraPresets.portraitMetrics(height)` /
+  `portraitFitFor` rather than per-size constants. Short-phone rules
+  that follow from the pitched camera: portrait toasts take the seat
+  strip's row (`data-toast-slot="strip"`, badges step aside) because
+  the far rail sits ~10 px under the strip; the tutorial's opening-dice
+  step parks the held hand below the viewport (`heldHandParkedBaseline`,
+  `data-hand-parked`) so the dense dice card and the lesson card share
+  the band, centred as a pair (`portraitDiceLessonTop`) rather than
+  pinned under the strip; the portrait lobby is one scrolling panel
+  over a 56 px felt band (`LOBBY_PORTRAIT_FELT_BAND`) with Start /
+  Leave pinned under it, and its Rules card collapses to the summary
+  row only when the expanded card would overflow the capped panel
+  (`usePortraitRulesCollapse` — the tall phone keeps it expanded);
+  the 360×640 result card pins to the top (`resultPanelPinsTop`) so the
+  scoring caption docks below the winning hand. Timing-dependent HUD
+  (a bot's claim toast) gets its own store-driven recipe
+  (`match-claim-toast-flash` fires `flashClaimAnnouncement` through
+  `__MAHJONG_TEST_GET_STATE__`) instead of hoping `match-claim` catches
+  one. Shoot with one `shot.mjs` process at a time — three in parallel on SwiftShader once
+  produced a frame with the camera still easing in from the lobby.
+- **The portrait river zoom is a plan view of the four rivers, not a
+  dolly of the resting camera** (`cameraPresets.riverZoomFrameFor`,
+  84°): the far river's last row pins 4 px under the zoom header, the
+  frame is the tight river block (`ZOOM_X_HALF_MIN`) where the block
+  then clears the held hand (the tall phone) and backs off until it
+  does on short phones — a 412×700 band cannot hold a plan-view block
+  and a wall, so the zoom lays out no wall and no side seat
+  (`LayoutOptions.hideWalls` / `hideSideSeats`) and the tray's turn row
+  carries the `wall-draw-next` pill (`hud/HandRail.DrawPill`). Do not
+  re-introduce a near-wall-in-frame constraint: at 84° it caps the
+  short phone at 1.2× (round-FB4). **The zoom lays the user's melds on
+  a shelf past their river** (`layout.zoomMeldShelf`, `LayoutOptions.
+  heldMeldsShelf`; 1.3×, right-aligned `SHELF_MARGIN` inside the block,
+  shrunk to fit four) and the frame pins the shelf's near edge — not the
+  river's — above the hand (`riverZoomFrameFor(..., shelfDepth)`,
+  `zoomNearPoint`): the held hand's rack line lies *under* the hand on
+  screen in the plan view (round-FB5 "the hand tiles hide the peng / chi
+  tiles"). The shell re-fits the camera when the meld count changes
+  mid-zoom and projects the shelf's edge for the zoomed toast slot.
+- **Table pointer parallax is a drift, not a follow**
+  (`cameraPresets.TABLE_PARALLAX`: 0.08 units, 0.5 s half-life via
+  `CameraRig.parallaxHalfLife`) on the match table and the replay.
+  Round-FB4 desktop feedback called the old 0.45 / 0.15 s sway
+  nauseating. The rig's default stays 0.35 / 0.15 for the menu; the
+  lobby backdrop keeps its own gentler value. The gold turn cue under
+  the standing hand is a contact glow at the tiles' feet
+  (`TableScene` `CUE_HALO_HAND_FRONT` / `CUE_HALO_BAND_OPACITY`), never
+  a bar on the felt behind the row.
+- **Sandboxed containers**: `pnpm install --offline --frozen-lockfile`
+  works in a fresh worktree (store is warm). Point
+  `PW_CHROMIUM_PATH=/opt/pw-browsers/chromium` at the pre-installed
+  browser for `pnpm e2e`; `shot.mjs` auto-detects it.
+- **Critic scoreboard**: `docs/STATUS.json` — every gauntlet round
+  writes scores + ranked open issues there; the next `/loop` iteration
+  resumes from the lowest-scoring subsystem.
+- **Page chrome keys on the surface, not the renderer**: `usePageChrome()`
+  in `app/_layout.tsx` (`pageSurface(pathname)` + `pageChrome(surface,
+  renderer)` in `src/ui/menu/palette.ts`) paints html/body/theme-color,
+  the hydration shell and the Stack `contentStyle`. The lobby and
+  `/replays*` are the void under both renderers; only the classic
+  `/match` is cream. Android Chrome keeps the layout box at the *small*
+  viewport when the URL bar retracts, so whatever is behind the app root
+  shows in the exposed strip — the static default in `+html.tsx` is the
+  void too, and `LobbyBackdrop` overshoots the root by 160 px. Round-FB2
+  feedback ("white band at the bottom when scrolling") was this. Sticky
+  bars over the scrolling hero rack need a ≥ 0.94-alpha void fill, not
+  quiet glass — blur over ivory tiles reads khaki.
+- **The menu hero scrolls as DOM, not as a re-aimed camera**: the rack +
+  dice render into a canvas mounted *inside* `HeroBandSlot` (ScrollView
+  content, `data-testid="menu-3d-hero"`), so the compositor moves them
+  with the title; only the drift field stays in the fixed backdrop
+  canvas (`menu-3d`). Round-3 phone feedback ("background tiles jitter
+  when scrolling") was the previous design re-applying `setViewOffset`
+  from scroll events a frame behind the compositor. The hero scene
+  (`three/menu/HeroScene.ts`) fits the rack in a *viewport-sized* frame
+  with the band at the origin and renders the band's sub-rectangle
+  (`setViewOffset(frameW, frameH, ox, oy, bandW, bandH)`, camera aspect =
+  viewport) — pixel-identical to the single-canvas rack, and the fit is
+  translation-invariant (layout test) so scroll position never enters.
+  Never subscribe the hero to `heroBand` / scroll; a re-fit is a resize
+  only (`__MAHJONG_MENU_DEBUG__.viewOffsetApplies` must stay flat across
+  a scroll — `three-menu.spec.ts` asserts it). `__MAHJONG_PERF__` is the
+  *sum* over live canvases (`core/perf.ts`), so a budget still judges the
+  page. A scene frame that writes poses must return `live` even when its
+  last tween just finished, or the final frame never renders (the hero
+  was captured "settled" half-way through its drop-in on SwiftShader).
+  Both menu frames are **keyed on the viewport width**: Android Chrome
+  fires `resize` (innerHeight +56–100 px) as the URL bar retracts
+  *mid-scroll*, so a height-only change with the same width re-fits
+  nothing — the hero frame (`HeroScene.onWindowResize`), the drift fit
+  (`DriftScene.resize` just extends the view offset over the taller
+  canvas) and the portrait band height (`useStableViewportHeight`)
+  all hold; a width change / band resize re-fits. `SceneHost` redraws
+  **synchronously** after a real `setSize` (`Loop.renderNow`) — the
+  re-allocated buffer is cleared, and waiting for the next rAF presents
+  an empty canvas for a frame (round-4 "tiles flicker when scrolling").
+  `__MAHJONG_MENU_DEBUG__.heroRelayouts` / `driftRelayouts` count re-fits
+  for the spec. Menu parallax strengths live in `three/menu/parallax.ts`
+  (40 % of the rig default, smoothed over 0.42 s) — never retune the
+  `CameraRig` default for the menu's sake.
+- **Anything that hugs a tile is scene geometry, not a DOM overlay**:
+  the discard hint is a gold frame quad in `TableScene` (`hintFrame`)
+  placed from the hinted tile's pool pose every `writePoses` — same
+  quaternion, +Z offset of `TILE_D / 2 + HINT_GAP`, scaled with the
+  tile — so it is aligned by construction on every camera and follows
+  the tile through drags, re-sorts and the draw / discard springs (a
+  DOM ring re-projected from the HUD side lagged the desktop camera).
+  The hinted tile also rides `HINT_LIFT` on its up axis through the
+  shared `lift` array. `HitTargets` keeps a zero-visual
+  `data-testid="hand-tile-recommended"` span for the shared count
+  assertion only. `TableScene.tileRect` is the projection of the whole
+  tile box (top bevel + back edge included, then floored to 44 px for
+  the tap target); `tileFaceRect` / `projectTileFaceRect` is the +Z
+  printed face only — the debug snapshot's `hint.faceRect` and any DOM
+  overlay that must still hug a face use it, and
+  `three-table.spec.ts` asserts the frame's projected stroke
+  (`hint.markerRect`) matches it. Do not inherit the classic shell's
+  `bottom: 10` lift zone on 3D overlays.
+- **Glass result card**: the top-right corner belongs to the 和 seal
+  (`ResultVeil.WinStamp`); controls (save replay) ride inline in the
+  action rows via `SaveReplayButton inline`.
+- **Replay under 3D**: `src/three/replay/ReplayTable3D` mounts the
+  match's `TableScene` for `frames[cursor].state` (`sync({ state, me,
+  revealAll, snap })`) — the same pattern as `LobbyTableBackdrop`; the
+  documented `replay/ → table/` import exception is in ARCHITECTURE.md.
+  Recipes seed a deterministic record through
+  `__MAHJONG_TEST_REPLAY_FIXTURE__` (`src/replay/fixture.ts`) and deep-
+  link with `?frame=`. RN-web `nativeEvent` has no `locationX` — use
+  `src/ui/replay/timeline.ts`'s `pressX` for any tap-to-seek surface.
+- **Tiles leave a layout by sinking, never blinking**
+  (`choreography` `vanish` / `rise`, `SINK_DEPTH` 1.7, 360 / 320 ms):
+  a tile whose next slot is null sinks straight down through the felt
+  at full size and is hidden only once under; a tile re-entering the
+  layout rises from the same depth. Reduced motion and `snap` keep the
+  instant hide. The portrait zoom's felt spread (`ZOOM_FELT_SCALE`)
+  and rail sink (`RAIL_SINK`) blend in `TableScene.applyZoomBlend`
+  on the same beat instead of switching in `sync` (round-FB5: "all
+  other tiles suddenly being unrendered and then re-rendered is
+  jarring"). Never `t.scale = 0` a visible tile from `apply`. The e2e
+  samples the sink *alongside* the zoom tap under `×8` slow motion —
+  on a loaded SwiftShader shard `click()` returns seconds later, after
+  a 360 ms motion has finished — and reads three samples, because the
+  snapshot rounds `y` to 0.01 and the ease-in drops nothing visible in
+  the first half second.
+- **Glyphs are carved** (`tiles/materials.ts` `INLAY_STEP` 3 texels,
+  `INLAY_DEPTH` 1.6, program key v11): the atlas' ink mask is a height
+  map — finite differences at least `INLAY_STEP` texels *and* ~0.6
+  screen px apart (`fwidth`) tilt the shading normal and the clearcoat
+  normal along the face tangents (`vTanV` / `vBitV`, transformed like
+  the normal, instanced) — **on the ivory side of the edge only**
+  (weighted by `inkMask`): the paint in the groove lies flat and keeps
+  its colour. The round-5 critic measured the symmetric version
+  darkening green / red ink toward black (發 142 → 123) and adding edge
+  noise on 24 px river tiles; the footprint-aware step plus a fade on
+  faces under ~40 device px (≥ 6 texels per px) left the river
+  pixel-identical. A 1.25-texel step at depth 0.9 was invisible on the
+  phone (two texels per device px); judge any retune on a ≥ 3× crop of
+  `match-my-turn` at phone and desktop against `dist-before`, and keep
+  the phone luminance guard in `three-table.spec.ts` green.
+- **Tile finish is satin, not lacquer** (`src/three/tiles/materials.ts`:
+  body roughness 0.5, clearcoat 0.3 / 0.45). The steep phone camera
+  looks at the held hand almost face-on, so a glossy body put the key
+  light's specular lobe across the right-hand faces and greyed their
+  ink (round-FB3 "tiles fade toward the right"). Moving the light only
+  moves the wash; keep the finish and the e2e luminance guard in
+  `three-table.spec.ts` (face spread ≤ 12, darkest-ink spread ≤ 28).
+- **Walls are a yawed pinwheel** (`layout.WALL_STAGGER` + `WALL_YAW`,
+  round-4 feedback): every 17-stack run is shifted 2.0 units along its
+  own axis toward its owner's right and turned 2.5° about its centre
+  with the overhanging end swinging *out* toward its owner's rail (same
+  sense on all four), so from the user's seat the near wall overhangs
+  on their right (`WALL_END` ≈ 10.76) and no wall lies parallel to its
+  rail — like a real table. The sign is load-bearing: an overhang's tip
+  stands in the next seat's row corridor, and swinging it out is what
+  opens the along-row gap (`WALL_OVERHANG_INNER`; rows slide right to
+  keep `ROW_OVERHANG_GAP` = 1.0 via `rowLeftLimit`, the user's row 0.6)
+  and the 0.88 between the left wall's tip and a 14-tile hand. The yaw
+  costs the rows around the wall their slack, so the portrait side rows
+  (`SIDE_SEAT_OUT_PORTRAIT`), every preset's far row (`FAR_SEAT_OUT`)
+  and the held hand's melds (`OWN_MELD_Z_HELD`) step out by 0.25–0.35;
+  the in-swinging half clears the 1.36× river's third row by 0.03
+  (`WALL_YAW_LIFT`). `wallSlotRefs` (break / dead / live bookkeeping) is
+  untouched; only `wallSlotPosition` → `wallRunPoint` carries the
+  stagger + yaw, so anything that hard-codes a wall *end* or face
+  (lobby framing tests, HUD anchors near a corner, the river-interior
+  rect) must read `WALL_END` / `WALL_OVERHANG_*` / `wallInnerFaceAt`
+  rather than assume a straight ±8.74 run at z 8.12–9.48.
+- **Dead wall = darker back shade only; own melds = plain aligned rows**
+  (round-4 feedback). The 14 dead tiles are told apart by `aBackVariant`
+  selecting `uDeadBack*` (`materials.deadBackColors`, same hue, darker)
+  and nothing else — the gold inlay band that used to run along the
+  stacks' inner edge read as "extra yellow stripes" on the walls, so it,
+  its `aStackTop` attribute and `TileSlot.stackTop` are gone; do not
+  bring back a per-tile marker. The user's standing melds
+  (`layoutMeldStanding` / `placeStandingMelds`) sit on the hand's line
+  with no claimed-tile step — under the 44° desktop camera a tile
+  stepped toward the camera read as misplaced; only the flat opponents'
+  melds keep the turned-tile provenance rule. The phone held hand splits
+  rows from the hand *with the drawn slot reserved*
+  (`heldRowSplit(total, hasDrawn)`): a row never exceeds
+  `HELD_ROW_UNITS` (7 tiles incl. the drawn one) and the back row holds
+  across a draw / discard — a 7-tile hand is 4 + 3 → 4 + 4, never one
+  overflowing row of 8.
+- **Coach-card body takes the room the placement has**
+  (`src/ui/tutorial/bodyCap.ts`): cap = room − measured chrome, whole
+  text when it fits, dense / tight frames on short phones, strips fill
+  their band — but the hand and seat-strip keep-outs always win (a
+  placement that intersects a tile is invalid; fall back to the strip
+  or a shorter body). The card stays at opacity 0 until measurement,
+  frame choice and hand-at-rest have settled, then reveals once
+  (`revealed` seam; recipes wait on it) — never relayout after first
+  paint.

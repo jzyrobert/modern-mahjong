@@ -449,6 +449,8 @@ describe('loadSettings (persisted-shape migration)', () => {
     localStorage.setItem(STORAGE_KEY, '}{ not json');
     const s = loadSettings();
     expect(s).toEqual({
+      renderer: 'auto',
+      quality: 'auto',
       felt: 'sage',
       tileBack: 'blue',
       animations: true,

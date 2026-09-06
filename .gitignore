@@ -41,3 +41,5 @@ Thumbs.db
 
 # Local LAN-host smoke artefacts (screenshots, UI dumps, logcat)
 apps/client/lan-host-smoke/
+dist-*
+shots/

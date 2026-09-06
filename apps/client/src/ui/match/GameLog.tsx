@@ -1,65 +1,115 @@
 import { type Seat, tileLabel } from '@mahjong/game-logic';
-import type { ReactNode } from 'react';
+import { type ReactNode, createContext, useContext } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { type LogEntry, nameForSeat, useGame } from '../../state/game';
 import { Modal } from '../Modal';
 import { COLORS } from '../colors';
 import { SEAT_WIND_GLYPH } from '../winds';
+import { GLASS_SHEET, type SheetTheme, seatColorFrom, sheetPalette } from './sheetTheme';
 
 interface GameLogProps {
   open: boolean;
   onClose: () => void;
+  /** The local player's seat — colours the glass rows' seat dots
+   *  relative to the table (you = coral, then jade / mauve / sky
+   *  clockwise). Omit / `null` for spectators. */
+  mySeat?: Seat | null;
+  /** `paper` (default) is the classic cream sheet; `glass` is the 3D
+   *  HUD's dark panel — glass rows, no monospace, seat colour dots. */
+  theme?: SheetTheme;
 }
+
+interface LogTheme {
+  glass: boolean;
+  mySeat: Seat | null;
+}
+const LogThemeContext = createContext<LogTheme>({ glass: false, mySeat: null });
 
 /**
  * Recent-actions sheet — renders the last `LOG_CAPACITY` engine events
  * with a one-line gloss each. Latest event first; lobby names
  * are looked up so seat labels read as e.g. "Bold Crane 東 drew a tile."
  */
-export function GameLog({ open, onClose }: GameLogProps) {
+export function GameLog({ open, onClose, mySeat = null, theme = 'paper' }: GameLogProps) {
   const log = useGame((s) => s.log);
   const lobby = useGame((s) => s.lobby);
+  const glass = theme === 'glass';
+  const P = sheetPalette(theme);
   return (
-    <Modal open={open} title="Last actions" onClose={onClose} maxWidth={520}>
-      <ScrollView contentContainerStyle={{ padding: 18, gap: 6 }}>
-        {log.length === 0 ? (
-          <Text style={{ fontSize: 13, color: COLORS.ink3, fontWeight: '600' }}>
-            Nothing has happened yet — the log fills up as the hand plays out.
-          </Text>
-        ) : (
-          [...log].reverse().map((entry) => (
-            <View
-              key={entry.seq}
+    <Modal
+      open={open}
+      title="Last actions"
+      onClose={onClose}
+      maxWidth={520}
+      variant={theme}
+      placement={glass ? 'bottom' : 'center'}
+    >
+      <LogThemeContext.Provider value={{ glass, mySeat }}>
+        <ScrollView
+          contentContainerStyle={{
+            padding: glass ? 14 : 18,
+            paddingBottom: glass ? 24 : 18,
+            gap: 6,
+          }}
+        >
+          {log.length === 0 ? (
+            <Text
               style={{
-                flexDirection: 'row',
-                alignItems: 'baseline',
-                gap: 8,
-                paddingHorizontal: 10,
-                paddingVertical: 8,
-                backgroundColor: COLORS.cream,
-                borderColor: COLORS.hairline,
-                borderWidth: 1,
-                borderRadius: 8,
+                fontSize: 13,
+                lineHeight: 18,
+                color: glass ? P.text2 : COLORS.ink3,
+                fontWeight: glass ? '500' : '600',
               }}
             >
-              <Text
+              Nothing has happened yet — the log fills up as the hand plays out.
+            </Text>
+          ) : (
+            [...log].reverse().map((entry) => (
+              <View
+                key={entry.seq}
                 style={{
-                  fontFamily: 'Courier',
-                  fontSize: 10,
-                  color: COLORS.ink3,
-                  fontWeight: '700',
-                  minWidth: 32,
+                  flexDirection: 'row',
+                  alignItems: 'baseline',
+                  gap: glass ? 10 : 8,
+                  paddingHorizontal: glass ? 12 : 10,
+                  paddingVertical: glass ? 9 : 8,
+                  backgroundColor: glass ? P.surface : COLORS.cream,
+                  borderColor: glass ? P.hairline : COLORS.hairline,
+                  borderWidth: 1,
+                  borderRadius: glass ? 12 : 8,
                 }}
               >
-                #{entry.seq.toString().padStart(2, '0')}
-              </Text>
-              <View style={{ flex: 1 }}>
-                <DescribeEvent entry={entry} lobby={lobby} />
+                <Text
+                  style={
+                    glass
+                      ? {
+                          fontSize: 11,
+                          lineHeight: 13,
+                          fontWeight: '700',
+                          letterSpacing: 1,
+                          color: P.text3,
+                          minWidth: 26,
+                          fontVariant: ['tabular-nums'],
+                        }
+                      : {
+                          fontFamily: 'Courier',
+                          fontSize: 10,
+                          color: COLORS.ink3,
+                          fontWeight: '700',
+                          minWidth: 32,
+                        }
+                  }
+                >
+                  {glass ? entry.seq : `#${entry.seq.toString().padStart(2, '0')}`}
+                </Text>
+                <View style={{ flex: 1 }}>
+                  <DescribeEvent entry={entry} lobby={lobby} />
+                </View>
               </View>
-            </View>
-          ))
-        )}
-      </ScrollView>
+            ))
+          )}
+        </ScrollView>
+      </LogThemeContext.Provider>
     </Modal>
   );
 }
@@ -67,6 +117,7 @@ export function GameLog({ open, onClose }: GameLogProps) {
 type Lobby = ReturnType<typeof useGame.getState>['lobby'];
 
 function DescribeEvent({ entry, lobby }: { entry: LogEntry; lobby: Lobby }) {
+  const { glass } = useContext(LogThemeContext);
   const e = entry.event;
   switch (e.t) {
     case 'handStarted':
@@ -105,7 +156,7 @@ function DescribeEvent({ entry, lobby }: { entry: LogEntry; lobby: Lobby }) {
         return (
           <Line>
             <SeatLabel seat={r.seat} lobby={lobby} /> declared{' '}
-            <Strong color={COLORS.red}>win</Strong> (糊).
+            <Strong color={glass ? GLASS_SHEET.gold : COLORS.red}>win</Strong> (糊).
           </Line>
         );
       }
@@ -159,11 +210,41 @@ function describeClaimKind(kind: 'pass' | 'chi' | 'peng' | 'gang' | 'hu'): strin
 }
 
 function Line({ children }: { children: ReactNode }) {
-  return <Text style={{ fontSize: 12, color: COLORS.ink, lineHeight: 18 }}>{children}</Text>;
+  const { glass } = useContext(LogThemeContext);
+  return (
+    <Text
+      style={{
+        fontSize: glass ? 13 : 12,
+        color: glass ? GLASS_SHEET.text2 : COLORS.ink,
+        lineHeight: glass ? 19 : 18,
+      }}
+    >
+      {children}
+    </Text>
+  );
 }
 
 function SeatLabel({ seat, lobby }: { seat: Seat; lobby: Lobby }) {
+  const { glass, mySeat } = useContext(LogThemeContext);
   const name = nameForSeat(lobby, seat);
+  if (glass) {
+    // 6 px seat-colour dot (relative to the user's seat) in front of
+    // the name; the wind glyph stays in Noto Serif TC.
+    return (
+      <>
+        <Text
+          style={{ fontSize: 9, lineHeight: 13, color: seatColorFrom(mySeat, seat) }}
+          accessibilityElementsHidden
+        >
+          {'● '}
+        </Text>
+        <Text style={{ fontWeight: '800', color: GLASS_SHEET.text }}>{name}</Text>
+        <Text style={{ fontFamily: 'Noto Serif TC', color: GLASS_SHEET.gold }}>
+          {` ${SEAT_WIND_GLYPH[seat]}`}
+        </Text>
+      </>
+    );
+  }
   return (
     <>
       <Text style={{ fontWeight: '800', color: COLORS.ink }}>{name}</Text>
@@ -175,22 +256,41 @@ function SeatLabel({ seat, lobby }: { seat: Seat; lobby: Lobby }) {
 }
 
 function Strong({ children, color }: { children: ReactNode; color?: string }) {
-  return <Text style={{ fontWeight: '800', color: color ?? COLORS.ink }}>{children}</Text>;
+  const { glass } = useContext(LogThemeContext);
+  return (
+    <Text style={{ fontWeight: '800', color: color ?? (glass ? GLASS_SHEET.text : COLORS.ink) }}>
+      {children}
+    </Text>
+  );
 }
 
 function TileChip({ label }: { label: string }) {
+  const { glass } = useContext(LogThemeContext);
   return (
     <Text
-      style={{
-        backgroundColor: COLORS.paperHi,
-        borderColor: COLORS.hairline,
-        borderWidth: 1,
-        borderRadius: 4,
-        paddingHorizontal: 4,
-        fontFamily: 'Courier',
-        fontSize: 11,
-        color: COLORS.ink,
-      }}
+      style={
+        glass
+          ? {
+              backgroundColor: GLASS_SHEET.goldTint,
+              borderColor: GLASS_SHEET.goldBorder,
+              borderWidth: 1,
+              borderRadius: 5,
+              paddingHorizontal: 5,
+              fontSize: 12,
+              fontWeight: '800',
+              color: GLASS_SHEET.gold,
+            }
+          : {
+              backgroundColor: COLORS.paperHi,
+              borderColor: COLORS.hairline,
+              borderWidth: 1,
+              borderRadius: 4,
+              paddingHorizontal: 4,
+              fontFamily: 'Courier',
+              fontSize: 11,
+              color: COLORS.ink,
+            }
+      }
     >
       {label}
     </Text>
@@ -198,5 +298,16 @@ function TileChip({ label }: { label: string }) {
 }
 
 function Mono({ children }: { children: ReactNode }) {
-  return <Text style={{ fontFamily: 'Courier', color: COLORS.ink3 }}>{children}</Text>;
+  const { glass } = useContext(LogThemeContext);
+  return (
+    <Text
+      style={
+        glass
+          ? { fontWeight: '700', color: GLASS_SHEET.text }
+          : { fontFamily: 'Courier', color: COLORS.ink3 }
+      }
+    >
+      {children}
+    </Text>
+  );
 }

@@ -1,0 +1,1661 @@
+{
+  "schema": 1,
+  "updatedAt": "2026-09-06T12:07:19Z",
+  "round": 5,
+  "passThreshold": 8.5,
+  "subsystems": {
+    "core": {
+      "score": null,
+      "errors": 0,
+      "pass": true,
+      "issues": [],
+      "history": [
+        {
+          "round": 0,
+          "note": "React #419 fixed: identity.ts guarded localStorage for the static render; _layout.tsx mounts the route tree after hydration via useIsHydrated(). Verified zero page/console errors on menu, match-lobby, replay-library (classic) and match-dealt (3d); full legacy Playwright suite 103 passed / 1 skipped.",
+          "at": "2026-09-03T22:05:00Z"
+        },
+        {
+          "round": 1,
+          "note": "Placeholder triangle overrun closed by the real table (83,522 tris, 11 draw calls). Lighthouse regression from the menu backdrop fixed (0.66 → green) by deferring the mount past idle and skipping it on the low tier.",
+          "at": "2026-09-04T03:10:00Z"
+        }
+      ]
+    },
+    "table": {
+      "score": 8.1,
+      "errors": 0,
+      "pass": false,
+      "issues": [
+        {
+          "rank": 1,
+          "severity": "medium",
+          "title": "[desktop] Portrait 'Watch the wall run out' card hides the entire table (tutorial-owned)",
+          "state": "tutorial-drawn-game-2.phone.3d.png",
+          "detail": "The coach card + scrim covers the whole table band at 412x892 while the copy asks the player to watch the wall; the pill '1 LEFT · 14 DEAD' is the only cue. Dock the card over the hand rows or shrink it so the near wall stays visible."
+        },
+        {
+          "rank": 2,
+          "severity": "low",
+          "title": "[desktop] Landscape breakdown modal clips the TOTAL row and overlaps the coach card",
+          "state": "match-result-breakdown.phone-landscape.3d.png",
+          "detail": "At 915x412 the glass modal ends at the 平和 row with no scroll affordance and its right edge sits ~8 px over the lesson card. Add a bottom fade/scroll cue and inset the modal from the card."
+        },
+        {
+          "rank": 3,
+          "severity": "low",
+          "title": "[desktop] Breakdown header uses seat index instead of the player name",
+          "state": "match-result-breakdown at all viewports: 'Seat 0 wins — 2 faan', 'DISCARDED BY SEAT 1'",
+          "detail": "The glass result card says 'RON FROM VERA' while the modal says 'Seat 1'. Pass the seat names into ScoringBreakdownModal."
+        },
+        {
+          "rank": 4,
+          "severity": "low",
+          "title": "[desktop] Phone portrait shows no dead-wall count until the wall is nearly empty",
+          "state": "match-dealt.phone / match-late-hand.phone: pill '69 LEFT' / '22 LEFT'; plate '14 DEAD' is ~5 px",
+          "detail": "The tile-count complaint is answered on desktop by '· 14 DEAD' in the pill; on phone it only appears at '1 LEFT'. Show the dead tally in the phone pill from the start (it fits: 'East 69 · 14 DEAD')."
+        },
+        {
+          "rank": 5,
+          "severity": "low",
+          "title": "[desktop] Desktop sort control sits over the rail's bottom-right mitre",
+          "state": "critic-crops/corner-BR (match-my-turn.desktop)",
+          "detail": "SUIT / NUMBER / MANUAL pill covers the rail corner joint; nudge it 12 px lower or align it with the turn chip's baseline so the corner reads."
+        },
+        {
+          "rank": 6,
+          "severity": "medium",
+          "title": "[mobile] Side-seat melds sit flush against the side walls (portrait + landscape)",
+          "state": "phone/match-mid-hand, phone-small/match-mid-hand, phone-landscape/match-claim + match-mid-hand",
+          "detail": "East melds (4-pin ×3, 四萬 ×3) touch the right wall's inner face; at 360x640 the West melds do the same on the left. Reads as tiles spilled into the wall. Fix (layout.ts / TableScene.ts): clamp the side meld shelf x to wall-inner-face − tile depth − 0.35 world units and let the shelf run toward the camera instead; add the AABB test asserting no meld slot intersects or touches any wall slot for every dealer/break."
+        },
+        {
+          "rank": 7,
+          "severity": "medium",
+          "title": "[mobile] Landscape hand row stands in front of the near wall's lower row",
+          "state": "phone-landscape/match-dealt, match-mid-hand, match-claim — hand top ≈282 CSS, wall front face visible to the seam",
+          "detail": "The wall's ivory face runs straight into the hand tiles with no felt or shadow between them (~10-18 px occlusion). The projection solver shows no fov 42-48 camera fixes it, so it is a layout change: move OWN_HAND_Z ~0.6 toward the camera (the hand already sits over the rail), or trim the landscape hand tile to exactly 44 px and drop the hand 6 px so a 4 px seam of rail shows. Either way the seam must read as 'hand in front of rail', never 'hand on the wall'."
+        },
+        {
+          "rank": 8,
+          "severity": "medium",
+          "title": "[mobile] Portrait river-zoom toast lands on the near wall's tile backs",
+          "state": "phone/match-river-zoom (toast y≈350-392 CSS over wall backs y≈345-395), phone-small/match-river-zoom (same, mid-fade)",
+          "detail": "Table3DShell.tsx:788-790 caps the zoomed toast at `Math.min(nearWallBottom + 10, heldHandTop − TOAST_H − 6)`, and the comment admits it 'lands on the wall's backs instead'. It is the one HUD-over-tiles case left in the portrait flow. Fix: while zoomed, use the seat-strip slot (`toastInStrip = portrait && (zoomed || !railSlotFits)`) — the badges already step aside there — or the zoom header row beside the ✕, mirroring landscape's chrome-row slot."
+        },
+        {
+          "rank": 9,
+          "severity": "medium",
+          "title": "[mobile] 360x640 lobby: collapsed RULES summary row is buried under the panel fade",
+          "state": "phone-small/match-lobby — 'RULES Min 0 faan · no timer' clipped at the panel's bottom edge under the fade cue",
+          "detail": "The only rules affordance is off-screen until the user scrolls; the e2e's `toBeVisible()` does not detect overflow clipping. Fix: dock the 44 px summary row outside the scroller (directly above Start match) so it is always the last visible row, or tighten Bot skill row gaps (12 → 8) and seat-card padding so the summary fits inside the cap at 360x640."
+        },
+        {
+          "rank": 10,
+          "severity": "low",
+          "title": "[mobile] Result panel winning hand wraps 12 + 2 at 360 wide",
+          "state": "phone-small/match-result",
+          "detail": "Fix in ResultPanel: at width < 400 size tiles as floor((innerWidth − 13·gap) / 14) (≈19-20 px) or overlap tiles by −2 px so all 14 sit in one row; the 412 frame already fits."
+        },
+        {
+          "rank": 11,
+          "severity": "low",
+          "title": "[mobile] Seat badges vanish for the whole toast hold on short phones",
+          "state": "phone + phone-small: match-claim, match-mid-hand, match-claim-toast",
+          "detail": "Scores disappear for ≥1.6 s every claim. Fix: keep a 32 px avatar-only badge column at each end of the strip and let the toast take the centre 60 %; or shorten the fade to 0.4 alpha instead of 0."
+        },
+        {
+          "rank": 12,
+          "severity": "low",
+          "title": "[mobile] Landscape far-seat melds crowd the chrome row",
+          "state": "phone-landscape/match-mid-hand — 西西西 meld at y≈35-57 CSS directly under the header pills",
+          "detail": "The far melds on the rail shelf sit in the header's visual band and read as part of the chrome. Fix: pull the farMeldsOnRail shelf ~0.4 units toward the centre or park it behind the header glass the way the zoomed state does."
+        }
+      ],
+      "history": [
+        {
+          "round": 4,
+          "score": 8.3,
+          "errors": 0,
+          "perfPass": true,
+          "pass": false,
+          "critic": "art-director",
+          "openIssues": 9,
+          "notes": "4 rounds: 7.9 → 8.2 → 8.2 → 8.3. Zero errors; 11 draw calls / 83k triangles / 9 programs on every state. Merged into integration; open issues carried forward.",
+          "at": "2026-09-04T03:10:00Z"
+        },
+        {
+          "round": 2,
+          "score": 8.6,
+          "errors": 0,
+          "perfPass": true,
+          "pass": true,
+          "critic": "art-director",
+          "openIssues": 8,
+          "notes": "Round-2 gauntlet passed at iteration 3 (8.4 → 8.3 → 8.6): glass opening-rolls modal, footer-anchored claim strip, pooled renderer, portrait reframing, waiting-table lobby. Merged into integration.",
+          "at": "2026-09-04T07:22:00Z"
+        },
+        {
+          "round": 3,
+          "score": 8.6,
+          "errors": 0,
+          "perfPass": true,
+          "pass": true,
+          "critic": "art-director",
+          "openIssues": 7,
+          "notes": "Round-3 gauntlet (4 iterations: 8.6 → 8.4 → 8.7 → 8.6, all zero errors, 12 draw calls / 83.5k tris / 10 programs): portrait apron + action tray, pinwheel rivers (fixed a corner collision at 6 tiles), compact landscape opening rolls, framed lobby table with seat racks, far-river legibility, landscape river zoom, dead-wall hairline, motion recipes (late-hand, discard-flight). Merged tip a16b54a into integration.",
+          "at": "2026-09-04T18:50:00Z"
+        },
+        {
+          "round": 4,
+          "score": 8.1,
+          "errors": 0,
+          "perfPass": true,
+          "pass": false,
+          "critic": "table-art-director",
+          "openIssues": 12,
+          "notes": "Manual feedback round 1 (desktop + mobile agents, 3 rounds each). Every user-reported item verified fixed by the critics: turn cues, mitred rail, larger claim bar, upright own melds, dead-wall inlay (the 'yellow line'), glass claim toast, tenpai badge, 3D shuffle pill, gold win stamp, glass breakdown, gang replacement from the dead wall's tail, live/dead tile count; phone-in-browser 412x700 + 360x640 composition, 62-degree landscape zoom, landscape lobby. Score held under 8.5 by critic-added residuals listed here.",
+          "at": "2026-09-05T03:59:09.111Z"
+        }
+      ]
+    },
+    "menu": {
+      "score": 8.9,
+      "errors": 0,
+      "pass": true,
+      "issues": [
+        {
+          "rank": 1,
+          "severity": "medium",
+          "title": "Desktop: a drift tile back sits on the hero rack's 一萬 corner (rack keep-out is phone-only)",
+          "state": "menu, menu-tutorials @ desktop 1440x900 (3d)",
+          "detail": "At (277-330, 195-235) CSS a blue tile back overlaps the top-left corner of the rack's first tile 一萬 (crop c-desk-rack-left.png: the back's lower edge lands on the tile's bevel). The report says the projected-silhouette rack+dice keep-out was added 'on phones'; desktop and landscape still let the field touch the hero. It is a moving-field frame, but the seed is deterministic so every first paint shows it. Fix: apply the same projected rack silhouette + dice keep-out (2 px ramp) on every viewport, not only when width < tablet; assert in three-menu.spec desktop case that no drift disc intersects the rack rect."
+        },
+        {
+          "rank": 2,
+          "severity": "medium",
+          "title": "Desktop replay shelf reads small and aliased inside a 620 px card",
+          "state": "replay-library @ desktop 1440x900 (3d, dpr 1)",
+          "detail": "Tiles are ~46 CSS px wide; the seven-tile illustration spans x 550-905 (57 % of the card's inner width) with 28 px of air above and ~100 px of shadow + air before the 'Nothing on the shelf yet' heading (crop c-desk-shelf-wide.png). At dpr 1 the silhouettes and 東南西 strokes show stair-steps (SwiftShader ignores MSAA). Phone (dpr 2) looks right — tiles 60 CSS px, clean edges. Fix: on desktop size the shelf canvas to ~72 % of the card's inner width (tile ≈ 58 px) and trim the pad below the shadow to ~0.25 tile widths; render at min(2, dpr*2) when dpr < 1.5, the same supersampling path the settings preview uses."
+        },
+        {
+          "rank": 3,
+          "severity": "low",
+          "title": "Reduced-motion portrait field is one lone edge-on tile in the left margin",
+          "state": "menu-reduced-motion @ phone 412x915 (3d)",
+          "detail": "With animations off the frozen field shows a single tile seen edge-on at (8-28, 262-298) CSS beside the rack (crop c-phone-rm-tile.png). It is whole and clear of the rack, but one dark sliver in the margin reads as a stray speck, not a field. Either park all of them (rack + dice alone is cleaner, as landscape RM shows) or seed 2-3 whole, face-up tiles in the band between the rack bottom (306) and the Online card (341) / the footer strip. Known gap carried from round 1 (#5), still low."
+        },
+        {
+          "rank": 4,
+          "severity": "low",
+          "title": "DISMISS pill label is ~0.55-alpha grey, below the 0.62 secondary-text spec",
+          "state": "menu, menu-tutorials, replay-library, settings @ phone-landscape 915x412 (3d)",
+          "detail": "Sampled glyph pixels are #8c908e on #0d1310 → 6.0:1, so it clears 4.5:1, but rgba(255,255,255,0.62) over that glass would be ≈#a2a5a3. Use the shared secondary token so the pill matches EDIT / micro-labels. Persists from round-1 issue #11."
+        },
+        {
+          "rank": 5,
+          "severity": "low",
+          "title": "Settings landscape letterbox still leaves ~38 % of the preview canvas as void",
+          "state": "settings, settings-jade-plum, settings-landscape @ phone-landscape 915x412 (3d)",
+          "detail": "The rail spans x 280-635 of a 570-wide canvas (62 %); tiles are ~50 CSS px tall, legible but modest, with 65-70 px of dark void each side. HFOV 60 is fine; instead let PREVIEW_MAX_ASPECT rise to ~2.4 or grow previewHeight to ~170-180 by trimming the section gap so the stage fills the frame. Settings issue #7 from round 1, partially improved."
+        },
+        {
+          "rank": 6,
+          "severity": "low",
+          "title": "Desktop dpr 1 preview: stair-step edges on tiles and glyph strokes",
+          "state": "settings, settings-jade-plum @ desktop 1440x900 (3d)",
+          "detail": "Crop c-desk-preview.png shows jaggies on the tile silhouettes and 五/萬/發 strokes at 3x. SwiftShader-only or not, the preview is 5-7 draw calls / 42k tris so a 2x supersample when dpr < 1.5 is cheap. Settings issue #3, unchanged; verify on a real GPU before deciding."
+        },
+        {
+          "rank": 7,
+          "severity": "low",
+          "title": "Regression run hijacked by a stale serve on 4173 (process hazard, not a menu defect)",
+          "state": "npx playwright test three-menu/three-settings/... from the menu worktree",
+          "detail": "The first run reported 11 failures (debug.dice not iterable, replay-shelf-3d not attached, void rgb(125,95,78) under the LIVE PREVIEW pill) because playwright.config's reuseExistingServer: !CI reused a `serve dist -l 4173` started at 04:22 from /home/user/mm-wt/table — a different worktree's bundle. Re-running with a wrapper config on port 4991 serving this worktree's dist gave 18 passed / 1 skipped / 0 failed. Suggest the e2e script pick a free port (PW_PORT env) or the runbook kill stale 4173 servers before `pnpm e2e`; the engineer's 'green' claim was only verifiable after that."
+        }
+      ],
+      "history": [
+        {
+          "round": 3,
+          "score": 8.5,
+          "errors": 0,
+          "perfPass": true,
+          "pass": true,
+          "critic": "art-director",
+          "openIssues": 5,
+          "notes": "Passed round 3 (8.4 → 8.4 → 8.5). Merged into integration.",
+          "at": "2026-09-04T01:28:00Z"
+        },
+        {
+          "round": 2,
+          "score": 8.6,
+          "errors": 0,
+          "perfPass": true,
+          "pass": true,
+          "critic": "art-director",
+          "openIssues": 7,
+          "notes": "Round-2 polish pass (menu + settings preview) passed at iteration 2 (8.1 → 8.6): drift/dice keep-outs, 3D replay shelf, settings preview framing/badge/hover/labels. Merged into integration.",
+          "at": "2026-09-04T06:33:00Z"
+        }
+      ],
+      "rounds": [
+        {
+          "round": 1,
+          "at": "2026-09-05T10:10:44Z",
+          "score": 8.6,
+          "pass": true,
+          "errors": 0,
+          "context": "feedback round 2"
+        },
+        {
+          "round": 2,
+          "at": "2026-09-05T16:15:57Z",
+          "score": 8.9,
+          "pass": true,
+          "errors": 0,
+          "context": "feedback round 3 — hero rack in a scroll-native canvas"
+        }
+      ],
+      "openIssues": [
+        {
+          "severity": "low",
+          "title": "Fullscreen prompt overlaps LAN card copy on a grown, scrolled landscape phone",
+          "where": "menu-urlbar @ phone-landscape (915x512 after +100 px, scrolled to end)",
+          "detail": "apps/client/shots/critic/menu-urlbar.phone-landscape.3d.png: the FULLSCREEN / DISMISS chips sit over 'Paste the host's URL ... Hosting needs the Android app.' in the LAN card. Root overlay, not menu-owned, and only in this scrolled state, but it is visible in the 3D lobby flow."
+        },
+        {
+          "severity": "low",
+          "title": "Desktop rack sits 7.8 px above the first card (target >= 8)",
+          "where": "1440x900, apps/client/shots/critic3/menu.desktop.3d.png; __MAHJONG_MENU_DEBUG__.rack vs mode-online boundingBox",
+          "detail": "rack footprint y 207.1..334.2 (rackGoal 207.0), hero band y 191..342, first card y = 342: the band's bottom edge coincides with the card top and the layout leaves 7.8 px of clearance inside the band (tagline clearance is 16.1 px, fine). 0.2 px under the stated bar; the phone sizes are 19.7 / 22.1 / 41.3 px. The footprint includes the dice disc over-bound, so the visible gap is marginally larger, but the layout constant is what should give >= 8."
+        },
+        {
+          "severity": "low",
+          "title": "Portrait drift field is reduced to viewport-edge slivers at the rack's height",
+          "where": "412x700, 360x640, 412x915 menu / menu-tutorials / menu-scrolled-mid shots; __MAHJONG_MENU_DEBUG__.tiles",
+          "detail": "At 412x700 the only shown drift tiles are centred at x = -9 (r 12, fade 0.47), 416 (r 11, fade 0.59) and 417 (r 7, fade 0.35): three half-cut backs at the left/right viewport edge, 11 of 14 visible slots parked. At 412x915 a back centred at x = -13 with r 30 and fade 1.0 shows ~40 % of a fully opaque tile at the left edge (menu.phone-tall.3d.png, device px 0-20 x 450-500), plus x = 420 r 22 / 423 r 19 on the right. They read as debris at the frame edge rather than a field, exactly the sliver the reduced-motion path already parks. Not a regression of this PR (the field's behaviour is unchanged by the split; keep-outs and title clearance hold: no disc crosses the title copy, 0 discs over the rack at any scroll stop), but it is the one thing in every portrait frame that is not deliberate."
+        }
+      ]
+    },
+    "settings": {
+      "score": 8.6,
+      "errors": 0,
+      "pass": true,
+      "issues": [
+        {
+          "rank": 1,
+          "severity": "medium",
+          "title": "Desktop: Players and Game log are phone bottom-sheets pasted onto a 1440x900 canvas",
+          "state": "match-players, match-game-log",
+          "detail": "Desktop 3D. match-players.desktop.3d.png: a 520 px sheet anchored flush to the bottom edge (y 492-900, no bottom margin/radius) sitting over the middle of the own hand; match-game-log.desktop.3d.png the same from y 268. Meanwhile Tile reference, Scoring rules and the Breakdown are centered dialogs. Fix: in GameLog/PlayersSheet pick placement from viewport width (>= tablet -> 'center', maxWidth 560 like TileReferenceSheet) or route them into the MenuSidePanel column on desktop, so wide viewports read as designed rather than adapted."
+        },
+        {
+          "rank": 2,
+          "severity": "medium",
+          "title": "Phone landscape: breakdown TOTAL and older log rows fall below the fold with no scroll cue",
+          "state": "match-result-breakdown, match-game-log",
+          "detail": "phone-landscape 3D. match-result-breakdown.phone-landscape.3d.png ends at the second pattern's hairline; the gold TOTAL row (the headline number) is off-screen inside the 90 %-height sheet with no affordance. Same for the log's older entries. Fix: move the TOTAL row out of the ScrollView into a sticky glass footer (gold hairline above, 12 px padding) and add a 24 px bottom gradient fade on the scroll area in both sheets; on short viewports drop the header paddingTop to 10."
+        },
+        {
+          "rank": 3,
+          "severity": "low",
+          "title": "Scoring-rules accordion snaps; sheets use stock RN Modal slide/fade",
+          "state": "match-scoring-rules (all viewports)",
+          "detail": "ScoringRulesSheet toggles openCat with no transition and the chevron is a text glyph ('▴'/'▾'). Modal.tsx relies on animationType slide/fade rather than the HUD's eased curve. Fix: animate the expanded body (opacity 0->1 + translateY 6->0, 160 ms ease-out, transform/opacity only) and rotate an inline SVG chevron 180 deg; keep the sheet's slide but ease the scrim with the shared HUD curve."
+        },
+        {
+          "rank": 4,
+          "severity": "low",
+          "title": "Game log tile chips show code abbreviations instead of tile faces",
+          "state": "match-game-log (all viewports)",
+          "detail": "Rows 30/26/22 read 'discarded 8p', 'discarded Z', 'discarded E' in gold pills. In a Noto Serif TC glyph language these should be the tile face (八筒 / 中 / 東) or a 16 px mini Tile. Fix: map TileId -> glyph string in the glass branch of GameLog's tile chip (serif font, gold), keep the code text as accessibilityLabel."
+        },
+        {
+          "rank": 5,
+          "severity": "low",
+          "title": "Behaviour toggles still use the classic coral track + teal knob inside the glass sheet",
+          "state": "settings-skins, settings-phone-small",
+          "detail": "settings-skins.phone.3d.png: the Sound/Animations switches are the only non-gold accent in the 3D Settings sheet (coral #b14d3a track, teal knob). Fix: glass variant of the switch — track rgba(216,168,90,0.35) with gold #d8a85a fill when on, ivory knob, off state rgba(255,255,255,0.12)."
+        },
+        {
+          "rank": 6,
+          "severity": "low",
+          "title": "Scoring-rules example hands wrap 11+3 on phone",
+          "state": "match-scoring-rules",
+          "detail": "match-scoring-rules.phone.3d.png: each felt strip fits 11 tiles then wraps 3 (incl. the gold-ringed winning tile) to a second row, so the 14-tile hand reads as two groups. Fix: size the example tiles from the strip width (14 tiles + 13 gaps) as ResultPanel does for the winning hand on phone, with a min of 22 px before wrapping."
+        },
+        {
+          "rank": 7,
+          "severity": "low",
+          "title": "Tooling: desktop recipes stall on the dice-modal dismiss step under load",
+          "state": "match-menu/tile-reference/scoring-rules/players, settings-jade-plum/skins @ desktop",
+          "detail": "With load avg 11-19 the desktop drives failed 7/10, then 4/6, then 0/4 on serial retries, every time stuck at the OPENING ROLLS dialog (captured in the failed PNGs). Fix in shot-states.mjs START_SOLO: after the dismiss tap add { waitForHidden: 'text=Opening rolls', timeout: 30000 } and raise the click timeout to 40 s when os.loadavg()[0] > 8. Not a product defect, but it costs every critic round."
+        }
+      ],
+      "history": [
+        {
+          "round": 2,
+          "score": 8.6,
+          "errors": 0,
+          "perfPass": true,
+          "pass": true,
+          "critic": "art-director",
+          "openIssues": 7,
+          "notes": "Passed round 2 (8.4 → 8.6). Merged into integration at e5bc1f3.",
+          "at": "2026-09-03T23:53:00Z"
+        },
+        {
+          "round": 3,
+          "score": 8.6,
+          "errors": 0,
+          "perfPass": true,
+          "pass": true,
+          "critic": "settings-art-director",
+          "openIssues": 7,
+          "notes": "Manual feedback round 1: skin chips fit their labels at 360/412; every in-match sheet (menu, tile reference, game log, scoring rules, players) and the scoring breakdown are glass under the 3D renderer.",
+          "at": "2026-09-05T03:59:09.329Z"
+        }
+      ]
+    },
+    "tutorial": {
+      "score": 9.0,
+      "errors": 0,
+      "pass": true,
+      "issues": [
+        {
+          "rank": 1,
+          "severity": "high",
+          "title": "Regression run: two three-table.spec tests fail under host load (pre-existing, table owner)",
+          "state": "e2e/three-table.spec.ts:402 'landscape river zoom stays through the own turn' and :671 'the discard flight stretches under the slow-motion seam'",
+          "detail": "Full run (three-tutorial 19/19, tutorial-scoring-intro 3/3, three-table 9/11): river-zoom times out in readPerf waiting for __MAHJONG_PERF__.sample >= 2 after the pill click; discard-flight polls 'discard:discard:4160' and gets 'discard:none:0'. Rerun x2 in isolation: 3/4 fail on this branch AND 3/4 fail on the base commit 9b6acfc built in a throwaway worktree, host load avg ~16 on SwiftShader. Not attributable to claude/fb-tutorial (rotationProgress does not touch flight kind/ms bookkeeping), but the gate is red on this host. Fix: readPerf should force a render tick before waiting and use a longer, load-scaled timeout; the discard-flight test should snapshot the flight from the debug hook's history rather than racing a 4.16 s window with a 5 s poll."
+        },
+        {
+          "rank": 2,
+          "severity": "medium",
+          "title": "'Now watch the bots' card hides bot seat badges at every viewport",
+          "state": "tutorial-basics-4 @ phone / phone-landscape / desktop",
+          "detail": "Phone: the top strip (64-180 CSS) covers all three bot badges (accepted wontfix by the engineer). Landscape: the right-docked card (1213-1800 x 88-555 device) sits over the south badge that every other landscape shot shows at 1635-1800 x 170-240. Desktop: the card (975-1413 x 323-537) covers the south badge at 1180-1340 x 365-405. The step is literally about the bots and their turn indicator. Fix: add seat badges to the docked-card keep-outs; on desktop drop the dock to y 410-624 (it covers the same right-wall stacks either way and frees the badge); on phone relax the hand-row keep-out for steps whose target is the river so the strip can sit over the idle hand (575-745 CSS) and leave badges, turn pill and toast visible."
+        },
+        {
+          "rank": 3,
+          "severity": "medium",
+          "title": "Phone and desktop no-target cards park over the centre plate and river",
+          "state": "basics-1, claims-0, scoring-0, drawn-game-2 @ phone and desktop; claims-3 @ phone",
+          "detail": "The centred card hides the plate, dice and wind glyph, and on desktop half the dealer chip (莊 at 480-520 x 530-570). Engineer wontfix on phone for geometry reasons (hand rows are keep-outs); on desktop there is no keep-out for the plate at all. Fix on desktop: treat the plate disc as a soft keep-out and offset the centred card down to sit on the near felt between plate and hand (y ~470-690 is free of tiles on every desktop shot). On phone, accept but shift the card up 40 px on steps where the river is empty so the plate glyph stays visible."
+        },
+        {
+          "rank": 4,
+          "severity": "low",
+          "title": "Landscape claim strip and tsumo ring are flush with the viewport bottom",
+          "state": "tutorial-claims-3 and tutorial-win-1 @ phone-landscape",
+          "detail": "Ring stroke rows 816-819 of 824 device px (2 CSS px clear); the halo is clipped by the screen edge and the strip reads as cut off. Fix: lift the landscape footer strip 6-8 px or reduce the ring's bottom inset so stroke + glow stay inside the safe area."
+        },
+        {
+          "rank": 5,
+          "severity": "low",
+          "title": "Landscape own-hand ring halo grazes the footer badge border",
+          "state": "tutorial-basics-2 @ phone-landscape",
+          "detail": "Stroke clears the badge by 2.5 CSS px but the warm glow measures onto the badge's top border rows 734-736. Fix: trim the ring's bottom inset by 4 px or suppress the glow on the trimmed side."
+        },
+        {
+          "rank": 6,
+          "severity": "low",
+          "title": "Landscape dice step leaves a sliver of hand tile tops between modal and card",
+          "state": "tutorial-basics-0 @ phone-landscape",
+          "detail": "The hand is otherwise fully behind the bottom coach card; a 30 px band of tile tops shows at y 585-620 between the modal (bottom 570) and the card (top 620), reading as an accident. Fix: either lower the card top to 585 or shrink the dice modal so the hand is wholly visible or wholly covered."
+        },
+        {
+          "rank": 7,
+          "severity": "low",
+          "title": "Last live wall tile spotlight reads as a plain cream slab",
+          "state": "tutorial-drawn-game-2 @ desktop (1075-1120 x 640-700) and phone-landscape (1500-1570 x 500-580)",
+          "detail": "The gold spotlight on a tile back renders as an untinted cream block with no ring, inconsistent with the gold ring language used for every other target. Fix (table owner): tint the back-side highlight toward #d8a85a or add the thin gold ring the HUD targets use."
+        },
+        {
+          "rank": 8,
+          "severity": "low",
+          "title": "Phone dice step card hides the footer badge and sort control completely",
+          "state": "tutorial-basics-0 @ phone",
+          "detail": "The bottom strip (753-905 CSS) sits on top of the user badge and SUIT/NUMBER/MANUAL control, and clips the body to two lines + chevron. Acceptable while the modal is up, but the strip could shave 12 px by dropping the STEP line onto the title row so the footer's top edge shows."
+        }
+      ],
+      "history": [
+        {
+          "round": 4,
+          "score": 8.3,
+          "errors": 0,
+          "perfPass": true,
+          "pass": false,
+          "critic": "art-director",
+          "openIssues": 6,
+          "notes": "4 rounds: 8.4 → 8.4 → 8.3 → 8.3. Zero errors, perf ok, all tutorial specs green; merged into integration so the next loop resumes from these issues. 3D targeted steps depend on the table registering TutorialTarget rects.",
+          "at": "2026-09-04T01:40:00Z"
+        },
+        {
+          "round": 2,
+          "score": 8.7,
+          "errors": 0,
+          "perfPass": true,
+          "pass": true,
+          "critic": "art-director",
+          "openIssues": 7,
+          "notes": "Round-2 gauntlet passed at iteration 2 (8.2 → 8.7): spotlit glyph ink ≥ 4.5:1, landscape dice strip dock, scroll cue, synchronous overlay readiness with a CPU-throttled e2e, river ring clipped to the walls, deterministic desktop dock. Merged into integration.",
+          "at": "2026-09-04T10:50:00Z"
+        },
+        {
+          "round": 3,
+          "score": 8.5,
+          "errors": 0,
+          "perfPass": true,
+          "pass": true,
+          "critic": "tutorial-art-director",
+          "openIssues": 8,
+          "notes": "Manual feedback round 1: claim-bar ring hugs the CHI/PASS strip on every viewport; opaque coach cards; first card waits for the camera; landscape ring clear of the footer; chevron in a gutter; flights lit under the veil.",
+          "at": "2026-09-05T03:59:09.218Z"
+        }
+      ],
+      "rounds": [
+        {
+          "round": 1,
+          "at": "2026-09-05T16:15:57Z",
+          "score": 7.5,
+          "pass": false,
+          "errors": 0,
+          "context": "feedback round 3 — body room (round 1)"
+        },
+        {
+          "round": 2,
+          "at": "2026-09-05T16:15:57Z",
+          "score": 9.0,
+          "pass": true,
+          "errors": 0,
+          "context": "feedback round 3 — after hand keep-out / reveal gate fixes (3a4a4c7)"
+        }
+      ],
+      "openIssues": [
+        {
+          "severity": "low",
+          "title": "Strip title ellipsised at 360x640",
+          "where": "tutorial-basics-4, phone-small (top strip, 'narrow' strip layout)",
+          "detail": "The strip title reads 'Now watch t…' because the title shares its row with Skip lesson + Restart at 336 px card width. The 412 px strips show the full title. Same lesson's dice strip at 412x915 is fine. Cosmetic, but the step's name is the one thing a learner cannot scroll to."
+        },
+        {
+          "severity": "low",
+          "title": "Cap floor still leaves a scroll on the smallest phone and at the 600 px edge",
+          "where": "basics-4 360x640 (3/4 + chevron), claims-0 / ron-0 360x640 (4/5), scoring-0 360x640 (4/8) and 915x412 (3/5), claims-0 412x600 (3/4)",
+          "detail": "Geometry-limited: the 360x640 top strip band is 132.5 px and the centred room 222 px; the text that does not fit is behind a chevron with ≥ 3 lines visible. No fix expected without shrinking type; recorded so the residual is explicit."
+        }
+      ]
+    },
+    "replay": {
+      "owner": "replay",
+      "score": 9.0,
+      "pass": true,
+      "errors": 0,
+      "rounds": [
+        {
+          "round": 1,
+          "at": "2026-09-05T10:10:44Z",
+          "score": 7.5,
+          "pass": false,
+          "errors": 0,
+          "context": "feedback round 2 — glass player on the match TableScene"
+        },
+        {
+          "round": 2,
+          "at": "2026-09-05T10:10:44Z",
+          "score": 9.0,
+          "pass": true,
+          "errors": 0,
+          "context": "after the timeline seek / dock / badge / name fixes (e729348)"
+        }
+      ],
+      "openIssues": [
+        {
+          "severity": "low",
+          "title": "Compact timeline seam still ~4 px / 2 frames off the rendered card edge",
+          "where": "replay-player @ phone, phone-small, phone-landscape (frame 105)",
+          "detail": "ratioToX/xToRatio assume the cards' widths equal their flex weights, but the rendered cards keep min-content (8 px padding + the non-shrinking label), so the seam lands 3-4 px later than the maths: at hand 2's first frame the playhead draws 1.5 px inside the Hand-1 card (phone 123.3 vs card-2 left 127.8), and a tap 1.5 px inside the Hand-2 card seeks to frame 107 instead of 105. Desktop matches exactly. Either measure card rects via onLayout or give the cards flexBasis 0 with no min-content (overflow hidden on the label)."
+        },
+        {
+          "severity": "low",
+          "title": "Chapter result clips its faan on the 360 px strip",
+          "where": "replay-player-end @ phone-small",
+          "detail": "'東 H2 Mei Ling wins · 0 faan' renders in 104 of the 114 px it needs and ellipsises to 'Mei Ling wins · 0 …' (scratchpad/probe2/phone-small-dock-end.png). The name and faan both fit at 412 px."
+        },
+        {
+          "severity": "low",
+          "title": "Speed / POV-All segments at 10 px, dealer glyph at 9 px",
+          "where": "scrubber and badges @ all viewports",
+          "detail": "Remaining sub-11 px text: '0.5× 1× 2× 4×' and 'All' segment labels (10 px), the 莊 chip glyph (9 px). Contrast is fine (>= 5.26:1 measured in round 1); this is the last gap against the 11 px micro-label spec."
+        }
+      ]
+    }
+  },
+  "wholeGame": {
+    "score": 8.7,
+    "pass": true,
+    "issues": [
+      {
+        "rank": 1,
+        "severity": "medium",
+        "title": "Dead-wall marker is effectively portrait-only: desktop and landscape dead stacks differ from live stacks only by a faint top-face shade",
+        "state": "match-dealt, match-claim, match-late-hand @ desktop 1440x900 and phone-landscape 915x412 (3d)",
+        "subsystem": "table",
+        "detail": "Crops of the near wall (desktop x 700-1200 / y 600-720; landscape x 900-1700 / y 440-640) show 7 dead stacks with slightly greyer blue tops next to 2 live stacks with lighter tops, and no gold hairline on either viewport; portrait shows the hairline clearly. From the 44 deg / 31 deg cameras the outer felt edge is occluded by the stacks' own front faces, so the felt-only hairline never reaches the eye. Fix: when the outer-edge probe fails, fall back to (a) a hairline along the inner (centre-facing) edge of the dead run, or (b) a 2 px warm-gold band on the visible near side faces of the dead stacks via the instance tint (side-face UV band, still one draw call); additionally raise the dead back-variant delta to >= 25 luminance with a warm hue shift so the two-shade read survives without the line. Acceptance: mean top-face luminance delta >= 0.12 AND a visible marker in all three viewport captures."
+      },
+      {
+        "rank": 2,
+        "severity": "medium",
+        "title": "Landscape pre-game lobby hides the 3D waiting table entirely and hard-clips a gold segmented control at the viewport bottom",
+        "state": "match-lobby @ phone-landscape 915x412 (3d)",
+        "subsystem": "table",
+        "detail": "The merged glass panel spans the whole viewport; behind it only a dark blur is visible (no rail, no wall, no plate), so the one landscape screen that should sell the 3D room shows none of it. At y 805-824 the BOT SKILL row's gold segmented control is cut by the viewport edge with no fade. Fix: cap the panel at ~88% viewport height with a 10 px bottom margin so the scroll edge is inside glass, add a 24 px bottom fade as the scroll cue, and leave a 44-56 px felt/near-wall band visible under the panel (or shrink the RULES column to ~40% so the right rail shows in a gutter, matching the desktop composition)."
+      },
+      {
+        "rank": 3,
+        "severity": "low",
+        "title": "Desktop menu: a drift tile back still lands on the hero rack's 一萬 corner (unchanged since round 2)",
+        "state": "menu, menu-tutorials @ desktop 1440x900 (3d)",
+        "subsystem": "menu",
+        "detail": "Crop x 230-420 / y 160-330: an edge-on blue tile back sits at (265-320, 195-240), overlapping the top-left corner of the first hero tile. It reads as clutter on the single most-seen composition. Fix: apply the phone rack+dice keep-out to desktop/landscape too - project the rack's world AABB to NDC each layout pass and reject spawn/drift positions within 0.6 tile widths of it (the keep-out disc already exists for phone; make it viewport-agnostic)."
+      },
+      {
+        "rank": 4,
+        "severity": "low",
+        "title": "Coach-card glass is still transparent enough for scene geometry to read through the header and action rows",
+        "state": "tutorial-drawn-game-2 @ phone (6-pin discard between LESSON 11/14 and the step dots); tutorial-basics-1, scoring-0 @ desktop (dice plate behind the header); tutorial-basics-1 @ phone-landscape (near-wall tiles behind the Skip/Restart/Got it row)",
+        "subsystem": "tutorial",
+        "detail": "Text stays legible (white on dark) but the card loses its authority when a tile or the plate is visible under the label row. Fix: raise the card backdrop to ~rgba(12,16,14,0.86) with 18 px blur, or add a 0.35-alpha inner scrim behind the header and action rows only, keeping the body glass as is."
+      },
+      {
+        "rank": 5,
+        "severity": "low",
+        "title": "Tutorial first-step captures on desktop show the camera mid-dolly, not the settled table pose",
+        "state": "tutorial-basics-0, tutorial-claims-0 @ desktop 1440x900 (3d); compare tutorial-basics-1 / match-dealt @ desktop",
+        "subsystem": "tutorial",
+        "detail": "Corner crops (x 0-500 / y 600-900): left rail corner at x~100 and near-rail bottom at y~830 in basics-0/claims-0 vs x~40 / y~855 in every settled desktop state; hand tiles sit at y 695-765 vs 715-790 and seat badges shift 5-10 px. Nothing is clipped any more, but the first coach card appears while the rig is still easing in. Fix: either start the tutorial rig at the settled table preset (skip the lobby->table ease when the overlay mounts), or delay the first coach card until rig.isSettled(); if the intro dolly is intended, make the shot recipe await settle so the evidence reflects the resting pose."
+      },
+      {
+        "rank": 6,
+        "severity": "low",
+        "title": "Full-table river glyphs remain marginal for mid-value 索/筒 on portrait side rivers and landscape rivers/side melds",
+        "state": "match-mid-hand, match-late-hand @ phone 412x915 (side rivers ~22 CSS px); match-mid-hand, match-late-hand @ phone-landscape (rivers ~22-25 CSS px, side melds sideways ~20 CSS px) (3d)",
+        "subsystem": "table",
+        "detail": "Clearly improved: far row at 1.4x and own river ~25 CSS px now read; characters and honours read everywhere. Bamboo 3-7 and dots 5-8 are still pattern-counted on the rotated side rivers (crop x 120-720 / y 380-920 on phone mid-hand). The river-zoom hatch exists on both phone orientations, which is the right escape valve. Fix: scale side rivers 1.15x on portrait while they hold <= 8 tiles; thicken glyph ink ~8% in atlas mips 1-2 so small rotated tiles keep stroke contrast."
+      },
+      {
+        "rank": 7,
+        "severity": "low",
+        "title": "Landscape chrome residuals: DISMISS pill contrast, DISMISS spilling below the header onto the felt in river zoom, two DRAW affordances",
+        "state": "menu, menu-tutorials, replay-library, settings, match-lobby, match-river-zoom-landscape @ phone-landscape 915x412 (3d)",
+        "subsystem": "menu",
+        "detail": "Crop of the zoom header (x 1500-1830 / y 0-200): DISMISS text is ~0.55 alpha grey (spec 0.62+ for secondary text) and the pill sits below the glass header strip, over the wood rail/felt. In river zoom the header shows a gold 'DRAW' status pill while the footer shows a gold-outlined 'DRAW' action button. STEP n OF m grammar and the tile-sheet dice-modal capture from round 2 are fixed. Fix: DISMISS text alpha 0.72; dock DISMISS inside the header row (right of FULLSCREEN, or as an x on the FULLSCREEN pill); relabel the zoom action 'DRAW TILE' or hide the header status pill while zoomed."
+      },
+      {
+        "rank": 8,
+        "severity": "low",
+        "title": "Landscape own-hand spotlight ring overlaps the footer badge and SUIT pill top edges",
+        "state": "tutorial-basics-2 @ phone-landscape 915x412 (3d)",
+        "subsystem": "tutorial",
+        "detail": "Crops x 150-450 and x 1350-1700 at y 680-824: the ring's bottom corners cross the badge's top-right outline and the SUIT pill's top edge by ~5-8 px. Fix: clamp the ring's bottom to footerTop - 6 px, or shrink the ring's vertical padding when the projected hand rect bottom exceeds footerTop - 12."
+      },
+      {
+        "rank": 9,
+        "severity": "low",
+        "title": "Desktop lobby: far rail wood and wall tiles read through the gutters between the SEATS / BOT SKILL / RULES panels",
+        "state": "match-lobby @ desktop 1440x900 (3d)",
+        "subsystem": "table",
+        "detail": "Crops y 330-400 and y 585-650 (x 40-640): a brown rail smear plus a blue wall tile show in the 12 px gap between SEATS and BOT SKILL, and near-wall tops peek between BOT SKILL and RULES. Fix: merge the three panels into one glass column with hairline dividers (as the landscape lobby already does), or give the gutters the same glass fill so the backdrop reads continuously."
+      },
+      {
+        "rank": 10,
+        "severity": "low",
+        "title": "Phone lobby CTA row sits directly on the waiting table's near wall with tile tops peeking around the buttons",
+        "state": "match-lobby @ phone 412x915 (3d)",
+        "subsystem": "table",
+        "detail": "Crop y 1050-1600: blue wall tops show in the ~30 CSS px band between the RULES panel and Start match / Leave, and a tile pokes out left of Leave. Reads cluttered rather than 'sitting at the table'. Fix: put the CTA row on a full-width footer glass strip, or raise the lobby camera ~0.4 units so the near wall sits under the strip and only felt shows in the gap."
+      },
+      {
+        "rank": 11,
+        "severity": "low",
+        "title": "Scroll-cue chevron painted over the faded last text line instead of in a gutter",
+        "state": "tutorial-scoring-0 @ phone-landscape 915x412 (3d)",
+        "subsystem": "tutorial",
+        "detail": "The chevron at y~400 overlaps 'lesson walks you through six common scoring rules - each one is a'. Fix: reserve a 20 px gutter below the text clip and centre the chevron there; keep the 24 px fade above it."
+      },
+      {
+        "rank": 12,
+        "severity": "low",
+        "title": "Settings/replay residuals: Blue back grades to near-white at the far edge, dpr-1 stair-steps on the preview, replay empty-state card floats in void",
+        "state": "settings, settings-jade-plum @ phone + desktop; replay-library @ phone (140 CSS px above / 245 below the card) and desktop (130 / 235 px) (3d)",
+        "subsystem": "settings",
+        "detail": "Preview crops confirm the blue back's top face still reads pale-sky toward the far edge (env reflection), rail/glyph edges alias at dpr 1 on desktop, and the replay card is neither centred nor top-anchored. Rail corners are now inside the card and the LIVE PREVIEW pill clears the wood (fixed). Fix: clamp the back material (roughness ~0.35, envMapIntensity ~0.6) or bake a darker gradient; enable 4x MSAA / FXAA on the preview canvas when dpr < 1.5; vertically centre the replay card in the remaining viewport or anchor at top+24 and let the shelf canvas grow."
+      },
+      {
+        "rank": 13,
+        "severity": "low",
+        "title": "Bot discard in flight renders as a dark floating block under the tutorial veil",
+        "state": "tutorial-basics-4 @ phone 412x915 (3d)",
+        "subsystem": "tutorial",
+        "detail": "Crop x 100-400 / y 250-450: Haru's discard is mid-arc above the far wall while the coach card is up; dimmed by the veil it reads as a stray dark box. Fix: exempt in-flight tiles from the veil dim (they are what the 'watch the pool' step is teaching), or pause bot turns while a non-'watch' card is showing."
+      }
+    ],
+    "history": [
+      {
+        "round": 1,
+        "score": 8.2,
+        "errors": 0,
+        "perfPass": true,
+        "pass": false,
+        "critic": "whole-game-art-director",
+        "openIssues": 13,
+        "notes": "Rubric visual 8.4 / motion 8.0 / legibility 8.0 / polish 8.1 / cohesion 8.3. Weakest subsystem: table. Zero errors, perf budget met on every 3D state at phone / landscape / desktop.",
+        "at": "2026-09-04T03:58:00Z"
+      },
+      {
+        "round": 2,
+        "score": 8.6,
+        "errors": 0,
+        "perfPass": true,
+        "pass": true,
+        "critic": "whole-game-art-director",
+        "openIssues": 13,
+        "notes": "Round-2 integrated build: visual 8.6 / motion 8.6 / legibility 8.3 / polish 8.4 / cohesion 9.0; 10 of 13 round-1 issues verified fixed; zero errors; perf budget met on all 72 captures. Weakest subsystem: table (portrait band, landscape dice modal, desktop lobby framing) — round-3 table gauntlet in progress.",
+        "at": "2026-09-04T12:10:00Z"
+      },
+      {
+        "round": 3,
+        "score": 8.7,
+        "errors": 0,
+        "perfPass": true,
+        "pass": true,
+        "critic": "whole-game-art-director",
+        "openIssues": 13,
+        "notes": "Rubric visual 8.8 / motion 8.7 / legibility 8.4 / polish 8.4 / cohesion 9.1. Verified 8 of 13 round-2 issues fixed (portrait band, landscape dice modal, desktop lobby framing, tutorial-claims-0 clip, side melds, landscape ClaimBar gap, zoom sliver, dead-wall tint). Weakest subsystem: menu (two low residuals). Zero errors, perf budget met on all 81 captures.",
+        "at": "2026-09-04T19:40:58.336Z"
+      }
+    ],
+    "errors": 0,
+    "weakestSubsystem": "table"
+  },
+  "blindJudges": [
+    {
+      "summary": {
+        "3d": 45,
+        "baseline": 0,
+        "tie": 0
+      },
+      "verdicts": [
+        {
+          "judge": 1,
+          "pair": 0,
+          "state": "match-dealt-jade-plum",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.9,
+          "why": "B's perspective table with plum tile backs, wooden rim, and large two-row hand reads as a real game scene with depth; A is a flat green panel that is mostly empty space with small hand tiles. A's explicit 'YOUR TURN · DISCARD' pill and bot-skill labels are clearer, and B wastes a large dark band above the table."
+        },
+        {
+          "judge": 1,
+          "pair": 1,
+          "state": "match-dealt",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.9,
+          "why": "A has depth, a readable large hand, dealer chip and dice detail, and a clear DISCARD status pill; B is a flat dark-green layout dominated by an empty discards box. B's compact top bar shows bot difficulty and the turn prompt is more explicit, but it looks like a placeholder."
+        },
+        {
+          "judge": 1,
+          "pair": 2,
+          "state": "match-lobby",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.8,
+          "why": "B fills the screen with a coherent dark/gold lobby, highlights the player's own seat, expands the rules inline and has a stronger CTA hierarchy; A leaves two-thirds of the phone blank and its pale pink selected states are low contrast. A is calmer and its collapsed accordion is arguably less busy."
+        },
+        {
+          "judge": 1,
+          "pair": 3,
+          "state": "match-mid-hand",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.85,
+          "why": "A shows the whole table with rivers and the CHI toast in its own row without collisions; in B the CHI toast sits on top of the opponent rows and clips 'Bot (Standa'. A's centre river tiles are small and hard to read at phone size, while B's discard row is very legible."
+        },
+        {
+          "judge": 1,
+          "pair": 4,
+          "state": "match-my-turn",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.85,
+          "why": "B lifts the just-drawn tile out of the hand and highlights the wall draw spot on a rich 3D table, so what happened is obvious; A is a flat layout with four discards, a giant empty panel and a lone blue placeholder card in the middle. A's 'YOUR TURN · DRAW' pill is more explicit than B's small DRAW tag."
+        },
+        {
+          "judge": 1,
+          "pair": 5,
+          "state": "match-river-zoom",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.7,
+          "why": "A's zoomed river makes every discard legible and the hand is large; B's PENG toast overlaps and clips the opponent labels. B counters with a clear claim bar (CHI / PASS) telling the player exactly what to do, whereas A's 'CHI Jin called' toast is ghosted and its header buttons overlap the wooden rim."
+        },
+        {
+          "judge": 1,
+          "pair": 6,
+          "state": "menu",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.8,
+          "why": "B's hero of 3D tiles and dice, gold primary CTA and dark theme make it feel like a game rather than a settings form, and it fills the viewport; A is clean but bland with half the screen empty. B's footer credit is clipped at the bottom edge and it is longer to scroll."
+        },
+        {
+          "judge": 1,
+          "pair": 7,
+          "state": "replay-library",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.9,
+          "why": "A has a designed empty state (fanned tiles, 'Nothing on the shelf yet', a Paste a replay action) and a LIBRARY eyebrow, so the screen feels finished; B is a header, a toggle and a blank cream page. B's larger typography is very readable."
+        },
+        {
+          "judge": 1,
+          "pair": 8,
+          "state": "match-dealt-jade-plum",
+          "viewport": "desktop",
+          "prefers": "3d",
+          "confidence": 0.9,
+          "why": "B's angled 3D table with plum-backed walls, per-seat badges around the rim and a hand that spans the width is a proper desktop game view; A is a small flat green rectangle with tiny tiles and a big empty inner panel plus unused space below. A's LIVE/#SOLO chip and turn pill are informative."
+        },
+        {
+          "judge": 1,
+          "pair": 9,
+          "state": "match-dealt",
+          "viewport": "desktop",
+          "prefers": "3d",
+          "confidence": 0.9,
+          "why": "A is the perspective table with readable tiles and clear seat badges; B is the flat 2D board with small tiles, an empty discard well, and a dead lower third of the viewport. B's centered 'YOUR TURN · DISCARD' pill is a clearer prompt."
+        },
+        {
+          "judge": 1,
+          "pair": 10,
+          "state": "match-lobby",
+          "viewport": "desktop",
+          "prefers": "3d",
+          "confidence": 0.75,
+          "why": "B uses a two-column layout that fits the whole lobby above the fold with strong gold selection states and a highlighted 'You' seat; A's pale pink selected states are hard to read and the page is a narrow column of beige cards. A does surface the match code copy chip and 'waiting for players' status, which B omits."
+        },
+        {
+          "judge": 1,
+          "pair": 11,
+          "state": "match-mid-hand",
+          "viewport": "desktop",
+          "prefers": "3d",
+          "confidence": 0.8,
+          "why": "A keeps everything on the 3D table with the CHI/PASS claim bar floating near the river and no collisions; in B the PENG toast covers Mei's badge and the claim card sits off to the side of the board. B's discards and melds are easier to read individually, and its claim card is bigger."
+        },
+        {
+          "judge": 1,
+          "pair": 12,
+          "state": "match-my-turn",
+          "viewport": "desktop",
+          "prefers": "3d",
+          "confidence": 0.9,
+          "why": "B raises the drawn tile out of the hand and highlights the draw point on the wall, on a table with depth and lighting; A is the flat board with tiny river tiles and a mostly empty green well. A's explicit 'YOUR TURN · DRAW' pill is the one thing it does better."
+        },
+        {
+          "judge": 1,
+          "pair": 13,
+          "state": "menu",
+          "viewport": "desktop",
+          "prefers": "3d",
+          "confidence": 0.85,
+          "why": "A is a complete landing screen: hero tile fan, three balanced columns, a tutorial grid that fits, and drifting tile decorations; B's tutorial list runs off the bottom, the first two columns are mostly empty, and the pastel tile shapes look like unfinished placeholders. B's large 東 tile logo is a nice focal element."
+        },
+        {
+          "judge": 1,
+          "pair": 14,
+          "state": "replay-library",
+          "viewport": "desktop",
+          "prefers": "3d",
+          "confidence": 0.85,
+          "why": "B has a centred empty-state card with tile illustration, explanation and a Paste a replay action, plus a proper page header; A is a blank cream page with an oversized faint decorative shape that reads as a rendering artifact. A's full-width layout puts the header controls at the edges, which some might prefer."
+        },
+        {
+          "judge": 2,
+          "pair": 0,
+          "state": "match-dealt-jade-plum",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.9,
+          "why": "B's perspective table with lit tile walls, wooden rim, dice plate and large readable hand tiles reads as a real game scene, while A is a flat green panel that is 70% empty 'DISCARDS' box with small tiles. Strongest point for A: everything fits in one compact layout with no dead band, and the player's name is not truncated (B shows 'Lucky Drag...')."
+        },
+        {
+          "judge": 2,
+          "pair": 1,
+          "state": "match-dealt",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.9,
+          "why": "A (the 3D table) has depth, a clear focal plate and big tiles; B is the same flat layout as pair 0 with a huge empty discard region and cramped 14-tile row. For B: the 'YOUR TURN · DISCARD' chip is a slightly more explicit call to action than A's small 'DISCARD' pill."
+        },
+        {
+          "judge": 2,
+          "pair": 2,
+          "state": "match-lobby",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.8,
+          "why": "B fills the phone screen with a coherent dark/gold glass design, highlights the player's own seat, and exposes the rules inline; A leaves the bottom half blank and its beige segmented controls have weak selected-state contrast. For A: it is lighter and arguably quicker to scan, with the Start button fixed to the bottom edge."
+        },
+        {
+          "judge": 2,
+          "pair": 3,
+          "state": "match-mid-hand",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.8,
+          "why": "A shows the live river on a 3D table with the CHI toast cleanly placed under the seat strip; B's toast overlaps and clips the opponent list ('Bot (Standa'), and the giant lone draw tile floating in a sea of empty green looks unfinished. For B: its discard rows with owner colour bars are far more legible than A's tiny centre-table tiles."
+        },
+        {
+          "judge": 2,
+          "pair": 4,
+          "state": "match-my-turn",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.85,
+          "why": "B has a raised, selected tile in a large hand, a coherent 3D scene and no wasted space; A is mostly empty felt with one oversized pulsing tile. For A: the 'YOUR TURN · DRAW' banner and the discards row are clearer at a glance."
+        },
+        {
+          "judge": 2,
+          "pair": 5,
+          "state": "match-river-zoom",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.7,
+          "why": "A's zoomed river makes every discard legible with real depth, and the close button is integrated into the chrome; B's toast collides with the opponent list and the layout is largely empty. Against A: the half-faded CHI toast sitting on the felt looks like a rendering artefact and the top-right wall is hard-clipped, so it is the less polished of the 3D shots."
+        },
+        {
+          "judge": 2,
+          "pair": 6,
+          "state": "menu",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.75,
+          "why": "B's dark hero with rendered tiles and dice, gold primary CTA and eyebrow label feels like a game landing page; A is a plain settings-style list. For A: it is compact, fully above the fold, and B's disabled 'Join match' button is a muddy brown and the floating background tiles add visual noise behind the form."
+        },
+        {
+          "judge": 2,
+          "pair": 7,
+          "state": "replay-library",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.9,
+          "why": "A has a proper empty state: illustrated tile fan, headline, guidance and a 'Paste a replay' action inside a card; B is a headline, a toggle and a bare paragraph over an empty beige page. For B: the light theme is calm and text contrast is fine, but that is all it offers."
+        },
+        {
+          "judge": 2,
+          "pair": 8,
+          "state": "match-dealt-jade-plum",
+          "viewport": "desktop",
+          "prefers": "3d",
+          "confidence": 0.9,
+          "why": "B's tilted 3D table with wooden rim, dice plate and dealer chip is dramatically more attractive and uses the wide viewport; A is a flat board with a large empty inner rectangle and small tiles floating below it. For A: player badges sit directly beside each wall so ownership is instantly clear."
+        },
+        {
+          "judge": 2,
+          "pair": 9,
+          "state": "match-dealt",
+          "viewport": "desktop",
+          "prefers": "3d",
+          "confidence": 0.9,
+          "why": "Same comparison as pair 8 in reverse: A's perspective table has depth and readable large tiles, B is the flat board with the empty discard rectangle. For B: it is compact and nothing is occluded."
+        },
+        {
+          "judge": 2,
+          "pair": 10,
+          "state": "match-lobby",
+          "viewport": "desktop",
+          "prefers": "3d",
+          "confidence": 0.7,
+          "why": "B uses the desktop width for a two-column layout, highlights the user's seat in gold and has strong selected states on the skill toggles; A stacks everything in a narrow column with faint pink selection states. For A: it is very readable and its single-column order (seats, skill, rules, start) has a clear top-to-bottom flow."
+        },
+        {
+          "judge": 2,
+          "pair": 11,
+          "state": "match-mid-hand",
+          "viewport": "desktop",
+          "prefers": "3d",
+          "confidence": 0.8,
+          "why": "A's 3D scene with the raised 一萬 tile and a compact floating CHI/PASS bar looks polished; B's PENG toast overlaps the top opponent badge and the right-hand claim panel floats off the table edge. For B: labelled melds ('PENG', 'CHI') and larger flat discards are easier to read than A's small centre-table tiles."
+        },
+        {
+          "judge": 2,
+          "pair": 12,
+          "state": "match-my-turn",
+          "viewport": "desktop",
+          "prefers": "3d",
+          "confidence": 0.85,
+          "why": "B's lifted tile and 3D table clearly signal 'your move' with real depth; A is mostly empty flat felt with a few scattered small discards. For A: the 'YOUR TURN · DRAW' chip and highlighted own badge are explicit."
+        },
+        {
+          "judge": 2,
+          "pair": 13,
+          "state": "menu",
+          "viewport": "desktop",
+          "prefers": "3d",
+          "confidence": 0.8,
+          "why": "A fits the whole menu including a 14-lesson tutorial grid into the viewport with a strong hero tile row and consistent dark/gold styling; B's tutorial column overflows the screen while the other two columns are largely empty. For B: the large 東 tile mark and cream palette are clean and friendly, and its buttons have stronger colour contrast."
+        },
+        {
+          "judge": 2,
+          "pair": 14,
+          "state": "replay-library",
+          "viewport": "desktop",
+          "prefers": "3d",
+          "confidence": 0.85,
+          "why": "B presents a designed empty state (tile fan illustration, headline, help text, 'Paste a replay') centred in a card; A is a header, a toggle and a sentence over a mostly blank page with a faint decorative background. For A: the light theme is easy on the eyes and nothing competes for attention."
+        },
+        {
+          "judge": 3,
+          "pair": 0,
+          "state": "match-dealt-jade-plum",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.9,
+          "why": "B's rendered 3D table with wood rim, shaded walls, dice plate and large readable hand tiles reads as a real game; A is a flat green panel with a huge empty 'Discards' box and small tiles. A's one-row hand plus explicit 'YOUR TURN · DISCARD' pill is the only thing it does more clearly."
+        },
+        {
+          "judge": 3,
+          "pair": 1,
+          "state": "match-dealt",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.9,
+          "why": "A (3D table, blue-back walls, depth, big hand tiles) is far more attractive and polished than B's flat felt with an empty discards area dominating the screen. B's compact single-row hand and clear turn label are its strongest points."
+        },
+        {
+          "judge": 3,
+          "pair": 2,
+          "state": "match-lobby",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.75,
+          "why": "B's dark glass lobby with gold selected chips, a 'You · Online' seat highlight, subtitle copy and fully visible rules feels more premium and complete; A's cream version is tidy but leaves two-thirds of the screen empty and hides rules behind a collapsed row. A is quicker to scan and less busy."
+        },
+        {
+          "judge": 3,
+          "pair": 3,
+          "state": "match-mid-hand",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.75,
+          "why": "A shows a convincing 3D table with melds, river and a legible CHI toast, and the drawn tile is clearly set apart; B's flat layout has a lone highlighted draw tile floating in a big empty area. B's discards row is more readable at a glance than A's small central river tiles."
+        },
+        {
+          "judge": 3,
+          "pair": 4,
+          "state": "match-my-turn",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.85,
+          "why": "B's 3D table with the freshly drawn tile raised in the hand and the wall break highlighted gives depth and clear 'what changed' cues; A is flat and mostly empty. A's turn pill and seat list are slightly more explicit about whose turn it is."
+        },
+        {
+          "judge": 3,
+          "pair": 5,
+          "state": "match-river-zoom",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.6,
+          "why": "A's zoomed river with large legible discards and the wood rim looks more like a game and reads well; B is a plain list but has a very clear claim panel (tile, CHI, PASS). A's CHI toast is washed out over the felt and the top HUD pills overlap the rim, which cost it confidence."
+        },
+        {
+          "judge": 3,
+          "pair": 6,
+          "state": "menu",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.7,
+          "why": "B's dark hero with rendered tiles and dice, gold 'Play vs bots' CTA and title treatment feels like a game menu; A is a clean but generic cream card list. B's falling-tile decorations clutter the match-code input area and the footer is cut off, which are real polish nits in A's favour."
+        },
+        {
+          "judge": 3,
+          "pair": 7,
+          "state": "replay-library",
+          "viewport": "phone",
+          "prefers": "3d",
+          "confidence": 0.9,
+          "why": "A has a designed empty state (fanned tile illustration, headline, helpful copy, 'Paste a replay' action) on a dark theme; B is a bare cream page with a paragraph and nothing else. B's higher-contrast toggle row is its only edge."
+        },
+        {
+          "judge": 3,
+          "pair": 8,
+          "state": "match-dealt-jade-plum",
+          "viewport": "desktop",
+          "prefers": "3d",
+          "confidence": 0.9,
+          "why": "B's perspective 3D table with wood frame, shaded jade-plum walls, dealer chip and full-width hand looks like a modern game; A is a flat, small, centered 2D board with tiny tiles and lots of unused canvas. A's explicit 'YOUR TURN · DISCARD' pill next to the hand is more prominent than B's header pill."
+        },
+        {
+          "judge": 3,
+          "pair": 9,
+          "state": "match-dealt",
+          "viewport": "desktop",
+          "prefers": "3d",
+          "confidence": 0.9,
+          "why": "A (3D perspective table, depth, large tiles, badges anchored to seats) is much more attractive and readable than B's small flat board floating in cream space. B's compact layout keeps everything in one glance, but at the cost of tiny tiles."
+        },
+        {
+          "judge": 3,
+          "pair": 10,
+          "state": "match-lobby",
+          "viewport": "desktop",
+          "prefers": "3d",
+          "confidence": 0.65,
+          "why": "B's dark two-column lobby with gold selections and 'You · Online' seat state feels more polished and game-like; A is well balanced and centered but visually plain. A's centered composition uses the desktop width better than B's left-heavy layout with empty right and bottom areas."
+        },
+        {
+          "judge": 3,
+          "pair": 11,
+          "state": "match-mid-hand",
+          "viewport": "desktop",
+          "prefers": "3d",
+          "confidence": 0.8,
+          "why": "A's 3D table with melds, river and a compact claim bar (tile, CHI, PASS) placed over the felt looks cohesive; B's flat layout has the PENG toast overlapping the Mei seat badge and a detached claim card off to the right. B's discards and melds are individually easier to read than A's small central tiles."
+        },
+        {
+          "judge": 3,
+          "pair": 12,
+          "state": "match-my-turn",
+          "viewport": "desktop",
+          "prefers": "3d",
+          "confidence": 0.85,
+          "why": "B's rendered table with the raised drawn tile, break-wall highlight and readable hand is more inviting; A's flat board with a few tiny discards in a big dark rectangle looks sparse. A's 'YOUR TURN · DRAW' pill beside the hand is a clearer call to action."
+        },
+        {
+          "judge": 3,
+          "pair": 13,
+          "state": "menu",
+          "viewport": "desktop",
+          "prefers": "3d",
+          "confidence": 0.85,
+          "why": "A's dark hero with a tile spread, three balanced cards and a compact 14-lesson tutorial grid fits the viewport and feels like a game landing page; B's light version has a tutorial list that runs off screen and tall cards with large empty areas. B's list gives lesson descriptions, which is helpful but hurts layout."
+        },
+        {
+          "judge": 3,
+          "pair": 14,
+          "state": "replay-library",
+          "viewport": "desktop",
+          "prefers": "3d",
+          "confidence": 0.85,
+          "why": "B provides a designed empty state with a tile illustration, headline, guidance and a 'Paste a replay' action on a dark theme; A is a nearly blank cream page with a faint decorative glyph. A's header controls are slightly larger and higher-contrast."
+        }
+      ],
+      "judges": 3,
+      "pairs": 15,
+      "method": "3 judges × 15 pairs; labels A/B assigned by a fixed parity shuffle, files copied to neutral names; judges never saw build names",
+      "at": "2026-09-04T03:58:00Z"
+    }
+  ],
+  "baseline": {
+    "dist": "apps/client/dist-baseline",
+    "commit": "0eb1155",
+    "note": "Classic RN shells exported before the Three.js layer landed; used as the B side for blind judging."
+  },
+  "feedbackRounds": [
+    {
+      "id": "fb1",
+      "at": "2026-09-05T03:59:09.434Z",
+      "source": "manual play-test on the Pages preview",
+      "areas": {
+        "mobile": {
+          "rounds": [
+            {
+              "score": 7.9,
+              "pass": false,
+              "errors": 0,
+              "fixed": 6,
+              "total": 7
+            },
+            {
+              "score": 8.4,
+              "pass": false,
+              "errors": 0,
+              "fixed": 12,
+              "total": 13
+            },
+            {
+              "score": 8,
+              "pass": false,
+              "errors": 0,
+              "fixed": 6,
+              "total": 12
+            }
+          ],
+          "final": 8,
+          "pass": false
+        },
+        "table": {
+          "rounds": [
+            {
+              "score": 7.3,
+              "pass": false,
+              "errors": 1,
+              "fixed": 9,
+              "total": 13
+            },
+            {
+              "score": 7.7,
+              "pass": false,
+              "errors": 3,
+              "fixed": 11,
+              "total": 13
+            },
+            {
+              "score": 8.1,
+              "pass": false,
+              "errors": 0,
+              "fixed": 22,
+              "total": 24
+            }
+          ],
+          "final": 8.1,
+          "pass": false
+        },
+        "tutorial": {
+          "rounds": [
+            {
+              "score": 7.4,
+              "pass": false,
+              "errors": 0,
+              "fixed": 3,
+              "total": 6
+            },
+            {
+              "score": 8.2,
+              "pass": false,
+              "errors": 0,
+              "fixed": 4,
+              "total": 6
+            },
+            {
+              "score": 8.5,
+              "pass": true,
+              "errors": 0,
+              "fixed": 6,
+              "total": 6
+            }
+          ],
+          "final": 8.5,
+          "pass": true
+        },
+        "settings": {
+          "rounds": [
+            {
+              "score": 8.6,
+              "pass": true,
+              "errors": 0,
+              "fixed": 3,
+              "total": 3
+            }
+          ],
+          "final": 8.6,
+          "pass": true
+        },
+        "input": {
+          "rounds": [
+            {
+              "score": 8.7,
+              "pass": true,
+              "errors": 0,
+              "fixed": 1,
+              "total": 1
+            }
+          ],
+          "final": 8.7,
+          "pass": true
+        }
+      },
+      "userItems": [
+        {
+          "area": "General",
+          "item": "Manual sorting does not work at all",
+          "status": "fixed",
+          "note": "Drag-to-reorder added to the 3D hand (input agent, critic 8.7)."
+        },
+        {
+          "area": "Desktop",
+          "item": "Turn to draw / discard indicator not obvious",
+          "status": "fixed",
+          "note": "Gold halo + lifted drawable tile, gold band under the hand while a discard is due, YOUR TURN · DRAW/DISCARD chip."
+        },
+        {
+          "area": "Desktop",
+          "item": "Table corners overlapping / glitching",
+          "status": "fixed",
+          "note": "Rail rebuilt as one mitred ring."
+        },
+        {
+          "area": "Desktop",
+          "item": "Chi/peng indicator bigger / more visible",
+          "status": "fixed",
+          "note": "Large ClaimBar: 52x72 tile, 22 px glyph, 54 px gold buttons, gold ring."
+        },
+        {
+          "area": "Desktop",
+          "item": "Claimed melds not vertical on own side",
+          "status": "fixed",
+          "note": "Own melds stand upright in the hand row; claimed tile steps toward the camera."
+        },
+        {
+          "area": "Desktop",
+          "item": "Yellow line on the left tiles instead of shadows",
+          "status": "fixed",
+          "note": "Felt-side dead-wall hairline removed; dead wall marked by an inlay band on the tiles themselves."
+        },
+        {
+          "area": "Desktop",
+          "item": "Floating chi/peng notification more visible",
+          "status": "fixed",
+          "note": "Glass toast: 28-30 px gold glyph, gold ring, longer hold, solid on portrait."
+        },
+        {
+          "area": "Desktop",
+          "item": "Tenpai indicator larger / more visible",
+          "status": "fixed",
+          "note": "~60 px 聽 READY glass badge with wait tiles under the hand."
+        },
+        {
+          "area": "Desktop",
+          "item": "Old shuffling animation in the middle",
+          "status": "fixed",
+          "note": "Classic overlay gated off under 3D; glass 洗牌 SHUFFLING pill in the chrome row."
+        },
+        {
+          "area": "Desktop",
+          "item": "Old winner popup",
+          "status": "fixed",
+          "note": "WinCelebration gated off under 3D; gold 和 stamp on the glass result card."
+        },
+        {
+          "area": "Desktop",
+          "item": "Score breakdown still old style",
+          "status": "fixed",
+          "note": "ScoringBreakdownModal glass theme, wired from the glass result panel."
+        },
+        {
+          "area": "Desktop",
+          "item": "Promoting a gang draws the wrong tile",
+          "status": "fixed",
+          "note": "Replacement leaves the far end of the dead wall and lands in the hand; the store had marked the melded tile as \"drawn\" — fixed."
+        },
+        {
+          "area": "Desktop",
+          "item": "Tile count wrong / tiles left after a drawn game",
+          "status": "fixed",
+          "note": "Remaining tiles are the dead wall (HK rules); now labelled \"N left · 14 dead\" and marked on the tiles; vitest asserts every tile placed once."
+        },
+        {
+          "area": "Mobile",
+          "item": "Vertical mode must work at ~1080x1830",
+          "status": "fixed",
+          "note": "Phone viewport is now 412x700 @2.625 (+360x640); portrait camera/HUD re-derived; verified at both sizes."
+        },
+        {
+          "area": "Mobile",
+          "item": "Landscape zoom should be more top-down",
+          "status": "fixed",
+          "note": "62-degree landscape zoom; rivers read in plan view."
+        },
+        {
+          "area": "Settings",
+          "item": "\"Cream\" text pops out of the pill",
+          "status": "fixed",
+          "note": "Skin chips sized from content in an even grid."
+        },
+        {
+          "area": "Settings",
+          "item": "Rest of the menu not in the 3D theme",
+          "status": "fixed",
+          "note": "Menu, tile reference, game log, scoring rules, players sheets glass under 3D."
+        },
+        {
+          "area": "Tutorial",
+          "item": "Highlight around the actions pill incorrect",
+          "status": "fixed",
+          "note": "Ring hugs the CHI/PASS strip (6-7 px padding) on every viewport; e2e asserts it."
+        }
+      ]
+    },
+    {
+      "id": "fb2",
+      "at": "2026-09-05T10:10:44Z",
+      "source": "second manual play-test on the Pages preview (Android phone)",
+      "areas": {
+        "menu": {
+          "rounds": [
+            {
+              "score": 8.6,
+              "pass": true,
+              "errors": 0,
+              "fixed": 2,
+              "total": 2
+            }
+          ],
+          "final": 8.6,
+          "pass": true,
+          "followUp": "critic medium (sticky app bar turned khaki under the scrolling rack) fixed in 909531d: bar fill rgba(14,20,17,0.94), probe max channel <= 30 at every scroll stop; page chrome keyed on surface; title scrim removed"
+        },
+        "replay": {
+          "rounds": [
+            {
+              "score": 7.5,
+              "pass": false,
+              "errors": 0,
+              "fixed": 1,
+              "total": 1
+            },
+            {
+              "score": 9.0,
+              "pass": true,
+              "errors": 0,
+              "fixed": 1,
+              "total": 1
+            }
+          ],
+          "final": 9.0,
+          "pass": true
+        },
+        "table": {
+          "rounds": [],
+          "final": null,
+          "pass": null,
+          "note": "integrator fixes (hint ring, save chip) verified by shots at phone + desktop and new e2e in three-table.spec.ts; no separate critic round"
+        }
+      },
+      "userItems": [
+        {
+          "area": "General",
+          "item": "The discard hint is not aligned with the tile",
+          "status": "fixed",
+          "note": "Ring was drawn on the tap target (whole-box projection incl. top bevel/back edge, plus the classic 10 px lift zone). Now follows the +Z face projection (projectTileFaceRect / TableScene.tileFaceRect); e2e at phone + desktop."
+        },
+        {
+          "area": "Mobile",
+          "item": "Scrolling the main menu: white transparent band overlaps the buttons; bottom section not the right green",
+          "status": "fixed",
+          "note": "Page chrome (html/body/theme-color/Stack/hydration shell) is the void on the lobby and replay surfaces; backdrop overshoots the root by 160 px; the hero rack scrolls with the title (it used to ghost through the Online card); app bar fill opaque enough to stay in the void family. Critic: 0 cream pixels in the URL-bar strip probe."
+        },
+        {
+          "area": "Mobile",
+          "item": "Main menu text not readable over the background tiles",
+          "status": "fixed",
+          "note": "Hero rack fitted into a measured band under the title block (>= 16 px below the tagline, >= 8 px above the first card; classic DOM fan agrees). Critic: 0 px overlap at every viewport, h1 contrast 15-16:1, tagline 7.3-7.6:1."
+        },
+        {
+          "area": "Mobile",
+          "item": "The replay system has not been updated for the 3D look",
+          "status": "fixed",
+          "note": "Replay player mounts the match TableScene for the current frame (src/three/replay/ReplayTable3D) with glass chrome, chapter-card scrubber, glass library rows / import / delete sheet / not-found. Critic 7.5 -> 9.0 after the timeline NaN seek and dock fixes."
+        },
+        {
+          "area": "Mobile",
+          "item": "If you win, the 和 character overlaps the save replay icon",
+          "status": "fixed",
+          "note": "Save-replay control is an inline glass chip in the result card action row; the seal owns the corner. e2e: seal overlaps no control; chip sits in the flow."
+        }
+      ]
+    },
+    {
+      "id": "fb3",
+      "at": "2026-09-05T16:15:57Z",
+      "source": "third manual play-test on the Pages preview (Android phone)",
+      "areas": {
+        "menu": {
+          "rounds": [
+            {
+              "score": 8.9,
+              "pass": true,
+              "errors": 0,
+              "fixed": 1,
+              "total": 1
+            }
+          ],
+          "final": 8.9,
+          "pass": true
+        },
+        "tutorial": {
+          "rounds": [
+            {
+              "score": 7.5,
+              "pass": false,
+              "errors": 0,
+              "fixed": 0,
+              "total": 1
+            },
+            {
+              "score": 9.0,
+              "pass": true,
+              "errors": 0,
+              "fixed": 1,
+              "total": 1
+            }
+          ],
+          "final": 9.0,
+          "pass": true
+        },
+        "table": {
+          "rounds": [],
+          "final": null,
+          "pass": null,
+          "note": "integrator fix (satin tile finish) verified by luminance probe + e2e; no separate critic round"
+        }
+      },
+      "userItems": [
+        {
+          "area": "Mobile",
+          "item": "On the main screen the background tiles do not scroll smoothly with the page; they jitter",
+          "status": "fixed",
+          "note": "The rack was redrawn from scroll events on a fixed canvas (a frame behind the compositor). It now renders in its own canvas inside the scrolling content (HeroScene / HeroBandSlot); the drift field stays fixed. Critic: canvas is a scroller descendant, moves by exactly -N synchronously, no view-offset re-applies during scroll; 6 calls / 17.4k tris."
+        },
+        {
+          "area": "Mobile",
+          "item": "The hand tiles fade in colour towards the right",
+          "status": "fixed",
+          "note": "Key-light specular lobe on the glossy tile body across the near row under the steep phone camera. Satin finish (roughness 0.5, clearcoat 0.3 / 0.45): black-ink spread across the row 39 -> 16 luminance levels, faces flat; e2e luminance guard."
+        },
+        {
+          "area": "Tutorial",
+          "item": "The text reserved for the current step is small vertically, so the user has to scroll a lot",
+          "status": "fixed",
+          "note": "Body cap derived from the room the placement has (bodyCap.ts), whole text when it fits, dense/tight frames on short phones, strips fill their band, card reveals once at final geometry. Critic: whole text on every 412-wide state (claims-0 4/4, scoring-0 7/7, basics-4 4/4); 360x640 >= 3 lines + cue; round 1 regression (basics-4 over the hand) fixed, 210 px clear."
+        }
+      ]
+    },
+    {
+      "id": "fb4",
+      "at": "2026-09-06T02:59:48Z",
+      "source": "fourth manual play-test on the Pages preview (Android phone + desktop browser); 12 items + a wall-layout request and a follow-up on its angle",
+      "areas": {
+        "menu": {
+          "rounds": [
+            {
+              "score": 8.9,
+              "pass": true,
+              "errors": 0,
+              "fixed": 2,
+              "total": 2
+            }
+          ],
+          "final": 8.9,
+          "pass": true,
+          "note": "scroll flicker (synchronous redraw after a real canvas resize; hero / drift fit and portrait band height keyed on viewport width) and 40 % pointer parallax both verified by probe: heroRelayouts / driftRelayouts / viewOffsetApplies flat across a +100 px URL-bar resize mid-scroll, 37 screencast frames with no blank canvas; rack +0.9 px, dice +8.5 px edge to edge at 1440x900"
+        },
+        "table": {
+          "rounds": [
+            {
+              "score": 8.3,
+              "pass": false,
+              "errors": 0,
+              "fixed": 7,
+              "total": 7,
+              "note": "all seven user items verified fixed (zoom plan view, 7-tile rows, parallax 3 px edge-to-edge, hint marker <= 0.27 px off the face, contact glow, aligned melds, 0 gold px on the walls); high: the near rail projected between the held hand's rows in the zoom"
+            },
+            {
+              "score": 8.2,
+              "pass": false,
+              "errors": 0,
+              "fixed": 1,
+              "total": 3,
+              "note": "final build: dead-wall shade fixed (dead/live top luminance 0.70-0.75, was 0.80-0.88); zoom rail gone but the 1.3x felt edge still crossed the front row on 412x915 / 360x640 (fixed after the critic: ZOOM_FELT_SCALE 2.0, shot-verified at phone-tall / phone-small / phone); wall yaw perceptible and natural, world clearances 0.88-1.28, but the phone cameras still project the near wall's overhang top face onto the right seat's lowest meld and the left tip's corner onto the user's 14th tile in landscape; portrait dealer chip 0.24 units each side in the pinwheel pocket"
+            }
+          ],
+          "final": 8.2,
+          "pass": false,
+          "note": "residuals carried in TODO.md (table); the felt-edge high was fixed after the final critic and verified by shot"
+        },
+        "walls": {
+          "rounds": [
+            {
+              "score": 7.8,
+              "pass": false,
+              "errors": 0,
+              "fixed": 1,
+              "total": 1,
+              "note": "pinwheel stagger 2.0 reads like the photo at every viewport; two overhang contacts (own 14-tile hand 0.20 from the left tip, right seat's melds 0.6-0.87 from the near tip) -> the yaw follow-up opened them to 0.88-1.28 and added the 2.5 deg wall yaw the user asked for; re-scored inside the final table critic"
+            }
+          ],
+          "final": null,
+          "pass": null,
+          "note": "folded into the final table critic round"
+        }
+      },
+      "userItems": [
+        {
+          "area": "Mobile",
+          "item": "Main menu background tiles don't jitter anymore but they flicker when scrolling",
+          "status": "fixed",
+          "note": "Android URL-bar retract fires resize mid-scroll: the hero canvas re-fitted (viewOffsetApplies 2->4), the drift canvas re-fitted and every setSize presented a cleared frame before the next rAF. Loop.renderNow redraws synchronously after a real resize; hero frame / drift fit / portrait band height keyed on viewport width; new e2e + 4 vitest files. Critic 8.9 pass."
+        },
+        {
+          "area": "Mobile",
+          "item": "Zooming into the table should present a more top-down close-up view of the discard tiles",
+          "status": "fixed",
+          "note": "84 deg plan view over the four rivers (riverZoomFrameFor): far river 4 px under the header, tight river block, no wall / side seat / rail laid out while zoomed, felt extended under the held hand, tray carries the Draw pill. Tiles 33 / 25 / 20 px on 412x915 / 412x700 / 360x640, glyphs face-on (aspect >= 0.97 TILE_H)."
+        },
+        {
+          "area": "Mobile",
+          "item": "With 7 tiles left they are shown in one row, so after a draw the outer tiles are only partially visible",
+          "status": "fixed",
+          "note": "heldRowSplit reserves the drawn slot: 7 -> 4+3 -> 4+4, back row stable across draw / discard; every hand tile inside the viewport at 412x700 and 360x640 (e2e)."
+        },
+        {
+          "area": "Desktop",
+          "item": "Moving the mouse left and right constantly rotates the table a little (nauseating)",
+          "status": "fixed",
+          "note": "Table + replay parallax 0.45 / 0.15 s -> 0.08 units / 0.5 s half-life (TABLE_PARALLAX, CameraRig.parallaxHalfLife): ~3 px edge-to-edge drift settling over ~1.7 s, no measurable movement from a 1 Hz sweep."
+        },
+        {
+          "area": "Desktop",
+          "item": "Menu animation on mouse movement should be reduced",
+          "status": "fixed",
+          "note": "three/menu/parallax.ts: camera 0.35 -> 0.14, hero 0.22/0.10 -> 0.09/0.04, drift 0.35+1.1d -> 0.14+0.44d, smoothing 0.16 -> 0.42 s. Critic: rack +0.9 px, dice +8.5 px, drift 22-29 px edge to edge."
+        },
+        {
+          "area": "Desktop",
+          "item": "Discard hint not correctly aligned; make it a 3D effect (mobile too)",
+          "status": "fixed",
+          "note": "In-scene gold frame quad following the hinted tile's pose every frame (+0.08 lift, breathing 6 s then still); marker vs face offset <= 0.27 px on desktop / phone / phone-small / landscape; DOM ring gone (zero-visual testid span kept). +1 draw call."
+        },
+        {
+          "area": "Desktop",
+          "item": "The golden glow behind the hand on your turn does not fit in; change it or move it below the tiles",
+          "status": "fixed",
+          "note": "Contact glow at the tiles' feet: centre +0.45 toward the camera (was -0.85 behind), depth 0.9, opacity 0.55, feathered ends; nothing behind the row, faces and rail untouched."
+        },
+        {
+          "area": "Desktop",
+          "item": "Own chi tiles show one tile incorrectly offset",
+          "status": "fixed",
+          "note": "OWN_MELD_CLAIM_STEP removed: standing own melds are one aligned row (peng + chi verified at desktop and landscape)."
+        },
+        {
+          "area": "General",
+          "item": "Peng / chi groups are not the same orientation for every player",
+          "status": "by design",
+          "note": "Kept at the user's request: own melds stand upright facing the player (round-1 item); opponents' melds lie flat with the claimed tile turned."
+        },
+        {
+          "area": "General",
+          "item": "Tiles on some sides have extra yellow stripes",
+          "status": "fixed",
+          "note": "The dead-wall gold inlay (uDeadInlay, aStackTop, TileSlot.stackTop) is removed; the dead wall is the darker back shade only (deadBackColors L x0.52, S x0.9): 0 gold pixels on the walls, dead/live top luminance 0.70-0.75."
+        },
+        {
+          "area": "General",
+          "item": "Display the tile walls like on a real (automatic) mahjong table",
+          "status": "fixed",
+          "note": "Pinwheel: WALL_STAGGER 2.0 along each wall's axis toward its owner's right, rotationally symmetric; overhang 1.14 inside the felt edge, retreated end 1.38 short of the perpendicular wall; live wall drains leftward and enters the next wall at its overhanging end."
+        },
+        {
+          "area": "General",
+          "item": "The walls are staggered but not at a slight angle like a real table",
+          "status": "fixed",
+          "note": "WALL_YAW 2.5 deg per wall about its centre (overhanging end toward the owner's rail), row clearances (rowLeftLimit, SIDE_SEAT_OUT_PORTRAIT, FAR_SEAT_OUT, OWN_MELD_Z_HELD); critic: perceptible, reads as a hand-pushed wall, consistent on all four walls; residual projection contacts on the phone cameras listed in TODO."
+        }
+      ]
+    },
+    {
+      "id": "fb5",
+      "at": "2026-09-06T12:07:19Z",
+      "source": "fifth manual play-test on the Pages preview (Android phone); 2 mobile items + a general request for a carved tile look",
+      "areas": {
+        "table": {
+          "rounds": [
+            {
+              "score": 8.4,
+              "pass": false,
+              "errors": 0,
+              "fixed": 2,
+              "total": 3,
+              "note": "zoom meld shelf verified on phone / phone-small / phone-tall (13 / 14 / 47 CSS px clear of the hand, toast never on the shelf, no-meld zoom unchanged); sink / rise verified from the debug trajectory at real speed (107 tiles vanish:360 hidden by 857 ms, rise:320 back at rest by 1085 ms, scale 1 throughout) and a pose-tied mid-rise frame (stacks cut cleanly by the felt, rail at rest); relief read as engraved but the symmetric groove wall blackened coloured ink (fa ink luminance 142 -> 123, dong floor 72 -> 28) and added edge noise on 24 px river tiles (+5-10 % edge gradient)"
+            },
+            {
+              "score": 8.6,
+              "pass": true,
+              "errors": 0,
+              "fixed": 3,
+              "total": 3,
+              "note": "ivory-side, footprint-aware relief: fa ink 142.2 (before 142.0), dong floor 75, no near-black rim on red wan / green pins; river tiles pixel-identical to the previous build (ink px and edge gradient equal); front-row face spread 1.4 phone / 1.5 desktop; carve still reads at 3x phone / 5x desktop. Remaining low: desktop 48 px pin rings render the relief as speckle (ink px 365 -> 445)"
+            }
+          ],
+          "final": 8.6,
+          "pass": true,
+          "note": "all three user items verified fixed; lows carried in TODO.md (desktop pin-ring speckle, sink-tail felt speckle, early-river shelf spacing, tall-phone toast slot with melds, four-meld recipe)"
+        }
+      },
+      "userItems": [
+        {
+          "area": "Mobile",
+          "item": "When zooming in, the hand tiles hide the peng/chi tiles",
+          "status": "fixed",
+          "note": "The zoom lays the user's melds on a shelf just past their river (zoomMeldShelf, 1.3x, right-aligned inside the block, shrunk to fit four) and pins the shelf's near edge above the held hand (riverZoomFrameFor shelfDepth); the shell re-fits when the meld count changes mid-zoom and projects the shelf edge for the toast slot. Recipe match-river-zoom-melds + 2 e2e (412x700, 360x640). Critic: every meld tile visible, 13 / 14 / 47 CSS px clear of the hand."
+        },
+        {
+          "area": "Mobile",
+          "item": "All other tiles suddenly being unrendered and then re-rendered on zoom is jarring",
+          "status": "fixed",
+          "note": "Tiles leaving the layout sink 1.7 units through the felt at full size over 360 ms (vanish) and rise back over 320 ms (rise) instead of an instant hide / scale-0 pop; the rail sinks and the felt spreads on the same beat (applyZoomBlend). Unit test + e2e sampling the sink alongside the tap under x8 slow motion. Critic: 107 tiles, no snap path, stacks cut cleanly by the opaque felt."
+        },
+        {
+          "area": "General",
+          "item": "Consider adding a small 3D inlay effect to the tiles so they are more realistic, as real tiles are carved",
+          "status": "fixed",
+          "note": "Shader relief: the atlas ink mask is a height map; finite differences (>= 3 texels and ~0.6 screen px) tilt the shading + clearcoat normals on the ivory side of each stroke edge, fading out on faces under ~40 device px. Critic r2: reads as a shallow engraving lit from top-left at 3x / 5x, ink colour unchanged, river tiles pixel-identical, luminance guard 1.4 / 1.5."
+        }
+      ]
+    }
+  ]
+}

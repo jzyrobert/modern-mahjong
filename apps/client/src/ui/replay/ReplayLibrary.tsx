@@ -1,35 +1,41 @@
 import { SEATS, type Seat } from '@mahjong/game-logic';
+import type { Tile as MTile } from '@mahjong/game-logic';
 import { useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
+import { Platform, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { deleteRecord, listHeaders } from '../../replay/storage';
 import type { ReplayHeader } from '../../replay/types';
 import { winnerOf } from '../../replay/winner';
 import { useGame } from '../../state/game';
-import { GhostButton, PrimaryButton } from '../buttons';
-import { COLORS, SUCCESS_PILL } from '../colors';
+import { ReplayShelf3D } from '../../three/entry';
+import { hasWebGL2, resolveRenderer } from '../../three/renderer';
+import { Tile } from '../Tile';
 import { type Position, SEAT_COLOR } from '../match/seatColor';
-import { LobbyWatermark } from '../menu/LobbyWatermark';
+import { GlassCard } from '../menu/GlassCard';
+import { LobbyBackdrop } from '../menu/LobbyBackdrop';
+import { GlassButton, GoldButton, Pill } from '../menu/MenuButtons';
+import { Reveal } from '../menu/Reveal';
 import { WindEmblem } from '../menu/WindEmblem';
+import { ChevronLeftIcon, ImportIcon, PlayIcon, TrashIcon } from '../menu/icons';
+import { HOVER_TRANSITION, MENU, TYPE, glass, heading } from '../menu/theme';
 import { SEAT_WIND_GLYPH } from '../winds';
+import { ConfirmDeleteSheet } from './ConfirmDeleteSheet';
 import { ReplayImportModal } from './ReplayImportModal';
 import { summarise, summaryLine } from './summary';
 
 /**
- * Replay library — "Trophy shelf" redesign. Each saved match shows
- * up as a row anchored by the winner's wind-emblem tile (same SVG
- * shape the lobby hero uses) with seat-coloured score chips and a
- * gold ★ WON pin when the local seat carried the match. Rows are
- * grouped into bilingual date sections (`今日 · TODAY`, `以前 ·
- * EARLIER`, …) computed from each header's `startedAt`. The lobby's
- * `<LobbyWatermark>` (rotated `中` glyph) sits behind everything on
- * viewports wide enough to fit it (≥ 560 px) so the page reads as
- * the same atmospheric surface the lobby does.
+ * Replay library — the lobby's dark-glass theme without the 3D scene.
+ * Each saved match is a glass row anchored by the winner's wind-emblem
+ * tile with seat-coloured score chips and a gold ★ WON pin when the
+ * local seat carried the match. Rows group into bilingual date
+ * sections (`今日 · TODAY`, `以前 · EARLIER`, …).
  *
  * No new state — `listHeaders()` / `deleteRecord()` are the same
- * storage hooks the previous list used. The auto-record toggle still
- * lives inside this file because it's library-only chrome.
+ * storage hooks the previous list used. Accessible names are kept for
+ * the replay specs: heading "Replays", "← Lobby", "Import replays",
+ * the `Auto-record replays: on|off` switch, `Open replay from <date>`
+ * rows, "Delete replay", and the SOLO / ONLINE / LAN badges.
  */
 export function ReplayLibrary() {
   const router = useRouter();
@@ -37,6 +43,7 @@ export function ReplayLibrary() {
   const [importOpen, setImportOpen] = useState(false);
   const autoRecord = useGame((s) => s.settings.autoRecordReplays);
   const setSettings = useGame((s) => s.setSettings);
+  const { height } = useWindowDimensions();
 
   const refresh = useCallback(() => setHeaders(listHeaders()), []);
   const onOpenReplay = (id: string) => {
@@ -45,14 +52,25 @@ export function ReplayLibrary() {
 
   const groups = useMemo(() => groupByDate(headers), [headers]);
   const summary = useMemo(() => summarise(headers), [headers]);
+  const empty = headers.length === 0;
 
   return (
-    <View style={{ flex: 1, backgroundColor: COLORS.cream }}>
-      <LobbyWatermark />
+    <View style={{ flex: 1, backgroundColor: MENU.void0 }}>
+      {/* Empty shelf: no scattered backs (the shelf illustration is the
+          focal object) and the warm glow aims at the centred card. */}
+      <LobbyBackdrop scene={false} backs={!empty} glow={empty ? EMPTY_GLOW : undefined} />
       <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }} edges={['top', 'bottom']}>
         <ScrollView
           style={{ flex: 1 }}
-          contentContainerStyle={{ paddingBottom: 60 }}
+          contentContainerStyle={{
+            paddingBottom: empty ? 28 : 60,
+            maxWidth: 960,
+            width: '100%',
+            alignSelf: 'center',
+            // Lets the empty state centre itself in whatever is left
+            // under the header + ribbon instead of leaving a void.
+            flexGrow: 1,
+          }}
           showsVerticalScrollIndicator={false}
         >
           <Hero
@@ -61,25 +79,46 @@ export function ReplayLibrary() {
             onBack={() => router.replace('/')}
             onImport={() => setImportOpen(true)}
           />
-          <AutoRecordRibbon
-            enabled={autoRecord}
-            onToggle={() => setSettings({ autoRecordReplays: !autoRecord })}
-          />
-          {headers.length === 0 ? (
-            <EmptyState />
+          <Reveal index={0} style={{ paddingHorizontal: 20 }}>
+            <AutoRecordRibbon
+              enabled={autoRecord}
+              onToggle={() => setSettings({ autoRecordReplays: !autoRecord })}
+            />
+          </Reveal>
+          {empty ? (
+            <View
+              style={{
+                flex: 1,
+                justifyContent: 'center',
+                paddingHorizontal: 20,
+                // A focal card at the optical centre (a little above the
+                // geometric middle) of the space under the ribbon, with
+                // the parlour gradient showing around it. (A card that
+                // filled the phone column was a full-height slab with
+                // the scene a third of the way down and 200 px of dead
+                // glass under the button.)
+                paddingBottom: Math.round(height * 0.1),
+              }}
+            >
+              <Reveal index={1}>
+                <EmptyState onImport={() => setImportOpen(true)} />
+              </Reveal>
+            </View>
           ) : (
-            groups.map((g) =>
+            groups.map((g, gi) =>
               g.headers.length === 0 ? null : (
-                <Section key={g.id} group={g}>
-                  {g.headers.map((h) => (
-                    <ReplayRow
-                      key={h.id}
-                      header={h}
-                      onOpen={() => onOpenReplay(h.id)}
-                      onDeleted={refresh}
-                    />
-                  ))}
-                </Section>
+                <Reveal key={g.id} index={gi + 1} style={{ paddingHorizontal: 20 }}>
+                  <Section group={g}>
+                    {g.headers.map((h) => (
+                      <ReplayRow
+                        key={h.id}
+                        header={h}
+                        onOpen={() => onOpenReplay(h.id)}
+                        onDeleted={refresh}
+                      />
+                    ))}
+                  </Section>
+                </Reveal>
               ),
             )
           )}
@@ -99,10 +138,17 @@ export function ReplayLibrary() {
 
 // ─── Hero ──────────────────────────────────────────────────────────
 
-/** Same convention used by `LobbyHeader` — portrait phones tip below
- *  this and want a stacked layout, anything wider gets a single-row
- *  layout with a substantial Import button on the right. */
 const HERO_PHONE_BREAKPOINT = 480;
+/**
+ * Width of the top-right strip the root FULLSCREEN / DISMISS chip
+ * occupies on landscape phones: the glass pill (`FullscreenPrompt`,
+ * 12 px pads + glyph + 10 px / 1.6-tracked label ≈ 124 px) plus its
+ * 8 px margin, plus a 12 px gap — so the Import button's right edge
+ * sits 12 px left of the chip instead of parked at a 236 px band.
+ */
+const CHIP_STRIP_W = 124 + 8 + 12;
+/** Glow centre behind the centred empty-state card. */
+const EMPTY_GLOW = { x: 0.5, y: 0.55 };
 
 function Hero({
   count,
@@ -115,75 +161,56 @@ function Hero({
   onBack: () => void;
   onImport: () => void;
 }) {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const phone = width <= HERO_PHONE_BREAKPOINT;
+  // Landscape phones (web) show the root FULLSCREEN / DISMISS chip in
+  // the top-right corner (`FullscreenPrompt`: landscape && height <
+  // 600). Leave that strip free instead of pushing the whole header
+  // down — the Import button slides left of it and the row keeps its
+  // normal top padding.
+  const chipStrip = Platform.OS === 'web' && width > height && height < 600 ? CHIP_STRIP_W : 0;
   const title = (
-    <View style={{ flex: 1, minWidth: 0 }}>
-      <Text
-        accessibilityRole="header"
-        style={{
-          fontSize: 36,
-          fontWeight: '900',
-          color: COLORS.ink,
-          letterSpacing: -0.5,
-          lineHeight: 36,
-        }}
-      >
+    <View style={{ flex: 1, minWidth: 0, gap: 6 }}>
+      <Text style={[TYPE.label, { color: MENU.gold }]}>Library</Text>
+      <Text accessibilityRole="header" style={heading(phone ? 34 : 44)}>
         Replays
       </Text>
-      <Text
-        style={{
-          marginTop: 6,
-          fontSize: 13,
-          fontWeight: '600',
-          color: COLORS.ink3,
-        }}
-      >
-        {summaryLine(count, summary)}
-      </Text>
+      <Text style={TYPE.body}>{summaryLine(count, summary)}</Text>
     </View>
+  );
+  // Icon + "Lobby"; the accessible name keeps the legacy "← Lobby".
+  const back = (
+    <GlassButton
+      size="sm"
+      onPress={onBack}
+      accessibilityLabel="← Lobby"
+      icon={<ChevronLeftIcon size={10} color={MENU.text2} />}
+    >
+      Lobby
+    </GlassButton>
+  );
+  const importBtn = (
+    <GoldButton
+      onPress={onImport}
+      size={phone ? 'md' : 'lg'}
+      full={phone}
+      icon={<ImportIcon size={16} color={MENU.goldInk} />}
+    >
+      Import replays
+    </GoldButton>
   );
 
   if (phone) {
-    // Phone layout: ← Lobby (auto width) on the left, Import
-    // stretching across the remaining row via `flex: 1` so the CTA
-    // reads as substantial on a 412 px viewport instead of pinning
-    // narrow to the right edge. The Import button uses the full
-    // "Import replays" label + `size='lg'` for the same reason it
-    // does in the wider layout — they should feel like the same
-    // control at different widths.
     return (
-      <View
-        style={{
-          paddingHorizontal: 20,
-          paddingTop: 20,
-          paddingBottom: 14,
-          gap: 14,
-        }}
-      >
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 12,
-          }}
-        >
-          <GhostButton onPress={onBack}>← Lobby</GhostButton>
-          <View style={{ flex: 1 }}>
-            <PrimaryButton onPress={onImport} size="lg" full>
-              Import replays
-            </PrimaryButton>
-          </View>
+      <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 14, gap: 16 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          {back}
+          <View style={{ flex: 1 }}>{importBtn}</View>
         </View>
         {title}
       </View>
     );
   }
-
-  // Wide / landscape: ← Lobby | title (flex) | Import. The button
-  // wrapper carries `minWidth: 180` so the CTA has presence on
-  // landscape — the PrimaryButton's `size="lg"` adds extra
-  // horizontal padding inside that frame for the same intent.
   return (
     <View
       style={{
@@ -191,79 +218,65 @@ function Hero({
         alignItems: 'center',
         gap: 18,
         paddingHorizontal: 20,
-        paddingTop: 20,
-        paddingBottom: 14,
+        paddingRight: chipStrip || 20,
+        paddingTop: chipStrip ? 12 : 24,
+        paddingBottom: 18,
       }}
     >
-      <GhostButton onPress={onBack}>← Lobby</GhostButton>
+      {back}
       {title}
-      <View style={{ minWidth: 180 }}>
-        <PrimaryButton onPress={onImport} size="lg" full>
-          Import replays
-        </PrimaryButton>
-      </View>
+      <View style={{ minWidth: 200 }}>{importBtn}</View>
     </View>
   );
 }
 
 // ─── Auto-record ribbon ────────────────────────────────────────────
 
-function AutoRecordRibbon({
-  enabled,
-  onToggle,
-}: {
-  enabled: boolean;
-  onToggle: () => void;
-}) {
+function AutoRecordRibbon({ enabled, onToggle }: { enabled: boolean; onToggle: () => void }) {
   return (
     <Pressable
       onPress={onToggle}
       accessibilityRole="switch"
       accessibilityLabel={`Auto-record replays: ${enabled ? 'on' : 'off'}`}
       style={({ pressed }) => ({
-        marginHorizontal: 20,
-        marginBottom: 8,
+        ...glass({ quiet: true, radius: 14 }),
+        marginBottom: 6,
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 10,
+        gap: 12,
         paddingHorizontal: 14,
-        paddingVertical: 10,
-        borderRadius: 12,
-        backgroundColor: pressed ? COLORS.creamLow : COLORS.paperHi,
-        borderColor: COLORS.hairline,
-        borderWidth: 1,
-        boxShadow: '0px 2px 6px rgba(0,0,0,0.04)',
+        paddingVertical: 12,
+        ...(pressed ? { backgroundColor: 'rgba(24,34,28,0.7)' } : {}),
       })}
     >
       <View
         style={{
-          width: 34,
-          height: 18,
-          borderRadius: 9,
-          backgroundColor: enabled ? COLORS.success : COLORS.creamLow,
-          borderColor: COLORS.hairline,
+          width: 38,
+          height: 22,
+          borderRadius: 999,
+          backgroundColor: enabled ? MENU.gold : MENU.fill,
+          borderColor: enabled ? MENU.goldEdge : MENU.hairline,
           borderWidth: 1,
-          padding: 1,
+          padding: 2,
           flexDirection: 'row',
           justifyContent: enabled ? 'flex-end' : 'flex-start',
+          ...HOVER_TRANSITION,
         }}
       >
         <View
           style={{
-            width: 14,
-            height: 14,
-            borderRadius: 7,
-            backgroundColor: 'white',
-            borderColor: COLORS.hairline,
-            borderWidth: 1,
+            width: 16,
+            height: 16,
+            borderRadius: 999,
+            backgroundColor: enabled ? MENU.goldInk : MENU.text2,
           }}
         />
       </View>
       <View style={{ flex: 1 }}>
-        <Text style={{ fontSize: 13, fontWeight: '900', color: COLORS.ink }}>
+        <Text style={{ fontSize: 13, fontWeight: '800', color: MENU.text }}>
           Auto-record every match
         </Text>
-        <Text style={{ fontSize: 11, color: COLORS.ink3, fontWeight: '600', marginTop: 2 }}>
+        <Text style={[TYPE.small, { marginTop: 2 }]}>
           {enabled
             ? 'On — saves every match on teardown. Oldest replays prune past quota.'
             : 'Off — save matches manually from the in-match menu.'}
@@ -275,29 +288,127 @@ function AutoRecordRibbon({
 
 // ─── Empty state ───────────────────────────────────────────────────
 
-function EmptyState() {
+function EmptyState({ onImport }: { onImport: () => void }) {
+  const { width, height } = useWindowDimensions();
+  const rendererSetting = useGame((s) => s.settings.renderer);
+  // Under the 3D renderer the shelf is a real scene (`ReplayShelf3D`)
+  // so no classic flat tile art sits inside the 3D flow; classic and
+  // native keep the SVG / `Tile` illustration.
+  const shelf3d =
+    Platform.OS === 'web' &&
+    ReplayShelf3D !== null &&
+    resolveRenderer(rendererSetting) === '3d' &&
+    hasWebGL2();
+  // Landscape phones are wide but short — keep the compact card there.
+  const wide = width > 720 && height >= 600;
+  // Phones: as wide as the card's content box allows (the 3D shelf
+  // canvas is 8.6 tile widths across; 20 px card + 20 px page inset
+  // each side), so the tiles are the card's focal object.
+  const tileWidth = wide ? 44 : Math.max(30, Math.min(44, Math.floor((width - 80) / 8.6)));
   return (
-    <View style={{ paddingHorizontal: 20, paddingTop: 6 }}>
-      <Text style={{ fontSize: 12, color: COLORS.ink3, fontWeight: '600', lineHeight: 18 }}>
-        Hit "Save this match" from the in-match menu, or flip auto-record on so every match records
-        automatically.
+    <GlassCard
+      hover={false}
+      style={{
+        paddingHorizontal: wide ? 32 : 20,
+        paddingTop: wide ? 26 : 18,
+        paddingBottom: wide ? 26 : 20,
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 12,
+        marginTop: 8,
+        // A focal object, not a full-width band, on wide viewports.
+        maxWidth: wide ? 620 : undefined,
+        width: '100%',
+        alignSelf: 'center',
+      }}
+    >
+      {shelf3d && ReplayShelf3D ? (
+        <ReplayShelf3D tileWidth={tileWidth} />
+      ) : (
+        <ShelfIllustration tileWidth={tileWidth} />
+      )}
+      <Text style={{ fontSize: wide ? 18 : 16, fontWeight: '800', color: MENU.text }}>
+        Nothing on the shelf yet
       </Text>
+      <Text style={[TYPE.body, { textAlign: 'center', maxWidth: 420 }]}>
+        Hit "Save this match" from the in-match menu, or flip auto-record on so every match records
+        automatically. Replays can also be pasted in from another device.
+      </Text>
+      <GlassButton size="sm" onPress={onImport} icon={<ImportIcon size={14} color={MENU.text2} />}>
+        Paste a replay
+      </GlassButton>
+    </GlassCard>
+  );
+}
+
+// Placeholder for face-down tiles — only the back skin paints.
+const SHELF_BACK: MTile = { kind: 'suit', suit: 'man', rank: 1, copy: 0 };
+const SHELF_WINDS = ['東', '南', '西'] as const;
+
+/**
+ * The "empty shelf": a shallow arc of seven tiles resting on a soft
+ * shadow pool — dim face-down backs at the ends, the three wind
+ * emblems face-up in the middle. Pure decoration.
+ */
+function ShelfIllustration({ tileWidth }: { tileWidth: number }) {
+  const tileHeight = Math.round(tileWidth * 1.32);
+  const slots = [-3, -2, -1, 0, 1, 2, 3];
+  return (
+    <View
+      style={{
+        alignItems: 'center',
+        justifyContent: 'flex-end',
+        height: tileHeight + 26,
+        width: '100%',
+        marginBottom: 2,
+      }}
+    >
+      <View
+        style={{
+          position: 'absolute',
+          bottom: 4,
+          width: tileWidth * 6.2,
+          height: tileHeight * 0.4,
+          borderRadius: 999,
+          backgroundColor: 'rgba(0,0,0,0.34)',
+          boxShadow: '0px 6px 30px 18px rgba(0,0,0,0.34)',
+        }}
+      />
+      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 5 }}>
+        {slots.map((u) => {
+          const wind = SHELF_WINDS[u + 1];
+          const lift = u * u * 2.2;
+          if (wind) {
+            return (
+              <View key={u} style={{ marginBottom: lift, transform: [{ rotate: `${u * 5}deg` }] }}>
+                <WindEmblem wind={wind} size={tileWidth} />
+              </View>
+            );
+          }
+          const outer = Math.abs(u) === 3;
+          return (
+            <View key={u} style={{ marginBottom: lift, opacity: outer ? 0.5 : 0.72 }}>
+              <Tile
+                tile={SHELF_BACK}
+                faceDown
+                width={tileWidth}
+                height={tileHeight}
+                rotate={u * 5}
+              />
+            </View>
+          );
+        })}
+      </View>
     </View>
   );
 }
 
 // ─── Section ───────────────────────────────────────────────────────
 
-function Section({
-  group,
-  children,
-}: {
-  group: DateGroup;
-  children: React.ReactNode;
-}) {
+function Section({ group, children }: { group: DateGroup; children: React.ReactNode }) {
   const matchWord = group.headers.length === 1 ? 'match' : 'matches';
   return (
-    <View style={{ paddingHorizontal: 20, paddingTop: 6 }}>
+    <View style={{ paddingTop: 6 }}>
       <View
         style={{
           flexDirection: 'row',
@@ -307,37 +418,11 @@ function Section({
           paddingBottom: 8,
         }}
       >
-        <Text
-          style={{
-            fontFamily: 'Noto Serif TC',
-            fontStyle: 'italic',
-            fontWeight: '700',
-            fontSize: 14,
-            color: COLORS.red,
-          }}
-        >
-          {group.cn}
-        </Text>
-        <Text
-          style={{
-            fontSize: 10,
-            fontWeight: '900',
-            letterSpacing: 1.6,
-            color: COLORS.ink3,
-          }}
-        >
-          {group.en}
-        </Text>
-        <View style={{ flex: 1, height: 1, backgroundColor: COLORS.hairline, opacity: 0.5 }} />
-        <Text
-          style={{
-            fontSize: 10,
-            fontWeight: '900',
-            letterSpacing: 1.6,
-            color: COLORS.ink3,
-          }}
-        >
-          {group.headers.length} {matchWord.toUpperCase()}
+        <Text style={[TYPE.serif, { fontSize: 15, color: MENU.goldHi }]}>{group.cn}</Text>
+        <Text style={[TYPE.label, { fontSize: 10, letterSpacing: 1.8 }]}>{group.en}</Text>
+        <View style={{ flex: 1, height: 1, backgroundColor: MENU.hairlineSoft }} />
+        <Text style={[TYPE.label, { fontSize: 10, letterSpacing: 1.8, color: MENU.text3 }]}>
+          {group.headers.length} {matchWord}
         </Text>
       </View>
       {children}
@@ -347,26 +432,13 @@ function Section({
 
 // ─── Match row ─────────────────────────────────────────────────────
 
-const JOIN_BADGE: Record<ReplayHeader['joinKind'], { label: string; fg: string; bg: string }> = {
-  online: { label: 'ONLINE', fg: '#735aa3', bg: '#e1d3ed' },
-  solo: { label: 'SOLO', fg: COLORS.ink2, bg: COLORS.creamLow },
-  lan: { label: 'LAN', fg: '#2d8645', bg: '#c2e2c5' },
-};
-
-const WIN_BADGE = {
-  fg: '#9a6e0e',
-  bg: '#fff5dc',
-  edge: '#e2c587',
-};
-
-// Greyscale neutral palette for a no-winner outcome — visually
-// distinct from the gold WIN pill so the user can scan the library
-// and tell wins, draws, and losses apart at a glance. Same shape /
-// dimensions as `WIN_BADGE` so the row layout doesn't shift.
-const DRAW_BADGE = {
-  fg: '#6c625a',
-  bg: '#ece4d3',
-  edge: '#c9bda8',
+const JOIN_BADGE: Record<
+  ReplayHeader['joinKind'],
+  { label: string; tone: 'gold' | 'neutral' | 'success' }
+> = {
+  online: { label: 'ONLINE', tone: 'gold' },
+  solo: { label: 'SOLO', tone: 'neutral' },
+  lan: { label: 'LAN', tone: 'success' },
 };
 
 function ReplayRow({
@@ -385,213 +457,130 @@ function ReplayRow({
   const dateLabel = new Date(header.startedAt).toLocaleString();
   const durationLabel = formatDuration(header.durationMs);
   const positions = useMemo(() => positionMapFor(header.localSeat), [header.localSeat]);
+  const [hovered, setHovered] = useState(false);
+  const { width } = useWindowDimensions();
+  const narrow = width < 560;
 
-  const onDelete = () => {
-    if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
-      if (!window.confirm('Delete this replay?')) return;
-    }
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const onDelete = () => setConfirmDelete(true);
+  const doDelete = () => {
+    setConfirmDelete(false);
     deleteRecord(header.id);
     onDeleted();
   };
 
   return (
-    <Pressable
-      onPress={onOpen}
-      accessibilityRole="button"
-      accessibilityLabel={`Open replay from ${dateLabel}`}
-      style={({ pressed }) => ({
-        flexDirection: 'row',
-        gap: 18,
-        alignItems: 'stretch',
-        padding: 14,
-        marginBottom: 10,
-        borderRadius: 14,
-        backgroundColor: pressed ? COLORS.creamLow : COLORS.paperHi,
-        borderColor: localWon ? WIN_BADGE.edge : isDraw ? DRAW_BADGE.edge : COLORS.hairline,
-        borderWidth: 1,
-        boxShadow: '0px 2px 6px rgba(0,0,0,0.04)',
-      })}
-    >
-      <View
-        style={{
-          width: 64,
-          flexShrink: 0,
-          alignItems: 'center',
-          gap: 6,
-        }}
+    <>
+      <ConfirmDeleteSheet
+        open={confirmDelete}
+        onCancel={() => setConfirmDelete(false)}
+        onConfirm={doDelete}
+      />
+      <Pressable
+        onPress={onOpen}
+        accessibilityRole="button"
+        accessibilityLabel={`Open replay from ${dateLabel}`}
+        onHoverIn={() => setHovered(true)}
+        onHoverOut={() => setHovered(false)}
+        style={({ pressed }) => ({
+          ...glass({ radius: 16 }),
+          borderColor: localWon ? MENU.goldEdge : MENU.hairline,
+          flexDirection: 'row',
+          gap: 14,
+          alignItems: 'stretch',
+          padding: 14,
+          marginBottom: 10,
+          ...(pressed ? { backgroundColor: 'rgba(24,34,28,0.75)' } : {}),
+          ...HOVER_TRANSITION,
+          transform: [{ translateY: hovered && !pressed ? -2 : 0 }, { scale: pressed ? 0.99 : 1 }],
+        })}
       >
-        {winner ? (
-          <WindEmblem wind={SEAT_WIND_GLYPH[winner.seat]} size={40} />
-        ) : (
-          // No clear winner — render a tile-sized neutral glyph so the
-          // column stays the same width as the WindEmblem case and the
-          // row's right-hand content doesn't reflow between win and
-          // draw rows.
-          <View
-            style={{
-              width: 40,
-              height: 40 * 1.32,
-              borderRadius: 6,
+        <View style={{ width: 60, flexShrink: 0, alignItems: 'center', gap: 6 }}>
+          {winner ? (
+            <WindEmblem wind={SEAT_WIND_GLYPH[winner.seat]} size={38} />
+          ) : (
+            <View
+              style={{
+                width: 38,
+                height: 38 * 1.32,
+                borderRadius: 6,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: MENU.fill,
+                borderColor: MENU.hairline,
+                borderWidth: 1,
+              }}
+            >
+              <Text style={{ fontSize: 20, fontWeight: '800', color: MENU.text4 }}>—</Text>
+            </View>
+          )}
+          {localWon ? <Pill tone="gold">★ WON</Pill> : isDraw ? <Pill>DRAW</Pill> : null}
+        </View>
+        <View style={{ flex: 1, minWidth: 0, gap: 10 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <Pill tone={badge.tone}>{badge.label}</Pill>
+            <Text style={{ fontSize: 13, fontWeight: '800', color: MENU.text }}>{dateLabel}</Text>
+            <View style={{ flex: 1 }} />
+            <Text style={TYPE.small}>
+              {header.handsPlayed} hand{header.handsPlayed === 1 ? '' : 's'} · {durationLabel}
+            </Text>
+          </View>
+          <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+            {SEATS.map((seat) => (
+              <ScoreChip
+                key={seat}
+                seat={seat}
+                header={header}
+                position={positions[seat]}
+                isWinner={winner !== null && seat === winner.seat}
+              />
+            ))}
+          </View>
+        </View>
+        <View
+          style={{
+            flexDirection: narrow ? 'column' : 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+            flexShrink: 0,
+          }}
+        >
+          <Pressable
+            onPress={onDelete}
+            accessibilityRole="button"
+            accessibilityLabel="Delete replay"
+            hitSlop={6}
+            style={({ pressed }) => ({
+              width: 32,
+              height: 32,
+              borderRadius: 999,
               alignItems: 'center',
               justifyContent: 'center',
-              backgroundColor: DRAW_BADGE.bg,
-              borderColor: DRAW_BADGE.edge,
               borderWidth: 1,
-            }}
+              borderColor: pressed ? MENU.redEdge : MENU.hairlineSoft,
+              backgroundColor: pressed ? MENU.redTint : 'transparent',
+            })}
           >
-            <Text style={{ fontSize: 22, fontWeight: '900', color: DRAW_BADGE.fg }}>—</Text>
-          </View>
-        )}
-        {localWon ? (
+            <TrashIcon size={14} color={MENU.text3} />
+          </Pressable>
           <View
             style={{
-              flexDirection: 'row',
+              width: 32,
+              height: 32,
+              borderRadius: 999,
+              backgroundColor: MENU.goldTint,
+              borderColor: MENU.goldEdge,
+              borderWidth: 1,
               alignItems: 'center',
-              gap: 3,
-              backgroundColor: WIN_BADGE.bg,
-              borderColor: WIN_BADGE.edge,
-              borderWidth: 1,
-              paddingHorizontal: 5,
-              paddingVertical: 1,
-              borderRadius: 4,
+              justifyContent: 'center',
             }}
           >
-            <Text
-              style={{
-                fontSize: 9,
-                fontWeight: '900',
-                color: WIN_BADGE.fg,
-                letterSpacing: 0.4,
-              }}
-            >
-              ★ WON
-            </Text>
+            <PlayIcon size={14} color={MENU.goldHi} />
           </View>
-        ) : isDraw ? (
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 3,
-              backgroundColor: DRAW_BADGE.bg,
-              borderColor: DRAW_BADGE.edge,
-              borderWidth: 1,
-              paddingHorizontal: 5,
-              paddingVertical: 1,
-              borderRadius: 4,
-            }}
-          >
-            <Text
-              style={{
-                fontSize: 9,
-                fontWeight: '900',
-                color: DRAW_BADGE.fg,
-                letterSpacing: 0.4,
-              }}
-            >
-              DRAW
-            </Text>
-          </View>
-        ) : null}
-      </View>
-      <View style={{ flex: 1, minWidth: 0, gap: 8 }}>
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 10,
-            flexWrap: 'wrap',
-          }}
-        >
-          <View
-            style={{
-              backgroundColor: badge.bg,
-              paddingHorizontal: 7,
-              paddingVertical: 2,
-              borderRadius: 4,
-            }}
-          >
-            <Text
-              style={{
-                fontSize: 9,
-                fontWeight: '900',
-                letterSpacing: 0.6,
-                color: badge.fg,
-              }}
-            >
-              {badge.label}
-            </Text>
-          </View>
-          <Text style={{ fontSize: 13, fontWeight: '900', color: COLORS.ink }}>{dateLabel}</Text>
-          <View style={{ flex: 1 }} />
-          <Text
-            style={{
-              fontSize: 11,
-              fontWeight: '600',
-              color: COLORS.ink3,
-              letterSpacing: 0.2,
-            }}
-          >
-            {header.handsPlayed} hand{header.handsPlayed === 1 ? '' : 's'} · {durationLabel}
-          </Text>
         </View>
-        <View
-          style={{
-            flexDirection: 'row',
-            gap: 6,
-            flexWrap: 'wrap',
-          }}
-        >
-          {SEATS.map((seat) => (
-            <ScoreChip
-              key={seat}
-              seat={seat}
-              header={header}
-              position={positions[seat]}
-              isWinner={winner !== null && seat === winner.seat}
-            />
-          ))}
-        </View>
-      </View>
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 8,
-          flexShrink: 0,
-        }}
-      >
-        <Pressable
-          onPress={onDelete}
-          accessibilityLabel="Delete replay"
-          hitSlop={6}
-          style={({ pressed }) => ({
-            width: 32,
-            height: 32,
-            borderRadius: 6,
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: pressed ? COLORS.creamPressed : 'transparent',
-          })}
-        >
-          <Text style={{ fontSize: 18, color: COLORS.ink3 }}>×</Text>
-        </Pressable>
-        <View
-          style={{
-            width: 28,
-            height: 28,
-            borderRadius: 14,
-            backgroundColor: COLORS.creamLow,
-            borderColor: COLORS.hairline,
-            borderWidth: 1,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Text style={{ fontSize: 14, fontWeight: '800', color: COLORS.ink2 }}>›</Text>
-        </View>
-      </View>
-    </Pressable>
+      </Pressable>
+    </>
   );
 }
 
@@ -617,23 +606,20 @@ function ScoreChip({
       style={{
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 5,
+        gap: 6,
         paddingHorizontal: 8,
         paddingVertical: 4,
-        borderRadius: 7,
-        backgroundColor: isWinner ? seatColor : COLORS.creamLow,
-        borderColor: isWinner ? seatColor : COLORS.hairline,
+        borderRadius: 999,
+        backgroundColor: isWinner ? seatColor : MENU.fill,
+        borderColor: isWinner ? seatColor : MENU.hairlineSoft,
         borderWidth: 1,
       }}
     >
       <Text
-        style={{
-          fontFamily: 'Noto Serif TC',
-          fontWeight: '700',
-          fontSize: 13,
-          lineHeight: 13,
-          color: isWinner ? 'white' : COLORS.red,
-        }}
+        style={[
+          TYPE.serif,
+          { fontSize: 13, lineHeight: 14, color: isWinner ? 'white' : MENU.goldHi },
+        ]}
       >
         {SEAT_WIND_GLYPH[seat]}
       </Text>
@@ -642,32 +628,25 @@ function ScoreChip({
           fontSize: 11,
           fontWeight: '800',
           letterSpacing: 0.2,
-          color: isWinner ? 'white' : COLORS.ink2,
+          color: isWinner ? 'white' : MENU.text2,
         }}
         numberOfLines={1}
       >
         {isYou ? `${name} (you)` : name}
       </Text>
-      <View
-        style={{
-          paddingHorizontal: 5,
-          paddingVertical: 1,
-          borderRadius: 4,
-          backgroundColor: isWinner ? 'rgba(255,255,255,0.25)' : 'white',
-        }}
-      >
-        <Text
-          style={{
-            fontFamily: 'Courier',
+      <Text
+        style={[
+          TYPE.mono,
+          {
             fontWeight: '800',
             fontSize: 10,
-            color: isWinner ? 'white' : score >= 0 ? SUCCESS_PILL.fg : COLORS.red,
-          }}
-        >
-          {sign}
-          {score}
-        </Text>
-      </View>
+            color: isWinner ? 'white' : score >= 0 ? '#7fd6a3' : '#e59a8b',
+          },
+        ]}
+      >
+        {sign}
+        {score}
+      </Text>
     </View>
   );
 }

@@ -1,4 +1,10 @@
-import { chromium, expect, test } from '@playwright/test';
+import { chromium } from '@playwright/test';
+import { expect, legacyInitScript, test } from './_helpers';
+
+/** The static server's port — the same `PW_PORT` override
+ *  playwright.config.ts honours, so a checkout running the suite on a
+ *  non-default port still maps the fake LAN host onto its own server. */
+const PW_PORT = Number(process.env.PW_PORT ?? 4173);
 
 /**
  * End-to-end check for the "browser guest opens the host's URL"
@@ -34,11 +40,11 @@ import { chromium, expect, test } from '@playwright/test';
 test('LAN-origin browser at /match?code=… infers host and opens LAN WS', async () => {
   // Fake LAN hostname matched by `isLanOrigin` (`^192\.168\.`). The
   // `--host-rules` chromium flag rewrites the TCP target to
-  // 127.0.0.1:4173 (the Playwright webServer) without changing what
+  // 127.0.0.1:<PW_PORT> (the Playwright webServer) without changing what
   // `window.location.hostname` reports to the page — so the bundle
   // believes it's running from a real LAN host.
   const fakeLanHost = '192.168.42.99';
-  const port = 4173;
+  const port = PW_PORT;
 
   const browser = await chromium.launch({
     args: [`--host-rules=MAP ${fakeLanHost}:${port} 127.0.0.1:${port}`],
@@ -46,6 +52,7 @@ test('LAN-origin browser at /match?code=… infers host and opens LAN WS', async
 
   try {
     const page = await browser.newPage();
+    await page.addInitScript(legacyInitScript);
 
     const wsUrlPromise = new Promise<string>((resolve, reject) => {
       page.once('websocket', (ws) => resolve(ws.url()));
@@ -78,7 +85,7 @@ test('LAN-origin browser at /match?code=… infers host and opens LAN WS', async
  */
 test('LAN-origin browser at bare /match with no code shows the stranded screen', async () => {
   const fakeLanHost = '192.168.42.99';
-  const port = 4173;
+  const port = PW_PORT;
 
   const browser = await chromium.launch({
     args: [`--host-rules=MAP ${fakeLanHost}:${port} 127.0.0.1:${port}`],
@@ -86,6 +93,7 @@ test('LAN-origin browser at bare /match with no code shows the stranded screen',
 
   try {
     const page = await browser.newPage();
+    await page.addInitScript(legacyInitScript);
     await page.goto(`http://${fakeLanHost}:${port}/match`);
     await expect(page.getByRole('heading', { name: 'No active match' })).toBeVisible({
       timeout: 10_000,

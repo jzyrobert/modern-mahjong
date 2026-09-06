@@ -1,6 +1,14 @@
 import { defineConfig, devices } from '@playwright/test';
 
 /**
+ * Static-server port. Override with `PW_PORT=<n>` when several checkouts
+ * (worktrees) run the suite at once — `reuseExistingServer` would
+ * otherwise attach to whichever checkout's `serve` already holds 4173
+ * and silently test a stale bundle.
+ */
+const PW_PORT = process.env.PW_PORT ?? '4173';
+
+/**
  * Per-shard spec assignments. Playwright's default `--shard=N/M`
  * splits by file in alphabetical order — that put all 5 screenshot
  * specs (replay-library-screenshots × 2 ≈ 42 s, replay-screenshots ×
@@ -44,6 +52,10 @@ const SHARD_1_SPECS = [
   'manual-sort-drag.spec.ts',
   // 1 of 5 screenshot specs lands here (~21 s).
   'replay-library-screenshot-portrait.spec.ts',
+  // 3D tutorial coach-marks (17 tests, ~60 s on SwiftShader): here rather
+  // than beside the other 3D specs so shard 3 stops carrying every
+  // SwiftShader scene at once.
+  'three-tutorial.spec.ts',
 ];
 
 const SHARD_2_SPECS = [
@@ -59,9 +71,17 @@ const SHARD_2_SPECS = [
   'online-reload-survival.spec.ts',
   'overlay-portrait.spec.ts',
   'replay.spec.ts',
+  // 3D replay player: the match's TableScene fed a recorded frame
+  // (~25 s on SwiftShader: five fixture-seeded page loads).
+  'three-replay.spec.ts',
   // 1 of 5 screenshot specs lands here (~14 s).
   'replay-screenshot-landscape.spec.ts',
   'scoring-rules-sheet.spec.ts',
+  // 3D menu backdrop (~70 s on SwiftShader: budget + DOM contract over
+  // the canvas, page chrome, the hero rack under the title at five
+  // viewports). Here, the lightest shard, so shard 3 does not carry
+  // every SwiftShader scene at once.
+  'three-menu.spec.ts',
 ];
 
 const SHARD_3_SPECS = [
@@ -72,6 +92,10 @@ const SHARD_3_SPECS = [
   'replay-screenshot-desktop.spec.ts',
   'shuffle-on-rejoin.spec.ts',
   'solo-match.spec.ts',
+  // 3D table smoke (~20 s on SwiftShader).
+  'three-table.spec.ts',
+  // 3D render layer — settings panel + live preview (~15 s).
+  'three-settings.spec.ts',
 ];
 
 const ASSIGNED_SPECS = [...SHARD_1_SPECS, ...SHARD_2_SPECS, ...SHARD_3_SPECS];
@@ -82,19 +106,27 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? [['github'], ['list']] : 'list',
   use: {
-    baseURL: 'http://127.0.0.1:4173',
+    baseURL: `http://127.0.0.1:${PW_PORT}`,
     trace: 'retain-on-failure',
+    // Sandboxed dev containers ship a pre-installed Chromium whose
+    // build number may not match the one this @playwright/test
+    // version wants (`playwright install` is blocked there). Point
+    // `PW_CHROMIUM_PATH` at that binary to reuse it; CI leaves the
+    // variable unset and uses the browsers it installed itself.
+    launchOptions: process.env.PW_CHROMIUM_PATH
+      ? { executablePath: process.env.PW_CHROMIUM_PATH }
+      : {},
   },
   // Serve the Expo Web export (`expo export --platform web` writes to
-  // `dist/`). Replaces the legacy `pnpm preview` (Vite). Uses `npx
-  // serve` from the runtime so we don't add a new devDep — `serve`
-  // is bundled with `npm`/`pnpm` distributions and starts faster
-  // than wiring a custom Express handler. CI runs `pnpm --filter
-  // @mahjong/client export-web` before Playwright, so `dist/`
-  // already exists when this fires.
+  // `dist/`). `serve` is a pinned devDependency so `npx serve`
+  // resolves to node_modules/.bin without touching the npm registry —
+  // the old `npx --yes serve` fetched it at test time and a registry
+  // stall once timed out every e2e shard and the Lighthouse job in the
+  // same minute. CI runs `pnpm --filter @mahjong/client export-web`
+  // before Playwright, so `dist/` already exists when this fires.
   webServer: {
-    command: 'npx --yes serve dist -l 4173 -s',
-    url: 'http://127.0.0.1:4173',
+    command: `npx serve dist -l ${PW_PORT} -s`,
+    url: `http://127.0.0.1:${PW_PORT}`,
     timeout: 60_000,
     reuseExistingServer: !process.env.CI,
     stdout: 'ignore',

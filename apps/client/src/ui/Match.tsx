@@ -18,6 +18,8 @@ import { useMemo, useState } from 'react';
 import { Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { isSeatHost, nameForSeat, useGame } from '../state/game';
+import { Table3DShell } from '../three/entry';
+import { resolveRenderer } from '../three/renderer';
 import { PrimaryButton } from './buttons';
 import { COLORS } from './colors';
 import { orderHand } from './handSort';
@@ -95,6 +97,10 @@ export function Match() {
   const [playersOpen, setPlayersOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const felt = FELT_SKINS[settings.felt];
+  // Three.js table (`src/three/`) vs the classic RN shells — see
+  // ARCHITECTURE.md §3. Resolved per render so the Settings toggle
+  // swaps live; the resolver itself is cheap (cached WebGL probe).
+  const use3D = resolveRenderer(settings.renderer) === '3d' && Table3DShell !== null;
   const seat = you !== null && you !== 'spectator' ? you : null;
   const isHost = isSeatHost(lobby, seat);
 
@@ -529,6 +535,10 @@ export function Match() {
     menuOpen,
     setMenuOpen,
   } as const;
+
+  if (use3D && Table3DShell) {
+    return <Table3DShell {...sharedProps} />;
+  }
 
   if (isDesktop) {
     return <DesktopShell {...sharedProps} />;

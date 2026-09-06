@@ -1,8 +1,7 @@
-import { SEATS, type Seat, seatWindFor, tileId, tileLabel } from '@mahjong/game-logic';
+import { SEATS, type Seat, seatWindFor, tileId } from '@mahjong/game-logic';
 import { useMemo, useState } from 'react';
 import { Animated, ScrollView, Text, View, useWindowDimensions } from 'react-native';
-import { type PlaybackPov, usePlayback } from '../../replay/playback';
-import type { ReplayBookmark } from '../../replay/types';
+import { usePlayback } from '../../replay/playback';
 import { useGame } from '../../state/game';
 import { Hand } from '../Hand';
 import { Tile } from '../Tile';
@@ -12,7 +11,31 @@ import { MeldStrip } from '../match/MeldStrip';
 import { type Position, SEAT_COLOR } from '../match/seatColor';
 import { FELT_SKINS } from '../match/skins';
 import { WIND_GLYPH } from '../winds';
+import { GlassReplayPlayer, type ReplayPlayerActions } from './GlassReplayPlayer';
 import { Scrubber } from './Scrubber';
+import { useChapters } from './chapters';
+import { EVENT_BORDER, describeEvent, eventIndexHint, eventKind } from './events';
+import { positionMapFor } from './seats';
+
+export type ReplayPlayerTheme = 'paper' | 'glass';
+
+/**
+ * Replay player. `theme` follows the renderer the route resolved:
+ * `'glass'` under the 3D renderer mounts `GlassReplayPlayer` (the
+ * match's Three.js table + glass chrome), the default `'paper'` keeps
+ * the classic felt / paper shell below unchanged.
+ */
+export function ReplayPlayer({
+  theme = 'paper',
+  actions,
+}: {
+  theme?: ReplayPlayerTheme;
+  /** Route actions the glass chrome hosts in its top row. */
+  actions?: ReplayPlayerActions | undefined;
+}) {
+  if (theme === 'glass') return <GlassReplayPlayer actions={actions} />;
+  return <PaperReplayPlayer />;
+}
 
 /**
  * "Table replay" — read-only match shell rendered for a `ReplayRecord`'s
@@ -41,7 +64,7 @@ import { Scrubber } from './Scrubber';
  *   - `landscape` (width > height, height < 540): two-column main —
  *                 felt left, events rail right
  */
-export function ReplayPlayer() {
+function PaperReplayPlayer() {
   const playback = usePlayback();
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height && height < 540;
@@ -150,7 +173,7 @@ type Density = 'portrait' | 'landscape' | 'roomy';
 function FeltPage({ density, children }: { density: Density; children: React.ReactNode }) {
   const felt = useFeltSkin();
   return (
-    <View style={{ flex: 1, backgroundColor: felt.top }}>
+    <View testID="replay-player" style={{ flex: 1, backgroundColor: felt.top }}>
       <View style={{ flex: 1, paddingTop: density === 'roomy' ? 4 : 0 }}>{children}</View>
     </View>
   );
@@ -159,19 +182,6 @@ function FeltPage({ density, children }: { density: Density; children: React.Rea
 function useFeltSkin() {
   const skin = useGame((s) => s.settings.felt);
   return FELT_SKINS[skin];
-}
-
-// Mirror the live match: bottom-seat-is-you. POV picker overrides the
-// anchor; spectator records fall back to seat 0.
-const POSITION_CYCLE: readonly Position[] = ['bottom', 'right', 'top', 'left'];
-function positionMapFor(pov: PlaybackPov, localSeat: Seat | 'spectator'): Record<Seat, Position> {
-  const anchor: Seat = pov !== 'all' ? pov : localSeat !== 'spectator' ? localSeat : 0;
-  return {
-    0: POSITION_CYCLE[(0 - anchor + 4) % 4]!,
-    1: POSITION_CYCLE[(1 - anchor + 4) % 4]!,
-    2: POSITION_CYCLE[(2 - anchor + 4) % 4]!,
-    3: POSITION_CYCLE[(3 - anchor + 4) % 4]!,
-  };
 }
 
 // ─── Status pill ────────────────────────────────────────────────────
@@ -1002,35 +1012,6 @@ function EventRow({
   );
 }
 
-function eventIndexHint(_event: ReturnType<typeof usePlayback>['events'][number]): string {
-  return '';
-}
-
-type EventKindBucket = 'gang' | 'claim' | 'draw' | 'discard' | 'other';
-const EVENT_BORDER: Record<EventKindBucket, string> = {
-  gang: '#a64ad9',
-  claim: COLORS.gold,
-  draw: COLORS.success,
-  discard: COLORS.creamLow,
-  other: COLORS.creamLow,
-};
-
-function eventKind(e: ReturnType<typeof usePlayback>['events'][number]): EventKindBucket {
-  switch (e.t) {
-    case 'gangDeclared':
-      return 'gang';
-    case 'claimsOpened':
-    case 'claimsResolved':
-      return 'claim';
-    case 'drew':
-      return 'draw';
-    case 'discarded':
-      return 'discard';
-    default:
-      return 'other';
-  }
-}
-
 function LatestEventTicker() {
   const playback = usePlayback();
   const events = playback.events;
@@ -1068,34 +1049,6 @@ function LatestEventTicker() {
   );
 }
 
-function describeEvent(e: ReturnType<typeof usePlayback>['events'][number]): string {
-  switch (e.t) {
-    case 'handStarted':
-      return `Hand started (seed ${e.seed})`;
-    case 'opened':
-      return e.rolls.fullRoll ? 'Opening rolls — all four seats rolled' : 'Winner re-rolled';
-    case 'rulesChanged':
-      return 'Rules updated';
-    case 'drew':
-      return `Seat ${e.seat} drew a tile`;
-    case 'discarded':
-      return `Seat ${e.seat} discarded ${tileLabel(e.tile)}`;
-    case 'claimsOpened':
-      return 'Claim window open';
-    case 'claimsResolved':
-      if (e.result.kind === 'pass') return 'All passed';
-      return `Seat ${e.result.seat} called ${e.result.claim.kind}`;
-    case 'gangDeclared':
-      return `Seat ${e.seat} declared ${e.kind} gang`;
-    case 'won':
-      return `Seat ${e.seat} won ${e.faan} faan${e.selfDraw ? ' (self-draw)' : ''}`;
-    case 'drawn-game':
-      return 'Drawn game — wall empty';
-    default:
-      return JSON.stringify(e);
-  }
-}
-
 // ─── Active-turn halo (ported from OppHandStrip.ActiveHalo) ─────────
 
 function ActiveHalo() {
@@ -1130,118 +1083,4 @@ function ActiveHalo() {
       }}
     />
   );
-}
-
-// ─── Chapter strip ──────────────────────────────────────────────────
-
-export interface ReplayChapter {
-  /** 0..1 range start, used to flex the chapter cell width. */
-  from: number;
-  /** 0..1 range end. */
-  to: number;
-  /** Bookmark seq the chapter begins at — what the strip tap seeks to. */
-  seq: number;
-  /** Hand number (1-based). */
-  index: number;
-  /** Round-wind glyph for the chapter (currently always the prevailing
-   *  wind — most replays sit inside a single round). */
-  wind: string;
-  /** Two-line label content. */
-  label: string;
-  /** "Robert won · 5 faan" / "Drawn game" / "IN PROGRESS" / "Pending". */
-  result: string;
-  /** Cursor sits inside this chapter's range. */
-  current: boolean;
-  /** Chapter starts after the cursor (not yet reached). */
-  pending: boolean;
-}
-
-function useChapters(): readonly ReplayChapter[] {
-  const playback = usePlayback();
-  return useMemo(() => {
-    return deriveChapters(playback.bookmarks, playback.totalFrames, playback.cursor, {
-      windGlyph: WIND_GLYPH[playback.state.prevailingWind],
-    });
-  }, [playback.bookmarks, playback.totalFrames, playback.cursor, playback.state.prevailingWind]);
-}
-
-function deriveChapters(
-  bookmarks: readonly ReplayBookmark[],
-  totalFrames: number,
-  cursor: number,
-  opts: { windGlyph: string },
-): ReplayChapter[] {
-  if (totalFrames <= 0) return [];
-  const starts = bookmarks.filter((b) => b.kind === 'hand-start');
-  // Synthesise a hand-1 boundary at seq 0 only if the recorder never
-  // emitted one — e.g. a record that started mid-hand. Otherwise trust
-  // the real bookmarks even if the first sits a frame or two in.
-  if (starts.length === 0) {
-    starts.push({
-      seq: 0,
-      kind: 'hand-start',
-      label: 'Hand 1',
-    });
-  }
-  const last = Math.max(1, totalFrames - 1);
-  return starts.map((b, i) => {
-    const next = starts[i + 1];
-    const startSeq = b.seq;
-    // The visible-seq remap can snap a `won` / `draw` bookmark forward
-    // onto the next hand's start frame. Look one frame past the
-    // chapter's nominal end so a collapsed end-bookmark still finds
-    // the right chapter.
-    const endSeq = next ? next.seq - 1 : totalFrames - 1;
-    const lookupEndSeq = next ? next.seq : totalFrames - 1;
-    const from = startSeq / last;
-    const to = (endSeq + 1) / last;
-    const ended = findEndBookmark(bookmarks, startSeq, lookupEndSeq);
-    const current = cursor >= startSeq && cursor <= endSeq;
-    const pending = cursor < startSeq;
-    return {
-      from: Math.min(1, Math.max(0, from)),
-      to: Math.min(1, Math.max(from, to)),
-      seq: startSeq,
-      index: i + 1,
-      wind: opts.windGlyph,
-      label: `HAND ${i + 1}`,
-      result: chapterResult(ended, current, pending, cursor),
-      current,
-      pending,
-    };
-  });
-}
-
-function findEndBookmark(
-  bookmarks: readonly ReplayBookmark[],
-  startSeq: number,
-  endSeq: number,
-): ReplayBookmark | null {
-  for (const b of bookmarks) {
-    if (b.seq < startSeq) continue;
-    if (b.seq > endSeq) break;
-    if (b.kind === 'win' || b.kind === 'robbed-gang' || b.kind === 'draw') return b;
-  }
-  return null;
-}
-
-function chapterResult(
-  ended: ReplayBookmark | null,
-  current: boolean,
-  pending: boolean,
-  cursor: number,
-): string {
-  if (pending) return 'Pending';
-  if (ended && cursor >= ended.seq) {
-    if (ended.kind === 'draw') return 'Drawn game';
-    // Bookmark labels are pre-rendered as "<Name> wins N faan" or the
-    // robbed-gang phrasing — keep them as-is for the chapter strip.
-    return ended.label;
-  }
-  if (current) return 'IN PROGRESS';
-  // Chapter is in the past but the visible-seq remap snapped its
-  // win/draw bookmark onto the next chapter's start frame, so we
-  // couldn't find it inside this chapter's range. Show a neutral
-  // dash rather than the misleading "Pending" label.
-  return '—';
 }
