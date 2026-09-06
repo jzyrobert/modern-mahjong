@@ -33,16 +33,21 @@ import {
   PORTRAIT_FAR_RAIL_POINT,
   PORTRAIT_RIVER_SCALE,
   PORTRAIT_STRIP_H,
+  type RiverZoomBlock,
   TABLE_PARALLAX,
   type ViewportClass,
+  ZOOM_BLOCK_RESERVED,
   cameraFor,
   classifyViewport,
+  fitZoomBlockToShelf,
+  growZoomBlock,
   heldHandFrameFor,
   heldHandParkedBaseline,
   heldHandTopPx,
   landscapeZoomCameraFor,
   portraitDiceBandShort,
   portraitMetrics,
+  riverZoomBlock,
   riverZoomCameraFor,
   sheetCameraFor,
   zoomNearPoint,
@@ -261,6 +266,7 @@ const EMPTY_RECTS: HudRects = {
   farRowTop: null,
   nearRailBottom: null,
   riverBlockBottom: null,
+  feltNearRight: null,
 };
 const POSITIONS: Position[] = ['bottom', 'right', 'top', 'left'];
 const REL_OF_POSITION: Record<Position, Rel> = { bottom: 0, right: 1, top: 2, left: 3 };
@@ -313,12 +319,20 @@ const PORTRAIT_SHARP_MAX_WIDTH = 420;
  * rail brings it back; a claim window or a declare CTA ends the zoom by
  * itself). Desktop rivers read at 38–40 px and stay inert. `shelfDepth`
  * is the felt the portrait zoom's meld shelf takes past the near river
- * (`zoomMeldShelf`), which the plan view keeps in frame above the hand.
+ * (`zoomMeldShelf`), which the plan view keeps in frame above the hand;
+ * `block` the river block the portrait zoom frames (`riverZoomBlock`).
  */
-function presetFor(width: number, height: number, topInset: number, zoom: boolean, shelfDepth = 0) {
+function presetFor(
+  width: number,
+  height: number,
+  topInset: number,
+  zoom: boolean,
+  shelfDepth = 0,
+  block: RiverZoomBlock = ZOOM_BLOCK_RESERVED,
+) {
   const cls = classifyViewport(width, height);
   if (zoom && cls === 'phone-portrait')
-    return riverZoomCameraFor(width, height, topInset, shelfDepth);
+    return riverZoomCameraFor(width, height, topInset, shelfDepth, block);
   if (zoom && cls === 'phone-landscape') {
     const yTop = 8 + topInset + CHROME_H_LANDSCAPE + 6;
     // The near wall's inner top edge lands just off the bottom edge.
@@ -339,9 +353,10 @@ function heldFrameFor(
   zoom: boolean,
   parked: boolean,
   shelfDepth = 0,
+  block: RiverZoomBlock = ZOOM_BLOCK_RESERVED,
 ): HeldHandFrame | null {
   if (classifyViewport(width, height) !== 'phone-portrait') return null;
-  const preset = presetFor(width, height, topInset, zoom, shelfDepth);
+  const preset = presetFor(width, height, topInset, zoom, shelfDepth, block);
   return parked
     ? heldHandFrameFor(preset, width, height, heldHandParkedBaseline(width, height))
     : heldHandFrameFor(preset, width, height);
@@ -392,15 +407,39 @@ export function Table3DShell(props: Table3DShellProps) {
   const [riverZoom, setRiverZoom] = useState(false);
   const riverZoomRef = useRef(false);
   riverZoomRef.current = riverZoom && compact;
-  // Portrait zoom meld shelf: the felt the user's melds take past the
-  // near river while zoomed (`zoomMeldShelf`), which the zoom camera
-  // keeps above the held hand. Read live by the imperative side (build /
-  // resize) through the ref; the zoom effect re-fits the camera when it
-  // changes mid-zoom (a claim lands, a gang promotes).
+  // Portrait zoom river block: the rows present plus one, grown but never
+  // shrunk while a zoom lasts (`riverZoomBlock` / `growZoomBlock` — a
+  // claim takes a tile back out of a river; the frame must not zoom back
+  // in). The held block clears when the zoom ends or a new hand starts,
+  // so the next zoom fits the table as it stands then.
+  const discards = props.state.discards;
   const ownMelds = props.state.melds[props.seat];
+  const ownMeldsWidth = useMemo(() => meldsRowWidth(ownMelds, props.seat), [ownMelds, props.seat]);
+  const blockNow = useMemo(
+    () =>
+      fitZoomBlockToShelf(
+        riverZoomBlock(
+          [discards[0].length, discards[1].length, discards[2].length, discards[3].length],
+          props.seat,
+        ),
+        ownMeldsWidth,
+      ),
+    [discards, props.seat, ownMeldsWidth],
+  );
+  const heldBlock = useRef<RiverZoomBlock | null>(null);
+  const zoomingPortrait = riverZoom && portrait && props.state.discardOrder.length > 0;
+  heldBlock.current = zoomingPortrait ? growZoomBlock(heldBlock.current, blockNow) : null;
+  const zoomBlock = heldBlock.current ?? blockNow;
+  const zoomBlockRef = useRef(zoomBlock);
+  zoomBlockRef.current = zoomBlock;
+  // Portrait zoom meld shelf: the felt the user's melds take past the
+  // block's near edge while zoomed (`zoomMeldShelf`), which the zoom
+  // camera keeps above the held hand. Read live by the imperative side
+  // (build / resize) through the ref; the zoom effect re-fits the camera
+  // when it changes mid-zoom (a claim lands, a gang promotes).
   const shelfDepth = useMemo(
-    () => zoomMeldShelf(PORTRAIT_RIVER_SCALE, meldsRowWidth(ownMelds, props.seat)).depth,
-    [ownMelds, props.seat],
+    () => zoomMeldShelf(PORTRAIT_RIVER_SCALE, ownMeldsWidth, zoomBlock).depth,
+    [ownMeldsWidth, zoomBlock],
   );
   const shelfDepthRef = useRef(0);
   shelfDepthRef.current = shelfDepth;
@@ -505,8 +544,10 @@ export function Table3DShell(props: Table3DShellProps) {
         // draw control meanwhile — `trayDraw`).
         hideWalls: riverZoomRef.current && !ls,
         // Portrait river zoom: the user's melds move from the rack line
-        // (under the held hand on screen) to the shelf past their river.
+        // (under the held hand on screen) to the shelf past their river —
+        // past the fitted block's near edge, inside its width.
         heldMeldsShelf: riverZoomRef.current && !ls,
+        zoomBlock: riverZoomRef.current && !ls ? zoomBlockRef.current : undefined,
         // Landscape: the hand stands right in front of the near wall, so
         // the wall steps back a shade and the hand reads in front of it.
         nearWallDim: ls ? 0.85 : 1,
@@ -615,7 +656,10 @@ export function Table3DShell(props: Table3DShellProps) {
         nearRailBottom: scene.projectPoint(0, 0, FELT_HALF + RAIL_WIDTH).y,
         // Portrait river scale: the point the zoom keeps above the hand —
         // the meld shelf's near edge when the user has melds out.
-        riverBlockBottom: scene.projectPoint(...zoomNearPoint(shelfDepthRef.current)).y,
+        riverBlockBottom: scene.projectPoint(
+          ...zoomNearPoint(shelfDepthRef.current, zoomBlockRef.current.near),
+        ).y,
+        feltNearRight: scene.projectPoint(FELT_HALF, 0, FELT_HALF).x,
       };
 
       // Desktop: seat badges follow their seat's hand row. Phones pin
@@ -663,7 +707,8 @@ export function Table3DShell(props: Table3DShellProps) {
         Math.abs((next.farRailTop ?? 0) - (lastRects.current.farRailTop ?? 0)) > 0.75 ||
         Math.abs((next.farRowTop ?? 0) - (lastRects.current.farRowTop ?? 0)) > 0.75 ||
         Math.abs((next.nearRailBottom ?? 0) - (lastRects.current.nearRailBottom ?? 0)) > 0.75 ||
-        Math.abs((next.riverBlockBottom ?? 0) - (lastRects.current.riverBlockBottom ?? 0)) > 0.75;
+        Math.abs((next.riverBlockBottom ?? 0) - (lastRects.current.riverBlockBottom ?? 0)) > 0.75 ||
+        Math.abs((next.feltNearRight ?? 0) - (lastRects.current.feltNearRight ?? 0)) > 0.75;
       if (changed) {
         settleFrames.current = 0;
         if (force || now - lastRectPush.current > 140) {
@@ -704,17 +749,26 @@ export function Table3DShell(props: Table3DShellProps) {
       const inset = topInsetRef.current;
       const zoom = riverZoomRef.current;
       const shelf = shelfDepthRef.current;
+      const block = zoomBlockRef.current;
       ctx.rig.snap(
         tileSheet
           ? sheetCameraFor(ctx.size.width, ctx.size.height)
-          : presetFor(ctx.size.width, ctx.size.height, inset, zoom, shelf),
+          : presetFor(ctx.size.width, ctx.size.height, inset, zoom, shelf, block),
       );
       ctx.rig.halfLife = ctx.reducedMotion ? 0.04 : 0.24;
       ctx.rig.parallaxStrength = TABLE_PARALLAX.strength;
       ctx.rig.parallaxHalfLife = TABLE_PARALLAX.halfLife;
       heldRef.current = tileSheet
         ? null
-        : heldFrameFor(ctx.size.width, ctx.size.height, inset, zoom, handParkedRef.current, shelf);
+        : heldFrameFor(
+            ctx.size.width,
+            ctx.size.height,
+            inset,
+            zoom,
+            handParkedRef.current,
+            shelf,
+            block,
+          );
       if (!tileSheet) syncScene();
       settleFrames.current = 0;
       return {
@@ -727,12 +781,15 @@ export function Table3DShell(props: Table3DShellProps) {
           const ti = topInsetRef.current;
           const zoom = riverZoomRef.current;
           const shelf = shelfDepthRef.current;
-          ctx.rig.setPreset(tileSheet ? sheetCameraFor(w, h) : presetFor(w, h, ti, zoom, shelf));
+          const block = zoomBlockRef.current;
+          ctx.rig.setPreset(
+            tileSheet ? sheetCameraFor(w, h) : presetFor(w, h, ti, zoom, shelf, block),
+          );
           if (!tileSheet) {
             // The held-hand frame is viewport-derived; re-lay the hand
             // out so it slides between the table edge and the held
             // position on rotation.
-            heldRef.current = heldFrameFor(w, h, ti, zoom, handParkedRef.current, shelf);
+            heldRef.current = heldFrameFor(w, h, ti, zoom, handParkedRef.current, shelf, block);
             syncScene();
           }
           settleFrames.current = 0;
@@ -782,18 +839,28 @@ export function Table3DShell(props: Table3DShellProps) {
   // eases in underneath it). The parked hand re-derives the same way
   // (camera unchanged, the hand springs between the two baselines), and
   // so does a meld landing on the zoom shelf mid-zoom (`zoomShelfDepth`
-  // — the frame backs off to keep the shelf above the hand).
+  // — the frame backs off to keep the shelf above the hand) and a river
+  // growing a row or a column while zoomed (`zoomBlock` — the frame
+  // grows, eased by the rig, and never shrinks until the zoom ends).
   useEffect(() => {
     const ctx = ctxRef.current;
     if (!ctx || tileSheet) return;
     const zoom = riverZoom && compact;
     const { width: w, height: h } = ctx.size;
-    ctx.rig.setPreset(presetFor(w, h, topInsetRef.current, zoom, zoomShelfDepth));
-    heldRef.current = heldFrameFor(w, h, topInsetRef.current, zoom, handParked, zoomShelfDepth);
+    ctx.rig.setPreset(presetFor(w, h, topInsetRef.current, zoom, zoomShelfDepth, zoomBlock));
+    heldRef.current = heldFrameFor(
+      w,
+      h,
+      topInsetRef.current,
+      zoom,
+      handParked,
+      zoomShelfDepth,
+      zoomBlock,
+    );
     syncScene();
     settleFrames.current = 0;
     ctx.loop.requestRender();
-  }, [riverZoom, compact, tileSheet, syncScene, handParked, zoomShelfDepth]);
+  }, [riverZoom, compact, tileSheet, syncScene, handParked, zoomShelfDepth, zoomBlock]);
   const toggleRiverZoom = useCallback(() => setRiverZoom((v) => !v), []);
   const exitRiverZoom = useCallback(() => setRiverZoom(false), []);
   const ctaProps = {
@@ -879,8 +946,15 @@ export function Table3DShell(props: Table3DShellProps) {
   // except a landscape claim window / declare moment (see
   // `landscapeDecides`).
   const zoomAvailable = compact && !resolved && !landscapeDecides;
-  // Zoomed portrait: the felt under the river block, where the toast
-  // goes when it fits above the held hand.
+  // Zoomed portrait: the felt under the river block (under the meld shelf
+  // when the user has melds out), where the toast goes when it fits above
+  // the held hand. With melds on the tall phone it does not: the shelf
+  // lies `SHELF_GAP` under the block and takes ~66 px of the ~105 px of
+  // felt there (39 px left, a 50 px toast needs 64 with its gaps), the
+  // shelf row's free run left of two melds is ~120 px — narrower than a
+  // toast — and buying the room would zoom every melds-out zoom ~7 % out
+  // for a transient toast; so the header strip is the right slot there
+  // (round-5 critic), as it is on every short phone.
   const zoomSlotTop = hudRects.riverBlockBottom !== null ? hudRects.riverBlockBottom + 8 : null;
   const zoomSlotFits =
     zoomSlotTop !== null && zoomSlotTop + TOAST_H <= heldHandTopPx(width, height) - 6;
@@ -928,6 +1002,13 @@ export function Table3DShell(props: Table3DShellProps) {
       : null;
   const desktopStripSize: 'large' | 'footer' =
     desktopBand === null || desktopBand >= CLAIM_STRIP_LARGE_H ? 'large' : 'footer';
+  // Desktop: the sort control stops at the felt's near-right corner
+  // (the rail's inner mitre) instead of running to the footer's edge,
+  // where it sat over the rail's bottom-right mitre (round-5 critic).
+  const desktopSortInset =
+    !compact && hudRects.feltNearRight !== null
+      ? Math.max(0, Math.round(width - pad - insets.right - hudRects.feltNearRight))
+      : 0;
   // Desktop: the CTAs (declare win / gang, promote) ride in the centre
   // slot beside the turn chip, and the tenpai badge heads that same row
   // — under the hand, where the eye is — rather than the footer's far
@@ -1174,6 +1255,7 @@ export function Table3DShell(props: Table3DShellProps) {
               name={props.userName}
               wallCount={state.wall.length}
               deadCount={state.deadWall.length}
+              deadAlways={portrait}
               isMyTurn={props.myTurn && !shuffling}
               needsDraw={props.needsDraw}
               turnCountdown={props.turnCountdown}
@@ -1413,6 +1495,7 @@ export function Table3DShell(props: Table3DShellProps) {
               onSortModeChange={props.onSortModeChange ?? (() => {})}
               ctasExternal
               dense={landscape}
+              sortInset={desktopSortInset}
               sortReplacement={
                 portraitReadyBadge ? (
                   <ReadyBadgeCta waits={props.readyWaits} compact dense />

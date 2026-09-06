@@ -216,6 +216,13 @@ interface ActionRowProps extends ActionCtasProps {
   /** Centred footer content (desktop / landscape claim strip). */
   centre?: ReactNode;
   /**
+   * `sortAlign: 'end'`: px the sort control stops short of the row's
+   * right edge. Desktop passes the run from the footer's edge to the
+   * felt's near-right corner, so the control sits under the rail's
+   * straight run instead of over its bottom-right mitre (round-5 critic).
+   */
+  sortInset?: number | undefined;
+  /**
    * Phone layout (`sortAlign: 'auto'`): rendered in the sort control's
    * place. Portrait swaps the compact ready-hand badge in while the
    * claim strip owns the action tray (the sort mode is moot mid-call).
@@ -248,6 +255,7 @@ export function ActionRow(props: ActionRowProps) {
     sortAlign = 'auto',
     centre,
     sortReplacement,
+    sortInset = 0,
   } = props;
   const sort = (
     <SortSegment mode={sortMode} onChange={onSortModeChange} compact={compact} dense={dense} />
@@ -326,7 +334,9 @@ export function ActionRow(props: ActionRowProps) {
           <div style={{ minWidth: 0, display: 'flex', justifyContent: 'center' }}>
             {ctasInFooter ? <ActionCtas {...props} /> : centre}
           </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>{sort}</div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', paddingRight: sortInset }}>
+            {sort}
+          </div>
         </div>
       ) : (
         <div

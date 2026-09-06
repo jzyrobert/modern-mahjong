@@ -1,11 +1,16 @@
 import type { GameState, Seat, Wind } from '@mahjong/game-logic';
 import {
   BoxGeometry,
-  type BufferGeometry,
+  BufferGeometry,
+  CanvasTexture,
   CircleGeometry,
+  Color,
   CylinderGeometry,
+  DynamicDrawUsage,
   Float32BufferAttribute,
+  InstancedBufferAttribute,
   InstancedMesh,
+  LinearMipmapLinearFilter,
   Matrix4,
   Mesh,
   MeshBasicMaterial,
@@ -14,6 +19,7 @@ import {
   Object3D,
   PlaneGeometry,
   Quaternion,
+  SRGBColorSpace,
   type Scene,
   type Texture,
   Vector3,
@@ -28,8 +34,20 @@ import { publishRiverInterior } from '../core/sceneRects';
 import { getSpotlightTiles, spotlightPulse, spotlightVersion } from '../core/spotlight';
 import { TilePool, type TilePose } from '../tiles/TilePool';
 import { TILE_D, TILE_H, TILE_RADIUS, TILE_W } from '../tiles/geometry';
-import { feltColors, setTileBackFinish, setTileBackGradient } from '../tiles/materials';
-import { Choreographer, type TileMotionState, slotPose } from './choreography';
+import {
+  createTileDepthMaterial,
+  feltColors,
+  setTileBackFinish,
+  setTileBackGradient,
+} from '../tiles/materials';
+import {
+  Choreographer,
+  SHADOW_CAST_FLOOR,
+  type TileMotionState,
+  orientedBoxTop,
+  sinkCastsShadow,
+  slotPose,
+} from './choreography';
 import { DRAG_LIFT, DRAG_TILT } from './dragReorder';
 import {
   CENTRE_PLATE_RADIUS,
@@ -40,6 +58,7 @@ import {
   RAIL_WIDTH,
   type Rel,
   type RowTuning,
+  type ZoomShelfBlock,
   computeLayout,
   dealerChipLocal,
   relOf,
@@ -70,8 +89,10 @@ import {
  * pool. Nothing here touches React.
  *
  * Draw calls: felt 1, rail 1, plate 2 (side + top), marker 1, dice 1,
- * cue halo 1, discard-hint frame 1, tiles 1 (+ shadow pass casters).
- * ≈ 12 per frame.
+ * glow quads 1 (the cue halo and the discard-hint frame share one mesh,
+ * one material and one texture atlas — see `glow`), tiles 1 (+ shadow
+ * pass casters). ≤ 12 per frame in every state, hint states included
+ * (round-5 critic: the separate hint quad made 13).
  */
 export interface SyncInput {
   state: GameState;
@@ -106,6 +127,8 @@ export interface SyncInput {
   hideWalls?: boolean | undefined;
   /** Portrait river zoom: own melds on the shelf past the river — see `LayoutOptions.heldMeldsShelf`. */
   heldMeldsShelf?: boolean | undefined;
+  /** Portrait river zoom: the fitted river block the shelf lies past — see `LayoutOptions.zoomBlock`. */
+  zoomBlock?: ZoomShelfBlock | undefined;
   /**
    * Albedo multiplier for the near wall's stacks (rel 0). Phone
    * landscape sets 0.85: the hand stands directly in front of the wall
@@ -143,6 +166,10 @@ export interface TableDebugTile {
   z: number;
   scale: number;
   flight: { kind: string; startsIn: number; ms: number } | null;
+  /** World y of the tile box's highest point (`orientedBoxTop`). */
+  top: number;
+  /** Whether the tile is in the shadow pass this frame (`sinkCastsShadow`). */
+  castsShadow: boolean;
 }
 
 /** The discard hint as rendered: the hinted tile's projected face and
@@ -240,6 +267,9 @@ const CUE_HALO_HAND_PAD = 2.0;
 const CUE_HALO_HAND_FRONT = 0.45;
 /** Cue halo opacity at rest (pulses a little above and below it): the draw disc … */
 const CUE_HALO_OPACITY = 0.78;
+/** Gold of the cue glow (halo + band) and of the discard-hint frame. */
+const CUE_HALO_COLOR = new Color(0xf3b74a);
+const HINT_COLOR = new Color(0xe9ac3c);
 /**
  * Felt scale while the portrait zoom hides the walls and rail. The
  * held hand's front row stands ~19 world units out from the plan
@@ -252,7 +282,7 @@ const ZOOM_FELT_SCALE = 2.0;
 /** How far the rail sinks for the zoom: its whole height plus a margin under the felt plane. */
 const RAIL_SINK = RAIL_H + 0.1;
 /**
- * Discard-hint frame (see `hintFrame`), world units: glow margin past
+ * Discard-hint frame (the `glow` mesh's second quad), world units: glow margin past
  * the face on each side, stroke bleed past the face edge as a fraction
  * of the face size, the hinted tile's steady lift along its up axis,
  * the frame's gap in front of the printed face, and how long the frame
@@ -270,8 +300,41 @@ const HINT_FRAME_W = TILE_W * (1 + 2 * HINT_BLEED);
 const HINT_FRAME_H = TILE_H * (1 + 2 * HINT_BLEED);
 const HINT_QUAD_W = TILE_W + 2 * HINT_PAD;
 const HINT_QUAD_H = TILE_H + 2 * HINT_PAD;
-/** … and the hand band, dimmer — an underlight, not a highlight. */
-const CUE_HALO_BAND_OPACITY = 0.55;
+/**
+ * … and the hand band, dimmer — an underlight, not a highlight. The
+ * band only ever shows under a felt-standing hand row (the wide
+ * presets; the portrait hand is held, and the tray's turn chip carries
+ * its state), so this is the wide presets' value: 0.55 read as two
+ * faint end pools and a sliver from the 44° desktop camera (round-5
+ * critic); 0.65 keeps the light under the feet legible without turning
+ * back into the bar on the felt round-FB4 rejected.
+ */
+const CUE_HALO_BAND_OPACITY = 0.65;
+/**
+ * The glow atlas: the cue halo's disc, its hand-row band and the
+ * discard-hint frame drawn into one canvas (`buildGlowAtlas`), so the
+ * two quads render as one mesh with one material — `GLOW_GUTTER` px of
+ * transparent canvas between regions keeps the mipmaps from bleeding
+ * one glow into the next.
+ */
+const GLOW_GUTTER = 32;
+/** Quad slots in the glow mesh's geometry. */
+const GLOW_HALO = 0;
+const GLOW_HINT = 1;
+/** Canvas rect of one glow region and its UV rect (v up, canvas y down). */
+interface GlowRegion {
+  u0: number;
+  v0: number;
+  u1: number;
+  v1: number;
+}
+/** Unit-quad corners in `PlaneGeometry` order: top-left, top-right, bottom-left, bottom-right. */
+const GLOW_CORNERS: readonly [number, number][] = [
+  [-0.5, 0.5],
+  [0.5, 0.5],
+  [-0.5, -0.5],
+  [0.5, -0.5],
+];
 const _m = new Matrix4();
 const _obj = new Object3D();
 const _q = new Quaternion();
@@ -323,12 +386,31 @@ export class TableScene {
    * states, readable at a glance from every preset (the tinted next
    * tile alone was easy to miss at desktop).
    */
-  private cueHalo: Mesh;
-  private cueHaloMat: MeshBasicMaterial;
   private cueHaloTarget = { x: 0, z: 0, sx: 0, sz: 0, on: false, band: false };
-  /** Disc (draw cue) and band (hand row) alphas — one material, the map swaps. */
-  private cueHaloTex: Texture;
-  private cueBandTex: Texture;
+  private cueHaloOpacity = 0;
+  /**
+   * One mesh for both glows (`glow`): two unit quads whose corners,
+   * atlas UVs and RGBA vertex colours are rewritten in place — the cue
+   * halo (disc or band region of the atlas, flat on the felt) and the
+   * discard-hint frame (frame region, on the hinted tile's face). One
+   * draw call, one material, one texture for what used to be two of
+   * each; a faded quad collapses to a point so it costs no fill.
+   */
+  private glow: Mesh;
+  private glowMat: MeshBasicMaterial;
+  private glowPos: Float32BufferAttribute;
+  private glowUv: Float32BufferAttribute;
+  private glowCol: Float32BufferAttribute;
+  private glowRegions: { disc: GlowRegion; band: GlowRegion; frame: GlowRegion };
+  private glowBandOn = false;
+  /**
+   * Shadow-pass switch per tile (`materials.createTileDepthMaterial`):
+   * a tile sinking through the felt leaves the casters once its top is
+   * within `SHADOW_CAST_FLOOR` of the plane, before its top face ties
+   * with the felt's depth and speckles it (`sinkCastsShadow`).
+   */
+  private shadowCastAttr: InstancedBufferAttribute;
+  private readonly castsShadow = new Uint8Array(136);
   /**
    * Discard hint: a gold rounded-rect frame quad a hair in front of the
    * hinted tile's printed face, placed from the tile's pool pose every
@@ -337,8 +419,8 @@ export class TableScene {
    * through drags, re-sorts and the draw / discard springs. Replaces
    * the DOM ring the HUD used to re-project a frame late.
    */
-  private hintFrame: Mesh;
-  private hintMat: MeshBasicMaterial;
+  private hintPoseM = new Matrix4();
+  private hintOpacity = 0;
   private hintPhase = 0;
   /** Breathe until this timestamp, then hold steady (see `HINT_BREATHE_MS`). */
   private hintUntil = 0;
@@ -540,47 +622,49 @@ export class TableScene {
     this.dice.name = 'dice';
     scene.add(this.dice);
 
-    // Cue glow (see `cueHalo`).
-    this.cueHaloTex = buildCueHaloTexture();
-    this.cueBandTex = buildCueBandTexture();
-    this.textures.push(this.cueHaloTex, this.cueBandTex);
-    this.cueHaloMat = new MeshBasicMaterial({
-      map: this.cueHaloTex,
-      color: 0xf3b74a,
+    // Cue glow + discard-hint frame: one mesh (see `glow`). The polygon
+    // offset plus the +Z gap keep the frame clear of the face's depth;
+    // the halo lies 0.015 above the felt and is unaffected by it.
+    const atlas = buildGlowAtlas();
+    atlas.texture.anisotropy = Math.max(1, Math.min(renderer.capabilities.getMaxAnisotropy(), 8));
+    this.textures.push(atlas.texture);
+    this.glowRegions = atlas.regions;
+    this.glowMat = new MeshBasicMaterial({
+      map: atlas.texture,
+      vertexColors: true,
       transparent: true,
-      opacity: 0,
-      depthWrite: false,
-    });
-    const haloGeo = new PlaneGeometry(1, 1);
-    this.geometries.push(haloGeo);
-    this.cueHalo = new Mesh(haloGeo, this.cueHaloMat);
-    this.cueHalo.rotation.x = -Math.PI / 2;
-    this.cueHalo.visible = false;
-    this.cueHalo.renderOrder = 1;
-    this.cueHalo.name = 'cue-halo';
-    scene.add(this.cueHalo);
-
-    // Discard-hint frame (see `hintFrame`). Same material class + map
-    // slot as the cue halo, so it shares that compiled program; the
-    // polygon offset plus the +Z gap keep it clear of the face's depth.
-    const hintTex = buildHintFrameTexture(TILE_W, TILE_H, HINT_PAD, HINT_BLEED, TILE_RADIUS);
-    hintTex.anisotropy = Math.max(1, Math.min(renderer.capabilities.getMaxAnisotropy(), 8));
-    this.textures.push(hintTex);
-    this.hintMat = new MeshBasicMaterial({
-      map: hintTex,
-      color: 0xe9ac3c,
-      transparent: true,
-      opacity: 0,
       depthWrite: false,
       polygonOffset: true,
       polygonOffsetFactor: -1,
       polygonOffsetUnits: -1,
     });
-    this.hintFrame = new Mesh(haloGeo, this.hintMat);
-    this.hintFrame.visible = false;
-    this.hintFrame.renderOrder = 2;
-    this.hintFrame.name = 'hint-frame';
-    scene.add(this.hintFrame);
+    const glowGeo = new BufferGeometry();
+    this.glowPos = new Float32BufferAttribute(new Float32Array(8 * 3), 3);
+    this.glowUv = new Float32BufferAttribute(new Float32Array(8 * 2), 2);
+    this.glowCol = new Float32BufferAttribute(new Float32Array(8 * 4), 4);
+    this.glowPos.setUsage(DynamicDrawUsage);
+    this.glowUv.setUsage(DynamicDrawUsage);
+    this.glowCol.setUsage(DynamicDrawUsage);
+    glowGeo.setAttribute('position', this.glowPos);
+    glowGeo.setAttribute('uv', this.glowUv);
+    glowGeo.setAttribute('color', this.glowCol);
+    // Two quads, `PlaneGeometry`'s winding (corners: top-left, top-right,
+    // bottom-left, bottom-right).
+    glowGeo.setIndex([0, 2, 1, 2, 3, 1, 4, 6, 5, 6, 7, 5]);
+    this.geometries.push(glowGeo);
+    this.glow = new Mesh(glowGeo, this.glowMat);
+    // The corners move every frame; no bounding volume to keep current.
+    this.glow.frustumCulled = false;
+    this.glow.visible = false;
+    this.glow.renderOrder = 2;
+    this.glow.name = 'glow';
+    this.writeGlowUv(GLOW_HALO, this.glowRegions.disc);
+    this.writeGlowUv(GLOW_HINT, this.glowRegions.frame);
+    this.writeGlowColor(GLOW_HALO, CUE_HALO_COLOR, 0);
+    this.writeGlowColor(GLOW_HINT, HINT_COLOR, 0);
+    this.collapseGlow(GLOW_HALO);
+    this.collapseGlow(GLOW_HINT);
+    scene.add(this.glow);
 
     // Tiles. River glyphs are minified 3–4× and seen at 30–45° on the
     // wide presets, so the atlas takes the strongest anisotropy the GPU
@@ -593,6 +677,12 @@ export class TableScene {
     });
     setTileBackFinish(this.pool.material, TABLE_BACK_FINISH);
     setTileBackGradient(this.pool.material, TABLE_BACK_GRADIENT);
+    // Shadow pass with the per-tile cast switch (see `shadowCastAttr`).
+    this.shadowCastAttr = new InstancedBufferAttribute(new Float32Array(136).fill(1), 1);
+    this.shadowCastAttr.setUsage(DynamicDrawUsage);
+    this.pool.mesh.geometry.setAttribute('aShadowCast', this.shadowCastAttr);
+    this.pool.mesh.customDepthMaterial = createTileDepthMaterial();
+    this.castsShadow.fill(1);
     scene.add(this.pool.mesh);
 
     if (this.tileSheet) {
@@ -634,11 +724,14 @@ export class TableScene {
     this.marker.visible = false;
     this.markerRel = null;
     this.markerScale = 1;
-    this.cueHalo.visible = false;
-    this.cueHaloMat.opacity = 0;
+    this.cueHaloOpacity = 0;
     this.cueHaloTarget = { x: 0, z: 0, sx: 0, sz: 0, on: false, band: false };
-    this.hintFrame.visible = false;
-    this.hintMat.opacity = 0;
+    this.hintOpacity = 0;
+    this.writeGlowColor(GLOW_HALO, CUE_HALO_COLOR, 0);
+    this.writeGlowColor(GLOW_HINT, HINT_COLOR, 0);
+    this.collapseGlow(GLOW_HALO);
+    this.collapseGlow(GLOW_HINT);
+    this.glow.visible = false;
     this.hintPhase = 0;
     this.hintUntil = 0;
     this.lastWaiting = false;
@@ -772,6 +865,7 @@ export class TableScene {
       riverScale: input.riverScale ?? 1,
       hideWalls: input.hideWalls,
       heldMeldsShelf: input.heldMeldsShelf,
+      zoomBlock: input.zoomBlock,
       concealOwn: input.concealOwn,
       sideSeatOut: input.sideSeatOut,
       farSeatOut: input.farSeatOut,
@@ -1027,19 +1121,26 @@ export class TableScene {
       const pulse = this.pulseT === 0 ? 0.6 : 0.5 + 0.5 * Math.sin(this.pulseT * 4.2);
       const rest = t.band ? CUE_HALO_BAND_OPACITY : CUE_HALO_OPACITY;
       const want = t.on ? rest * (0.82 + 0.3 * pulse) : 0;
-      const cur = this.cueHaloMat.opacity;
+      const cur = this.cueHaloOpacity;
       if (Math.abs(cur - want) > 0.004) {
         const k = this.choreo.reducedMotion ? 1 : Math.min(1, dt * 9);
-        this.cueHaloMat.opacity = cur + (want - cur) * k;
+        this.cueHaloOpacity = cur + (want - cur) * k;
         live = true;
-      } else if (cur !== want) this.cueHaloMat.opacity = want;
-      if (t.on) {
-        this.cueHalo.position.set(t.x, 0.015, t.z);
-        this.cueHalo.scale.set(t.sx, t.sz, 1);
-        const map = t.band ? this.cueBandTex : this.cueHaloTex;
-        if (this.cueHaloMat.map !== map) this.cueHaloMat.map = map;
-      }
-      this.cueHalo.visible = this.cueHaloMat.opacity > 0.004;
+      } else if (cur !== want) this.cueHaloOpacity = want;
+      const shown = this.cueHaloOpacity > 0.004;
+      if (t.on && shown) {
+        // Flat on the felt: a unit XY quad turned to lie in XZ.
+        _obj.position.set(t.x, 0.015, t.z);
+        _obj.quaternion.setFromAxisAngle(X_AXIS, -Math.PI / 2);
+        _obj.scale.set(t.sx, t.sz, 1);
+        _obj.updateMatrix();
+        this.writeGlowQuad(GLOW_HALO, _obj.matrix, 1, 1);
+        if (this.glowBandOn !== t.band) {
+          this.glowBandOn = t.band;
+          this.writeGlowUv(GLOW_HALO, t.band ? this.glowRegions.band : this.glowRegions.disc);
+        }
+      } else if (!shown) this.collapseGlow(GLOW_HALO);
+      this.writeGlowColor(GLOW_HALO, CUE_HALO_COLOR, shown ? this.cueHaloOpacity : 0);
     }
     // Discard-hint frame: ease opacity toward its target; breathe for a
     // while after the hint lands, then hold (static under reduced motion).
@@ -1055,13 +1156,16 @@ export class TableScene {
       }
       const breathe = this.hintPhase === 0 ? 0.5 : 0.5 + 0.5 * Math.sin(this.hintPhase * 2.8);
       const want = on ? HINT_OPACITY * (0.8 + 0.2 * breathe) : 0;
-      const cur = this.hintMat.opacity;
+      const cur = this.hintOpacity;
       if (Math.abs(cur - want) > 0.004) {
         const k = this.choreo.reducedMotion ? 1 : Math.min(1, dt * 10);
-        this.hintMat.opacity = cur + (want - cur) * k;
+        this.hintOpacity = cur + (want - cur) * k;
         live = true;
-      } else if (cur !== want) this.hintMat.opacity = want;
-      this.hintFrame.visible = this.hintMat.opacity > 0.004;
+      } else if (cur !== want) this.hintOpacity = want;
+      const shown = this.hintOpacity > 0.004;
+      if (!shown) this.collapseGlow(GLOW_HINT);
+      this.writeGlowColor(GLOW_HINT, HINT_COLOR, shown ? this.hintOpacity : 0);
+      this.glow.visible = shown || this.cueHaloOpacity > 0.004;
     }
     // Tutorial spotlight: the active lesson step publishes the tiles it
     // is about (`three/tutorial/Tutorial3D` → `core/spotlight`); they
@@ -1168,9 +1272,28 @@ export class TableScene {
       if (spotLevel > 0 && this.spotMask[id] === 1) hl = Math.max(hl, spotLevel);
       if (dragged) hl = Math.max(hl, 0.25);
       p.highlight = hl;
-      if (id === this.hintTileId) this.placeHintFrame(p);
-      p.tint.setScalar(1);
+      if (id === this.hintTileId && this.hintOpacity > 0.004) this.placeHintFrame(p);
       const zone = t.slot?.zone;
+      // Shadow pass: the held portrait hand never casts — it floats in a
+      // near-camera frame, not on the table, and from the fitted river
+      // zoom's nearer camera that frame lies inside the key light's
+      // shadow frustum, where its two rows threw a long dark band across
+      // the left river (a shadow of nothing the eye could see). A tile
+      // sinking through the felt (or rising back) stops casting once its
+      // top nears the plane (`sinkCastsShadow`).
+      const cast =
+        zone === 'hand' && t.slot?.quat !== undefined
+          ? false
+          : t.flight?.kind === 'vanish' || t.flight?.kind === 'rise'
+            ? sinkCastsShadow(orientedBoxTop(p.position.y, p.quaternion, p.scale))
+            : true;
+      const castBit = cast ? 1 : 0;
+      if (this.castsShadow[id] !== castBit) {
+        this.castsShadow[id] = castBit;
+        (this.shadowCastAttr.array as Float32Array)[id] = castBit;
+        this.shadowCastAttr.needsUpdate = true;
+      }
+      p.tint.setScalar(1);
       // Dead wall reads as a shaded segment of the same set: its backs
       // take the skin's darker shade (`uDeadBack*`, derived from the skin
       // in `materials.deadBackColors`) and nothing else — no inlay band
@@ -1193,31 +1316,71 @@ export class TableScene {
 
   /** Park the hint frame a hair in front of `p`'s printed (+Z) face. */
   private placeHintFrame(p: TilePose): void {
-    const f = this.hintFrame;
     _lift
       .set(0, 0, 1)
       .applyQuaternion(p.quaternion)
       .multiplyScalar((TILE_D / 2 + HINT_GAP) * p.scale);
-    f.position.copy(p.position).add(_lift);
-    f.quaternion.copy(p.quaternion);
-    f.scale.set(HINT_QUAD_W * p.scale, HINT_QUAD_H * p.scale, 1);
+    _dragV.copy(p.position).add(_lift);
+    _settleScale.set(HINT_QUAD_W * p.scale, HINT_QUAD_H * p.scale, 1);
+    this.hintPoseM.compose(_dragV, p.quaternion, _settleScale);
+    this.writeGlowQuad(GLOW_HINT, this.hintPoseM, 1, 1);
   }
 
   /** Screen rect (CSS px) of the hint frame's stroke, or null while it is faded out. */
   hintMarkerRect(out?: ScreenRect): ScreenRect | null {
-    if (!this.hintFrame.visible) return null;
-    this.hintFrame.updateMatrixWorld();
+    if (this.hintOpacity <= 0.004 || !this.glow.visible) return null;
     // The quad is a unit plane scaled to the padded size, so the stroke's
     // extents are its fraction of the quad.
     return projectPlaneRect(
       HINT_FRAME_W / HINT_QUAD_W,
       HINT_FRAME_H / HINT_QUAD_H,
-      this.hintFrame.matrixWorld,
+      this.hintPoseM,
       this.ctx.rig.camera,
       this.ctx.size.width,
       this.ctx.size.height,
       out,
     );
+  }
+
+  /**
+   * Write quad `slot`'s corners: a `w × h` plane centred on the origin
+   * of `m` (the `PlaneGeometry` corner order the index buffer expects).
+   */
+  private writeGlowQuad(slot: number, m: Matrix4, w: number, h: number): void {
+    const a = this.glowPos.array as Float32Array;
+    const base = slot * 4;
+    GLOW_CORNERS.forEach((c, i) => {
+      _lift.set(c[0] * w, c[1] * h, 0).applyMatrix4(m);
+      const o = (base + i) * 3;
+      a[o] = _lift.x;
+      a[o + 1] = _lift.y;
+      a[o + 2] = _lift.z;
+    });
+    this.glowPos.needsUpdate = true;
+  }
+
+  /** A faded quad collapses to a point: no fill, no depth test. */
+  private collapseGlow(slot: number): void {
+    const a = this.glowPos.array as Float32Array;
+    a.fill(0, slot * 12, slot * 12 + 12);
+    this.glowPos.needsUpdate = true;
+  }
+
+  private writeGlowUv(slot: number, r: GlowRegion): void {
+    const a = this.glowUv.array as Float32Array;
+    const base = slot * 8;
+    // top-left, top-right, bottom-left, bottom-right — v up.
+    a.set([r.u0, r.v1, r.u1, r.v1, r.u0, r.v0, r.u1, r.v0], base);
+    this.glowUv.needsUpdate = true;
+  }
+
+  private writeGlowColor(slot: number, c: Color, alpha: number): void {
+    const a = this.glowCol.array as Float32Array;
+    const base = slot * 16;
+    if (a[base] === c.r && a[base + 1] === c.g && a[base + 2] === c.b && a[base + 3] === alpha)
+      return;
+    for (let i = 0; i < 4; i++) a.set([c.r, c.g, c.b, alpha], base + i * 4);
+    this.glowCol.needsUpdate = true;
   }
 
   /** Screen rect (CSS px) of a tile instance, or null when hidden. */
@@ -1286,6 +1449,7 @@ export class TableScene {
     const tiles: TableDebugTile[] = [];
     this.choreo.tiles.forEach((t, id) => {
       if (!t.visible) return;
+      const p = this.pool.pose(id);
       tiles.push({
         id,
         zone: t.slot?.zone ?? null,
@@ -1293,6 +1457,8 @@ export class TableScene {
         y: round2(t.pos.y),
         z: round2(t.pos.z),
         scale: round2(t.scale),
+        top: round2(orientedBoxTop(p.position.y, p.quaternion, p.scale)),
+        castsShadow: this.castsShadow[id] === 1,
         flight: t.flight
           ? {
               kind: t.flight.kind,
@@ -1328,8 +1494,7 @@ export class TableScene {
       this.plate,
       this.plateTopMesh,
       this.marker,
-      this.cueHalo,
-      this.hintFrame,
+      this.glow,
       this.dice,
       this.pool.mesh,
     );
@@ -1342,12 +1507,57 @@ export class TableScene {
     (this.plate.material as MeshPhysicalMaterial).dispose();
     (this.plateTopMesh.material as MeshPhysicalMaterial).dispose();
     (this.marker.material as MeshPhysicalMaterial).dispose();
-    this.cueHaloMat.dispose();
-    this.hintMat.dispose();
+    this.glowMat.dispose();
+    this.pool.mesh.customDepthMaterial?.dispose();
     (this.dice.material as MeshPhysicalMaterial).dispose();
     this.dice.dispose();
     this.ctx.renderer.shadowMap.autoUpdate = true;
   }
+}
+
+/**
+ * The glow atlas (see `TableScene.glow`): the cue halo's disc and band
+ * and the discard-hint frame, each drawn by its own `textures` builder,
+ * composited into one canvas with `GLOW_GUTTER` px of transparent
+ * canvas around every region. The regions' UV rects are what the quads
+ * sample; the source textures are disposed once copied.
+ */
+function buildGlowAtlas(): {
+  texture: Texture;
+  regions: { disc: GlowRegion; band: GlowRegion; frame: GlowRegion };
+} {
+  const frame = buildHintFrameTexture(TILE_W, TILE_H, HINT_PAD, HINT_BLEED, TILE_RADIUS);
+  const disc = buildCueHaloTexture();
+  const band = buildCueBandTexture();
+  const img = (t: Texture) => t.image as HTMLCanvasElement;
+  const g = GLOW_GUTTER;
+  const fw = img(frame).width;
+  const fh = img(frame).height;
+  const right = Math.max(img(disc).width, img(band).width);
+  const W = g + fw + g + right + g;
+  const H = g + Math.max(fh, img(disc).height + g + img(band).height) + g;
+  const c = document.createElement('canvas');
+  c.width = W;
+  c.height = H;
+  const ctx = c.getContext('2d');
+  if (!ctx) throw new Error('2d context unavailable');
+  const place = (t: Texture, x: number, y: number): GlowRegion => {
+    const i = img(t);
+    ctx.drawImage(i, x, y);
+    return { u0: x / W, u1: (x + i.width) / W, v0: 1 - (y + i.height) / H, v1: 1 - y / H };
+  };
+  const regions = {
+    frame: place(frame, g, g),
+    disc: place(disc, g + fw + g, g),
+    band: place(band, g + fw + g, g + img(disc).height + g),
+  };
+  frame.dispose();
+  disc.dispose();
+  band.dispose();
+  const texture = new CanvasTexture(c);
+  texture.colorSpace = SRGBColorSpace;
+  texture.minFilter = LinearMipmapLinearFilter;
+  return { texture, regions };
 }
 
 /** Scenes parked in a pooled runtime, keyed by the runtime's three `Scene`. */

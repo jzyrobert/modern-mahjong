@@ -21,7 +21,9 @@ import {
   PORTRAIT_STRIP_TOP,
   PORTRAIT_X_HALF,
   RESULT_PANEL_H_ESTIMATE,
+  type RiverZoomBlock,
   TABLE_CAMERA,
+  ZOOM_BLOCK_RESERVED,
   ZOOM_ELEV_DEG,
   ZOOM_FAR_RIVER_GAP,
   ZOOM_FAR_RIVER_POINT,
@@ -33,6 +35,8 @@ import {
   cameraFor,
   classifyViewport,
   diceLessonCardH,
+  fitZoomBlockToShelf,
+  growZoomBlock,
   heldHandFrameFor,
   heldHandParkedBaseline,
   heldHandTilePx,
@@ -48,9 +52,11 @@ import {
   projectPreset,
   resultCaptionNeed,
   resultPanelPinsTop,
+  riverZoomBlock,
   riverZoomCameraFor,
   riverZoomFrameFor,
   sheetCameraFor,
+  zoomFarPoint,
   zoomNearPoint,
 } from './cameraPresets';
 import {
@@ -60,10 +66,14 @@ import {
   OWN_HAND_Z,
   RAIL_WIDTH,
   SHELF_GAP,
+  SHELF_MARGIN,
   STAND_Y,
   WALL_D,
+  ZOOM_BLOCK_PAD,
   riverMetrics,
+  riverZ0,
   zoomMeldShelf,
+  zoomShelfXHalf,
 } from './layout';
 
 function ndc(
@@ -603,6 +613,163 @@ describe('short phones (a phone in a browser)', () => {
     }
     // … the tall phone has felt enough under the block and keeps the tight frame.
     expect(riverZoomFrameFor(412, 915, 0, shelf.depth).xHalf).toBeCloseTo(ZOOM_X_HALF_MIN, 9);
+  });
+});
+
+describe('river zoom block — the rows present (round-5: three empty rows framed)', () => {
+  const S = PORTRAIT_RIVER_SCALE;
+  const m = riverMetrics(S);
+  const px = (preset: ReturnType<typeof cameraFor>, w: number, h: number) => {
+    const cam = new PerspectiveCamera(preset.fov, w / h, 0.1, 200);
+    cam.position.set(...preset.position);
+    cam.lookAt(...preset.target);
+    cam.updateMatrixWorld();
+    return (x: number, y: number, z: number) => {
+      const p = new Vector3(x, y, z).project(cam);
+      return { x: (p.x * 0.5 + 0.5) * w, y: (-p.y * 0.5 + 0.5) * h };
+    };
+  };
+  /** Far edge of the second row: the line a one-row (or empty) river reserves. */
+  const secondRow = riverZ0(S) + m.pitchZ + (TILE_H / 2) * S;
+  const close = (a: RiverZoomBlock, b: RiverZoomBlock) => {
+    expect(a.xHalf).toBeCloseTo(b.xHalf, 9);
+    expect(a.far).toBeCloseTo(b.far, 9);
+    expect(a.near).toBeCloseTo(b.near, 9);
+  };
+  test('full rivers are the reserved block; an overflow never grows past it', () => {
+    close(riverZoomBlock([18, 18, 18, 18], 0), ZOOM_BLOCK_RESERVED);
+    close(riverZoomBlock([21, 19, 20, 18], 1), ZOOM_BLOCK_RESERVED);
+    expect(ZOOM_BLOCK_RESERVED.xHalf).toBe(ZOOM_X_HALF_MIN);
+    expect(ZOOM_BLOCK_RESERVED.near).toBeCloseTo(m.farEdge, 9);
+    expect(ZOOM_BLOCK_RESERVED.far).toBeCloseTo(m.farEdge, 9);
+  });
+  test('no discards: the first rows plus one, a fifth tighter than the reserved block', () => {
+    const empty = riverZoomBlock([0, 0, 0, 0], 0);
+    expect(empty.far).toBeCloseTo(secondRow, 9);
+    expect(empty.near).toBeCloseTo(secondRow, 9);
+    expect(empty.xHalf).toBeCloseTo(secondRow + ZOOM_BLOCK_PAD, 9);
+    expect(empty.xHalf / ZOOM_X_HALF_MIN).toBeLessThan(0.8);
+    // A river tile on a 412 px phone: ~43 px against the reserved frame's ~33.
+    expect((412 / (2 * empty.xHalf)) * S).toBeGreaterThan(42);
+  });
+  test('one full row per river: the side arms bound the depth, the second row the growth', () => {
+    const one = riverZoomBlock([6, 6, 6, 6], 0);
+    // The side rivers' arms run along world z to their `rightEdge` (6.62),
+    // past the near / far rivers' reserved second row (5.93).
+    expect(m.rightEdge).toBeGreaterThan(secondRow);
+    expect(one.near).toBeCloseTo(m.rightEdge, 9);
+    expect(one.far).toBeCloseTo(m.rightEdge, 9);
+    // …and the near / far rivers' arms bound the width the same way.
+    expect(one.xHalf).toBeCloseTo(m.rightEdge + ZOOM_BLOCK_PAD, 9);
+    // A seventh discard anywhere reserves the third row: the reserved block.
+    close(riverZoomBlock([7, 7, 7, 7], 0), ZOOM_BLOCK_RESERVED);
+    // Three tiles each: the arms are short, the rows-plus-one line rules.
+    const three = riverZoomBlock([3, 3, 3, 3], 0);
+    expect(three.near).toBeCloseTo(secondRow, 9);
+    expect(three.xHalf).toBeCloseTo(secondRow + ZOOM_BLOCK_PAD, 9);
+  });
+  test('seats map through the point of view: the near river bounds the near edge only', () => {
+    const mineOnly = riverZoomBlock([7, 0, 0, 0], 0);
+    expect(mineOnly.near).toBeCloseTo(m.farEdge, 9);
+    expect(mineOnly.far).toBeCloseTo(secondRow, 9);
+    // From seat 2, seat 0's river is the far one.
+    const across = riverZoomBlock([7, 0, 0, 0], 2);
+    expect(across.far).toBeCloseTo(m.farEdge, 9);
+    expect(across.near).toBeCloseTo(secondRow, 9);
+    // The right seat's arm runs along world z toward the far side: its full
+    // row bounds the far edge, not the width or the near edge.
+    const side = riverZoomBlock([0, 6, 0, 0], 0);
+    expect(side.far).toBeCloseTo(m.rightEdge, 9);
+    expect(side.xHalf).toBeCloseTo(secondRow + ZOOM_BLOCK_PAD, 9);
+    expect(side.near).toBeCloseTo(secondRow, 9);
+    // The left seat's arm runs toward the near side.
+    const left = riverZoomBlock([0, 0, 0, 6], 0);
+    expect(left.near).toBeCloseTo(m.rightEdge, 9);
+    expect(left.far).toBeCloseTo(secondRow, 9);
+  });
+  test('grow-only hysteresis: a claim taking a tile back never shrinks the frame', () => {
+    const a = riverZoomBlock([7, 6, 6, 6], 0);
+    const b = riverZoomBlock([6, 6, 6, 6], 0);
+    expect(growZoomBlock(null, b)).toBe(b);
+    expect(growZoomBlock(a, b)).toBe(a);
+    expect(growZoomBlock(b, a)).toEqual(a);
+    const mixed = growZoomBlock(riverZoomBlock([7, 0, 0, 0], 0), riverZoomBlock([0, 0, 7, 0], 0));
+    expect(mixed.near).toBeCloseTo(m.farEdge, 9);
+    expect(mixed.far).toBeCloseTo(m.farEdge, 9);
+  });
+  test('the frame anchors the fitted block: far edge under the header, tighter than the reserved frame', () => {
+    const block = riverZoomBlock([6, 6, 6, 6], 0);
+    for (const [w, h] of [
+      [412, 915],
+      [412, 700],
+      [360, 640],
+    ] as const) {
+      const reserved = riverZoomFrameFor(w, h);
+      const { preset, xHalf } = riverZoomFrameFor(w, h, 0, 0, block);
+      expect(riverZoomCameraFor(w, h, 0, 0, block)).toEqual(preset);
+      const p = px(preset, w, h);
+      const bandBottom = heldHandTopPx(w, h) - PORTRAIT_BAND_GAP;
+      expect(Math.abs(p(...zoomFarPoint(block.far)).y - ZOOM_FAR_RIVER_Y)).toBeLessThan(1);
+      expect(p(...zoomNearPoint(0, block.near)).y).toBeLessThanOrEqual(
+        bandBottom - ZOOM_NEAR_RIVER_GAP + 0.5,
+      );
+      expect(xHalf).toBeLessThan(reserved.xHalf - 0.5);
+      expect(xHalf).toBeGreaterThanOrEqual(block.xHalf - 1e-9);
+      // The default is the reserved block, unchanged.
+      expect(riverZoomFrameFor(w, h, 0, 0, ZOOM_BLOCK_RESERVED)).toEqual(reserved);
+    }
+    // The tall phone takes the block at its own half-width; a phone in a
+    // browser is height-bound even for the one-row block and backs off less
+    // than it did for the reserved one.
+    expect(riverZoomFrameFor(412, 915, 0, 0, block).xHalf).toBeCloseTo(block.xHalf, 9);
+    const short = riverZoomFrameFor(412, 700, 0, 0, block);
+    expect(short.xHalf).toBeLessThan(riverZoomFrameFor(412, 700).xHalf - 1);
+  });
+  test('the fitted block widens for the shelf so four melds never shrink under 1×', () => {
+    const early = riverZoomBlock([5, 4, 4, 4], 0);
+    const two = 2 * 3.42 + 0.3;
+    const four = 4 * 3.42 + 3 * 0.3;
+    // Two melds fit the early block at the held hand's 1.3×: nothing changes.
+    expect(fitZoomBlockToShelf(early, two)).toBe(early);
+    expect(fitZoomBlockToShelf(early, 0)).toBe(early);
+    expect(zoomMeldShelf(S, two, early).scale).toBeCloseTo(1.3, 9);
+    // Four melds would shrink to ~0.9× in it: the block grows to hold them at 1×.
+    expect(zoomMeldShelf(S, four, early).scale).toBeLessThan(1);
+    const grown = fitZoomBlockToShelf(early, four);
+    expect(grown.xHalf).toBeCloseTo(zoomShelfXHalf(four), 9);
+    expect(grown.near).toBe(early.near);
+    expect(grown.far).toBe(early.far);
+    expect(zoomMeldShelf(S, four, grown).scale).toBeCloseTo(1, 9);
+    // …never past the reserved half-width, where four melds fit at ~1.09×.
+    expect(grown.xHalf).toBeLessThan(ZOOM_X_HALF_MIN);
+    expect(fitZoomBlockToShelf(ZOOM_BLOCK_RESERVED, four)).toBe(ZOOM_BLOCK_RESERVED);
+    expect(fitZoomBlockToShelf(early, 40).xHalf).toBe(ZOOM_X_HALF_MIN);
+  });
+  test('the meld shelf follows the fitted block: past its near edge, inside its width', () => {
+    const block = riverZoomBlock([6, 6, 6, 6], 0);
+    const width = 2 * 3.42 + 0.3;
+    const shelf = zoomMeldShelf(S, width, block);
+    const reservedShelf = zoomMeldShelf(S, width);
+    expect(shelf.z - (TILE_H / 2) * shelf.scale).toBeCloseTo(block.near + SHELF_GAP, 9);
+    expect(shelf.z).toBeLessThan(reservedShelf.z - 1);
+    expect(shelf.right).toBeCloseTo(block.xHalf - SHELF_MARGIN, 9);
+    expect(shelf.depth).toBeCloseTo(reservedShelf.depth, 9);
+    // The frame pins the shelf's near edge above the hand on every phone.
+    for (const [w, h] of [
+      [412, 915],
+      [412, 700],
+      [360, 640],
+    ] as const) {
+      const { preset } = riverZoomFrameFor(w, h, 0, shelf.depth, block);
+      const p = px(preset, w, h);
+      const bandBottom = heldHandTopPx(w, h) - PORTRAIT_BAND_GAP;
+      expect(p(...zoomNearPoint(shelf.depth, block.near)).y).toBeLessThanOrEqual(
+        bandBottom - ZOOM_NEAR_RIVER_GAP + 0.5,
+      );
+      expect(p(shelf.right, TILE_D * shelf.scale, block.near + shelf.depth).x).toBeLessThanOrEqual(
+        w - 2,
+      );
+    }
   });
 });
 

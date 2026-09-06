@@ -797,3 +797,55 @@ CC0-only asset policy, verifier rules. Operational notes:
   the four-line river caption sit whole in the 130 px band under a
   412×700 hand; targets within `MIN_RING_PAD` (6 px) of a viewport edge
   open the ring there (the landscape footer's claim strip / tsumo).
+- **One glow mesh, and casters are per instance** (round-6 lows). The
+  cue halo (disc / band) and the discard-hint frame are two quads of
+  *one* `TableScene.glow` mesh — one `MeshBasicMaterial` with RGBA
+  vertex colours over one canvas atlas (`buildGlowAtlas`, 32 px
+  gutters) — so a hint state costs the table's 12 draw calls, not 13;
+  `hintMarkerRect` projects the frame from `hintPoseM`, so the
+  `three-table.spec.ts` "hugs the face" assertion is unchanged. The tile
+  pool's shadow pass is `materials.createTileDepthMaterial` with an
+  instanced `aShadowCast` switch: a tile sinking through the felt
+  (`vanish` / `rise`) leaves the casters once its top is within
+  `choreography.SHADOW_CAST_FLOOR` (0.15) of the plane
+  (`orientedBoxTop` / `sinkCastsShadow` — the felt speckled light where
+  a caster's top face tied with its shadow depth), and the **held
+  portrait hand never casts**: it floats in a near-camera frame, and the
+  fitted river zoom's nearer camera put that frame inside the key
+  light's shadow frustum, where its two rows threw a dark band across
+  the left river. `TableDebugTile.top` / `castsShadow` expose the rule.
+- **The river zoom frames the rows present, grow-only**
+  (`cameraPresets.riverZoomBlock` / `growZoomBlock` /
+  `fitZoomBlockToShelf`): each river's rows + 1 and columns + 1, capped
+  at the reserved three-row block (`ZOOM_BLOCK_RESERVED`), unioned in
+  world space — the side arms bound the far / near edges, the near / far
+  rows the width. The shell holds the block grown-only while a zoom
+  lasts (a claim takes a tile back out of a river) and clears it when
+  the zoom ends or the hand has no discards. The meld shelf follows the
+  block (`zoomMeldShelf(scale, width, block)`, `LayoutOptions.zoomBlock`)
+  — past its near edge, right-aligned inside its half-width — and the
+  block widens so four melds never lie under `SHELF_MIN_SCALE` (1×).
+  Short phones stay height-bound (the toast slot stays the strip); on
+  the tall phone a melds-out zoom still keeps the strip: the shelf takes
+  ~66 of the ~105 px of felt under the block (see the `zoomSlotTop`
+  note in `Table3DShell`).
+- **Carve fade is in face device px** (`materials.INLAY_FADE_PX` 56 /
+  `INLAY_FULL_PX` 76, `facePx = uCellScale / fwidth(vAtlasUv)`): the
+  48 px desktop hand keeps its printed rings (no relief), the phone's
+  held hand (≥ 80 px) keeps the carve, rivers (≤ 40 px) are untouched.
+  Independent of the atlas raster scale, unlike the old texels-per-px
+  fade.
+- **Desktop sort control stops at the felt's near-right corner**
+  (`HudRects.feltNearRight` → `ActionRow.sortInset`), off the rail's
+  bottom-right mitre; the portrait pill carries "N left · 14 dead"
+  (`StatusPill.deadAlways`); the breakdown header takes display names
+  (`ScoringBreakdownModal.winnerLabel` / `fromName`).
+- **Shot tooling under load**: the desktop and portrait recipes stall
+  on the `Start match` / dice-dismiss clicks when the box's load
+  average is ≳ 15 (four agents shooting at once) — rerun with
+  `SHOT_TIMEOUT_SCALE=4` rather than reading a "drive: locator.click"
+  FAIL as a regression. `match-river-zoom-four-melds` (seed 5752, two
+  pengs from bot 1 then two chis from bot 3 — play resumes from the
+  seat *after* the claimer, so bot 1 moves twice before bot 3 does) and
+  `match-river-zoom-sink` (×200 slow motion, 45 s) are the new table
+  recipes.

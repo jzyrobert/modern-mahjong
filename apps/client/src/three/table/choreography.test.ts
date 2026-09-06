@@ -1,19 +1,23 @@
 import { type GameState, type Seat, emptyState, startHand, tileId } from '@mahjong/game-logic';
-import { type Quaternion, Vector3 } from 'three';
+import { Quaternion, Vector3 } from 'three';
 import { describe, expect, test } from 'vitest';
+import { TILE_D, TILE_H, TILE_W } from '../tiles/geometry';
 import {
   Choreographer,
   DISCARD_TURN_BY,
   DRAW_TURN_FROM,
+  SHADOW_CAST_FLOOR,
   SINK_DEPTH,
   VANISH_MS,
   dispenseDelay,
   flightFor,
   looksFreshlyDealt,
+  orientedBoxTop,
   rotationProgress,
+  sinkCastsShadow,
   slotQuaternion,
 } from './choreography';
-import { type TileSlot, computeLayout } from './layout';
+import { type TileSlot, computeLayout, fullWallLayout } from './layout';
 
 function dealt(seed = 5, dealer: Seat = 0): GameState {
   return startHand(emptyState(), seed, dealer).state;
@@ -329,5 +333,48 @@ describe('rotationProgress', () => {
     c.update(0.016, 100 + t.flight!.duration / 2);
     expect(Math.abs(t.quat.dot(before))).toBeGreaterThan(0.999);
     expect(t.pos.y).toBeGreaterThan(before.length() - 1 + 0.5); // mid-arc, well off the felt
+  });
+});
+
+describe('shadow casting through the felt (round-5: speckles where a sinking stack crosses it)', () => {
+  test('orientedBoxTop is the highest point of the posed box for every base orientation', () => {
+    const q = new Quaternion();
+    // Standing: height along world y.
+    expect(orientedBoxTop(1, q, 1)).toBeCloseTo(1 + TILE_H / 2, 9);
+    expect(orientedBoxTop(1, q, 1.3)).toBeCloseTo(1 + (TILE_H / 2) * 1.3, 9);
+    // Flat (face up / down): the thickness is the height.
+    const flat = slotQuaternion({ ...standing, base: 'flatUp', tilt: 0 });
+    expect(orientedBoxTop(TILE_D / 2, flat, 1)).toBeCloseTo(TILE_D, 6);
+    const down = slotQuaternion({ ...standing, base: 'flatDown', tilt: 0 });
+    expect(orientedBoxTop(0, down, 1)).toBeCloseTo(TILE_D / 2, 6);
+    // On its side (rolled about z): the width is the height.
+    const side = new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), Math.PI / 2);
+    expect(orientedBoxTop(0, side, 1)).toBeCloseTo(TILE_W / 2, 6);
+    // A yaw about world y changes nothing.
+    const yawed = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), 0.7).multiply(flat);
+    expect(orientedBoxTop(0, yawed, 1)).toBeCloseTo(TILE_D / 2, 6);
+  });
+  test('a sinking wall stack leaves the shadow pass once its top nears the felt, and rejoins on the way up', () => {
+    const wall = fullWallLayout(dealt(), 0).filter(
+      (s) => s?.zone === 'wall' || s?.zone === 'deadWall',
+    );
+    expect(wall.length).toBeGreaterThan(100);
+    // Every resting stack casts: the lower tile's top is a whole tile up.
+    for (const slot of wall) {
+      const top = orientedBoxTop(slot!.y, slotQuaternion(slot!), 1);
+      expect(top).toBeGreaterThanOrEqual(TILE_D - 1e-6);
+      expect(sinkCastsShadow(top)).toBe(true);
+    }
+    // The floor is a small margin above the felt, well under a lying tile.
+    expect(SHADOW_CAST_FLOOR).toBeGreaterThan(0.05);
+    expect(SHADOW_CAST_FLOOR).toBeLessThan(TILE_D / 2);
+    expect(sinkCastsShadow(SHADOW_CAST_FLOOR + 0.01)).toBe(true);
+    expect(sinkCastsShadow(SHADOW_CAST_FLOOR)).toBe(false);
+    expect(sinkCastsShadow(-0.4)).toBe(false);
+    // Sunk `SINK_DEPTH`, no wall tile is anywhere near casting again.
+    for (const slot of wall) {
+      const top = orientedBoxTop(slot!.y - SINK_DEPTH, slotQuaternion(slot!), 1);
+      expect(sinkCastsShadow(top)).toBe(false);
+    }
   });
 });

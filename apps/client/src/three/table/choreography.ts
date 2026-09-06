@@ -2,6 +2,7 @@ import { TOTAL_TILES } from '@mahjong/game-logic';
 import type { GameState, Seat } from '@mahjong/game-logic';
 import { Quaternion, Vector3 } from 'three';
 import { type Ease, clamp01, easeInCubic, easeInOutCubic, easeOutCubic } from '../core/tween';
+import { TILE_D, TILE_H, TILE_W } from '../tiles/geometry';
 import { type Layout, type TileSlot, type Zone, fullWallLayout } from './layout';
 
 /**
@@ -39,6 +40,39 @@ export type FlightKind =
  * round-5 feedback called the instant hide / pop-in "jarring".
  */
 export const SINK_DEPTH = 1.7;
+/**
+ * Height above the felt (world y) under which a sinking / rising tile's
+ * top takes it out of the shadow pass. While a caster straddles the felt
+ * its top face lies within the shadow bias band of the receiving plane
+ * (normal bias 0.03 + depth bias ≈ 0.04 along the light) and the felt
+ * speckles light where the depths tie (round-5 critic: "faint light
+ * speckles where the left wall's stacks cross the felt plane mid-sink").
+ * A tile whose top is 0.15 above the felt would still cast a rim ~0.1
+ * wide beyond its own footprint (the key light sits ~58° up), so the
+ * cut is invisible; the tile's *body* is drawn as before — this is the
+ * shadow pass only (`TableScene` `aShadowCast`).
+ */
+export const SHADOW_CAST_FLOOR = 0.15;
+
+/**
+ * World y of the highest point of a tile box posed at `y` with `quat`
+ * and `scale`: the box's half-extents projected onto world up. Pure.
+ */
+export function orientedBoxTop(y: number, quat: Quaternion, scale: number): number {
+  const { x, y: qy, z, w } = quat;
+  // Second row of the rotation matrix: world-y components of the
+  // rotated local x / y / z axes.
+  const r10 = 2 * (x * qy + w * z);
+  const r11 = 1 - 2 * (x * x + z * z);
+  const r12 = 2 * (qy * z - w * x);
+  const halfY = (Math.abs(r10) * TILE_W + Math.abs(r11) * TILE_H + Math.abs(r12) * TILE_D) / 2;
+  return y + halfY * scale;
+}
+
+/** Whether a sinking / rising tile with its top at `top` stays in the shadow pass. */
+export function sinkCastsShadow(top: number): boolean {
+  return top > SHADOW_CAST_FLOOR;
+}
 /** Duration of a `vanish` sink, ms (eased in — the tile gathers speed as it goes). */
 export const VANISH_MS = 360;
 

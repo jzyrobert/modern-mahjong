@@ -191,6 +191,11 @@ test('3D table mounts within budget with the classic hit-targets', async ({ page
     const sort = (await page.getByRole('button', { name: 'Sort by Suit' }).boundingBox())!;
     expect(sort.x).toBeGreaterThan(vp.width * 0.6);
     expect(sort.y + sort.height).toBeGreaterThan(box!.y + box!.height);
+    // …but stops at the felt's near-right corner instead of running to
+    // the footer's edge over the rail's bottom-right mitre (round-5): the
+    // whole control (Manual is its last segment) ends ≥ 60 px short.
+    const manual = (await page.getByRole('button', { name: 'Sort by Manual' }).boundingBox())!;
+    expect(manual.x + manual.width).toBeLessThan(vp.width - 24 - 60);
     const chip = page.getByTestId('turn-chip');
     await expect(chip).toBeVisible();
     await expect(chip).toContainText(/discard/i);
@@ -454,6 +459,9 @@ test('phone portrait holds the hand near the camera at ≥ 44 px per tile', asyn
   await expect(strip).toBeVisible();
   const stripBox = (await strip.boundingBox())!;
   expect(stripBox.y).toBeLessThan(120);
+  // The chrome pill carries the dead-wall count on portrait too ("69 left
+  // · 14 dead"): the plate's own tally is ~5 px there (round-5 critic).
+  await expect(page.getByText(/14 dead/i)).toBeVisible();
   // The hand sits below the table band: the strip and the hand never overlap.
   expect(Math.min(...boxes.map((b) => b.top))).toBeGreaterThan(stripBox.y + stripBox.height);
   // The action tray sits between the hand and the footer: the turn chip
@@ -1527,11 +1535,14 @@ for (const vp of [
       )
       .toBe(true);
 
-    // Perf: the frame's material shares the cue halo's compiled program,
-    // so once the discard round-trips to the draw cue (the halo's first
-    // frame on this table) nothing new compiles — and the hint is gone
-    // while the user has yet to draw.
+    // Perf: the frame and the cue halo are one mesh, one material and
+    // one texture (round-5: the separate hint quad made 13 draw calls),
+    // so a hint state stays at the table's 12; once the discard
+    // round-trips to the draw cue (the halo's first frame on this table)
+    // nothing new compiles — and the hint is gone while the user has yet
+    // to draw.
     const withHint = await readPerf(page);
+    expect(withHint.drawCalls).toBeLessThanOrEqual(12);
     await page
       .locator(`[data-testid="own-hand-tile"][data-tile-id="${before.tileId}"]`)
       .dispatchEvent('click');
@@ -1605,6 +1616,51 @@ test('the glass result card keeps the save-replay chip in the action row, not th
   expect(saveBox.height).toBeGreaterThanOrEqual(44);
   await save.dispatchEvent('click');
   await expect(page.getByRole('button', { name: 'Replay saved — tap to discard' })).toBeVisible();
+  expect(errors, 'console / page errors').toEqual([]);
+});
+
+test('the scoring breakdown header names the players, not their seat indices', async ({ page }) => {
+  // Round-5 critic: 'Seat 0 wins — 2 faan' / 'DISCARDED BY SEAT 1' on every
+  // viewport. The glass result card's breakdown takes the display names
+  // (`ResultPanel` → `ScoringBreakdownModal` `winnerLabel` / `fromName`).
+  await page.setViewportSize({ width: 412, height: 700 });
+  const errors: string[] = [];
+  await startSolo(page, errors);
+  await waitForDealSettled(page);
+  await page.evaluate(() => {
+    const store = (
+      globalThis as {
+        __MAHJONG_TEST_GET_STATE__?: () => {
+          state: { hands: Record<number, unknown[]> };
+          setState: (s: unknown) => void;
+        };
+      }
+    ).__MAHJONG_TEST_GET_STATE__?.();
+    if (!store?.state) throw new Error('engine state not ready');
+    const cur = store.state as Record<string, unknown> & { hands: Record<number, unknown[]> };
+    // A bot (seat 1) wins off the user's discard.
+    store.setState({
+      ...cur,
+      phase: 'resolved',
+      lastResult: {
+        kind: 'win',
+        winner: 1,
+        from: 0,
+        selfDraw: false,
+        tile: cur.hands[1]![0],
+        faan: 3,
+        breakdown: [],
+      },
+    });
+  });
+  const card = page.getByTestId('result-veil-card');
+  await expect(card).toBeVisible({ timeout: 15_000 });
+  await page.getByRole('button', { name: 'View breakdown' }).dispatchEvent('click');
+  const title = page.getByText(/wins — 3 faan/);
+  await expect(title).toBeVisible({ timeout: 10_000 });
+  await expect(title).not.toContainText(/Seat \d/);
+  await expect(page.getByText(/Discarded by you/i)).toBeVisible();
+  await expect(page.getByText(/by seat \d/i)).toHaveCount(0);
   expect(errors, 'console / page errors').toEqual([]);
 });
 
@@ -2301,6 +2357,22 @@ test('portrait river zoom is a plan view with no wall; the tray carries the draw
     expect(Math.abs(zoomedTops[i]! - restingTops[i]!)).toBeLessThan(6);
   // The tall phone leaves felt under the block for the toast.
   await expect(table).toHaveAttribute('data-toast-slot', 'felt');
+  // Early in the hand the frame fits the rows present (one tile per
+  // river here: the first rows plus one, `riverZoomBlock`), not the
+  // reserved three: a river tile reads ≥ 40 CSS px wide where the
+  // reserved frame gave ~33 (round-5: "three empty river rows").
+  const riverWidths = await page.evaluate(() => {
+    const dbg = (
+      globalThis as {
+        __MAHJONG_TABLE_3D_DEBUG__?: () => {
+          tiles: { zone: string | null; rect: { width: number } | null }[];
+        } | null;
+      }
+    ).__MAHJONG_TABLE_3D_DEBUG__?.();
+    return dbg?.tiles.filter((t) => t.zone === 'discard' && t.rect).map((t) => t.rect!.width) ?? [];
+  });
+  expect(riverWidths.length).toBeGreaterThanOrEqual(4);
+  expect(Math.min(...riverWidths)).toBeGreaterThanOrEqual(40);
   await pill.click();
   await expect
     .poll(
@@ -2352,7 +2424,7 @@ test('the river zoom sinks the walls through the felt and raises them back, neve
   await startSolo(page, errors);
   await waitForDealSettled(page);
   const table = page.getByTestId('table-3d');
-  type Sample = { id: number; y: number; scale: number; ms: number };
+  type Sample = { id: number; y: number; scale: number; ms: number; top: number; casts: boolean };
   type Summary = {
     wallIds: number[];
     vanishing: Sample[];
@@ -2370,6 +2442,8 @@ test('the river zoom sinks the walls through the felt and raises them back, neve
               zone: string | null;
               y: number;
               scale: number;
+              top: number;
+              castsShadow: boolean;
               flight: { kind: string; ms: number } | null;
             }[];
           } | null;
@@ -2379,7 +2453,14 @@ test('the river zoom sinks the walls through the felt and raises them back, neve
       const pick = (kind: string) =>
         dbg.tiles
           .filter((t) => t.flight?.kind === kind)
-          .map((t) => ({ id: t.id, y: t.y, scale: t.scale, ms: t.flight?.ms ?? 0 }));
+          .map((t) => ({
+            id: t.id,
+            y: t.y,
+            scale: t.scale,
+            ms: t.flight?.ms ?? 0,
+            top: t.top,
+            casts: t.castsShadow,
+          }));
       return {
         wallIds: dbg.tiles
           .filter((t) => t.zone === 'wall' || t.zone === 'deadWall')
@@ -2424,6 +2505,14 @@ test('the river zoom sinks the walls through the felt and raises them back, neve
     expect(t.ms).toBe(360 * 8);
     expect(t.y).toBeLessThanOrEqual(restY.get(t.id)! + 1e-6);
   }
+  // Shadow pass (round-5: light speckles where a stack crossed the felt):
+  // a sinking tile casts exactly while its top is above the floor — in
+  // every sample, whatever the shard's timing — and the first sample,
+  // barely under way, still has every stack casting.
+  const FLOOR = 0.15;
+  for (const s of sinking)
+    for (const t of s.vanishing) expect(t.casts, `tile ${t.id} top ${t.top}`).toBe(t.top > FLOOR);
+  expect(s0.vanishing.every((t) => t.casts)).toBe(true);
   let dropped = 0;
   for (const t of s1.vanishing) {
     const prev = s0.vanishing.find((p) => p.id === t.id);
@@ -2450,6 +2539,7 @@ test('the river zoom sinks the walls through the felt and raises them back, neve
     expect(t.scale).toBe(1);
     expect(t.ms).toBe(320 * 8);
     expect(t.y).toBeLessThan(restY.get(t.id)!);
+    expect(t.casts).toBe(t.top > FLOOR);
   }
   await expect
     .poll(async () => (await summary())?.rising.length ?? -1, { timeout: 20_000 })
