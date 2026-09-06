@@ -1,5 +1,12 @@
 import { describe, expect, test } from 'vitest';
-import { DOM_FAN_TILES, classifyAspect, domFan, heroAnchor } from './heroAnchor';
+import {
+  DOM_FAN_TILES,
+  PHONE_SHORT_EDGE_MAX,
+  classifyAspect,
+  classifyViewport,
+  domFan,
+  heroAnchor,
+} from './heroAnchor';
 import { HERO_GAP_BOTTOM_PX, HERO_GAP_TOP_PX, heroBox } from './heroBand';
 
 /** Bounding box of the fan's slots (unrotated wrappers). */
@@ -19,6 +26,25 @@ describe('hero anchor', () => {
     expect(classifyAspect(915 / 412)).toBe('landscape-phone');
     expect(classifyAspect(1440 / 900)).toBe('wide');
     expect(classifyAspect(1280 / 900)).toBe('wide');
+  });
+
+  test('classifyViewport: a rotated phone is a landscape phone whatever its aspect', () => {
+    // 412×700 on its side is aspect 1.7 — `wide` by aspect, but the DOM
+    // around the hero is the landscape phone lobby (short edge ≤ 480).
+    expect(classifyAspect(700 / 412)).toBe('wide');
+    expect(classifyViewport(700, 412)).toBe('landscape-phone');
+    expect(classifyViewport(915, 412)).toBe('landscape-phone');
+    expect(classifyViewport(1024, PHONE_SHORT_EDGE_MAX)).toBe('landscape-phone');
+    // Everything else follows the aspect.
+    expect(classifyViewport(412, 700)).toBe('portrait');
+    expect(classifyViewport(834, 1194)).toBe('portrait');
+    expect(classifyViewport(1440, 900)).toBe('wide');
+    expect(classifyViewport(1100, 600)).toBe('wide');
+    // `heroAnchor` takes the class in, so the landscape anchor follows.
+    expect(heroAnchor(700 / 412, classifyViewport(700, 412)).x).toBe(0.16);
+    expect(heroAnchor(700 / 412).cls).toBe('wide');
+    // The DOM fan reads the same class: 7 tiles (phone), not the wide 9.
+    expect(domFan(700, 412)).toHaveLength(7);
   });
 
   test('anchor keeps the hero in the upper part on portrait / wide and left on landscape', () => {

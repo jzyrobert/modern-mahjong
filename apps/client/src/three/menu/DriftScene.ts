@@ -14,6 +14,7 @@ import { clamp01, easeOutCubic, lerp } from '../core/tween';
 import { TilePool } from '../tiles/TilePool';
 import { BACK_CELL } from '../tiles/faceAtlas';
 import { TILE_H } from '../tiles/geometry';
+import { getHeroDice, heroDiceVersion, subscribeHeroDice } from './heroDice';
 import {
   DRIFT_COUNT,
   type DriftTile,
@@ -43,11 +44,16 @@ import { MENU_PARALLAX, PointerSmoother, normalisePointer } from './parallax';
  * reads as jitter. The canvas is transparent; the void gradient is DOM.
  *
  * The field is laid out in the same world as the hero — `menuLayout`
- * fitted to the hero band's *size* — so its scale and fog agree with
- * the rack; the band's position only enters as the initial title
- * keep-out and the rack keep-out (the rack's footprint, tracked through
- * the live band rect so the fade keeps clearing it while the page
- * scrolls).
+ * fitted to the hero band's *size* — so its scale agrees with the
+ * rack (portrait sits its plane deeper and thins the fog to match:
+ * `layout.drift`); the band's position only enters as the initial
+ * title keep-out and the rack keep-out (the tiles' footprint plus the
+ * two dice discs, tracked through the live band rect so the fade keeps
+ * clearing them while the page scrolls). Portrait's field is floored at
+ * the band's bottom edge (`DriftKeepOut.y2`) and drifts vertically
+ * only, so its tiles cycle down the rack's side margins — the one open
+ * ground a 412 px phone has — instead of spending most of a lap faded
+ * under the card column.
  *
  * The frame the field is fitted to is keyed on the canvas's *width*,
  * like the hero's. The canvas is the app root, which Android Chrome
@@ -106,10 +112,19 @@ const FRAME_SLACK_FROZEN_PORTRAIT = -0.4;
  *  gentler ramp that also clears the rack's contact shadow. */
 const RACK_BAND_PX = 2;
 const RACK_BAND_PX_WIDE = 12;
-/** Re-seed lattice columns: portrait's only open ground is the hero
- *  band's narrow side margins, which a 14-column lattice (~30 px
- *  steps on a 412 px phone) skips right over. */
-const LATTICE_COLS_PORTRAIT = 28;
+/** Re-seed lattice for portrait: the only open ground is the hero
+ *  band's narrow side margins — an r ≈ 10 disc has an 8–14 px window
+ *  of centres in each — which a 14-column lattice (~30 px steps on a
+ *  412 px phone) skips right over; ~8 px columns put a candidate in
+ *  the window on most rows, and ~9 px rows let r ≈ 8–13 px tiles stack
+ *  down a 115 px margin at the portrait spread. */
+const LATTICE_COLS_PORTRAIT = 56;
+const LATTICE_ROWS_PORTRAIT = 96;
+/** Reduced motion freezes the field on its seed poses: cap the tilt
+ *  off face-on so no tile is frozen edge-on as a sliver (round-6 menu
+ *  critic). In motion the tiles tumble slowly and pass through edge-on
+ *  like a real tile turning. */
+const FROZEN_TILT = 0.7;
 /** DOM rects keep moving for a while after the scene mounts (the cards'
  *  entrance slide, the 800 ms settle re-measure): under reduced motion
  *  the one frozen frame is all anyone sees, so re-seed on every rect
@@ -118,8 +133,24 @@ const OCCLUDER_SETTLE_MS = 3000;
 /** Below this best-case visibility a re-seeded tile is parked (hidden)
  *  rather than shown as a speck in an edge band. */
 const PARK_BELOW = 0.75;
-/** Minimum centre distance between re-seeded tiles, in summed radii. */
+/** Minimum centre distance between re-seeded tiles, in summed radii.
+ *  Portrait packs its two margin columns tighter — the disc already
+ *  over-bounds the tile (half-diagonal ≤ 0.9 r), so 1.2 summed radii
+ *  still leaves clear void between neighbours — because a drifting
+ *  column always has a tile mid-fade at its top or bottom: the margins
+ *  must hold 8–9 spots for 6 whole tiles to show at any moment. */
 const SPREAD = 1.6;
+const SPREAD_PORTRAIT = 1.2;
+/**
+ * Fade ramp for the DOM rects (cards, copy) on portrait. The default
+ * 24 px ramp (`OCCLUDER_BAND_PX`) is softness for a field drifting
+ * across a wide void; on a phone it is most of the open ground — the
+ * corner of the hero band above the dice is 18 px of open rows once
+ * the title's ramp is taken off it. A tile 10 px clear of a card's edge
+ * is not straddling it, and the drift is slow enough (2–5 px/s) that
+ * the shorter ramp is still a seconds-long fade.
+ */
+const OCCLUDER_BAND_PX_PORTRAIT = 10;
 /** Fade / keep-out disc radius in world units. */
 const TILE_R = TILE_H * 0.72;
 /**
@@ -218,7 +249,7 @@ export function buildDriftScene(ctx: SceneContext, opts: DriftSceneOptions): Sce
   lights.ambient.intensity = 0.1;
   if (scene.environment) scene.environmentIntensity = 0.45;
 
-  scene.fog = new FogExp2(FOG_COLOR, layout.fogDensity);
+  scene.fog = new FogExp2(FOG_COLOR, layout.drift.fog);
 
   // ── Tiles ──────────────────────────────────────────────────────────
   const pool = new TilePool(opts.tileBack, { atlasScale: DRIFT_ATLAS_SCALE });
@@ -228,10 +259,11 @@ export function buildDriftScene(ctx: SceneContext, opts: DriftSceneOptions): Sce
   scene.add(pool.mesh);
 
   const introStart = performance.now();
+  const frozenTilt = seededRandom(53);
   const drift: DriftState[] = driftField(DRIFT_COUNT).map((d) => ({
     ...placeOutsideKeepOut(d, layout.keepOut),
-    ax: d.rx,
-    ay: d.ry,
+    ax: snap ? (frozenTilt() - 0.5) * FROZEN_TILT : d.rx,
+    ay: snap ? (frozenTilt() - 0.5) * FROZEN_TILT : d.ry,
     parked: false,
     scaleTween: {
       start: introStart + 200 + d.stagger * 520,
@@ -262,28 +294,51 @@ export function buildDriftScene(ctx: SceneContext, opts: DriftSceneOptions): Sce
   let bandMoved = false;
 
   /**
-   * The settled rack's footprint (tiles + dice) relative to the band
-   * it was fitted in — translation-invariant, so the live rack is this
-   * offset by the live band's corner however far the page has scrolled.
+   * The settled rack's footprint — the tiles' box and each die's disc
+   * (as its bounding square) — relative to the band it was fitted in:
+   * translation-invariant, so the live rack is this offset by the live
+   * band's corner however far the page has scrolled. Two dice discs
+   * rather than the joint box: on a phone the dice sit in the row gap
+   * past the rack's right end, and the corners of the joint box above
+   * and below them are open ground for a far tile. The dice come from
+   * the hero scene where it has published them (`heroDice` — its
+   * keep-out nudge moves the pair off the layout's slots); the layout's
+   * prediction stands in until then.
    */
-  let rackLocal: ScreenRect | null = null;
+  let rackLocal: { tiles: ScreenRect; dice: ScreenRect[] } | null = null;
+  const discRect = (d: { x: number; y: number; r: number }): ScreenRect => ({
+    x: d.x - d.r,
+    y: d.y - d.r,
+    w: 2 * d.r,
+    h: 2 * d.r,
+  });
   const refreshRackLocal = () => {
     const fp = layout.footprint;
     const b = layout.band;
-    rackLocal = fp && b ? { x: fp.all.x - b.x, y: fp.all.y - b.y, w: fp.all.w, h: fp.all.h } : null;
+    rackLocal =
+      fp && b
+        ? {
+            tiles: { x: fp.tiles.x - b.x, y: fp.tiles.y - b.y, w: fp.tiles.w, h: fp.tiles.h },
+            dice: fp.dice.map((d) => discRect({ x: d.x - b.x, y: d.y - b.y, r: d.r })),
+          }
+        : null;
   };
   refreshRackLocal();
-  const rackRect = (): OccluderRect | null => {
+  let heroDiceSeen = heroDiceVersion();
+  const rackRects = (): OccluderRect[] => {
     const band = getHeroBand();
-    if (!band || !rackLocal) return null;
-    return {
-      x: band.x + rackLocal.x,
-      y: band.y + rackLocal.y,
-      w: rackLocal.w,
-      h: rackLocal.h,
-      kind: 'solid',
-      band: layout.cls === 'wide' ? RACK_BAND_PX_WIDE : RACK_BAND_PX,
-    };
+    if (!band || !rackLocal) return [];
+    const live = getHeroDice();
+    const dice = live.length > 0 ? live.map(discRect) : rackLocal.dice;
+    const ramp = layout.cls === 'wide' ? RACK_BAND_PX_WIDE : RACK_BAND_PX;
+    return [rackLocal.tiles, ...dice].map((r) => ({
+      x: band.x + r.x,
+      y: band.y + r.y,
+      w: r.w,
+      h: r.h,
+      kind: 'solid' as const,
+      band: ramp,
+    }));
   };
 
   /** World position of a drift tile at normalised (ux, uy) — the same
@@ -313,6 +368,9 @@ export function buildDriftScene(ctx: SceneContext, opts: DriftSceneOptions): Sce
       -depth,
     );
   };
+
+  /** Fade ramp for rects without their own (`OccluderRect.band`). */
+  const bandPx = () => (layout.cls === 'portrait' ? OCCLUDER_BAND_PX_PORTRAIT : OCCLUDER_BAND_PX);
 
   /** Visibility of a disc against the canvas edges (`EDGE_FADE_R`). */
   const edgeFade = (x: number, y: number, r: number): number => {
@@ -353,12 +411,7 @@ export function buildDriftScene(ctx: SceneContext, opts: DriftSceneOptions): Sce
     layout.cls === 'landscape-phone'
       ? [{ x: ctx.size.width - 236, y: 0, w: 236, h: 104, kind: 'solid' }]
       : [];
-  const sceneOccluders = (): OccluderRect[] => {
-    const out = chromeOccluders();
-    const rack = rackRect();
-    if (rack) out.push(rack);
-    return out;
-  };
+  const sceneOccluders = (): OccluderRect[] => [...chromeOccluders(), ...rackRects()];
   const refreshOccluders = () => {
     occluderSeen = occluderVersion();
     bandMoved = false;
@@ -398,13 +451,16 @@ export function buildDriftScene(ctx: SceneContext, opts: DriftSceneOptions): Sce
       : layout.cls === 'portrait'
         ? FRAME_SLACK_FROZEN_PORTRAIT
         : FRAME_SLACK_FROZEN;
+    const portrait = layout.cls === 'portrait';
+    const spread = portrait ? SPREAD_PORTRAIT : SPREAD;
+    const ramp = bandPx();
     const taken: { x: number; y: number; r: number }[] = [];
     const blocked = (x: number, y: number, r: number) =>
       x + r * slack < 0 ||
       x - r * slack > W ||
       y + r * slack < 0 ||
       y - r * slack > H ||
-      taken.some((t) => Math.hypot(t.x - x, t.y - y) < (t.r + r) * SPREAD);
+      taken.some((t) => Math.hypot(t.x - x, t.y - y) < (t.r + r) * spread);
     const factorAt = (
       d: DriftState,
       ux: number,
@@ -419,18 +475,23 @@ export function buildDriftScene(ctx: SceneContext, opts: DriftSceneOptions): Sce
       // seed hugging the edge scores what it will actually show at.
       return Math.min(
         edgeFade(proj.x, proj.y, proj.r),
-        occluderFactor(proj.x, proj.y, proj.r, rects, OCCLUDER_BAND_PX, interior),
+        occluderFactor(proj.x, proj.y, proj.r, rects, ramp, interior),
       );
     };
-    const cands = driftCandidates(layout.cls === 'portrait' ? LATTICE_COLS_PORTRAIT : undefined);
+    const cands = portrait
+      ? driftCandidates(LATTICE_COLS_PORTRAIT, LATTICE_ROWS_PORTRAIT)
+      : driftCandidates();
     const interior = GLASS_INTERIOR;
     let openLeft = layout.driftVisible;
     // Nearest (largest, brightest) tiles pick first so the open void
     // gets the ones that actually read; far tiles can sit behind glass.
+    // Portrait's open ground is two narrow columns: there the far
+    // (small) tiles pick first so the columns pack, and the near ones
+    // take whatever room is left.
     const order = drift
       .map((d, j) => ({ d, j }))
       .filter((x) => x.j < layout.driftVisible)
-      .sort((a, b) => a.d.depth - b.d.depth)
+      .sort((a, b) => (portrait ? b.d.depth - a.d.depth : a.d.depth - b.d.depth))
       .map((x) => x.d);
     for (const d of order) {
       let bestOpen = factorAt(d, d.ux, d.uy, solid, 1);
@@ -469,8 +530,14 @@ export function buildDriftScene(ctx: SceneContext, opts: DriftSceneOptions): Sce
       d.parked = false;
       if (opens.length > 0 && (openLeft > 0 || bestOpen >= bestAny)) {
         // Any fully open spot is as good as another — pick one at random
-        // so the field spreads instead of filling lattice order.
-        const pick = opens[Math.floor(rnd() * opens.length)] ?? { ux: openX, uy: openY };
+        // so the field spreads instead of filling lattice order. Portrait
+        // takes the first in lattice order instead: its open ground is
+        // two columns a few tiles tall, and a random pick mid-column
+        // strands the room above and below it (round-6: 3–5 tiles shown
+        // of the 6–7 the margins hold).
+        const pick =
+          (portrait ? opens[0] : opens[Math.floor(rnd() * opens.length)]) ??
+          ({ ux: openX, uy: openY } as { ux: number; uy: number });
         openLeft--;
         d.ux = pick.ux;
         d.uy = pick.uy;
@@ -512,7 +579,8 @@ export function buildDriftScene(ctx: SceneContext, opts: DriftSceneOptions): Sce
     // Projection needs the camera's matrices for this frame.
     rig.camera.updateMatrixWorld();
     if (!reseeded || occluderVersion() !== occluderSeen || bandMoved) {
-      const changed = occluderVersion() !== occluderSeen;
+      const changed = occluderVersion() !== occluderSeen || heroDiceVersion() !== heroDiceSeen;
+      heroDiceSeen = heroDiceVersion();
       refreshOccluders();
       // The frozen reduced-motion field's one frame is all anyone sees:
       // redo the seeding while the lobby's rects are still settling.
@@ -522,7 +590,10 @@ export function buildDriftScene(ctx: SceneContext, opts: DriftSceneOptions): Sce
     for (let j = 0; j < drift.length; j++) {
       const d = drift[j]!;
       if (dt > 0) {
-        d.ux = wrapUnit(d.ux + d.vx * dt);
+        // Portrait drifts down its margin columns only: a sideways
+        // component walks a tile into the rack (or off the edge) and
+        // it stays faded for the rest of the lap.
+        if (layout.cls !== 'portrait') d.ux = wrapUnit(d.ux + d.vx * dt);
         d.uy = wrapDriftY(d.uy + d.vy * dt, d.ux, layout.keepOut);
         d.ax += d.wx * dt;
         d.ay += d.wy * dt;
@@ -550,7 +621,7 @@ export function buildDriftScene(ctx: SceneContext, opts: DriftSceneOptions): Sce
       projectPoint(p.position, TILE_R, _proj);
       let fade =
         domOccluders.length > 0
-          ? occluderFactor(_proj.x, _proj.y, _proj.r, occluders, OCCLUDER_BAND_PX, GLASS_INTERIOR)
+          ? occluderFactor(_proj.x, _proj.y, _proj.r, occluders, bandPx(), GLASS_INTERIOR)
           : 1;
       fade = Math.min(fade, edgeFade(_proj.x, _proj.y, _proj.r));
       if (d.parked) fade = 0;
@@ -606,7 +677,7 @@ export function buildDriftScene(ctx: SceneContext, opts: DriftSceneOptions): Sce
     refreshOccluders();
     if (snap) rig.snap(layout.camera);
     else rig.setPreset(layout.camera);
-    (scene.fog as FogExp2).density = layout.fogDensity;
+    (scene.fog as FogExp2).density = layout.drift.fog;
     applyViewOffset();
     // A rotation moves the title block — keep the field out from under it.
     for (const d of drift) {
@@ -647,7 +718,14 @@ export function buildDriftScene(ctx: SceneContext, opts: DriftSceneOptions): Sce
     loop.requestRender();
   });
 
-  /** A card, the title or the band moved: the fade must re-run. */
+  /** The hero's dice settled somewhere else (their keep-out nudge, a
+   *  re-fit): the rack keep-out must follow. */
+  const unsubscribeDice = subscribeHeroDice(() => {
+    bandMoved = true;
+    loop.requestRender();
+  });
+
+  /** A card, the title, the band or the dice moved: the fade must re-run. */
   const rectsDirty = (now: number): boolean =>
     occluderVersion() !== occluderSeen ||
     bandMoved ||
@@ -714,6 +792,7 @@ export function buildDriftScene(ctx: SceneContext, opts: DriftSceneOptions): Sce
       publishDriftDebug(null);
       if (fitTimer !== null) clearTimeout(fitTimer);
       unsubscribeBand();
+      unsubscribeDice();
       if (parallaxOn) window.removeEventListener('pointermove', onPointer);
       lights.dispose();
       pool.dispose();

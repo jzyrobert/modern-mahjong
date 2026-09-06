@@ -1,5 +1,11 @@
 import { inflateSync } from 'node:zlib';
 import { type Rgb, gradientDeltaE, hexToRgb, luminance } from '../src/three/settings/colorMath';
+import {
+  SHEET_CUE_STRIP_ALPHA,
+  SHEET_CUE_STRIP_PX,
+  SHEET_PHONE_MAX_FRAC,
+} from '../src/ui/match/sheetLayout';
+import { GLASS_SWITCH } from '../src/ui/match/sheetTheme';
 import { TILE_BACK_SKINS } from '../src/ui/match/skins';
 import { expect, test } from './_helpers';
 
@@ -644,6 +650,134 @@ test.describe('3D in-match sheets', () => {
     });
     await expect(cue).toHaveCount(0, { timeout: 5_000 });
     await closeSheet(page);
+    expect(errors).toEqual([]);
+  });
+
+  test('phone: the fold chevron sits on an opaque strip the copy scrolls under, and the sheet stops at 78 %', async ({
+    page,
+  }) => {
+    test.setTimeout(150_000);
+    const errors = collectErrors(page);
+    await page.setViewportSize({ width: 412, height: 700 });
+    await startSolo(page);
+    await expect(page.getByTestId('table-3d-scene')).toBeVisible({ timeout: 20_000 });
+    await openMenuRow(page, 'Scoring rules');
+    await expect(page.getByTestId('scoring-cat-win-condition')).toBeVisible();
+    // The catalogue overflows: the sheet is capped at 78 % of the
+    // viewport (round-6 settings critic: it had crept up to 90 %), flush
+    // with the bottom edge.
+    const card = await sheetCardBox(page, 'Scoring rules');
+    expect(card.y + card.height).toBeGreaterThanOrEqual(700 - 1.5);
+    expect(Math.abs(card.height - 700 * SHEET_PHONE_MAX_FRAC)).toBeLessThanOrEqual(3);
+    // The fold cue's lower band is a flat ≥ 0.94-alpha strip of the sheet
+    // fill and the chevron lies wholly inside it.
+    const cue = page.getByTestId('sheet-scroll-cue');
+    await expect(cue).toBeVisible();
+    const cueBox = await cue.boundingBox();
+    const chevron = await page.getByTestId('sheet-scroll-chevron').boundingBox();
+    if (!cueBox || !chevron) throw new Error('missing cue boxes');
+    const gradient = await cue.evaluate((el) => getComputedStyle(el).backgroundImage);
+    expect(gradient).toContain(`rgba(14, 20, 17, ${SHEET_CUE_STRIP_ALPHA}) 100%`);
+    expect(gradient).toContain(`rgba(14, 20, 17, ${SHEET_CUE_STRIP_ALPHA}) 60%`);
+    const stripTop = cueBox.y + cueBox.height - SHEET_CUE_STRIP_PX;
+    // The 9 px box turns 45°, so its glyph spans ~13 px around its centre.
+    const chevronCy = chevron.y + chevron.height / 2;
+    expect(chevronCy - 6.5).toBeGreaterThanOrEqual(stripTop - 0.5);
+    expect(chevronCy + 6.5).toBeLessThanOrEqual(cueBox.y + cueBox.height + 0.5);
+    // Scroll a text row under the strip and read the strip either side of
+    // the chevron: the sheet's own dark fill, not the copy (round-6: the
+    // 40 px ramp left the last row ~60 % visible under the glyph).
+    await page.getByTestId('scoring-rules-body').evaluate((el) => {
+      el.scrollTop = 140;
+    });
+    await page.waitForTimeout(300);
+    await expect(cue).toBeVisible();
+    for (const dx of [-16, 16]) {
+      const px = await sampleArea(
+        page,
+        Math.round(chevron.x + chevron.width / 2 + dx),
+        Math.round(chevronCy),
+      );
+      expect(Math.max(...px), `strip rgb(${px.join(',')}) at ${dx}`).toBeLessThanOrEqual(48);
+    }
+    await closeSheet(page);
+    // A short body is content-sized — the cap is a ceiling, not a height.
+    await dismissDice(page, 300);
+    await page.getByLabel('Open players panel').first().click();
+    await expect(page.getByText('East · seat 0')).toBeVisible();
+    const players = await sheetCardBox(page, 'Players');
+    expect(players.height).toBeLessThan(700 * SHEET_PHONE_MAX_FRAC - 40);
+    expect(players.y + players.height).toBeGreaterThanOrEqual(700 - 1.5);
+    await closeSheet(page);
+    expect(errors).toEqual([]);
+  });
+
+  test('desktop lobby: the "No turn timer" switch wears the settings sheet\'s gold track and ivory knob', async ({
+    page,
+  }) => {
+    // Round-6 settings critic: the lobby's rules switch was still RN-web's
+    // teal knob on the classic coral track while the settings rows had
+    // moved to gold / ivory.
+    const errors = collectErrors(page);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Play vs bots' }).click();
+    const input = page.getByLabel('No turn timer (∞)');
+    await expect(input).toBeVisible({ timeout: 15_000 });
+    // RN-web renders the switch as root > [track, thumb, input].
+    const read = () =>
+      input.evaluate((el) => {
+        const root = el.parentElement;
+        if (!root) throw new Error('switch has no root');
+        const [track, thumb] = Array.from(root.children).filter((c) => c.tagName === 'DIV');
+        if (!track || !thumb) throw new Error('switch has no track / thumb');
+        return {
+          checked: (el as HTMLInputElement).checked,
+          track: getComputedStyle(track).backgroundColor,
+          thumb: getComputedStyle(thumb).backgroundColor,
+        };
+      });
+    const toRgb = (hex: string) => {
+      const [r, g, b] = hexToRgb(hex);
+      return `rgb(${r}, ${g}, ${b})`;
+    };
+    const rgbaOf = (rgba: string) =>
+      rgba
+        .replace(/^rgba\(/, '')
+        .replace(/\)$/, '')
+        .split(',')
+        .map((n) => Number(n.trim()));
+    const expectGlass = (s: { checked: boolean; track: string; thumb: string }) => {
+      expect(s.thumb).toBe(toRgb(s.checked ? GLASS_SWITCH.knobOn : GLASS_SWITCH.knob));
+      const want = rgbaOf(s.checked ? GLASS_SWITCH.track : GLASS_SWITCH.trackOff);
+      const got = rgbaOf(s.track);
+      for (let i = 0; i < 3; i++)
+        expect(Math.abs((got[i] ?? 0) - (want[i] ?? 0))).toBeLessThanOrEqual(1);
+      expect(Math.abs((got[3] ?? 1) - (want[3] ?? 1))).toBeLessThanOrEqual(0.02);
+    };
+    // The lobby re-applies the persisted rule prefs on its first paint,
+    // and a tap's store round-trip lands a frame after the checkbox
+    // flips: read once the knob agrees with the checkbox.
+    const settled = async () => {
+      let last = await read();
+      await expect
+        .poll(
+          async () => {
+            last = await read();
+            return last.thumb === toRgb(last.checked ? GLASS_SWITCH.knobOn : GLASS_SWITCH.knob);
+          },
+          { timeout: 5_000 },
+        )
+        .toBe(true);
+      return last;
+    };
+    const before = await settled();
+    expectGlass(before);
+    await input.click();
+    await expect.poll(async () => (await read()).checked, { timeout: 5_000 }).toBe(!before.checked);
+    const after = await settled();
+    expect(after.checked).toBe(!before.checked);
+    expectGlass(after);
     expect(errors).toEqual([]);
   });
 

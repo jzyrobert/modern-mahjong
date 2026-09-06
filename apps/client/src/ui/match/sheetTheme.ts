@@ -92,6 +92,32 @@ export function sheetPalette(theme: SheetTheme): SheetPalette {
   return theme === 'glass' ? GLASS_SHEET : PAPER_SHEET;
 }
 
+/** Switch colours inside a glass surface (settings sheet, lobby rules). */
+export const GLASS_SWITCH = {
+  track: 'rgba(216,168,90,0.85)',
+  trackOff: 'rgba(255,255,255,0.18)',
+  knob: '#f3ead8',
+  knobOn: '#fbf6ea',
+} as const;
+
+/**
+ * Props for an RN `Switch` in the glass language: a gold track when on
+ * (the HUD's one accent), an ivory knob both ways. RN-web's default
+ * on-knob is teal and the classic shells' `SWITCH_TRACK` is coral — both
+ * read as the old shell inside glass (round-5 settings critic; round-6
+ * found the lobby's "No turn timer" switch still wearing them).
+ * `activeThumbColor` is RN-web only and not in RN's prop types, so it
+ * rides in as a spread.
+ */
+export function glassSwitchProps() {
+  return {
+    trackColor: { true: GLASS_SWITCH.track, false: GLASS_SWITCH.trackOff },
+    thumbColor: GLASS_SWITCH.knob,
+    ios_backgroundColor: GLASS_SWITCH.trackOff,
+    ...({ activeThumbColor: GLASS_SWITCH.knobOn } as Record<string, string>),
+  };
+}
+
 /** 11 px uppercase micro-label — the HUD's section / badge typography. */
 export function microLabel(color: string) {
   return {

@@ -4,6 +4,7 @@ import { createContext, useContext, useState } from 'react';
 import { Pressable, Switch, Text, TextInput, View } from 'react-native';
 import { useGame } from '../state/game';
 import { COLORS, SWITCH_TRACK } from './colors';
+import { GLASS_SWITCH, glassSwitchProps } from './match/sheetTheme';
 
 interface RulePanelProps {
   rules: RuleConfig;
@@ -36,6 +37,8 @@ interface RulePalette {
   inputBorder: string;
   inputFg: string;
   track: { false: string; true: string };
+  /** Glass surfaces take the settings sheet's switch (`glassSwitchProps`). */
+  glass: boolean;
 }
 
 const PALETTES: Record<RulePanelTheme, RulePalette> = {
@@ -56,6 +59,7 @@ const PALETTES: Record<RulePanelTheme, RulePalette> = {
     inputBorder: COLORS.hairline,
     inputFg: COLORS.ink,
     track: SWITCH_TRACK,
+    glass: false,
   },
   glass: {
     bg: 'rgba(255,255,255,0.045)',
@@ -73,7 +77,8 @@ const PALETTES: Record<RulePanelTheme, RulePalette> = {
     inputBg: 'rgba(0,0,0,0.3)',
     inputBorder: 'rgba(255,255,255,0.16)',
     inputFg: 'rgba(255,255,255,0.92)',
-    track: { false: 'rgba(255,255,255,0.18)', true: '#d8a85a' },
+    track: { false: GLASS_SWITCH.trackOff, true: GLASS_SWITCH.track },
+    glass: true,
   },
 };
 
@@ -299,7 +304,9 @@ function ToggleRow({
         disabled={disabled}
         accessibilityLabel={label}
         accessibilityState={{ checked: value, disabled }}
-        trackColor={pal.track}
+        // Glass: gold track + ivory knob like the settings sheet's rows
+        // (RN-web's default on-knob is teal); paper keeps the coral track.
+        {...(pal.glass ? glassSwitchProps() : { trackColor: pal.track })}
       />
     </View>
   );

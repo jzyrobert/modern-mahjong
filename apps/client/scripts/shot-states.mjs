@@ -1801,6 +1801,10 @@ export const VIEWPORTS = {
   'phone-tall': { width: 412, height: 915, dpr: 2, mobile: true },
   'phone-small': { width: 360, height: 640, dpr: 3, mobile: true },
   'phone-landscape': { width: 915, height: 412, dpr: 2, mobile: true },
+  // The 412×700 browser phone turned on its side: 700 CSS px wide, so
+  // the landscape lobby's card column is ~440 px (round-6 menu critic:
+  // the rack squeezed to 216×34 and "Replays" broke mid-word).
+  'phone-landscape-short': { width: 700, height: 412, dpr: 2.625, mobile: true },
   tablet: { width: 834, height: 1194, dpr: 2, mobile: true },
   desktop: { width: 1440, height: 900, dpr: 1, mobile: false },
 };
