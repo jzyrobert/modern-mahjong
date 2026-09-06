@@ -1454,6 +1454,44 @@ export const STATES = {
       { waitMs: 400 },
     ],
   },
+  'match-river-zoom-melds': {
+    owner: 'table',
+    // Phone portrait, zoomed with two melds out (`match-two-melds` + the
+    // discards tap): round-FB5 — "when zooming in, the hand tiles hide
+    // the peng / chi tiles". The plan view pins the near river's last
+    // row above the held hand, so the rack line the held hand's melds
+    // lie on (z ≈ 10–11.7) fell under the hand on screen. Zoomed, the
+    // melds move to a shelf just past the user's river (`zoomMeldShelf`,
+    // 1.3×, right-aligned inside the block) and the frame pins the
+    // shelf's near edge above the hand instead — every meld tile between
+    // the river block and the hand, none under a hand tile; the toast
+    // slot (felt on the tall phone, the header on short ones) never on
+    // the shelf. Shot at phone, phone-small and phone-tall.
+    viewport: 'phone',
+    steps: [
+      { initScript: TWO_MELDS_INIT },
+      ...START_SOLO,
+      { waitForOwnHand: true },
+      { waitMs: 1600 },
+      { evaluate: TWO_MELDS_SETUP },
+      { waitFor: '[data-testid="claim-bar"]', timeout: 20000 },
+      { click: 'role=button[name="Peng"]', timeout: 10000 },
+      { waitFor: '[data-testid="claim-bar"]', state: 'hidden', timeout: 10000 },
+      { waitMs: 900 },
+      { evaluate: TWO_MELDS_DISCARD_KEEP_RUN },
+      { waitForClaimButton: 'Chi', timeout: 40000 },
+      { click: 'role=button[name="Chi"]', timeout: 10000 },
+      { waitFor: '[data-testid="claim-bar"]', state: 'hidden', timeout: 10000 },
+      { waitMs: 900 },
+      { clickTestId: 'own-hand-tile', nth: 0 },
+      { waitForDrawCue: true, timeout: 40000 },
+      { clickTestId: 'wall-draw-next' },
+      { waitMs: 1600 },
+      { evaluate: `document.querySelector('[data-testid="shared-discards-region"]')?.click()` },
+      { waitForCameraSettled: true },
+      { waitMs: 400 },
+    ],
+  },
   'match-river-zoom-landscape': {
     owner: 'table',
     // Phone landscape: the same tap lifts the camera to 62° over the

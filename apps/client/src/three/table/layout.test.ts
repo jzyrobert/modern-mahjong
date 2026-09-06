@@ -26,6 +26,8 @@ import {
   RIVER_NEAR_EDGE,
   RIVER_ROWS,
   ROW_OVERHANG_GAP,
+  SHELF_GAP,
+  SHELF_MARGIN,
   SIDE_MELD_SCALE_PORTRAIT,
   SIDE_SEAT_OUT_DESKTOP,
   SIDE_SEAT_OUT_LOW,
@@ -43,6 +45,7 @@ import {
   WALL_STAGGER,
   WALL_YAW,
   WALL_YAW_LIFT,
+  ZOOM_BLOCK_PAD,
   computeLayout,
   dealerChipLocal,
   fullWallLayout,
@@ -50,6 +53,7 @@ import {
   heldRowSplit,
   layoutMeld,
   layoutMeldStanding,
+  meldsRowWidth,
   orderOwnHand,
   quatFromBasis,
   relOf,
@@ -64,6 +68,7 @@ import {
   wallSlotPosition,
   wallSlotRefs,
   yawOf,
+  zoomMeldShelf,
 } from './layout';
 
 function dealt(seed = 5, dealer: Seat = 0): GameState {
@@ -963,6 +968,90 @@ describe('held hand (phone portrait)', () => {
     expect(rightmost.x + (TILE_W / 2) * OWN_MELD_SCALE_HELD).toBeLessThanOrEqual(
       OWN_MELD_RIGHT + 0.01,
     );
+  });
+  test('zoomMeldShelf: a row past the river at 1.3×, shrunk to fit four melds, no depth without melds', () => {
+    // Round-FB5: in the plan-view zoom the rack line (`OWN_MELD_Z_HELD`)
+    // lies under the held hand on screen; the shelf sits just past the
+    // near river's last row, inside the zoom block's side edge.
+    const scale = 1.36;
+    const m = riverMetrics(scale);
+    const peng = layoutMeld({ kind: 'peng', tiles: dealt().hands[0].slice(0, 3), from: 1 }, 0);
+    const empty = zoomMeldShelf(scale, 0);
+    expect(empty.depth).toBe(0);
+    expect(empty.scale).toBeCloseTo(OWN_MELD_SCALE_HELD, 9);
+    expect(empty.right).toBeCloseTo(m.farEdge + ZOOM_BLOCK_PAD - SHELF_MARGIN, 9);
+    // One or two melds: the held hand's 1.3×, one gap of felt past the river.
+    for (const n of [1, 2, 3]) {
+      const width = meldsRowWidth(
+        Array(n).fill({ kind: 'peng', tiles: peng.tiles.map((t) => t.tile), from: 1 }),
+        0,
+      );
+      const shelf = zoomMeldShelf(scale, width);
+      expect(shelf.scale).toBeCloseTo(OWN_MELD_SCALE_HELD, 9);
+      expect(shelf.z - (TILE_H / 2) * shelf.scale).toBeCloseTo(m.farEdge + SHELF_GAP, 9);
+      expect(shelf.depth).toBeCloseTo(SHELF_GAP + TILE_H * shelf.scale, 9);
+      // The row fits between the block's margins.
+      expect(width * shelf.scale).toBeLessThanOrEqual(2 * shelf.right + 1e-9);
+    }
+    // Four turned-tile melds are wider than the block at 1.3×: the scale
+    // shrinks so the row exactly spans the block minus its margins, and
+    // the shelf gets shallower with it.
+    const four = meldsRowWidth(
+      Array(4).fill({ kind: 'peng', tiles: peng.tiles.map((t) => t.tile), from: 1 }),
+      0,
+    );
+    const wide = zoomMeldShelf(scale, four);
+    expect(wide.scale).toBeLessThan(OWN_MELD_SCALE_HELD);
+    expect(wide.scale).toBeGreaterThan(1);
+    expect(four * wide.scale).toBeCloseTo(2 * wide.right, 9);
+    expect(wide.depth).toBeCloseTo(SHELF_GAP + TILE_H * wide.scale, 9);
+    // Nothing on the shelf reaches the left seat's river arm (which ends
+    // at its `rightEdge` along our z) or the rail.
+    expect(wide.z - (TILE_H / 2) * wide.scale).toBeGreaterThan(m.rightEdge + 1);
+    expect(wide.z + (TILE_H / 2) * wide.scale).toBeLessThan(FELT_HALF - 1);
+  });
+  test("heldMeldsShelf lays the held hand's melds on the shelf past the river, right-aligned", () => {
+    const s = dealt();
+    const withMelds: GameState = {
+      ...s,
+      hands: { ...s.hands, 0: s.hands[0].slice(6) },
+      melds: {
+        ...s.melds,
+        0: [
+          { kind: 'peng', tiles: s.hands[0].slice(0, 3), from: 1 },
+          { kind: 'chi', tiles: s.hands[0].slice(3, 6), from: 3 },
+        ],
+      },
+    } as GameState;
+    const scale = 1.36;
+    const opts = { ...OPTS, heldHand: FRAME, riverScale: scale };
+    const shelf = zoomMeldShelf(scale, meldsRowWidth(withMelds.melds[0], 0));
+    // Half-extent along x of a flat meld tile (a turned claimed tile is TILE_H wide).
+    const halfX = (sl: TileSlot) => (Math.abs(Math.sin(sl.yaw)) > 0.5 ? TILE_H / 2 : TILE_W / 2);
+    const zoomed = computeLayout(withMelds, 0, { ...opts, heldMeldsShelf: true, hideWalls: true });
+    const melds = zoomed.filter((sl) => sl?.zone === 'meld' && sl.seat === 0);
+    expect(melds).toHaveLength(6);
+    const farEdge = riverMetrics(scale).farEdge;
+    for (const m of melds) {
+      expect(m!.z).toBeCloseTo(shelf.z, 5);
+      expect(m!.scale).toBeCloseTo(shelf.scale, 5);
+      // Past the river's last row, never on it.
+      expect(m!.z - (TILE_H / 2) * shelf.scale).toBeGreaterThanOrEqual(farEdge + SHELF_GAP - 1e-9);
+      expect(m!.x + halfX(m!) * shelf.scale).toBeLessThanOrEqual(shelf.right + 1e-9);
+    }
+    // Right-aligned: the group's right edge is the shelf's.
+    const rightmost = melds.reduce((a, b) => (a!.x > b!.x ? a : b))!;
+    expect(rightmost.x + halfX(rightmost) * shelf.scale).toBeCloseTo(shelf.right, 5);
+    // The hand and the river are where the plain held layout puts them.
+    const plain = computeLayout(withMelds, 0, { ...opts, hideWalls: true });
+    for (const zone of ['hand', 'discard'] as const) {
+      const a = zoomed.filter((sl) => sl?.zone === zone).map((sl) => [sl!.x, sl!.y, sl!.z]);
+      const b = plain.filter((sl) => sl?.zone === zone).map((sl) => [sl!.x, sl!.y, sl!.z]);
+      expect(a).toEqual(b);
+    }
+    // Without the flag the melds stay on the rack line.
+    for (const m of plain.filter((sl) => sl?.zone === 'meld' && sl.seat === 0))
+      expect(m!.z).toBeCloseTo(OWN_MELD_Z_HELD, 5);
   });
   test('tile sheet rows are each centred on the sheet axis', () => {
     const layout = tileSheetLayout();

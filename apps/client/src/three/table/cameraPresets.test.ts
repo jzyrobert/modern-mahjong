@@ -51,6 +51,7 @@ import {
   riverZoomCameraFor,
   riverZoomFrameFor,
   sheetCameraFor,
+  zoomNearPoint,
 } from './cameraPresets';
 import {
   FELT_HALF,
@@ -58,9 +59,11 @@ import {
   MELD_Z,
   OWN_HAND_Z,
   RAIL_WIDTH,
+  SHELF_GAP,
   STAND_Y,
   WALL_D,
   riverMetrics,
+  zoomMeldShelf,
 } from './layout';
 
 function ndc(
@@ -554,6 +557,52 @@ describe('short phones (a phone in a browser)', () => {
       // 84° would leave ~1.2× (see `riverZoomFrameFor`).
       expect(p(0, 0, WALL_D + TILE_H / 2).y).toBeGreaterThan(bandBottom);
     }
+  });
+  test('the river zoom frames the meld shelf above the held hand when the user has melds out', () => {
+    // Round-FB5: the held hand hid the user's peng / chi in the zoom (the
+    // rack line lies under the hand on screen). With melds the shelf past
+    // the near river is the point pinned above the hand: a short phone
+    // backs off a little more; without melds nothing changes.
+    const shelf = zoomMeldShelf(PORTRAIT_RIVER_SCALE, 2 * 3.42 + 0.3);
+    expect(shelf.depth).toBeGreaterThan(1.5);
+    for (const [w, h] of [
+      [412, 915],
+      [412, 700],
+      [360, 640],
+    ] as const) {
+      const plain = riverZoomFrameFor(w, h);
+      expect(riverZoomFrameFor(w, h, 0, 0)).toEqual(plain);
+      expect(riverZoomCameraFor(w, h, 0, shelf.depth)).toEqual(
+        riverZoomFrameFor(w, h, 0, shelf.depth).preset,
+      );
+      const { preset, xHalf } = riverZoomFrameFor(w, h, 0, shelf.depth);
+      const p = px(preset, w, h);
+      const bandBottom = heldHandTopPx(w, h) - PORTRAIT_BAND_GAP;
+      // Same header anchor and elevation; the shelf's near edge clears the band.
+      expect(Math.abs(p(...ZOOM_FAR_RIVER_POINT).y - ZOOM_FAR_RIVER_Y)).toBeLessThan(1);
+      expect(p(...zoomNearPoint(shelf.depth)).y).toBeLessThanOrEqual(
+        bandBottom - ZOOM_NEAR_RIVER_GAP + 0.5,
+      );
+      expect(zoomNearPoint(shelf.depth)[2]).toBeCloseTo(ZOOM_NEAR_RIVER_POINT[2] + shelf.depth, 9);
+      // The shelf's melds (top faces at the tiles' height) sit between the
+      // river block and the hand, inside the viewport's sides.
+      const inner = ZOOM_NEAR_RIVER_POINT[2] + SHELF_GAP;
+      const outer = ZOOM_NEAR_RIVER_POINT[2] + shelf.depth;
+      expect(p(0, TILE_D * shelf.scale, inner).y).toBeGreaterThan(p(...ZOOM_NEAR_RIVER_POINT).y);
+      expect(p(0, TILE_D * shelf.scale, outer).y).toBeLessThan(bandBottom);
+      expect(p(shelf.right, TILE_D * shelf.scale, outer).x).toBeLessThanOrEqual(w - 2);
+      expect(p(-shelf.right, TILE_D * shelf.scale, outer).x).toBeGreaterThanOrEqual(2);
+      expect(xHalf).toBeGreaterThanOrEqual(plain.xHalf - 1e-9);
+      if (h <= 700) {
+        // Height-bound phones give ground for the shelf …
+        expect(xHalf).toBeGreaterThan(plain.xHalf + 0.5);
+        expect(
+          Math.abs(p(...zoomNearPoint(shelf.depth)).y - (bandBottom - ZOOM_NEAR_RIVER_GAP)),
+        ).toBeLessThan(1);
+      }
+    }
+    // … the tall phone has felt enough under the block and keeps the tight frame.
+    expect(riverZoomFrameFor(412, 915, 0, shelf.depth).xHalf).toBeCloseTo(ZOOM_X_HALF_MIN, 9);
   });
 });
 

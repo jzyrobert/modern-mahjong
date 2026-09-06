@@ -8,6 +8,7 @@ import {
   RAIL_H,
   RAIL_WIDTH,
   WALL_D,
+  ZOOM_BLOCK_PAD,
   riverMetrics,
 } from './layout';
 
@@ -171,7 +172,7 @@ export const ZOOM_ELEV_DEG = 84;
  * / `hideSideSeats`), so there is no wall column or rack sliver to veil
  * at the edges.
  */
-export const ZOOM_X_HALF_MIN = riverMetrics(PORTRAIT_RIVER_SCALE).farEdge + 0.5;
+export const ZOOM_X_HALF_MIN = riverMetrics(PORTRAIT_RIVER_SCALE).farEdge + ZOOM_BLOCK_PAD;
 /**
  * World points the zoom frames between: the far river's last row's far
  * edge (its bottom, on the felt — the top face projects ~1 px higher)
@@ -187,6 +188,15 @@ export const ZOOM_NEAR_RIVER_POINT: [number, number, number] = [
   0,
   riverMetrics(PORTRAIT_RIVER_SCALE).farEdge,
 ];
+/**
+ * The near point the zoom pins above the held hand: the near river's
+ * last row's far edge, or — with the user's melds on the zoom shelf
+ * (`layout.zoomMeldShelf`) — the shelf's near edge `shelfDepth` past
+ * it, so the melds sit in frame between the block and the hand.
+ */
+export function zoomNearPoint(shelfDepth = 0): [number, number, number] {
+  return [0, 0, ZOOM_NEAR_RIVER_POINT[2] + shelfDepth];
+}
 /**
  * Bottom edge of the zoom header — the seat strip grown into a
  * full-bleed glass band from y = 0 through the strip plus a 6 px pad
@@ -610,15 +620,25 @@ export interface RiverZoomFrame {
  * four (`LayoutOptions.hideWalls`) and hosts the draw control in the
  * tray. Because the held-hand frame is derived from whichever preset
  * is active, the hand stays put on screen while the table eases in
- * underneath it. Pure.
+ * underneath it. With the user's melds out, the zoom lays them on a
+ * shelf past the near river (`layout.zoomMeldShelf`) and the point the
+ * frame keeps above the hand is the shelf's near edge, `shelfDepth`
+ * beyond the river's far edge (`zoomNearPoint`) — a short phone backs
+ * off a little more so the melds stay between the block and the hand;
+ * a tall phone with room under the block need not move at all. Pure.
  */
-export function riverZoomFrameFor(width: number, height: number, topInset = 0): RiverZoomFrame {
+export function riverZoomFrameFor(
+  width: number,
+  height: number,
+  topInset = 0,
+  shelfDepth = 0,
+): RiverZoomFrame {
   const { bandBottom } = portraitBandFor(width, height, topInset);
   const farY = ZOOM_FAR_RIVER_Y + topInset;
+  const nearPoint = zoomNearPoint(shelfDepth);
   const make = (xHalf: number) =>
     portraitCameraAnchored(width, height, xHalf, ZOOM_FAR_RIVER_POINT, farY, ZOOM_ELEV_DEG);
-  const nearY = (xHalf: number) =>
-    projectPreset(make(xHalf), width, height, ZOOM_NEAR_RIVER_POINT).y;
+  const nearY = (xHalf: number) => projectPreset(make(xHalf), width, height, nearPoint).y;
   const limit = bandBottom - ZOOM_NEAR_RIVER_GAP;
   if (nearY(ZOOM_X_HALF_MIN) <= limit)
     return { preset: make(ZOOM_X_HALF_MIN), xHalf: ZOOM_X_HALF_MIN };
@@ -634,8 +654,13 @@ export function riverZoomFrameFor(width: number, height: number, topInset = 0): 
 }
 
 /** Portrait river-zoom preset — see `riverZoomFrameFor`. */
-export function riverZoomCameraFor(width: number, height: number, topInset = 0): CameraPreset {
-  return riverZoomFrameFor(width, height, topInset).preset;
+export function riverZoomCameraFor(
+  width: number,
+  height: number,
+  topInset = 0,
+  shelfDepth = 0,
+): CameraPreset {
+  return riverZoomFrameFor(width, height, topInset, shelfDepth).preset;
 }
 
 // ─── Pointer parallax ──────────────────────────────────────────────
