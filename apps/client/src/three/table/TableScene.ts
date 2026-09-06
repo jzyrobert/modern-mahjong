@@ -103,6 +103,8 @@ export interface SyncInput {
   concealOwn?: boolean | undefined;
   /** Portrait river zoom: no walls — see `LayoutOptions.hideWalls`. */
   hideWalls?: boolean | undefined;
+  /** Portrait river zoom: own melds on the shelf past the river — see `LayoutOptions.heldMeldsShelf`. */
+  heldMeldsShelf?: boolean | undefined;
   /**
    * Albedo multiplier for the near wall's stacks (rel 0). Phone
    * landscape sets 0.85: the hand stands directly in front of the wall
@@ -761,6 +763,7 @@ export class TableScene {
       heldHand: input.heldHand ?? null,
       riverScale: input.riverScale ?? 1,
       hideWalls: input.hideWalls,
+      heldMeldsShelf: input.heldMeldsShelf,
       concealOwn: input.concealOwn,
       sideSeatOut: input.sideSeatOut,
       farSeatOut: input.farSeatOut,

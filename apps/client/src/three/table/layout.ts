@@ -251,6 +251,23 @@ export const OWN_MELD_SCALE_HELD = 1.3;
  * felt to the stack), outer edge 11.73, still 0.17 inside the rail.
  */
 export const OWN_MELD_Z_HELD = MELD_Z + 0.35;
+/**
+ * Felt the portrait river zoom's frame keeps beyond the rivers' far
+ * edges on each side (`cameraPresets.ZOOM_X_HALF_MIN` = the portrait
+ * river's far edge + this); the zoom meld shelf right-aligns inside it.
+ */
+export const ZOOM_BLOCK_PAD = 0.5;
+/**
+ * Portrait river zoom meld shelf (`LayoutOptions.heldMeldsShelf`): felt
+ * between the user's river's far edge and the shelf's inner edge, and
+ * the felt the shelf keeps inside the zoom block's side edge. The shelf
+ * is nearer the camera than the frame's target plane, so it projects
+ * ~2.5 % larger than the block: 0.5 leaves the right-aligned group's
+ * outer tile ≈ 7 px inside the viewport at the tight (tall-phone) frame
+ * (0.35 left it 4 px from the edge, reading cramped).
+ */
+export const SHELF_GAP = 0.3;
+export const SHELF_MARGIN = 0.5;
 export const MELD_GAP = 0.55;
 export const MELD_GROUP_GAP = 0.3;
 export const MELD_PITCH = TILE_W + 0.03;
@@ -540,6 +557,18 @@ export interface LayoutOptions extends HandOrderOptions {
    * exposed melds flat on the felt in front of them.
    */
   heldHand?: HeldHandFrame | null | undefined;
+  /**
+   * Portrait river zoom (with `heldHand`): lay the user's flat melds on
+   * a shelf row just past their river (`zoomMeldShelf`) instead of at
+   * `OWN_MELD_Z_HELD`. The plan-view zoom pins the near river's last
+   * row above the held hand, so anything nearer the camera than that
+   * row (the rack line, 9.97–11.73) lies under the hand on screen —
+   * round-FB5 ("when zooming in, the hand tiles hide the peng / chi
+   * tiles"). The camera frames the shelf (`riverZoomFrameFor`'s
+   * `shelfDepth`), so the group sits between the river block and the
+   * hand at every phone size.
+   */
+  heldMeldsShelf?: boolean | undefined;
   /**
    * Uniform scale for river tiles (pitch + size) — phone portrait draws
    * discards 1.36× so their glyphs read at the width-bound table scale.
@@ -873,20 +902,34 @@ export function computeLayout(state: GameState, me: Seat, opts: LayoutOptions): 
       // the exposed melds lie flat on the felt, right-aligned in the
       // row the hand would otherwise occupy.
       for (const slot of heldHandSlots(hand, drawnIdx, opts.heldHand, seat)) put(layout, slot);
-      const meldsWidth =
-        (melds.reduce((acc, m) => acc + m.width, 0) +
-          Math.max(0, melds.length - 1) * MELD_GROUP_GAP) *
-        OWN_MELD_SCALE_HELD;
-      placeMelds(
-        layout,
-        melds,
-        seat,
-        rel,
-        yaw,
-        OWN_MELD_Z_HELD,
-        OWN_MELD_RIGHT - meldsWidth,
-        OWN_MELD_SCALE_HELD,
-      );
+      const widthAt1 = meldGroupsWidth(melds);
+      if (opts.heldMeldsShelf === true) {
+        // River zoom: the melds move to the shelf past the river, where
+        // the plan view keeps them in frame above the hand.
+        const shelf = zoomMeldShelf(opts.riverScale ?? 1, widthAt1);
+        placeMelds(
+          layout,
+          melds,
+          seat,
+          rel,
+          yaw,
+          shelf.z,
+          shelf.right - widthAt1 * shelf.scale,
+          shelf.scale,
+        );
+      } else {
+        const meldsWidth = widthAt1 * OWN_MELD_SCALE_HELD;
+        placeMelds(
+          layout,
+          melds,
+          seat,
+          rel,
+          yaw,
+          OWN_MELD_Z_HELD,
+          OWN_MELD_RIGHT - meldsWidth,
+          OWN_MELD_SCALE_HELD,
+        );
+      }
       // River below still applies.
       placeRiver(layout, state, seat, rel, yaw, opts.riverScale ?? 1);
       continue;
@@ -898,11 +941,7 @@ export function computeLayout(state: GameState, me: Seat, opts: LayoutOptions): 
     const meldScale = !isMe && (rel === 1 || rel === 3) ? (opts.sideMeldScale ?? 1) : 1;
     const railMelds = !isMe && rel === 2 && opts.farMeldsOnRail === true && melds.length > 0;
     const groups = standingOwn ? standingMelds : melds;
-    const meldsWidth = railMelds
-      ? 0
-      : (groups.reduce((acc, m) => acc + m.width, 0) +
-          Math.max(0, groups.length - 1) * MELD_GROUP_GAP) *
-        meldScale;
+    const meldsWidth = railMelds ? 0 : meldGroupsWidth(groups) * meldScale;
     const total =
       handWidth + (groups.length > 0 && hand.length > 0 && !railMelds ? MELD_GAP : 0) + meldsWidth;
     // Right seat: melds first (the near end), then the rack.
@@ -950,6 +989,60 @@ export function computeLayout(state: GameState, me: Seat, opts: LayoutOptions): 
     placeRiver(layout, state, seat, rel, yaw, opts.riverScale ?? 1);
   }
   return layout;
+}
+
+/** Width of a row of laid-out meld groups at scale 1 (`MELD_GROUP_GAP` between groups). */
+function meldGroupsWidth(groups: readonly { width: number }[]): number {
+  if (groups.length === 0) return 0;
+  return groups.reduce((acc, m) => acc + m.width, 0) + (groups.length - 1) * MELD_GROUP_GAP;
+}
+
+/**
+ * Width of a seat's exposed melds laid flat in one row at scale 1
+ * (`layoutMeld` widths with `MELD_GROUP_GAP` between groups) — what
+ * `zoomMeldShelf` sizes the shelf for. Pure.
+ */
+export function meldsRowWidth(melds: readonly Meld[], owner: Seat): number {
+  return meldGroupsWidth(melds.map((m) => layoutMeld(m, owner)));
+}
+
+/** The portrait river zoom's meld shelf — see `zoomMeldShelf`. */
+export interface ZoomMeldShelf {
+  /** Centre line of the shelf row (owner's frame z). */
+  z: number;
+  /** Right edge the meld group is aligned to (owner's frame x). */
+  right: number;
+  /** Uniform tile scale of the shelf's melds. */
+  scale: number;
+  /** Felt the shelf adds past the river's far edge (0 with no melds). */
+  depth: number;
+}
+
+/**
+ * Portrait river zoom meld shelf: the user's flat melds lie in one row
+ * just past their river's far edge (`SHELF_GAP` of felt), right-aligned
+ * `SHELF_MARGIN` inside the zoom block's right edge (the river's far
+ * edge + `ZOOM_BLOCK_PAD` — the frame's half-width at the tight scale),
+ * at `OWN_MELD_SCALE_HELD` (1.3×, the held hand's felt melds) unless
+ * the row at that scale is wider than the block minus its margins, in
+ * which case the scale shrinks to fit (four turned-tile melds land at
+ * ~1.1×). `depth` is the felt the shelf takes past the river — what
+ * `cameraPresets.riverZoomFrameFor` adds to the near point it pins
+ * above the held hand — and 0 when there is nothing on the shelf.
+ * `meldsWidthAt1` is the row's width at scale 1 (`meldsRowWidth`). Pure.
+ */
+export function zoomMeldShelf(riverScale: number, meldsWidthAt1: number): ZoomMeldShelf {
+  const farEdge = riverMetrics(riverScale).farEdge;
+  const right = farEdge + ZOOM_BLOCK_PAD - SHELF_MARGIN;
+  const room = 2 * right;
+  const scale =
+    meldsWidthAt1 * OWN_MELD_SCALE_HELD > room ? room / meldsWidthAt1 : OWN_MELD_SCALE_HELD;
+  return {
+    z: farEdge + SHELF_GAP + (TILE_H / 2) * scale,
+    right,
+    scale,
+    depth: meldsWidthAt1 > 0 ? SHELF_GAP + TILE_H * scale : 0,
+  };
 }
 
 /**

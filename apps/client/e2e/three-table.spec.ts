@@ -2305,3 +2305,118 @@ test('portrait river zoom is a plan view with no wall; the tray carries the draw
   expect(perf.drawCalls).toBeLessThanOrEqual(BUDGET.drawCalls);
   expect(errors, 'console / page errors').toEqual([]);
 });
+
+/**
+ * Round-FB5: "when zooming in, the hand tiles hide the peng / chi tiles".
+ * The plan-view zoom pins the near river's last row above the held hand,
+ * so the rack line the held hand's flat melds lay on (z ≈ 10–11.7) fell
+ * under the hand on screen. Zoomed, the user's melds move to a shelf
+ * just past their river (`layout.zoomMeldShelf`) and the frame pins the
+ * shelf's near edge above the hand (`riverZoomFrameFor`'s `shelfDepth`),
+ * so every meld tile lies between the river block and the hand, inside
+ * the viewport and under no hand tile — on both short phones, where the
+ * zoom is height-bound and has to back off for the shelf.
+ */
+for (const [w, h] of [
+  [412, 700],
+  [360, 640],
+] as const) {
+  test(`portrait river zoom (${w}×${h}) keeps two melds on the shelf between the river block and the held hand`, async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    await page.setViewportSize({ width: w, height: h });
+    await page.addInitScript(() => {
+      const g = globalThis as {
+        __MAHJONG_TEST_SEED__?: number;
+        __MAHJONG_TEST_BOT_SCRIPTS__?: Record<number, object>;
+        __MAHJONG_TUTORIAL_FORCE_PASS__?: boolean;
+      };
+      g.__MAHJONG_TEST_SEED__ = 41;
+      g.__MAHJONG_TEST_BOT_SCRIPTS__ = { 1: {}, 2: {}, 3: {} };
+      g.__MAHJONG_TUTORIAL_FORCE_PASS__ = true;
+    });
+    const errors: string[] = [];
+    await startSolo(page, errors);
+    await waitForDealSettled(page);
+    await driveTwoMelds(page);
+    const tiles = page.getByTestId('own-hand-tile');
+    await expect(tiles).toHaveCount(7);
+    // The bots play round to the user's draw cue (forced to pass, so the
+    // user's are the only melds on the table) and the state holds there.
+    await waitForDrawCuePassing(page);
+    await waitForDealSettled(page);
+    await page.mouse.move(2, 2);
+    const table = page.getByTestId('table-3d');
+    const zoomT0 = await page.evaluate(() => performance.now());
+    await page.getByRole('button', { name: 'Zoom into the discards' }).click();
+    await expect(table).toHaveAttribute('data-river-zoom', 'true');
+    await waitForCameraSettled(page, zoomT0);
+    await waitForDealSettled(page);
+    type DbgRect = { left: number; top: number; width: number; height: number };
+    type DbgTile = { id: number; zone: string | null; rect: DbgRect | null };
+    const snap = await page.evaluate(() => {
+      const dbg = (
+        globalThis as { __MAHJONG_TABLE_3D_DEBUG__?: () => { tiles: DbgTile[] } | null }
+      ).__MAHJONG_TABLE_3D_DEBUG__?.();
+      return dbg?.tiles ?? [];
+    });
+    const rectsOf = (zone: string) =>
+      snap.filter((t) => t.zone === zone).map((t) => t.rect!) as DbgRect[];
+    const melds = rectsOf('meld');
+    const hand = rectsOf('hand');
+    const discards = rectsOf('discard');
+    expect(melds, 'peng + chi: six meld tiles, all projected').toHaveLength(6);
+    expect(melds.every((r) => r !== null)).toBe(true);
+    expect(hand).toHaveLength(7);
+    expect(discards.length).toBeGreaterThan(0);
+    const bottom = (r: DbgRect) => r.top + r.height;
+    const riverBottom = Math.max(...discards.map(bottom));
+    const handTop = Math.min(...hand.map((r) => r.top));
+    const handBoxes = await handTileBoxes(page);
+    const hit = (a: DbgRect, b: DbgRect) =>
+      a.left < b.left + b.width &&
+      a.left + a.width > b.left &&
+      a.top < b.top + b.height &&
+      a.top + a.height > b.top;
+    for (const m of melds) {
+      // Inside the viewport, with a little felt at the sides.
+      expect(m.left).toBeGreaterThanOrEqual(2);
+      expect(m.left + m.width).toBeLessThanOrEqual(w - 2);
+      expect(m.top).toBeGreaterThanOrEqual(0);
+      // Below the last river row and wholly above the held hand — under
+      // no hand tile (projected box) and no hand hit-target (44 px floor).
+      expect(m.top).toBeGreaterThanOrEqual(riverBottom - 1);
+      expect(bottom(m)).toBeLessThanOrEqual(handTop);
+      for (const hr of hand) expect(hit(m, hr)).toBe(false);
+      for (const b of handBoxes)
+        expect(hit(m, { left: b.x, top: b.y, width: b.width, height: b.height })).toBe(false);
+    }
+    // The shelf's near edge is what the frame pins above the hand's band,
+    // so no toast can fit under it here: the toast slot is the header's.
+    await expect(table).toHaveAttribute('data-toast-slot', 'strip');
+    // Leaving the zoom puts the melds back on the rack line, off the shelf.
+    await page.getByTestId('river-zoom-exit').click();
+    await expect(table).toHaveAttribute('data-river-zoom', 'false');
+    await expect
+      .poll(
+        () =>
+          page.evaluate(() => {
+            const dbg = (
+              globalThis as {
+                __MAHJONG_TABLE_3D_DEBUG__?: () => {
+                  tiles: { zone: string | null; z: number }[];
+                } | null;
+              }
+            ).__MAHJONG_TABLE_3D_DEBUG__?.();
+            const z = dbg?.tiles.filter((t) => t.zone === 'meld').map((t) => t.z) ?? [];
+            return z.length === 6 && z.every((v) => v > 9.9) ? 'rack' : `shelf:${z.join(',')}`;
+          }),
+        { timeout: 10_000 },
+      )
+      .toBe('rack');
+    const perf = await readPerf(page);
+    expect(perf.drawCalls).toBeLessThanOrEqual(BUDGET.drawCalls);
+    expect(errors, 'console / page errors').toEqual([]);
+  });
+}

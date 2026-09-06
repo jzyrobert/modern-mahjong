@@ -493,7 +493,15 @@ CC0-only asset policy, verifier rules. Operational notes:
   (`LayoutOptions.hideWalls` / `hideSideSeats`) and the tray's turn row
   carries the `wall-draw-next` pill (`hud/HandRail.DrawPill`). Do not
   re-introduce a near-wall-in-frame constraint: at 84° it caps the
-  short phone at 1.2× (round-FB4).
+  short phone at 1.2× (round-FB4). **The zoom lays the user's melds on
+  a shelf past their river** (`layout.zoomMeldShelf`, `LayoutOptions.
+  heldMeldsShelf`; 1.3×, right-aligned `SHELF_MARGIN` inside the block,
+  shrunk to fit four) and the frame pins the shelf's near edge — not the
+  river's — above the hand (`riverZoomFrameFor(..., shelfDepth)`,
+  `zoomNearPoint`): the held hand's rack line lies *under* the hand on
+  screen in the plan view (round-FB5 "the hand tiles hide the peng / chi
+  tiles"). The shell re-fits the camera when the meld count changes
+  mid-zoom and projects the shelf's edge for the zoomed toast slot.
 - **Table pointer parallax is a drift, not a follow**
   (`cameraPresets.TABLE_PARALLAX`: 0.08 units, 0.5 s half-life via
   `CameraRig.parallaxHalfLife`) on the match table and the replay.
