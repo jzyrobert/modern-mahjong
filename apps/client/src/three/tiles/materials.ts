@@ -59,12 +59,13 @@ export interface TileMaterialUniforms {
    * shades on the other. The fragment stage reads the atlas' ink mask
    * as a height map — finite differences `uAtlasTexel × INLAY_STEP`
    * apart — and tilts the shading normal (and the clearcoat's) by
-   * `uInlayDepth` × that gradient along the face's tangents. The
-   * gradient lives in the texels around each stroke, so a river tile
-   * at a few px per texel samples a coarser mip and the relief fades
-   * with distance instead of shimmering; up close (the held hand, the
-   * tile sheet) the strokes read as cut into the face (round-5 ask:
-   * "a small 3d inlay effect … as real tiles are carved").
+   * `uInlayDepth` × that gradient along the face's tangents, on the
+   * ivory side of the edge only (the paint in the groove lies flat and
+   * keeps its colour). The step is at least ~0.6 screen px wide and
+   * the relief fades out on faces under ~40 device px, so river tiles
+   * do not read edge noise; up close (the held hand, the tile sheet)
+   * the strokes read as cut into the face (round-5 ask: "a small 3d
+   * inlay effect … as real tiles are carved").
    */
   uAtlasTexel: { value: Vector2 };
   uInlayDepth: { value: number };
@@ -73,7 +74,7 @@ export interface TileMaterialUniforms {
 /** Half-width of the ink height-map's finite difference, atlas texels. */
 export const INLAY_STEP = 3.0;
 /** Normal tilt per unit of ink gradient — see `TileMaterialUniforms.uInlayDepth`. */
-export const INLAY_DEPTH = 1.3;
+export const INLAY_DEPTH = 1.6;
 
 /** Body roughness shared by the tile faces and, by default, the back. */
 export const TILE_BODY_ROUGHNESS = 0.5; // see the material note below on the satin finish
@@ -225,8 +226,10 @@ export function createTileMaterial(
         varying vec3 vTanV;
         varying vec3 vBitV;
         // Ink coverage at an atlas texel — the carved face's depth map.
+        // Sampled a shade blurrier than the face itself (+0.35 LOD) so
+        // the gradient is taken across a smoothed edge, never a texel.
         float mjInk(vec2 uv) {
-          vec3 c = texture2D(uAtlas, uv, -0.35).rgb;
+          vec3 c = texture2D(uAtlas, uv, 0.35).rgb;
           return 1.0 - smoothstep(0.3, 0.6, dot(c, vec3(0.299, 0.587, 0.114)));
         }
         varying vec2 vAtlasUv;
@@ -297,11 +300,22 @@ export function createTileMaterial(
         // ink mask's gradient (paint sits below the ivory surface, so
         // the height falls where the ink rises).
         if (showFace > 0.5) {
-          vec2 du = vec2(uAtlasTexel.x * ${INLAY_STEP.toFixed(3)}, 0.0);
-          vec2 dv = vec2(0.0, uAtlasTexel.y * ${INLAY_STEP.toFixed(3)});
+          // Footprint-aware: difference across at least ~0.6 screen px
+          // so a river tile at four texels per pixel does not read
+          // sub-pixel edge noise, and fade the relief out on faces
+          // smaller than ~40 device px (over ~6 texels per pixel).
+          vec2 fw = fwidth(vAtlasUv);
+          vec2 stepUv = max(uAtlasTexel * ${INLAY_STEP.toFixed(3)}, fw * 0.6);
+          float tpp = max(fw.x / uAtlasTexel.x, fw.y / uAtlasTexel.y);
+          vec2 du = vec2(stepUv.x, 0.0);
+          vec2 dv = vec2(0.0, stepUv.y);
           float gx = mjInk(vAtlasUv + du) - mjInk(vAtlasUv - du);
           float gy = mjInk(vAtlasUv + dv) - mjInk(vAtlasUv - dv);
-          normal = normalize(normal + (vTanV * gx + vBitV * gy) * uInlayDepth);
+          // Only the ivory side of the edge is a groove wall: the paint
+          // in the groove lies flat and keeps its colour (round-5 critic:
+          // shading the ink side turned green and red ink black-rimmed).
+          float relief = uInlayDepth * inkMask * (1.0 - smoothstep(5.0, 8.0, tpp));
+          normal = normalize(normal + (vTanV * gx + vBitV * gy) * relief);
         }`,
       )
       .replace(

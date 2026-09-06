@@ -592,6 +592,36 @@ CC0-only asset policy, verifier rules. Operational notes:
   `__MAHJONG_TEST_REPLAY_FIXTURE__` (`src/replay/fixture.ts`) and deep-
   link with `?frame=`. RN-web `nativeEvent` has no `locationX` — use
   `src/ui/replay/timeline.ts`'s `pressX` for any tap-to-seek surface.
+- **Tiles leave a layout by sinking, never blinking**
+  (`choreography` `vanish` / `rise`, `SINK_DEPTH` 1.7, 360 / 320 ms):
+  a tile whose next slot is null sinks straight down through the felt
+  at full size and is hidden only once under; a tile re-entering the
+  layout rises from the same depth. Reduced motion and `snap` keep the
+  instant hide. The portrait zoom's felt spread (`ZOOM_FELT_SCALE`)
+  and rail sink (`RAIL_SINK`) blend in `TableScene.applyZoomBlend`
+  on the same beat instead of switching in `sync` (round-FB5: "all
+  other tiles suddenly being unrendered and then re-rendered is
+  jarring"). Never `t.scale = 0` a visible tile from `apply`. The e2e
+  samples the sink *alongside* the zoom tap under `×8` slow motion —
+  on a loaded SwiftShader shard `click()` returns seconds later, after
+  a 360 ms motion has finished — and reads three samples, because the
+  snapshot rounds `y` to 0.01 and the ease-in drops nothing visible in
+  the first half second.
+- **Glyphs are carved** (`tiles/materials.ts` `INLAY_STEP` 3 texels,
+  `INLAY_DEPTH` 1.6, program key v11): the atlas' ink mask is a height
+  map — finite differences at least `INLAY_STEP` texels *and* ~0.6
+  screen px apart (`fwidth`) tilt the shading normal and the clearcoat
+  normal along the face tangents (`vTanV` / `vBitV`, transformed like
+  the normal, instanced) — **on the ivory side of the edge only**
+  (weighted by `inkMask`): the paint in the groove lies flat and keeps
+  its colour. The round-5 critic measured the symmetric version
+  darkening green / red ink toward black (發 142 → 123) and adding edge
+  noise on 24 px river tiles; the footprint-aware step plus a fade on
+  faces under ~40 device px (≥ 6 texels per px) left the river
+  pixel-identical. A 1.25-texel step at depth 0.9 was invisible on the
+  phone (two texels per device px); judge any retune on a ≥ 3× crop of
+  `match-my-turn` at phone and desktop against `dist-before`, and keep
+  the phone luminance guard in `three-table.spec.ts` green.
 - **Tile finish is satin, not lacquer** (`src/three/tiles/materials.ts`:
   body roughness 0.5, clearcoat 0.3 / 0.45). The steep phone camera
   looks at the held hand almost face-on, so a glossy body put the key
