@@ -591,15 +591,27 @@ CC0-only asset policy, verifier rules. Operational notes:
   ink (round-FB3 "tiles fade toward the right"). Moving the light only
   moves the wash; keep the finish and the e2e luminance guard in
   `three-table.spec.ts` (face spread ≤ 12, darkest-ink spread ≤ 28).
-- **Walls are a pinwheel** (`layout.WALL_STAGGER`, round-4 feedback):
-  every 17-stack run is shifted 2.0 units along its own axis toward its
-  owner's right, so from the user's seat the near wall overhangs on
-  their right (`WALL_END` = 10.74, 1.16 inside the felt edge) and its
-  left end stops 1.38 short of the left wall — like an automatic table.
-  `wallSlotRefs` (break / dead / live bookkeeping) is untouched; only
-  `wallSlotPosition` carries the stagger, so anything that hard-codes a
-  wall *end* (lobby framing tests, HUD anchors near a corner) must read
-  `WALL_END` rather than assume a centred ±8.74 run.
+- **Walls are a yawed pinwheel** (`layout.WALL_STAGGER` + `WALL_YAW`,
+  round-4 feedback): every 17-stack run is shifted 2.0 units along its
+  own axis toward its owner's right and turned 2.5° about its centre
+  with the overhanging end swinging *out* toward its owner's rail (same
+  sense on all four), so from the user's seat the near wall overhangs
+  on their right (`WALL_END` ≈ 10.76) and no wall lies parallel to its
+  rail — like a real table. The sign is load-bearing: an overhang's tip
+  stands in the next seat's row corridor, and swinging it out is what
+  opens the along-row gap (`WALL_OVERHANG_INNER`; rows slide right to
+  keep `ROW_OVERHANG_GAP` = 1.0 via `rowLeftLimit`, the user's row 0.6)
+  and the 0.88 between the left wall's tip and a 14-tile hand. The yaw
+  costs the rows around the wall their slack, so the portrait side rows
+  (`SIDE_SEAT_OUT_PORTRAIT`), every preset's far row (`FAR_SEAT_OUT`)
+  and the held hand's melds (`OWN_MELD_Z_HELD`) step out by 0.25–0.35;
+  the in-swinging half clears the 1.36× river's third row by 0.03
+  (`WALL_YAW_LIFT`). `wallSlotRefs` (break / dead / live bookkeeping) is
+  untouched; only `wallSlotPosition` → `wallRunPoint` carries the
+  stagger + yaw, so anything that hard-codes a wall *end* or face
+  (lobby framing tests, HUD anchors near a corner, the river-interior
+  rect) must read `WALL_END` / `WALL_OVERHANG_*` / `wallInnerFaceAt`
+  rather than assume a straight ±8.74 run at z 8.12–9.48.
 - **Dead wall = darker back shade only; own melds = plain aligned rows**
   (round-4 feedback). The 14 dead tiles are told apart by `aBackVariant`
   selecting `uDeadBack*` (`materials.deadBackColors`, same hue, darker)

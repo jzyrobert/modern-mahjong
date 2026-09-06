@@ -33,20 +33,18 @@ import { Choreographer, type TileMotionState, slotPose } from './choreography';
 import { DRAG_LIFT, DRAG_TILT } from './dragReorder';
 import {
   CENTRE_PLATE_RADIUS,
-  CHIP_POCKET_NUDGE,
   FELT_HALF,
   type HeldHandFrame,
   type Layout,
   RAIL_H,
   RAIL_WIDTH,
   type Rel,
-  WALL_D,
   computeLayout,
-  dealerChipBlocked,
   dealerChipLocal,
   relOf,
   tileSheetLayout,
   toWorld,
+  wallInnerFaceAt,
 } from './layout';
 import { type ScreenRect, projectPlaneRect, projectTileFaceRect, projectTileRect } from './picking';
 import { buildRailGeometry } from './rail';
@@ -113,6 +111,8 @@ export interface SyncInput {
   nearWallDim?: number | undefined;
   /** Side seats' outward shift — see `LayoutOptions.sideSeatOut`. */
   sideSeatOut?: number | undefined;
+  /** Far seat's outward shift — see `LayoutOptions.farSeatOut`. */
+  farSeatOut?: number | undefined;
   /** Right seat's melds at the near end — see `LayoutOptions.sideMeldsNear`. */
   sideMeldsNear?: boolean | undefined;
   /** Side seats' meld scale — see `LayoutOptions.sideMeldScale`. */
@@ -183,19 +183,20 @@ export const TABLE_BACK_FINISH = { clearcoat: 0.12, roughness: 0.72 } as const;
  * and dead-wall segments read as one set at two shades (round-4 #5).
  * Note the "step" the critic saw at the desktop near wall's right end is
  * the pinwheel corner, not a jog: the near wall's overhanging end runs
- * `WALL_STAGGER` past the right wall's inner face (`layout.WALL_END`),
- * so the right wall's near-end stack stands behind and inboard of it
- * (every stack at y 0.31 / 0.93) and its ivory side shows above the
- * near wall's top face.
+ * `WALL_STAGGER` past the right wall's inner face (`layout.WALL_END`)
+ * and, yawed `WALL_YAW`, swings 0.36 toward the near rail, so the right
+ * wall's near-end stack stands behind and inboard of it (every stack at
+ * y 0.31 / 0.93) and its ivory side shows above the near wall's top face.
  */
 export const TABLE_BACK_GRADIENT = 0.55;
 /**
  * Dealer chip: a red lacquer disc parked in the dealer's near-left
  * corner pocket — the patch the pinwheel rivers never reach (see
  * `layout.dealerChipLocal`). At the wide presets' river scale it sits at
- * z ≈ 5.6, which keeps its near edge above the near wall's inner top
+ * z ≈ 5.1, which keeps its near edge above the near wall's inner top
  * edge from the low phone-landscape camera, so the glyph is never
- * half-occluded.
+ * half-occluded; on portrait it moves into the pocket between the left
+ * wall and the near wall's retreated end.
  */
 export const CHIP_RADIUS = 0.56;
 export const CHIP_H = 0.22;
@@ -300,9 +301,6 @@ export class TableScene {
   private marker: Mesh;
   private markerRel: Rel | null = null;
   private markerScale = 1;
-  /** Hand the chip's pocket decision was made for + whether it stepped in (see `dealerChipBlocked`). */
-  private markerHandKey = '';
-  private markerNudged = false;
   private dice: InstancedMesh;
   private diceValues: [number, number] | null = null;
   /**
@@ -620,8 +618,6 @@ export class TableScene {
     this.marker.visible = false;
     this.markerRel = null;
     this.markerScale = 1;
-    this.markerHandKey = '';
-    this.markerNudged = false;
     this.cueHalo.visible = false;
     this.cueHaloMat.opacity = 0;
     this.cueHaloTarget = { x: 0, z: 0, sx: 0, sz: 0, on: false, band: false };
@@ -761,6 +757,7 @@ export class TableScene {
       hideWalls: input.hideWalls,
       concealOwn: input.concealOwn,
       sideSeatOut: input.sideSeatOut,
+      farSeatOut: input.farSeatOut,
       sideMeldsNear: input.sideMeldsNear,
       sideMeldScale: input.sideMeldScale,
       farMeldsOnRail: input.farMeldsOnRail,
@@ -824,34 +821,17 @@ export class TableScene {
     );
     const rel = relOf(state.dealer, me);
     const riverScale = input.riverScale ?? 1;
-    // The pocket decision holds for the hand (stacks only ever leave the
-    // wall, so a chip that parked in the pocket never needs to step in
-    // later, and one that stepped in never slides back out mid-hand).
-    const handKey = `${state.dealer}:${state.openingRolls?.breakPosition ?? '-'}:${state.prevailingWind}`;
-    if (handKey !== this.markerHandKey) {
-      this.markerHandKey = handKey;
-      this.markerNudged = false;
-      this.markerRel = null;
-    }
-    const chipLocal = dealerChipLocal(riverScale, CHIP_RADIUS);
-    const nudged =
-      this.markerNudged || (!waiting && dealerChipBlocked(layout, rel, chipLocal, CHIP_RADIUS));
     if (waiting) {
       this.marker.visible = false;
       this.markerRel = null;
-    } else if (
-      rel !== this.markerRel ||
-      riverScale !== this.markerScale ||
-      nudged !== this.markerNudged
-    ) {
+    } else if (rel !== this.markerRel || riverScale !== this.markerScale) {
       this.markerRel = rel;
       this.markerScale = riverScale;
-      this.markerNudged = nudged;
-      // Parked in the dealer's near-left corner pocket, glyph facing
-      // the dealer — a step toward the centre when wall stacks still
-      // stand in that pocket (`dealerChipBlocked`).
-      const [lx, lz] = chipLocal;
-      const [mx, mz] = toWorld(rel, lx, lz - (nudged ? CHIP_POCKET_NUDGE : 0));
+      // Parked in the dealer's near-left corner, glyph facing the dealer
+      // (`dealerChipLocal`: beside the arm's end on the wide presets, in
+      // the walls' corner pocket on portrait).
+      const [lx, lz] = dealerChipLocal(riverScale, CHIP_RADIUS);
+      const [mx, mz] = toWorld(rel, lx, lz);
       this.marker.position.set(mx, CHIP_H / 2, mz);
       this.marker.quaternion.setFromAxisAngle(Y_AXIS, (rel * Math.PI) / 2);
       this.marker.visible = true;
@@ -1078,17 +1058,19 @@ export class TableScene {
     if (this.interiorPublished && cam.matrixWorld.equals(this.interiorCam)) return;
     this.interiorCam.copy(cam.matrixWorld);
     this.interiorPublished = true;
-    const face = WALL_D - TILE_H / 2;
     const stackTop = TILE_D * 2;
     let left = Number.NEGATIVE_INFINITY;
     let right = Number.POSITIVE_INFINITY;
     let top = Number.NEGATIVE_INFINITY;
     let bottom = Number.POSITIVE_INFINITY;
+    // Each wall's inner face is a yawed line (`wallInnerFaceAt`, owner's
+    // frame): world t along the left / near walls is the owner's x, along
+    // the right / far walls it is −x (`toLocal`).
     for (const t of [-9.5, 0, 9.5]) {
-      left = Math.max(left, this.projectPoint(-face, 0, t).x);
-      right = Math.min(right, this.projectPoint(face, 0, t).x);
-      top = Math.max(top, this.projectPoint(t, 0, -face).y);
-      bottom = Math.min(bottom, this.projectPoint(t, stackTop, face).y);
+      left = Math.max(left, this.projectPoint(-wallInnerFaceAt(t), 0, t).x);
+      right = Math.min(right, this.projectPoint(wallInnerFaceAt(-t), 0, t).x);
+      top = Math.max(top, this.projectPoint(t, 0, -wallInnerFaceAt(-t)).y);
+      bottom = Math.min(bottom, this.projectPoint(t, stackTop, wallInnerFaceAt(t)).y);
     }
     const r = this.ctx.renderer.domElement.getBoundingClientRect();
     publishRiverInterior({

@@ -75,7 +75,9 @@ describe('camera + held hand', () => {
     expect(replaySyncTuning('phone-portrait', true)).toMatchObject({
       riverScale: 1.36,
       nearWallDim: 1,
-      sideSeatOut: 0,
+      // Portrait side rows step out for the yawed walls (`SIDE_SEAT_OUT_PORTRAIT`).
+      sideSeatOut: 0.25,
+      farSeatOut: 0.3,
       farMeldsOnRail: false,
       ownMeldsStanding: true,
     });
