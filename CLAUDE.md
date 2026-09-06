@@ -675,3 +675,30 @@ CC0-only asset policy, verifier rules. Operational notes:
   frame choice and hand-at-rest have settled, then reveals once
   (`revealed` seam; recipes wait on it) — never relayout after first
   paint.
+- **Coach-card keep-outs come in two strengths** (`placement.ts`
+  `PlacementInput.keepOut` / `keepOutSoft`, round 6): hard regions (the
+  hand rows, the result panel, the portrait seat strip under a centred
+  card, and the opponents' badges — `data-seat-badge="opponent"` on the
+  3D `SeatBadge` — under a step about the other seats: `shared-discards`,
+  `wall-draw`) are never crossed; soft groups (the river interior the
+  table publishes, under a no-target card; the badges under any other
+  card) are honoured while *some* placement clears them and dropped
+  last-group-first otherwise (`placeCaption` wraps `placeCaptionStrict`).
+  Consequences worth knowing: the phone river card sits *under* the hand
+  over the turn chip + footer (badges, ring and near wall in view); the
+  desktop no-target cards take the column beside the river block; a
+  landscape side dock whose vertical slots cannot hold even a tight card
+  is capped to `sideDockRoom` (the band between the badge and the hand)
+  and takes the `tight` frame — decided from the halo, the regions and
+  the viewport only. Running `chooseFrame` on short viewports with a
+  room derived from the *placement* oscillated into React #185 (the
+  frame → measure → place → room → frame loop); keep every short-viewport
+  frame input placement-free. A `wall-draw` step registers its anchor on
+  the next live wall tile even on a bot's turn (`Table3DShell`
+  `tutorialWallAnchor`) and the spotlight publishes the dimmer
+  `SPOTLIGHT_LEVEL_BACK` for it, so the face-down tile reads as a tile
+  under a ring, not a cream slab. Strips in a band that ends at the safe
+  line drop `STRIP_BREATHING` (`bandEndsAtRegion`), which is what lets
+  the four-line river caption sit whole in the 130 px band under a
+  412×700 hand; targets within `MIN_RING_PAD` (6 px) of a viewport edge
+  open the ring there (the landscape footer's claim strip / tsumo).

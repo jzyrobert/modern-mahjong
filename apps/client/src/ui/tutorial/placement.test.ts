@@ -33,7 +33,9 @@ import {
   intersectionArea,
   noSideSlot,
   placeCaption,
+  placementRect,
   safeInset,
+  sideDockRoom,
   sideIdealTop,
   slotRoom,
   trimStraddlers,
@@ -67,15 +69,18 @@ describe('haloFor', () => {
     // Result panel taller than a landscape phone: the bottom runs past
     // the screen edge, so that side overhangs (clipped by the overlay)
     // and no stroke is drawn across the panel's action row; the top,
-    // 4 px in, keeps a closed ring at the edge margin; the sides stay
-    // padded.
+    // 4 px in, has less than MIN_RING_PAD of room and opens too (a
+    // stroke squeezed into 4 px read as flush with the edge); the sides
+    // stay padded.
     const h = haloFor({ x: 220, y: 4, w: 480, h: 460 }, landscape);
     expect(h).toEqual({
       left: 212,
-      top: RING_EDGE_MARGIN,
+      top: -HALO_OVERHANG,
       width: 496,
-      height: 412 + HALO_OVERHANG - RING_EDGE_MARGIN,
+      height: 412 + HALO_OVERHANG * 2,
     });
+    // Ten px in, the top keeps a closed ring at the edge margin.
+    expect(haloFor({ x: 220, y: 10, w: 480, h: 460 }, landscape)?.top).toBe(RING_EDGE_MARGIN);
     // A panel flush with the top edge opens there.
     expect(haloFor({ x: 220, y: 0, w: 480, h: 460 }, landscape)?.top).toBe(-HALO_OVERHANG);
     // Horizontal sides never open: the hand container spans a phone
@@ -103,9 +108,14 @@ describe('haloFor', () => {
     // running off the bottom of the screen.
     const flush = haloFor({ x: 338, y: 367, w: 244, h: 37 }, landscape);
     expect((flush?.top ?? 0) + (flush?.height ?? 0)).toBe(412 - RING_EDGE_MARGIN);
-    // …but with less than MIN_RING_PAD of room the side still opens.
-    const tight = haloFor({ x: 338, y: 372, w: 244, h: 37 }, landscape);
+    // …but with less than MIN_RING_PAD of room the side opens: the 3D
+    // landscape footer's claim strip and tsumo button end 5 px above the
+    // screen edge, where a closed ring sat flush with it (round-5 critic).
+    const tight = haloFor({ x: 338, y: 370, w: 244, h: 37 }, landscape);
     expect((tight?.top ?? 0) + (tight?.height ?? 0)).toBe(412 + HALO_OVERHANG);
+    expect(haloFor({ x: 338, y: 372, w: 244, h: 37 }, landscape)?.height).toBe(
+      412 + HALO_OVERHANG - (372 - HALO_PAD),
+    );
     // A well-inset target is untouched.
     expect(haloFor({ x: 100, y: 100, w: 40, h: 20 }, phone)).toEqual({
       left: 92,
@@ -1320,5 +1330,242 @@ describe('portrait overlap fallback: never onto the hand', () => {
     const p = placeCaption({ viewport: vp, halo: modal, cardHeight: 237, avoid: header });
     expect(p.kind).toBe('below');
     expect(p.top + 237).toBeLessThanOrEqual(vp.height - safeInset(vp.width));
+  });
+});
+
+/**
+ * Round-5 critic: the "watch the bots" card covered a bot's badge at
+ * every viewport, and no-target cards parked over the plate and rivers.
+ * Geometry from the 3D probes of `tutorial-basics-4` / `-basics-1` /
+ * `-scoring-0` (`shots/r6u-before`).
+ */
+describe('keepOutSoft: regions the card keeps off when it can', () => {
+  const desktopRiver = { left: 494, top: 260, width: 478, height: 333 };
+  const desktopHand = { left: 371, top: 713, width: 698, height: 77 };
+  const desktopBadges = [
+    { left: 102, top: 364, width: 165, height: 44 },
+    { left: 1173, top: 364, width: 156, height: 44 },
+    { left: 635, top: 106, width: 170, height: 44 },
+  ];
+
+  test('desktop river card: the side dock slides under the badge instead of covering it', () => {
+    const p = placeCaption({
+      viewport: desktop,
+      halo: desktopRiver,
+      cardHeight: 216,
+      keepOut: [desktopHand, ...desktopBadges],
+    });
+    expect(p.kind).toBe('left');
+    const card = placementRect(p, { viewport: desktop, halo: desktopRiver, cardHeight: 216 });
+    for (const b of desktopBadges) expect(intersectionArea(card, b)).toBe(0);
+    expect(intersectionArea(card, desktopHand)).toBe(0);
+    // Still beside the ring.
+    expect(p.top).toBeLessThanOrEqual(desktopRiver.top + desktopRiver.height);
+    expect(p.top + 216).toBeGreaterThanOrEqual(desktopRiver.top);
+  });
+
+  test('desktop no-target card: the river interior as a soft keep-out puts the card beside the table', () => {
+    const p = placeCaption({
+      viewport: desktop,
+      halo: null,
+      cardHeight: 195,
+      keepOut: [desktopHand],
+      keepOutSoft: [[desktopRiver], desktopBadges],
+    });
+    expect(p.kind).toBe('center');
+    const card = placementRect(p, { viewport: desktop, halo: null, cardHeight: 195 });
+    expect(intersectionArea(card, desktopRiver)).toBe(0);
+    for (const b of desktopBadges) expect(intersectionArea(card, b)).toBe(0);
+    expect(intersectionArea(card, desktopHand)).toBe(0);
+    // In one of the two columns beside the river block, inside the insets.
+    expect(
+      p.left >= desktopRiver.left + desktopRiver.width || p.left + p.width <= desktopRiver.left,
+    ).toBe(true);
+    expect(p.left).toBeGreaterThanOrEqual(safeInset(1440) - 1);
+    expect(p.left + p.width).toBeLessThanOrEqual(1440 - safeInset(1440) + 1);
+  });
+
+  test('the last soft group is dropped first when honouring all of them leaves no room', () => {
+    // A 300 px card cannot clear both the badge and the hand in the
+    // column beside the river: the badges give way, the river holds.
+    const p = placeCaption({
+      viewport: desktop,
+      halo: null,
+      cardHeight: 300,
+      keepOut: [desktopHand],
+      keepOutSoft: [[desktopRiver], desktopBadges],
+    });
+    const card = placementRect(p, { viewport: desktop, halo: null, cardHeight: 300 });
+    expect(intersectionArea(card, desktopRiver)).toBe(0);
+    expect(intersectionArea(card, desktopHand)).toBe(0);
+  });
+
+  test('every soft group gives way before a hard keep-out is crossed', () => {
+    // Portrait phone: the river block fills the band between the seat
+    // strip and the hand, so no centred card clears it — the card falls
+    // back to the band (as before) rather than onto the hand.
+    const vp = { width: 412, height: 700 };
+    const hand = { left: 40, top: 403, width: 332, height: 141 };
+    const strip = { left: 12, top: 64, width: 388, height: 34 };
+    const river = { left: 106, top: 158, width: 200, height: 147 };
+    const p = placeCaption({
+      viewport: vp,
+      halo: null,
+      cardHeight: 216,
+      keepOut: [hand, strip],
+      keepOutSoft: [[river]],
+    });
+    const card = placementRect(p, { viewport: vp, halo: null, cardHeight: 216 });
+    expect(intersectionArea(card, hand)).toBe(0);
+    expect(intersectionArea(card, strip)).toBe(0);
+    expect(p).toEqual(
+      placeCaption({ viewport: vp, halo: null, cardHeight: 216, keepOut: [hand, strip] }),
+    );
+  });
+
+  test('phone river card: with the seat strip as a keep-out the strip lands under the hand', () => {
+    // 412×700 probe: seat strip 64–98, river ring 166–297, hand 403–544.
+    const vp = { width: 412, height: 700 };
+    const ring = { left: 116, top: 166, width: 190, height: 131 };
+    const hand = { left: 40, top: 403.5, width: 332, height: 140.5 };
+    const seatStrip = { left: 12, top: 64, width: 388, height: 34 };
+    const chrome = [
+      seatStrip,
+      { left: 12, top: 12, width: 120, height: 40 },
+      { left: 140, top: 552, width: 130, height: 36 },
+      { left: 90, top: 600, width: 240, height: 34 },
+      { left: 12, top: 651, width: 114, height: 34 },
+      { left: 200, top: 651, width: 200, height: 34 },
+    ];
+    const p = placeCaption({
+      viewport: vp,
+      halo: ring,
+      cardHeight: 216,
+      stripHeight: 134,
+      avoid: chrome,
+      keepOut: [hand, seatStrip],
+    });
+    expect(p.kind).toBe('strip');
+    expect(p.top).toBeGreaterThanOrEqual(hand.top + hand.height + CHROME_GAP);
+    expect(p.room).toBeCloseTo(700 - 12 - (hand.top + hand.height + CHROME_GAP), 5);
+    // The band ends at the safe line, not a region: no breathing needed,
+    // so the 134 px four-line strip fits the 136 px band whole.
+    expect(p.bandEndsAtRegion).toBe(false);
+    const card = placementRect(p, { viewport: vp, halo: ring, cardHeight: 216, stripHeight: 134 });
+    expect(intersectionArea(card, seatStrip)).toBe(0);
+    expect(intersectionArea(card, hand)).toBe(0);
+    // Without the seat strip as a keep-out the top band still wins; its
+    // strip hangs under the safe line and grows up toward it — not a
+    // region either.
+    const top = placeCaption({
+      viewport: vp,
+      halo: ring,
+      cardHeight: 216,
+      stripHeight: 134,
+      avoid: chrome,
+      keepOut: [hand],
+    });
+    expect(top.kind).toBe('strip');
+    expect(top.top).toBe(12);
+    expect(top.bandEndsAtRegion).toBe(false);
+    // A band that ends at a region on the far side (the hand under a
+    // strip placed below a top-of-screen ring) keeps the breathing.
+    const mid = placeCaption({
+      viewport: vp,
+      halo: { left: 100, top: 60, width: 200, height: 100 },
+      cardHeight: 300,
+      stripHeight: 134,
+      keepOut: [hand, { left: 12, top: 640, width: 388, height: 50 }],
+    });
+    expect(mid.kind).toBe('strip');
+    expect(mid.top).toBe(160 + CHROME_GAP);
+    expect(mid.bandEndsAtRegion).toBe(true);
+  });
+});
+
+describe('sideDockRoom: the band a side card has between the regions crossing its strip', () => {
+  // 915×412 river card: ring 331–599 × 100–214, left badge 12–99 × 60–98,
+  // hand 146–769 × 291–357.
+  const ring = { left: 330.6, top: 100.2, width: 268.5, height: 114.4 };
+  const badge = { left: 12, top: 60, width: 87, height: 38 };
+  const hand = { left: 146, top: 291, width: 622, height: 66 };
+  test('landscape: the badge above and the hand below bound the left strip', () => {
+    expect(sideDockRoom(ring, [badge, hand], landscape)).toBeCloseTo(
+      291 - CHROME_GAP - (98 + CHROME_GAP),
+      5,
+    );
+    // Without the badge the band runs from the safe inset to the hand.
+    expect(sideDockRoom(ring, [hand], landscape)).toBeCloseTo(291 - CHROME_GAP - 12, 5);
+  });
+  test('unbounded without a side strip or without crossing regions', () => {
+    const wide = { left: 12, top: 100, width: 891, height: 100 };
+    expect(sideDockRoom(wide, [badge, hand], landscape)).toBe(Number.POSITIVE_INFINITY);
+    expect(sideDockRoom(ring, [], landscape)).toBe(Number.POSITIVE_INFINITY);
+    // A region mostly inside the ring is the spotlit content.
+    const inner = { left: 340, top: 110, width: 100, height: 40 };
+    expect(sideDockRoom(ring, [inner], landscape)).toBe(Number.POSITIVE_INFINITY);
+  });
+  test('a tight side card fits the band the room reports and clears both regions', () => {
+    const room = sideDockRoom(ring, [badge, hand], landscape);
+    // Tight frame: ~106 px of chrome around three lines and the cue.
+    const h = 106 + 3 * 21 + 12;
+    expect(h).toBeLessThanOrEqual(room + CHROME_GAP);
+    const p = placeCaption({
+      viewport: landscape,
+      halo: ring,
+      cardHeight: h,
+      keepOut: [badge, hand],
+    });
+    expect(p.kind).toBe('left');
+    const card = placementRect(p, { viewport: landscape, halo: ring, cardHeight: h });
+    expect(intersectionArea(card, badge)).toBe(0);
+    expect(intersectionArea(card, hand)).toBe(0);
+  });
+});
+
+describe('landscape dice strip: stretches over the hand tops under the modal', () => {
+  // 915×412 probe: modal ring 149–766 × 128–285, hand row from 291, the
+  // 81 px strip at 319 left a 28 px sliver of tile tops showing.
+  const modal = { left: 149.5, top: 127.5, width: 616, height: 157 };
+  const hand = { left: 122, top: 291, width: 670, height: 66 };
+  test('the strip top moves up to the row (never onto the ring) and reports its height', () => {
+    const p = placeCaption({
+      viewport: landscape,
+      halo: modal,
+      cardHeight: 240,
+      stripHeight: 81,
+      keepOut: [hand],
+    });
+    expect(p.kind).toBe('strip');
+    // Up to the row's top less the pad, but never nearer the ring than
+    // the pad (the modal's ring ends 6.5 px above the row here).
+    expect(p.top).toBe(
+      Math.round(Math.max(modal.top + modal.height + STRADDLE_PAD, 291 - STRADDLE_PAD)),
+    );
+    expect(p.top).toBeLessThan(291);
+    expect(p.height).toBe(412 - 12 - p.top);
+    // The natural strip already covering the row is left alone.
+    const tall = placeCaption({
+      viewport: landscape,
+      halo: modal,
+      cardHeight: 240,
+      stripHeight: 112,
+      keepOut: [hand],
+    });
+    expect(tall.top).toBe(412 - 12 - 112);
+    expect(tall.height).toBeUndefined();
+  });
+  test('a row too far above the strip is not chased', () => {
+    const far = { left: 122, top: 240, width: 670, height: 117 };
+    const p = placeCaption({
+      viewport: landscape,
+      halo: { ...modal, height: 100 },
+      cardHeight: 240,
+      stripHeight: 81,
+      keepOut: [far],
+    });
+    expect(p.kind).toBe('strip');
+    expect(p.top).toBe(412 - 12 - 81);
+    expect(p.height).toBeUndefined();
   });
 });

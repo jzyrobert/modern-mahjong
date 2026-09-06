@@ -6,6 +6,7 @@ import {
   chromeSignature,
   collectChromeRects,
   collectKeepOutRects,
+  collectSeatBadgeRects,
   findFocusRect,
   handTilesInPlace,
   isChromeCandidate,
@@ -261,5 +262,30 @@ describe('collectKeepOutRects / handTilesInPlace', () => {
   test('no hand on the page counts as in place', () => {
     document.body.innerHTML = '';
     expect(handTilesInPlace(document)).toBe(true);
+  });
+});
+
+describe('collectSeatBadgeRects', () => {
+  function badge(kind: string, rect: { left: number; top: number; width: number; height: number }) {
+    const node = document.createElement('div');
+    node.setAttribute('data-seat-badge', kind);
+    node.getBoundingClientRect = () =>
+      ({ ...rect, right: rect.left + rect.width, bottom: rect.top + rect.height }) as DOMRect;
+    return node;
+  }
+
+  test("the opponents' badges count, offset by the origin; the user's own and the overlay's do not", () => {
+    document.body.innerHTML = '';
+    document.body.appendChild(badge('opponent', { left: 100, top: 60, width: 90, height: 38 }));
+    document.body.appendChild(badge('you', { left: 12, top: 371, width: 150, height: 34 }));
+    const overlay = document.createElement('div');
+    overlay.setAttribute(OVERLAY_ATTR, '1');
+    overlay.appendChild(badge('opponent', { left: 0, top: 0, width: 50, height: 20 }));
+    document.body.appendChild(overlay);
+    expect(collectSeatBadgeRects(document, { x: 0, y: 10 })).toEqual([
+      { left: 100, top: 50, width: 90, height: 38 },
+    ]);
+    document.body.innerHTML = '';
+    expect(collectSeatBadgeRects(document, { x: 0, y: 0 })).toEqual([]);
   });
 });

@@ -76,6 +76,10 @@ export function SeatBadge({
   return (
     <div
       className="mj-hud-fade"
+      // Tutorial coach cards keep off the opponents' badges (their turn
+      // state is what a "watch the bots" step points at); the user's own
+      // badge is ordinary chrome a card may cover whole.
+      data-seat-badge={model.isYou ? 'you' : 'opponent'}
       aria-label={`${fullName}, ${model.seatWind} seat, ${model.score} points${model.isDealer ? ', dealer' : ''}${model.isActive ? ', active turn' : ''}`}
       style={glassStyle({
         position: 'relative',

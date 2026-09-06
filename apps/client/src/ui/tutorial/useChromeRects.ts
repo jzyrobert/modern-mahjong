@@ -5,6 +5,7 @@ import {
   chromeSignature,
   collectChromeRects,
   collectKeepOutRects,
+  collectSeatBadgeRects,
   handTilesInPlace,
 } from './chromeRects';
 import type { HaloRect } from './placement';
@@ -40,6 +41,8 @@ export interface ChromeScan {
   chrome: HaloRect[];
   /** Page elements a centred card keeps off (see `collectKeepOutRects`). */
   keepOuts: HaloRect[];
+  /** The opponents' seat badges (see `collectSeatBadgeRects`). */
+  badges: HaloRect[];
   /** Scans completed for the current step — the first runs at mount,
    *  the next two on the following frames. A card that waits for the
    *  third has seen the page as it is after any mount-time churn. */
@@ -66,10 +69,12 @@ export function useChromeRects({
 }: Options): ChromeScan {
   const [rects, setRects] = useState<HaloRect[]>(EMPTY);
   const [keepOuts, setKeepOuts] = useState<HaloRect[]>(EMPTY);
+  const [badges, setBadges] = useState<HaloRect[]>(EMPTY);
   const [scans, setScans] = useState(0);
   const [handInPlace, setHandInPlace] = useState(true);
   const sigRef = useRef('');
   const keepSigRef = useRef('');
+  const badgeSigRef = useRef('');
   const originRef = useRef(originNode);
   originRef.current = originNode;
   const bandRef = useRef(focusBand);
@@ -89,6 +94,10 @@ export function useChromeRects({
       if (keepSigRef.current !== '') {
         keepSigRef.current = '';
         setKeepOuts(EMPTY);
+      }
+      if (badgeSigRef.current !== '') {
+        badgeSigRef.current = '';
+        setBadges(EMPTY);
       }
       return;
     }
@@ -111,6 +120,12 @@ export function useChromeRects({
       if (keepSig !== keepSigRef.current) {
         keepSigRef.current = keepSig;
         setKeepOuts(keep);
+      }
+      const seats = collectSeatBadgeRects(document, { x: o?.left ?? 0, y: o?.top ?? 0 });
+      const seatSig = chromeSignature(seats);
+      if (seatSig !== badgeSigRef.current) {
+        badgeSigRef.current = seatSig;
+        setBadges(seats);
       }
       setScans((n) => (n < SCANS_TRACKED ? n + 1 : n));
       setHandInPlace(handTilesInPlace(document));
@@ -148,7 +163,7 @@ export function useChromeRects({
   }, [stepKey, settledRect, focusBand]);
 
   return useMemo(
-    () => ({ chrome: rects, keepOuts, scans, handInPlace }),
-    [rects, keepOuts, scans, handInPlace],
+    () => ({ chrome: rects, keepOuts, badges, scans, handInPlace }),
+    [rects, keepOuts, badges, scans, handInPlace],
   );
 }

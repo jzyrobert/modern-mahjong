@@ -9,18 +9,35 @@
  */
 let spotlight: readonly number[] = [];
 let spotlightSeq = 0;
+let spotlightLevel = 1;
 const spotlightListeners = new Set<(ids: readonly number[]) => void>();
 
 /** Publish the tile ids (0..135) the active step is about. Deduped
- *  and sorted; a no-op write does not bump the version or notify. */
-export function setSpotlightTiles(tileIds: readonly number[]): void {
+ *  and sorted; a no-op write does not bump the version or notify.
+ *  `level` scales the breathing curve (`spotlightPulse`) for this set:
+ *  1 is the hand's gold; a lone face-down wall tile takes
+ *  `SPOTLIGHT_LEVEL_BACK` so its back stays a back under the glow
+ *  rather than washing to a flat cream slab. */
+export function setSpotlightTiles(tileIds: readonly number[], level = 1): void {
   const next = Array.from(
     new Set(tileIds.filter((id) => Number.isInteger(id) && id >= 0 && id < 136)),
   ).sort((a, b) => a - b);
-  if (next.length === spotlight.length && next.every((id, i) => id === spotlight[i])) return;
+  const clamped = Math.min(1, Math.max(0, level));
+  if (
+    next.length === spotlight.length &&
+    next.every((id, i) => id === spotlight[i]) &&
+    clamped === spotlightLevel
+  )
+    return;
   spotlight = next;
+  spotlightLevel = clamped;
   spotlightSeq++;
   for (const l of spotlightListeners) l(spotlight);
+}
+
+/** Current level scale (see `setSpotlightTiles`). */
+export function getSpotlightLevel(): number {
+  return spotlightLevel;
 }
 
 export function clearSpotlightTiles(): void {
@@ -51,13 +68,21 @@ export const SPOTLIGHT_MIN = 0.35;
 export const SPOTLIGHT_MAX = 0.8;
 /** Level held under reduced motion (no breathing). */
 export const SPOTLIGHT_STATIC = 0.65;
+/** Level scale for a spotlit face-down tile (the last live wall tile
+ *  of the drawn-game lesson). The back shader mixes 70 % of the
+ *  highlight toward gold and adds a flat emissive on top, so the hand's
+ *  0.8 peak turned a lone back into a cream slab (round-5 critic); at
+ *  0.45 the back keeps its shade under a warm glow and the DOM ring
+ *  around the tile carries the "this one" cue. */
+export const SPOTLIGHT_LEVEL_BACK = 0.45;
 
-/** Breathing intensity in [SPOTLIGHT_MIN, SPOTLIGHT_MAX]; constant under reduced motion. */
+/** Breathing intensity in [SPOTLIGHT_MIN, SPOTLIGHT_MAX] scaled by the
+ *  published level; constant under reduced motion. */
 export function spotlightPulse(nowMs: number, reducedMotion: boolean): number {
-  if (reducedMotion) return SPOTLIGHT_STATIC;
+  if (reducedMotion) return SPOTLIGHT_STATIC * spotlightLevel;
   const phase = ((nowMs % SPOTLIGHT_PERIOD_MS) / SPOTLIGHT_PERIOD_MS) * Math.PI * 2;
   const t = 0.5 - 0.5 * Math.cos(phase); // 0 → 1 → 0, C1-smooth
-  return SPOTLIGHT_MIN + (SPOTLIGHT_MAX - SPOTLIGHT_MIN) * t;
+  return (SPOTLIGHT_MIN + (SPOTLIGHT_MAX - SPOTLIGHT_MIN) * t) * spotlightLevel;
 }
 
 // Test hatch — the 3D tutorial spec reads which tiles carry the gold
