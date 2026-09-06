@@ -1,7 +1,7 @@
 import { TOTAL_TILES } from '@mahjong/game-logic';
 import type { GameState, Seat } from '@mahjong/game-logic';
 import { Quaternion, Vector3 } from 'three';
-import { type Ease, clamp01, easeInOutCubic, easeOutCubic, easeOutQuint } from '../core/tween';
+import { type Ease, clamp01, easeInCubic, easeInOutCubic, easeOutCubic } from '../core/tween';
 import { type Layout, type TileSlot, type Zone, fullWallLayout } from './layout';
 
 /**
@@ -18,7 +18,29 @@ export interface Pose {
   quat: Quaternion;
 }
 
-export type FlightKind = 'draw' | 'discard' | 'claim' | 'slide' | 'dispense' | 'reveal' | 'appear';
+export type FlightKind =
+  | 'draw'
+  | 'discard'
+  | 'claim'
+  | 'slide'
+  | 'dispense'
+  | 'reveal'
+  | 'rise'
+  | 'vanish';
+
+/**
+ * How far a tile travels straight down to leave the table, world units:
+ * past its own height so a standing tile (1.36 tall) and a second-level
+ * wall tile (top at 1.24) both end fully under the felt plane, which
+ * then hides them. Tiles that leave a layout mid-hand — the four walls
+ * and the side seats' rows when the river zoom lays them out no more —
+ * *sink* through the felt (`vanish`) instead of blinking off, and come
+ * back up through it (`rise`) instead of popping in from nothing:
+ * round-5 feedback called the instant hide / pop-in "jarring".
+ */
+export const SINK_DEPTH = 1.7;
+/** Duration of a `vanish` sink, ms (eased in — the tile gathers speed as it goes). */
+export const VANISH_MS = 360;
 
 interface Flight {
   kind: FlightKind;
@@ -110,8 +132,7 @@ export function flightFor(
 ): { kind: FlightKind; duration: number; arc: number; spin: number; ease: Ease } {
   const rm = reducedMotion;
   const d = (ms: number) => (rm ? Math.min(ms, 120) : ms);
-  if (prev === null)
-    return { kind: 'appear', duration: d(260), arc: 0, spin: 0, ease: easeOutCubic };
+  if (prev === null) return { kind: 'rise', duration: d(320), arc: 0, spin: 0, ease: easeOutCubic };
   if ((prev === 'wall' || prev === 'deadWall') && (next === 'hand' || next === 'oppHand')) {
     return { kind: 'draw', duration: d(560), arc: rm ? 0 : 1.8, spin: 0, ease: easeInOutCubic };
   }
@@ -266,13 +287,32 @@ export class Choreographer {
       const ps = prev?.[id] ?? null;
       t.slot = ns;
       if (!ns) {
-        if (t.visible) {
-          // Fade out in place: shrink to nothing then hide.
+        if (!t.visible) continue;
+        if (o.snap || this.reducedMotion) {
           t.target = null;
           t.flight = null;
           t.scale = 0;
           t.visible = false;
+          continue;
         }
+        // Already on its way down.
+        if (t.flight?.kind === 'vanish') continue;
+        // Sink through the felt, then hide (`SINK_DEPTH`).
+        const from = { pos: t.pos.clone(), quat: t.quat.clone() };
+        const sunk = { pos: t.pos.clone().setY(t.pos.y - SINK_DEPTH), quat: t.quat.clone() };
+        t.target = null;
+        t.bounceAmp = 0;
+        t.bounceY = 0;
+        t.flight = {
+          kind: 'vanish',
+          from,
+          to: sunk,
+          start: now,
+          duration: VANISH_MS * motionSlowMo(),
+          arc: 0,
+          spin: 0,
+          ease: easeInCubic,
+        };
         continue;
       }
       const to = slotPose(ns);
@@ -320,19 +360,21 @@ export class Choreographer {
         continue;
       }
       if (!t.visible) {
-        // Newly visible mid-hand (rare — e.g. a restore): pop in place.
+        // Newly visible mid-hand (the walls coming back after a zoom, a
+        // restore): rise up through the felt into place.
         const f = flightFor(null, ns.zone, this.reducedMotion);
+        const from = { pos: to.pos.clone().setY(to.pos.y - SINK_DEPTH), quat: to.quat.clone() };
         t.visible = true;
-        t.scale = 0;
-        t.pos.copy(to.pos);
-        t.quat.copy(to.quat);
+        t.scale = 1;
+        t.pos.copy(from.pos);
+        t.quat.copy(from.quat);
         t.target = to;
         t.flight = {
           kind: f.kind,
-          from: { pos: to.pos.clone(), quat: to.quat.clone() },
+          from,
           to,
           start: now,
-          duration: f.duration,
+          duration: f.duration * (this.reducedMotion ? 1 : motionSlowMo()),
           arc: 0,
           spin: 0,
           ease: f.ease,
@@ -385,9 +427,16 @@ export class Choreographer {
           _q.setFromAxisAngle(Y_AXIS, fl.spin * (1 - e));
           t.quat.premultiply(_q);
         }
-        if (fl.kind === 'appear') t.scale = easeOutQuint(raw);
-        else t.scale = 1;
+        t.scale = 1;
         if (raw >= 1) {
+          if (fl.kind === 'vanish') {
+            // Under the felt: hide until a layout brings it back.
+            t.visible = false;
+            t.scale = 0;
+            t.flight = null;
+            t.target = null;
+            continue;
+          }
           t.pos.copy(fl.to.pos);
           t.quat.copy(fl.to.quat);
           t.scale = 1;

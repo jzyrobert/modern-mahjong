@@ -53,7 +53,27 @@ export interface TileMaterialUniforms {
    * neighbours (round-4 #5).
    */
   uBackGradAmount: { value: number };
+  /**
+   * Carved glyphs. A real tile's face is engraved and the paint sits in
+   * the groove, so the ink's edge catches the light on one side and
+   * shades on the other. The fragment stage reads the atlas' ink mask
+   * as a height map — finite differences `uAtlasTexel × INLAY_STEP`
+   * apart — and tilts the shading normal (and the clearcoat's) by
+   * `uInlayDepth` × that gradient along the face's tangents. The
+   * gradient lives in the texels around each stroke, so a river tile
+   * at a few px per texel samples a coarser mip and the relief fades
+   * with distance instead of shimmering; up close (the held hand, the
+   * tile sheet) the strokes read as cut into the face (round-5 ask:
+   * "a small 3d inlay effect … as real tiles are carved").
+   */
+  uAtlasTexel: { value: Vector2 };
+  uInlayDepth: { value: number };
 }
+
+/** Half-width of the ink height-map's finite difference, atlas texels. */
+export const INLAY_STEP = 3.0;
+/** Normal tilt per unit of ink gradient — see `TileMaterialUniforms.uInlayDepth`. */
+export const INLAY_DEPTH = 1.3;
 
 /** Body roughness shared by the tile faces and, by default, the back. */
 export const TILE_BODY_ROUGHNESS = 0.5; // see the material note below on the satin finish
@@ -87,6 +107,14 @@ export function feltColors(skin: FeltSkin): { top: Color; bottom: Color } {
   return { top: new Color(s.top), bottom: new Color(s.bottom) };
 }
 
+/** One texel of the face atlas in UV units (the relief's sampling step). */
+function atlasTexel(atlas: Texture): Vector2 {
+  const img = atlas.image as { width?: number; height?: number } | undefined;
+  const w = img?.width && img.width > 0 ? img.width : 256 * 7;
+  const h = img?.height && img.height > 0 ? img.height : 352 * 5;
+  return new Vector2(1 / w, 1 / h);
+}
+
 export function createTileMaterial(
   atlas: Texture,
   backSkin: TileBackSkin,
@@ -107,6 +135,8 @@ export function createTileMaterial(
     uDeadBack: { value: dead.top },
     uDeadBack2: { value: dead.bottom },
     uBackGradAmount: { value: 1 },
+    uAtlasTexel: { value: atlasTexel(atlas) },
+    uInlayDepth: { value: INLAY_DEPTH },
   };
   const mat = new MeshPhysicalMaterial({
     color: 0xffffff,
@@ -143,7 +173,23 @@ export function createTileMaterial(
         varying float vBack;
         varying float vBackGrad;
         varying float vBackCell;
-        varying float vBackVariant;`,
+        varying float vBackVariant;
+        varying vec3 vTanV;
+        varying vec3 vBitV;`,
+      )
+      .replace(
+        '#include <defaultnormal_vertex>',
+        `#include <defaultnormal_vertex>
+        // Face tangents (object +X / +Y) in view space, for the carved-
+        // glyph relief: the same transform the normal takes.
+        #ifdef USE_INSTANCING
+          mat3 mjIm = mat3(instanceMatrix);
+          vTanV = normalize(normalMatrix * (mjIm * vec3(1.0, 0.0, 0.0)));
+          vBitV = normalize(normalMatrix * (mjIm * vec3(0.0, 1.0, 0.0)));
+        #else
+          vTanV = normalize(normalMatrix * vec3(1.0, 0.0, 0.0));
+          vBitV = normalize(normalMatrix * vec3(0.0, 1.0, 0.0));
+        #endif`,
       )
       .replace(
         '#include <beginnormal_vertex>',
@@ -174,6 +220,15 @@ export function createTileMaterial(
         uniform float uBackGradAmount;
         uniform vec3 uDeadBack;
         uniform vec3 uDeadBack2;
+        uniform vec2 uAtlasTexel;
+        uniform float uInlayDepth;
+        varying vec3 vTanV;
+        varying vec3 vBitV;
+        // Ink coverage at an atlas texel — the carved face's depth map.
+        float mjInk(vec2 uv) {
+          vec3 c = texture2D(uAtlas, uv, -0.35).rgb;
+          return 1.0 - smoothstep(0.3, 0.6, dot(c, vec3(0.299, 0.587, 0.114)));
+        }
         varying vec2 vAtlasUv;
         varying vec3 vTint;
         varying float vHighlight;
@@ -236,6 +291,27 @@ export function createTileMaterial(
         diffuseColor.rgb *= 1.0 - 0.4 * vHighlight * (1.0 - inkMask);`,
       )
       .replace(
+        '#include <normal_fragment_maps>',
+        `#include <normal_fragment_maps>
+        // Carved glyphs: tilt the normal down into the groove along the
+        // ink mask's gradient (paint sits below the ivory surface, so
+        // the height falls where the ink rises).
+        if (showFace > 0.5) {
+          vec2 du = vec2(uAtlasTexel.x * ${INLAY_STEP.toFixed(3)}, 0.0);
+          vec2 dv = vec2(0.0, uAtlasTexel.y * ${INLAY_STEP.toFixed(3)});
+          float gx = mjInk(vAtlasUv + du) - mjInk(vAtlasUv - du);
+          float gy = mjInk(vAtlasUv + dv) - mjInk(vAtlasUv - dv);
+          normal = normalize(normal + (vTanV * gx + vBitV * gy) * uInlayDepth);
+        }`,
+      )
+      .replace(
+        '#include <clearcoat_normal_fragment_begin>',
+        `#ifdef USE_CLEARCOAT
+          // The lacquer follows the carving too.
+          vec3 clearcoatNormal = normal;
+        #endif`,
+      )
+      .replace(
         '#include <roughnessmap_fragment>',
         `#include <roughnessmap_fragment>
         roughnessFactor = mix(roughnessFactor, uBackRoughness, showBack);`,
@@ -259,7 +335,7 @@ export function createTileMaterial(
   };
   // Distinct cache key so three doesn't share the program with a stock
   // MeshPhysicalMaterial.
-  mat.customProgramCacheKey = () => 'mahjong-tile-v10';
+  mat.customProgramCacheKey = () => 'mahjong-tile-v11';
   return mat;
 }
 

@@ -244,6 +244,8 @@ const CUE_HALO_OPACITY = 0.78;
  * row on the 412×915 / 360×640 phones (round-4 final critic).
  */
 const ZOOM_FELT_SCALE = 2.0;
+/** How far the rail sinks for the zoom: its whole height plus a margin under the felt plane. */
+const RAIL_SINK = RAIL_H + 0.1;
 /**
  * Discard-hint frame (see `hintFrame`), world units: glow margin past
  * the face on each side, stroke bleed past the face edge as a fraction
@@ -379,6 +381,9 @@ export class TableScene {
   private pulseUntil = 0;
   /** Last `update()` timestamp — springs use wall-clock time, not the loop's clamped dt. */
   private lastNow = 0;
+  /** River-zoom blend (0 table, 1 zoom) the felt scale and rail sink follow — see `applyZoomBlend`. */
+  private zoomBlend = 0;
+  private zoomTarget = 0;
   private nearWallDim = 1;
   private lastLayout: Layout | null = null;
   private lastWaiting = false;
@@ -859,15 +864,27 @@ export class TableScene {
     // Portrait river zoom lays out no wall (`hideWalls`); the rail goes
     // with it. From the 84° plan view the near rail projected between
     // the held hand's two rows, so the back row read as lying on the
-    // felt and the front row as off the table (round-4 critic).
-    this.railMesh.visible = input.hideWalls !== true;
-    // …and the felt grows past its edge so the held hand's two rows both
-    // sit on cloth: from the plan view the felt's edge otherwise crossed
-    // between the rows the way the rail did.
-    const feltScale = input.hideWalls === true ? ZOOM_FELT_SCALE : 1;
-    if (this.feltMesh.scale.x !== feltScale) this.feltMesh.scale.setScalar(feltScale);
+    // felt and the front row as off the table (round-4 critic). The
+    // felt grows past its edge so both held rows sit on cloth: from the
+    // plan view its edge otherwise crossed between the rows the way the
+    // rail did. Both blend in `update` (`applyZoomBlend`) on the beat the
+    // walls take to sink through the felt, rather than switching.
+    this.zoomTarget = input.hideWalls === true ? 1 : 0;
+    if (this.choreo.reducedMotion) this.applyZoomBlend(this.zoomTarget);
     this.ctx.renderer.shadowMap.needsUpdate = true;
     this.ctx.loop.requestRender();
+  }
+
+  /**
+   * Felt scale 1 → `ZOOM_FELT_SCALE` and the rail sunk under the felt
+   * plane (its top ends `RAIL_SINK − RAIL_H` below it) at blend 1; the
+   * rail is only culled once fully under.
+   */
+  private applyZoomBlend(blend: number): void {
+    this.zoomBlend = blend;
+    this.feltMesh.scale.setScalar(1 + (ZOOM_FELT_SCALE - 1) * blend);
+    this.railMesh.position.y = -RAIL_SINK * blend;
+    this.railMesh.visible = blend < 1;
   }
 
   /**
@@ -954,6 +971,15 @@ export class TableScene {
     const dt = this.lastNow === 0 ? _dt : Math.min(0.5, Math.max(0, (now - this.lastNow) / 1000));
     this.lastNow = now;
     let live = this.choreo.update(dt, now);
+    // Zoom blend: the rail sinks under the spreading felt while the
+    // walls sink through it (`choreography` `vanish`, ~0.36 s).
+    if (this.zoomBlend !== this.zoomTarget) {
+      const k = this.choreo.reducedMotion ? 1 : Math.min(1, dt * 8);
+      let next = this.zoomBlend + (this.zoomTarget - this.zoomBlend) * k;
+      if (Math.abs(next - this.zoomTarget) < 0.004) next = this.zoomTarget;
+      this.applyZoomBlend(next);
+      live = true;
+    }
     const pulsing =
       !this.choreo.reducedMotion &&
       now < this.pulseUntil &&

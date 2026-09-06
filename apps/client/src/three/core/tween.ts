@@ -8,6 +8,7 @@
 export type Ease = (t: number) => number;
 
 export const easeOutCubic: Ease = (t) => 1 - (1 - t) ** 3;
+export const easeInCubic: Ease = (t) => t * t * t;
 export const easeInOutCubic: Ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
 export const easeOutBack: Ease = (t) => {
   const c1 = 1.70158;

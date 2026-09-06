@@ -5,6 +5,8 @@ import {
   Choreographer,
   DISCARD_TURN_BY,
   DRAW_TURN_FROM,
+  SINK_DEPTH,
+  VANISH_MS,
   dispenseDelay,
   flightFor,
   looksFreshlyDealt,
@@ -65,7 +67,7 @@ describe('flightFor', () => {
     expect(flightFor('wall', 'hand', false).kind).toBe('draw');
     expect(flightFor('hand', 'discard', false).kind).toBe('discard');
     expect(flightFor('discard', 'meld', false).kind).toBe('claim');
-    expect(flightFor(null, 'hand', false).kind).toBe('appear');
+    expect(flightFor(null, 'hand', false).kind).toBe('rise');
     expect(flightFor('hand', 'hand', false).kind).toBe('slide');
   });
   test('discards spin, draws arc, reduced motion collapses to ≤ 120 ms', () => {
@@ -271,9 +273,43 @@ describe('rotationProgress', () => {
     expect(rotationProgress('discard', 0.8, 0.9)).toBe(1);
   });
   test('every other flight turns in step with its eased position', () => {
-    for (const kind of ['claim', 'slide', 'dispense', 'reveal', 'appear'] as const)
+    for (const kind of ['claim', 'slide', 'dispense', 'reveal', 'rise', 'vanish'] as const)
       for (const raw of [0, 0.25, 0.5, 0.9, 1])
         expect(rotationProgress(kind, raw, eased(raw))).toBe(eased(raw));
+  });
+  test('tiles that leave the layout sink through the felt, and rise back into place', () => {
+    const st = dealt(5);
+    const c = new Choreographer({ reducedMotion: false });
+    c.setLayout(computeLayout(st, 0, OPTS), st, 0, 0, { snap: true });
+    const wallId = st.wall[0] ? tileId(st.wall[0]) : -1;
+    expect(wallId).toBeGreaterThanOrEqual(0);
+    const t = c.tiles[wallId]!;
+    const rest = t.pos.clone();
+    // The river zoom lays out no wall: the tile sinks instead of blinking off.
+    c.setLayout(computeLayout(st, 0, { ...OPTS, hideWalls: true }), st, 0, 100);
+    expect(t.flight?.kind).toBe('vanish');
+    expect(t.visible).toBe(true);
+    c.update(0.016, 100 + VANISH_MS / 2);
+    expect(t.visible).toBe(true);
+    expect(t.pos.y).toBeLessThan(rest.y);
+    expect(t.pos.y).toBeGreaterThan(rest.y - SINK_DEPTH);
+    c.update(0.016, 100 + VANISH_MS + 1);
+    expect(t.visible).toBe(false);
+    expect(t.flight).toBeNull();
+    // Zoom out: it rises from under the felt back to its slot, full size throughout.
+    c.setLayout(computeLayout(st, 0, OPTS), st, 0, 1000);
+    expect(t.flight?.kind).toBe('rise');
+    expect(t.visible).toBe(true);
+    expect(t.scale).toBe(1);
+    expect(t.pos.y).toBeCloseTo(rest.y - SINK_DEPTH);
+    c.update(0.016, 1000 + t.flight!.duration + 1);
+    expect(t.pos.distanceTo(rest)).toBeLessThan(1e-6);
+    expect(t.flight).toBeNull();
+    // Reduced motion keeps the instant hide.
+    const rm = new Choreographer({ reducedMotion: true });
+    rm.setLayout(computeLayout(st, 0, OPTS), st, 0, 0, { snap: true });
+    rm.setLayout(computeLayout(st, 0, { ...OPTS, hideWalls: true }), st, 0, 100);
+    expect(rm.tiles[wallId]!.visible).toBe(false);
   });
   test("a bot's draw is still back-up and flat at the top of its arc", () => {
     const st = dealt(5);

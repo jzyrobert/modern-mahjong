@@ -2305,3 +2305,133 @@ test('portrait river zoom is a plan view with no wall; the tray carries the draw
   expect(perf.drawCalls).toBeLessThanOrEqual(BUDGET.drawCalls);
   expect(errors, 'console / page errors').toEqual([]);
 });
+
+test('the river zoom sinks the walls through the felt and raises them back, never blinking', async ({
+  page,
+}) => {
+  // Round-5 feedback: "all other tiles suddenly being unrendered and
+  // then re-rendered is jarring". Tiles that leave the layout — the four
+  // walls and the side seats' rows when the portrait zoom lays none out —
+  // sink under the felt at full size (`vanish`) and rise back up through
+  // it (`rise`) instead of blinking off and popping in from scale 0.
+  // Slow motion ×8 stretches the 360 ms sink to ~2.9 s; the samplers run
+  // alongside the taps because on a loaded SwiftShader shard a click
+  // returns seconds later, after the motion has finished.
+  await page.addInitScript(() => {
+    (globalThis as { __MAHJONG_TEST_MOTION_SLOWMO__?: number }).__MAHJONG_TEST_MOTION_SLOWMO__ = 8;
+  });
+  await page.setViewportSize({ width: 412, height: 915 });
+  const errors: string[] = [];
+  await startSolo(page, errors);
+  await waitForDealSettled(page);
+  const table = page.getByTestId('table-3d');
+  type Sample = { id: number; y: number; scale: number; ms: number };
+  type Summary = {
+    wallIds: number[];
+    vanishing: Sample[];
+    rising: Sample[];
+    visible: number[];
+    ys: [number, number][];
+  };
+  const summary = () =>
+    page.evaluate((): Summary | null => {
+      const dbg = (
+        globalThis as {
+          __MAHJONG_TABLE_3D_DEBUG__?: () => {
+            tiles: {
+              id: number;
+              zone: string | null;
+              y: number;
+              scale: number;
+              flight: { kind: string; ms: number } | null;
+            }[];
+          } | null;
+        }
+      ).__MAHJONG_TABLE_3D_DEBUG__?.();
+      if (!dbg) return null;
+      const pick = (kind: string) =>
+        dbg.tiles
+          .filter((t) => t.flight?.kind === kind)
+          .map((t) => ({ id: t.id, y: t.y, scale: t.scale, ms: t.flight?.ms ?? 0 }));
+      return {
+        wallIds: dbg.tiles
+          .filter((t) => t.zone === 'wall' || t.zone === 'deadWall')
+          .map((t) => t.id),
+        vanishing: pick('vanish'),
+        rising: pick('rise'),
+        visible: dbg.tiles.map((t) => t.id),
+        ys: dbg.tiles.map((t) => [t.id, t.y] as [number, number]),
+      };
+    });
+  /** Poll until `n` samples with any tile in `kind` have been collected. */
+  const collect = async (kind: 'vanishing' | 'rising', n: number) => {
+    const out: Summary[] = [];
+    await expect
+      .poll(
+        async () => {
+          const s = await summary();
+          if (s && s[kind].length > 0) out.push(s);
+          return out.length;
+        },
+        { timeout: 20_000, intervals: [40, 40, 60, 60, 100, 100, 200] },
+      )
+      .toBeGreaterThanOrEqual(n);
+    return out;
+  };
+  const before = (await summary())!;
+  expect(before.wallIds.length).toBeGreaterThan(60);
+  const restY = new Map(before.ys);
+  const zoomIn = page.getByRole('button', { name: 'Zoom into the discards' }).click();
+  const sinking = await collect('vanishing', 3);
+  await zoomIn;
+  await expect(table).toHaveAttribute('data-river-zoom', 'true');
+  // Mid-sink: every wall tile is still rendered, full size, on its way
+  // down under slow motion (360 ms × 8). The sink eases in, so compare
+  // the first sample with the last (the snapshot rounds y to 0.01).
+  const s0 = sinking[0]!;
+  const s1 = sinking[sinking.length - 1]!;
+  const sinkingIds = new Set(s0.vanishing.map((t) => t.id));
+  for (const id of before.wallIds) expect(sinkingIds.has(id), `wall tile ${id} sinks`).toBe(true);
+  for (const t of s0.vanishing) {
+    expect(t.scale).toBe(1);
+    expect(t.ms).toBe(360 * 8);
+    expect(t.y).toBeLessThanOrEqual(restY.get(t.id)! + 1e-6);
+  }
+  let dropped = 0;
+  for (const t of s1.vanishing) {
+    const prev = s0.vanishing.find((p) => p.id === t.id);
+    if (!prev) continue;
+    expect(t.y).toBeLessThanOrEqual(prev.y + 1e-6);
+    if (t.y < prev.y - 1e-3) dropped++;
+  }
+  expect(dropped, 'tiles lower in the last sample than the first').toBeGreaterThan(0);
+  // Sunk: hidden — and no wall tile was ever drawn at scale 0 in view.
+  await expect
+    .poll(async () => (await summary())?.vanishing.length ?? -1, { timeout: 20_000 })
+    .toBe(0);
+  const gone = (await summary())!;
+  for (const id of before.wallIds) expect(gone.visible).not.toContain(id);
+  // Zoom out: the walls rise from under the felt, full size, back to rest.
+  const zoomOut = page.getByTestId('river-zoom-exit').click();
+  const risingSamples = await collect('rising', 1);
+  await zoomOut;
+  await expect(table).toHaveAttribute('data-river-zoom', 'false');
+  const r0 = risingSamples[0]!;
+  const risingIds = new Set(r0.rising.map((t) => t.id));
+  for (const id of before.wallIds) expect(risingIds.has(id), `wall tile ${id} rises`).toBe(true);
+  for (const t of r0.rising) {
+    expect(t.scale).toBe(1);
+    expect(t.ms).toBe(320 * 8);
+    expect(t.y).toBeLessThan(restY.get(t.id)!);
+  }
+  await expect
+    .poll(async () => (await summary())?.rising.length ?? -1, { timeout: 20_000 })
+    .toBe(0);
+  const after = (await summary())!;
+  expect([...after.wallIds].sort((a, b) => a - b)).toEqual(
+    [...before.wallIds].sort((a, b) => a - b),
+  );
+  for (const [id, y] of after.ys)
+    if (before.wallIds.includes(id)) expect(Math.abs(y - restY.get(id)!)).toBeLessThan(0.02);
+  expect(errors, 'console / page errors').toEqual([]);
+});
