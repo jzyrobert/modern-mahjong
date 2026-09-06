@@ -1251,19 +1251,25 @@ export function Table3DShell(props: Table3DShellProps) {
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, maxWidth: '100%' }}>
-                    <TurnChip
-                      isMyTurn={props.myTurn && !shuffling}
-                      needsDraw={props.needsDraw}
-                      turnCountdown={props.turnCountdown}
-                      activeName={activeSeat !== null ? nameForSeat(lobby, activeSeat) : null}
-                      activeColour={
-                        activeSeat !== null ? SEAT_COLOR[seatToPosition[activeSeat]] : null
-                      }
-                      claimsOpen={state.pendingClaims !== undefined && state.pendingClaims !== null}
-                    />
+                    {/* While the zoom parks the draw control in the tray the
+                        gold pill *is* the turn readout — a "YOUR TURN · DRAW"
+                        chip beside a "DRAW" pill said it twice (round-4 critic). */}
                     {trayDraw ? (
                       <DrawPill onDraw={() => props.onAction({ t: 'draw', seat })} />
-                    ) : null}
+                    ) : (
+                      <TurnChip
+                        isMyTurn={props.myTurn && !shuffling}
+                        needsDraw={props.needsDraw}
+                        turnCountdown={props.turnCountdown}
+                        activeName={activeSeat !== null ? nameForSeat(lobby, activeSeat) : null}
+                        activeColour={
+                          activeSeat !== null ? SEAT_COLOR[seatToPosition[activeSeat]] : null
+                        }
+                        claimsOpen={
+                          state.pendingClaims !== undefined && state.pendingClaims !== null
+                        }
+                      />
+                    )}
                   </div>
                   {/* The tray's resting readout: who pitched the newest
                       discard and what it was, at a size the far river

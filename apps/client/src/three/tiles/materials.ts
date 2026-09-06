@@ -64,7 +64,7 @@ export function tileBackColors(skin: TileBackSkin): { top: Color; bottom: Color 
 }
 
 /**
- * Dead-wall back shade for a skin: same hue, lightness × 0.6,
+ * Dead-wall back shade for a skin: same hue, lightness × 0.52,
  * saturation × 0.9 — unmistakably darker beside the live stacks under
  * the same key light, never a different colour. Round-4: this shade is
  * the dead wall's only marker (the gold inlay band is gone), so it
@@ -77,7 +77,7 @@ export function deadBackColors(skin: TileBackSkin): { top: Color; bottom: Color 
   const shade = (c: Color) => {
     const hsl = { h: 0, s: 0, l: 0 };
     c.getHSL(hsl);
-    return new Color().setHSL(hsl.h, Math.min(1, hsl.s * 0.9), hsl.l * 0.6);
+    return new Color().setHSL(hsl.h, Math.min(1, hsl.s * 0.9), hsl.l * 0.52);
   };
   return { top: shade(back.top), bottom: shade(back.bottom) };
 }

@@ -867,6 +867,11 @@ export class TableScene {
       this.dice.visible = false;
       this.diceValues = null;
     }
+    // Portrait river zoom lays out no wall (`hideWalls`); the rail goes
+    // with it. From the 84° plan view the near rail projected between
+    // the held hand's two rows, so the back row read as lying on the
+    // felt and the front row as off the table (round-4 critic).
+    this.railMesh.visible = input.hideWalls !== true;
     this.ctx.renderer.shadowMap.needsUpdate = true;
     this.ctx.loop.requestRender();
   }
