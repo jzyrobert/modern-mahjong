@@ -416,6 +416,16 @@ export function Table3DShell(props: Table3DShellProps) {
     portraitDiceBandShort(width, height, insets.top);
   const handParkedRef = useRef(false);
   handParkedRef.current = handParked;
+  // A lesson step about the wall (`wall-draw`, the drawn-game "watch the
+  // wall run out") anchors its coach-mark ring on the next live wall tile
+  // even while a bot is the one drawing: the projected rect is registered
+  // under the same `wall-draw` id the user's own draw cue uses, so the
+  // overlay rings the tile and docks its card beside it instead of a
+  // centred card over the table. The draw *button* stays gated on
+  // `needsDraw`; only the tutorial anchor is forced.
+  const tutorialWallAnchor = tutorialStep?.step.targetId === 'wall-draw';
+  const tutorialWallAnchorRef = useRef(false);
+  tutorialWallAnchorRef.current = tutorialWallAnchor;
   // Portrait toasts that have taken the seat strip's row (see `toastTop`).
   const [announceUp, setAnnounceUp] = useState(false);
   const [missedUp, setMissedUp] = useState(false);
@@ -570,7 +580,10 @@ export function Table3DShell(props: Table3DShellProps) {
         }
       }
       const nextId = scene.nextDrawTileId;
-      const wallRect = p.needsDraw && nextId !== null ? scene.tileRect(nextId) : null;
+      const wallRect =
+        (p.needsDraw || tutorialWallAnchorRef.current) && nextId !== null
+          ? scene.tileRect(nextId)
+          : null;
       hitRef.current?.setWallRect(wallRect ? padRect(wallRect, 6, 36, 36) : null);
 
       // River region: the square inside the walls.
@@ -670,6 +683,13 @@ export function Table3DShell(props: Table3DShellProps) {
   );
   const reprojectRef = useRef(reproject);
   reprojectRef.current = reproject;
+  // The forced wall anchor is not a scene input: re-project when it flips
+  // so the `wall-draw` rect appears / clears with the lesson step.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the anchor flag is read via its ref
+  useEffect(() => {
+    settleFrames.current = 0;
+    reprojectRef.current(true, performance.now());
+  }, [tutorialWallAnchor]);
 
   const build = useCallback(
     (ctx: SceneContext): SceneHandle => {
@@ -1123,6 +1143,7 @@ export function Table3DShell(props: Table3DShellProps) {
             onDrag={(id, x, y) => sceneRef.current?.setDraggedTile(id, x, y)}
             nextDrawTile={nextDrawTile}
             needsDraw={props.needsDraw}
+            wallAnchor={tutorialWallAnchor}
             onDraw={() => props.onAction({ t: 'draw', seat })}
             // Zoomed: the landscape rail's / the portrait tray's draw pill
             // is the draw control (the wall is off-frame or not laid out).

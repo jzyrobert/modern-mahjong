@@ -7,6 +7,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react';
 import {
   Animated,
@@ -49,6 +50,7 @@ import {
   MIN_STRIP_LINES,
   STACKED_HEADER_MAX_WIDTH,
   STRIP_BREATHING,
+  TIGHT_ROOM,
   bodyCap,
   chooseFrame,
   fitBody,
@@ -72,6 +74,7 @@ import {
   noSideSlot,
   placeCaption,
   safeInset,
+  sideDockRoom,
   slotRoom,
   trimStraddlers,
 } from './placement';
@@ -84,6 +87,10 @@ import { useTutorialController } from './useTutorialController';
 
 /** Ease-out curve for the card entrance. */
 const CARD_EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
+
+const noopSubscribe = () => () => {};
+const getRiverInterior = () => tutorialSceneRects?.getRiverInterior() ?? null;
+const getNull = () => null;
 
 /**
  * Web card entrance: a short fade as a compiled CSS keyframe class
@@ -331,6 +338,7 @@ function ActiveStep({ lesson, step, stepIndex, classic }: ActiveStepProps) {
   const {
     chrome: domChrome,
     keepOuts: domKeepOuts,
+    badges: badgeRects,
     scans: chromeScans,
     handInPlace,
   } = useChromeRects({
@@ -347,6 +355,30 @@ function ActiveStep({ lesson, step, stepIndex, classic }: ActiveStepProps) {
   const keepClear = focused ? toHalo(registeredRect) : null;
   const registryChrome = otherTargetRects(registry, targetId, window);
   const avoid = registryChrome.length > 0 ? [...domChrome, ...registryChrome] : domChrome;
+  // The river interior the 3D table publishes (plate + four rivers, in
+  // client px): a no-target card keeps off it when it can — beside the
+  // table on desktop — so the copy about the table is read with the
+  // table in view (round-5 critic). Null under the classic renderer.
+  const riverInterior = useSyncExternalStore(
+    tutorialSceneRects?.subscribe ?? noopSubscribe,
+    getRiverInterior,
+    getNull,
+  );
+  let riverBlock: HaloRect | null = null;
+  if (riverInterior) {
+    const o = originNode()?.getBoundingClientRect();
+    riverBlock = {
+      left: riverInterior.left - (o?.left ?? 0),
+      top: riverInterior.top - (o?.top ?? 0),
+      width: riverInterior.right - riverInterior.left,
+      height: riverInterior.bottom - riverInterior.top,
+    };
+  }
+  // A step that asks the player to watch the other seats (the river
+  // filling, the wall running out) keeps its card off their badges
+  // outright — their turn state is the point; any other card keeps off
+  // them only while some placement can (`keepOutSoft`).
+  const watchesOthers = targetId === 'shared-discards' || targetId === 'wall-draw';
 
   // Overlay wrapper size drives the scrim SVG so it spans the actual
   // rendered area on Android edge-to-edge (where `useWindowDimensions`
@@ -391,13 +423,94 @@ function ActiveStep({ lesson, step, stepIndex, classic }: ActiveStepProps) {
   });
   const lessonFrame =
     lessonFrameRef.current.key === lessonKey ? lessonFrameRef.current.frame : null;
+  // Every card keeps clear of the user's hand row: the registered
+  // `own-hand` rect is a keep-out for its placement (the two-row portrait
+  // hand is taller than the chrome scan admits, and a card that landed
+  // on it hid a whole row of tiles), and when a centred card is too tall
+  // to fit above it the body scrolls instead of the card sitting on the
+  // tiles (landscape phone, 3D table). The result panel is the same kind
+  // of region for a card that is not about it (a lesson-complete card).
+  // While a result-panel step is up the whole table sits under the
+  // result veil and the hand is not interactive, so it is not a keep-out
+  // there: on a 360x640 phone the scoring card docks under the pinned
+  // result card, over the dimmed hand, instead of falling through to the
+  // bottom strip.
+  const handRect = useTutorialTargetRect(
+    targetId === 'own-hand' || targetId === 'result-panel' ? null : 'own-hand',
+  );
+  // Whether the hand has stopped moving — the frame decision below only
+  // runs while it has. During the deal the live rect spans the tiles
+  // still in flight from the wall, which made the intro card's room look
+  // scarce for a moment and flipped its frame.
+  const handAtRest = useSettledRect(handRect, stepKey) === handRect;
+  const panelRect = useTutorialTargetRect(targetId === 'result-panel' ? null : 'result-panel');
+  // The hand as a region to keep off: under the classic renderer it
+  // reaches `CLASSIC_HAND_LIFT` above the registered wrapper.
+  const handKeepOut = useMemo(() => {
+    const hand = toHalo(handRect);
+    if (!hand || !classic) return hand;
+    return { ...hand, top: hand.top - CLASSIC_HAND_LIFT, height: hand.height + CLASSIC_HAND_LIFT };
+  }, [handRect, classic]);
+  const hardKeepOut = useMemo(() => {
+    const out: HaloRect[] = [];
+    const panel = toHalo(panelRect);
+    if (handKeepOut) out.push(handKeepOut);
+    if (panel) out.push(panel);
+    return out;
+  }, [handKeepOut, panelRect]);
+
+  // The ring grows to enclose any small control it would otherwise
+  // bisect (the wall counter under the dice modal) and is cut back from
+  // any large one it would otherwise cross (the hand row under the
+  // landscape dice modal — that side then opens: straight scrim edge,
+  // no stroke); the card is placed against the same adjusted halo so
+  // the two never disagree.
+  // Chrome that only grazes the padding band (the landscape footer under
+  // the hand row) nudges the edge off it last, so the stroke never lands
+  // on a control's edge.
+  const shapeHalo = (rect: TargetRect | null) => {
+    const trimmed = trimStraddlers(encloseStraddlers(haloFor(rect, window), avoid, window), avoid);
+    return { halo: clearGrazers(trimmed.halo, avoid), open: trimmed.open };
+  };
+  const { halo, open } = shapeHalo(haloRect);
+  const feather = halo ? featherFor(halo, avoid) : undefined;
+  const cardHalo = shapeHalo(cardRect).halo;
+  const keepOut = cardHalo === null ? handKeepOut : null;
+  const avoidForCard = keepOut ? [...avoid, keepOut] : avoid;
+  // Regions the card must never sit on: the hand rows and the result
+  // panel always; the opponents' badges when the step is about them; a
+  // centred card also keeps off the page's keep-out elements (the
+  // portrait seat strip) — it has the whole free band to size itself
+  // into, whereas a docked card or a strip may still cover them whole.
+  const dockKeepOut = useMemo(
+    () => (watchesOthers ? [...hardKeepOut, ...badgeRects] : hardKeepOut),
+    [watchesOthers, hardKeepOut, badgeRects],
+  );
+  const cardKeepOut = cardHalo === null ? [...dockKeepOut, ...domKeepOuts] : dockKeepOut;
+  // A card that can only dock beside the ring (neither vertical slot
+  // holds even a tight card) has the band between the regions crossing
+  // that side strip — an opponent's badge above, the hand below on a
+  // landscape phone (see `sideDockRoom`). From the halo, the regions and
+  // the viewport alone, never the card or its dock, so it cannot
+  // oscillate with the frame it decides.
+  const sideRoom =
+    cardHalo && slotRoom(cardHalo, window) < TIGHT_ROOM
+      ? sideDockRoom(cardHalo, dockKeepOut, window)
+      : Number.POSITIVE_INFINITY;
   // Short viewport (landscape phone): the card lives in the ~215 px
   // band between the top HUD and the hand row, where the regular
   // frame (18 px pad, 10 px gaps, 26 px title) left two body lines and
   // a scroll for a three-sentence intro. Always dense there; portrait
   // phones go dense when the room turns out scarce (decided below).
   const shortViewport = window.width > window.height && window.height <= SHORT_VIEWPORT_MAX_HEIGHT;
-  const frame: CardFrame = shortViewport ? 'dense' : (chosenBefore ?? lessonFrame ?? 'regular');
+  // …and drops to the tight frame when the card can only dock beside
+  // the ring and that band is shorter still (see `sideRoom` above —
+  // geometry only, so the choice cannot feed back through the card).
+  const frame: CardFrame = shortViewport
+    ? sideRoom < TIGHT_ROOM
+      ? 'tight'
+      : 'dense'
+    : (chosenBefore ?? lessonFrame ?? 'regular');
   const measureKey = `${frameKey}|${frame}`;
   const [measured, setMeasured] = useState<{
     key: string;
@@ -441,42 +554,6 @@ function ActiveStep({ lesson, step, stepIndex, classic }: ActiveStepProps) {
    *  step label, frame) — a card's chrome must never size a strip body. */
   const stripChromeRef = useRef<{ key: string; chrome: number }>({ key: '', chrome: 0 });
 
-  // Every card keeps clear of the user's hand row: the registered
-  // `own-hand` rect is a keep-out for its placement (the two-row portrait
-  // hand is taller than the chrome scan admits, and a card that landed
-  // on it hid a whole row of tiles), and when a centred card is too tall
-  // to fit above it the body scrolls instead of the card sitting on the
-  // tiles (landscape phone, 3D table). The result panel is the same kind
-  // of region for a card that is not about it (a lesson-complete card).
-  // While a result-panel step is up the whole table sits under the
-  // result veil and the hand is not interactive, so it is not a keep-out
-  // there: on a 360x640 phone the scoring card docks under the pinned
-  // result card, over the dimmed hand, instead of falling through to the
-  // bottom strip.
-  const handRect = useTutorialTargetRect(
-    targetId === 'own-hand' || targetId === 'result-panel' ? null : 'own-hand',
-  );
-  // Whether the hand has stopped moving — the frame decision below only
-  // runs while it has. During the deal the live rect spans the tiles
-  // still in flight from the wall, which made the intro card's room look
-  // scarce for a moment and flipped its frame.
-  const handAtRest = useSettledRect(handRect, stepKey) === handRect;
-  const panelRect = useTutorialTargetRect(targetId === 'result-panel' ? null : 'result-panel');
-  // The hand as a region to keep off: under the classic renderer it
-  // reaches `CLASSIC_HAND_LIFT` above the registered wrapper.
-  const handKeepOut = useMemo(() => {
-    const hand = toHalo(handRect);
-    if (!hand || !classic) return hand;
-    return { ...hand, top: hand.top - CLASSIC_HAND_LIFT, height: hand.height + CLASSIC_HAND_LIFT };
-  }, [handRect, classic]);
-  const hardKeepOut = useMemo(() => {
-    const out: HaloRect[] = [];
-    const panel = toHalo(panelRect);
-    if (handKeepOut) out.push(handKeepOut);
-    if (panel) out.push(panel);
-    return out;
-  }, [handKeepOut, panelRect]);
-
   // Web: measure synchronously before paint. RNW's `onLayout` goes
   // through ResizeObserver + setTimeout, i.e. it waits for a frame — on a
   // starved renderer that is hundreds of ms of invisible card. Reading
@@ -492,24 +569,18 @@ function ActiveStep({ lesson, step, stepIndex, classic }: ActiveStepProps) {
     if (h > 0) recordMeasure(modeRef.current, h + (modeRef.current === 'strip' ? STRIP_FRAME : 0));
   }, [cardHeight, stripHeight, recordMeasure]);
 
-  // The ring grows to enclose any small control it would otherwise
-  // bisect (the wall counter under the dice modal) and is cut back from
-  // any large one it would otherwise cross (the hand row under the
-  // landscape dice modal — that side then opens: straight scrim edge,
-  // no stroke); the card is placed against the same adjusted halo so
-  // the two never disagree.
-  // Chrome that only grazes the padding band (the landscape footer under
-  // the hand row) nudges the edge off it last, so the stroke never lands
-  // on a control's edge.
-  const shapeHalo = (rect: TargetRect | null) => {
-    const trimmed = trimStraddlers(encloseStraddlers(haloFor(rect, window), avoid, window), avoid);
-    return { halo: clearGrazers(trimmed.halo, avoid), open: trimmed.open };
-  };
-  const { halo, open } = shapeHalo(haloRect);
-  const feather = halo ? featherFor(halo, avoid) : undefined;
-  const cardHalo = shapeHalo(cardRect).halo;
-  const keepOut = cardHalo === null ? handKeepOut : null;
-  const avoidForCard = keepOut ? [...avoid, keepOut] : avoid;
+  // …and the ones it keeps off when it can, most important first: the
+  // river interior under a no-target card (not behind a result panel,
+  // which already covers the table), then the badges a card is not about.
+  // Never for a targeted step whose rect has not registered yet: that
+  // centred card is transient, and a soft region once slid it into a
+  // 391 px column beside a badge, where the card measured 291 px tall —
+  // a height keyed by step and frame, not width — and the docked card
+  // then missed its slot above the hand and fell to the strip over it.
+  const cardKeepOutSoft: HaloRect[][] = [];
+  const settledTarget = targetId === null || cardHalo !== null;
+  if (targetId === null && riverBlock && !panelRect) cardKeepOutSoft.push([riverBlock]);
+  if (!watchesOthers && settledTarget && badgeRects.length > 0) cardKeepOutSoft.push(badgeRects);
   // Real chrome (everything but the body), taken once per step from the
   // first pair of measurements — before any cap has moved the body, so
   // the two agree. Later pairs can be a render apart (the body reports
@@ -568,13 +639,11 @@ function ActiveStep({ lesson, step, stepIndex, classic }: ActiveStepProps) {
     stripHeight,
     avoid: avoidForCard,
     keepClear,
-    // A centred card also keeps off the page's keep-out elements (the
-    // portrait seat strip): it has the whole free band to size itself
-    // into. A docked card or a strip may still cover them whole — the
-    // top strip under a river ring has nowhere else to go.
-    keepOut: cardHalo === null ? [...hardKeepOut, ...domKeepOuts] : hardKeepOut,
+    keepOut: cardKeepOut,
+    keepOutSoft: cardKeepOutSoft,
   });
   const strip = placement.kind === 'strip';
+  const narrowStrip = strip && placement.width < NARROW_STRIP_MAX_WIDTH;
   modeRef.current = strip ? 'strip' : 'card';
   const solid = placement.overlapsChrome;
   const glassBg = solid ? GLASS_BG_SOLID : GLASS_BG;
@@ -638,7 +707,7 @@ function ActiveStep({ lesson, step, stepIndex, classic }: ActiveStepProps) {
       room,
       centredRoom(keepOut, avoidForCard, window, placement.width, placement.left),
     );
-  else room = Math.min(room, dockRoom);
+  else room = Math.min(room, dockRoom, sideRoom);
   // Frame: dense trades padding, gaps and title size for body lines when
   // the room is scarce or the regular frame would scroll the step text
   // (see `chooseFrame`). Decided only while the hand is at rest, so the
@@ -695,8 +764,11 @@ function ActiveStep({ lesson, step, stepIndex, classic }: ActiveStepProps) {
   // the text height, so a text that fits shows whole with no cue. A
   // strip keeps `STRIP_BREATHING` off its band's far edge so it never
   // outgrows the band that placed it.
+  // A strip growing toward the viewport's safe line needs no breathing
+  // (`CaptionPlacement.bandEndsAtRegion`).
+  const stripBreathing = placement.bandEndsAtRegion === false ? 0 : STRIP_BREATHING;
   const bodyMaxHeight = bodyCap(
-    strip ? room - STRIP_BREATHING : room,
+    strip ? room - stripBreathing : room,
     chromeNow,
     lineHeight,
     strip ? MIN_STRIP_LINES : MIN_SCROLL_LINES,
@@ -773,6 +845,8 @@ function ActiveStep({ lesson, step, stepIndex, classic }: ActiveStepProps) {
     feather,
     open,
     avoid,
+    keepOut: cardKeepOut,
+    keepOutSoft: cardKeepOutSoft,
     cardHeight,
     solid,
     viewport: { width: window.width, height: window.height },
@@ -943,7 +1017,7 @@ function ActiveStep({ lesson, step, stepIndex, classic }: ActiveStepProps) {
               onLayout={(e) => recordMeasure('strip', e.nativeEvent.layout.height + STRIP_FRAME)}
             >
               <StripBody
-                narrow={placement.width < NARROW_STRIP_MAX_WIDTH}
+                narrow={narrowStrip}
                 lessonLabel={lessonLabel}
                 ids={lesson.steps.map((st) => st.id)}
                 index={stepIndex}
@@ -969,7 +1043,18 @@ function ActiveStep({ lesson, step, stepIndex, classic }: ActiveStepProps) {
                     <PrimaryButton label={ctaLabel} onPress={advance} testID="tutorial-next" />
                   )
                 }
-                skip={<QuietButton label="Skip lesson" onPress={dismiss} compact />}
+                skip={
+                  <QuietButton
+                    // The narrow strip's header row shares its width with
+                    // the title: short labels (the accessible names stay
+                    // whole) leave "Now watch the bots" room on a 360 px
+                    // phone instead of "Now watch t…" (round-5 critic).
+                    label={narrowStrip ? 'Skip' : 'Skip lesson'}
+                    accessibilityLabel="Skip lesson"
+                    onPress={dismiss}
+                    compact
+                  />
+                }
                 restart={
                   canRestart ? (
                     <QuietButton
@@ -1089,6 +1174,10 @@ export interface TutorialLayoutSnapshot {
   /** Sides the ring was trimmed to (open edge, no stroke). */
   open: SideMask;
   avoid: readonly HaloRect[];
+  /** Regions the card had to keep off, and the groups it kept off when
+   *  it could (see `PlacementInput`). */
+  keepOut: readonly HaloRect[];
+  keepOutSoft: readonly (readonly HaloRect[])[];
   cardHeight: number | null;
   solid: boolean;
   viewport: { width: number; height: number };
@@ -1155,7 +1244,7 @@ const STRIP_LINE_HEIGHT = 18;
 /** Vertical padding of the strip card, and the card frame around the
  *  strip's content block (padding + 1 px borders) — the content is what
  *  gets measured, so a stretched strip reports its natural height. */
-const STRIP_PAD = 6;
+const STRIP_PAD = 4;
 const STRIP_FRAME = STRIP_PAD * 2 + 2;
 /** Gap between the strip's header row and its body. With the padding
  *  this is what keeps the four-line dice caption whole in the 141 px
@@ -1298,10 +1387,12 @@ function StripBody({
     <Text
       accessibilityRole="header"
       accessibilityLabel={`Tutorial step: ${title}`}
-      numberOfLines={1}
+      // Narrow: a step down in size and a second line as the last
+      // resort, so the title is read whole beside the buttons.
+      numberOfLines={narrow ? 2 : 1}
       style={{
-        fontSize: 15,
-        lineHeight: 19,
+        fontSize: narrow ? 14 : 15,
+        lineHeight: narrow ? 18 : 19,
         fontWeight: '800',
         letterSpacing: -0.2,
         color: TEXT_PRIMARY,

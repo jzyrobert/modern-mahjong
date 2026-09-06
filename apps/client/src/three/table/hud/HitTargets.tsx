@@ -75,6 +75,12 @@ interface HitTargetsProps {
   onDrag: (id: number | null, x: number, y: number) => void;
   nextDrawTile: MTile | null;
   needsDraw: boolean;
+  /**
+   * Register the `wall-draw` tutorial anchor on the next wall tile even
+   * when it is not the user's draw (a lesson step about the wall while
+   * the bots drain it). The draw button itself stays gated on `needsDraw`.
+   */
+  wallAnchor?: boolean | undefined;
   onDraw: () => void;
   rects: HudRects;
   /**
@@ -186,6 +192,7 @@ export const HitTargets = forwardRef<HitTargetsHandle, HitTargetsProps>(function
     onDrag,
     nextDrawTile,
     needsDraw,
+    wallAnchor = false,
     onDraw,
     rects,
     onRiverTap,
@@ -426,7 +433,7 @@ export const HitTargets = forwardRef<HitTargetsHandle, HitTargetsProps>(function
           )}
         </TutorialTarget>
       ) : null}
-      {needsDraw && nextDrawTile && !wallHidden ? (
+      {(needsDraw || wallAnchor) && nextDrawTile && !wallHidden ? (
         <TutorialTarget id="wall-draw" style={rectStyle(rects.wallDraw)}>
           <div style={{ width: '100%', height: '100%' }} />
         </TutorialTarget>

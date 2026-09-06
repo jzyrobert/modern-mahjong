@@ -1,6 +1,7 @@
 import { type GameState, TOTAL_TILES, emptyState, startHand, tileId } from '@mahjong/game-logic';
 import { PerspectiveCamera } from 'three';
 import { afterEach, describe, expect, test } from 'vitest';
+import { SPOTLIGHT_LEVEL_BACK, getSpotlightLevel } from '../core/spotlight';
 import {
   SPOTLIGHT_MAX,
   SPOTLIGHT_MIN,
@@ -45,6 +46,22 @@ describe('spotlight store', () => {
     setSpotlightTiles([1, 2]);
     clearSpotlightTiles();
     expect(getSpotlightTiles()).toEqual([]);
+  });
+
+  test('a level scales the pulse (the face-down wall tile) and bumps the version', () => {
+    setSpotlightTiles([9]);
+    const v = spotlightVersion();
+    setSpotlightTiles([9], SPOTLIGHT_LEVEL_BACK);
+    expect(spotlightVersion()).toBe(v + 1);
+    expect(getSpotlightLevel()).toBe(SPOTLIGHT_LEVEL_BACK);
+    expect(spotlightPulse(800, false)).toBeCloseTo(SPOTLIGHT_MAX * SPOTLIGHT_LEVEL_BACK, 5);
+    expect(spotlightPulse(0, true)).toBeCloseTo(SPOTLIGHT_STATIC * SPOTLIGHT_LEVEL_BACK, 5);
+    // Same ids and level → no bump; clearing restores the full level.
+    setSpotlightTiles([9], SPOTLIGHT_LEVEL_BACK);
+    expect(spotlightVersion()).toBe(v + 1);
+    setSpotlightTiles([9]);
+    expect(getSpotlightLevel()).toBe(1);
+    expect(spotlightPulse(800, false)).toBeCloseTo(SPOTLIGHT_MAX, 5);
   });
 });
 

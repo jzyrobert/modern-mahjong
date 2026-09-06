@@ -69,6 +69,14 @@ export interface CaptionPlacement {
    *  size the strip's body to it without the strip ever outgrowing the
    *  band that placed it. */
   room?: number;
+  /** Only for a `strip`: the band's far edge (the side away from the
+   *  ring, toward which the strip grows) is a keep-out region — the hand
+   *  under a top strip — rather than the viewport's safe line. The
+   *  overlay keeps `STRIP_BREATHING` of air off such an edge; a strip
+   *  growing toward the safe line needs none, and the two spare px let
+   *  the four-line river caption sit whole in the 130 px band under a
+   *  412×700 phone's hand. */
+  bandEndsAtRegion?: boolean;
 }
 
 export interface PlacementInput {
@@ -96,6 +104,14 @@ export interface PlacementInput {
    *  up to `MAX_KEEPOUT_SHIFT` to clear them, and a card that still
    *  cannot falls back to the slim strip in the nearest free band. */
   keepOut?: readonly HaloRect[];
+  /** Regions the card keeps off *when it can*, in groups of falling
+   *  importance: the river interior (plate + rivers) under a no-target
+   *  card, the opponents' seat badges under a card that is not about
+   *  them. Every group is honoured like `keepOut` while some placement
+   *  clears all of them; when none does, groups are dropped from the
+   *  last back until one is found, and the hard-only placement stands
+   *  as the last resort. */
+  keepOutSoft?: readonly (readonly HaloRect[])[];
 }
 
 export const HALO_PAD = 8;
@@ -165,9 +181,11 @@ export const SIDE_GUTTER = 20;
 export const HALO_OVERHANG = HALO_RADIUS + 4;
 /** Least padding between a target edge and the ring before the ring
  *  gives up on that side: with less than this the stroke would sit on
- *  the target's edge, so the side opens (straight scrim edge, no
- *  stroke) instead. */
-export const MIN_RING_PAD = 2;
+ *  the target's edge (a 2 px pad put the landscape claim strip's ring
+ *  flush with the viewport bottom — round-5 critic), so the side opens
+ *  (straight scrim edge, no stroke) instead, the way the hand row at the
+ *  bottom of a phone does. */
+export const MIN_RING_PAD = 6;
 /** Air kept between a closed ring and the viewport edge — room for the
  *  stroke to finish. A landscape claim strip 8 px above the screen edge
  *  gets a closed ring with a 6 px pad rather than side strokes running
@@ -252,7 +270,45 @@ function outsideHalo(avoid: readonly HaloRect[], halo: HaloRect): HaloRect[] {
 
 const never = (): boolean => false;
 
-export function placeCaption({
+/** The card's box for a placement (a strip at its stretched height). */
+export function placementRect(p: CaptionPlacement, input: PlacementInput): HaloRect {
+  const height =
+    p.kind === 'strip'
+      ? (p.height ?? input.stripHeight ?? stripHeightEstimate(input.viewport.width))
+      : (input.cardHeight ?? CARD_HEIGHT_ESTIMATE);
+  return { left: p.left, top: p.top, width: p.width, height };
+}
+
+/**
+ * Place the caption, honouring the soft keep-out groups (see
+ * `PlacementInput.keepOutSoft`) as far as some placement clears them:
+ * every group first, then all but the last, …, then none.
+ */
+export function placeCaption(input: PlacementInput): CaptionPlacement {
+  const groups = (input.keepOutSoft ?? []).filter((g) => g.length > 0);
+  const hard = input.keepOut ?? [];
+  const { halo } = input;
+  if (groups.length === 0) return placeCaptionStrict({ ...input, keepOut: hard });
+  const base = placeCaptionStrict({ ...input, keepOut: hard });
+  for (let n = groups.length; n > 0; n--) {
+    const soft = groups.slice(0, n).flat();
+    const keepOut = [...hard, ...soft];
+    const p = placeCaptionStrict({ ...input, keepOut });
+    // The strip is the fallback for a card that cannot clear a *hard*
+    // region; a soft region never trades a proper card for it (the
+    // landscape own-hand card, unmeasured, sat on the far seat's badge
+    // and fell to the strip over the hand row it was spotlighting).
+    if (p.kind === 'strip' && base.kind !== 'strip') continue;
+    const card = placementRect(p, input);
+    // A region mostly inside the ring is the spotlit content, not a
+    // region the card was asked to dodge (same rule as `outsideHalo`).
+    const regions = halo ? outsideHalo(keepOut, halo) : keepOut;
+    if (regions.every((r) => intersectionArea(card, r) <= 0)) return p;
+  }
+  return base;
+}
+
+function placeCaptionStrict({
   viewport,
   halo,
   cardHeight,
@@ -671,6 +727,10 @@ export function placeCaption({
         (avoid ?? []).some((r) => intersectionArea(card, r) > 0),
       ...(best.height !== hs ? { height: best.height } : {}),
       room: bandBottom - bandTop,
+      // Below the ring the strip grows down toward the band's bottom;
+      // above it, up toward the band's top. That edge is a region (the
+      // hand, another keep-out) unless it is the safe line itself.
+      bandEndsAtRegion: bandTop >= haloBottom ? bandBottom < H - safe - 0.5 : bandTop > safe + 0.5,
     };
   };
 
@@ -762,9 +822,22 @@ export function placeCaption({
   // below would sit on three of its four dice pairs.
   if (H < W && H <= SHORT_VIEWPORT_MAX_HEIGHT) {
     const hs = stripHeight ?? stripHeightEstimate(W);
-    const top = Math.max(safe, H - safe - hs);
     const width = Math.max(120, W - safe * 2);
-    const card = { left: safe, top, width, height: hs };
+    let top = Math.max(safe, H - safe - hs);
+    // The hand row under the strip: when its tiles' tops would show as
+    // a sliver between the modal and the strip (round-5 critic), the
+    // strip stretches up to cover the row whole — never onto the ring.
+    const rowTop = Math.min(
+      ...hard
+        .filter((r) => r.left < safe + width && r.left + r.width > safe && r.top < top)
+        .map((r) => r.top),
+    );
+    const stretchTo = Math.max(haloBottom + STRADDLE_PAD, rowTop - STRADDLE_PAD);
+    const stretched =
+      Number.isFinite(rowTop) && stretchTo < top && top - stretchTo <= STRIP_STRETCH_MAX;
+    if (stretched) top = Math.round(stretchTo);
+    const height = H - safe - top;
+    const card = { left: safe, top, width, height };
     const covers =
       intersectionArea(card, halo) > 0 ||
       (keepClear !== null && intersectionArea(card, keepClear) > 0) ||
@@ -777,6 +850,7 @@ export function placeCaption({
       notch: null,
       gap: Math.max(0, top - haloBottom),
       overlapsChrome: covers,
+      ...(stretched ? { height } : {}),
       // The band under the ring: the strip may grow up to it (over the
       // dimmed hand row it already sits on), never onto the modal.
       room: Math.max(hs, H - safe - (haloBottom + CHROME_GAP)),
@@ -831,6 +905,53 @@ export function noSideSlot(halo: HaloRect, viewport: { width: number; height: nu
   const safe = safeInset(viewport.width);
   const sideRoom = Math.max(halo.left, viewport.width - halo.left - halo.width) - SIDE_GAP - safe;
   return sideRoom < SIDE_CARD_MIN_WIDTH;
+}
+
+/**
+ * Vertical room a side-docked card has: the tallest band of the wider
+ * side strip between the keep-out regions crossing it (an opponent's
+ * badge above, the hand row below on a landscape phone) and the safe
+ * insets, preferring bands that share the halo's vertical span (a card
+ * that slid clear of them would no longer sit beside the ring). The
+ * overlay caps a short viewport's side card to it — tight frame, three
+ * lines and the cue — so the card sits between the badge and the hand
+ * instead of covering the badge (round-5 critic, landscape river card).
+ * `Infinity` when no side strip exists or nothing crosses it. Measured
+ * from the halo, the regions and the viewport only, never the card.
+ */
+export function sideDockRoom(
+  halo: HaloRect,
+  keepOut: readonly HaloRect[],
+  viewport: { width: number; height: number },
+): number {
+  const W = viewport.width;
+  const H = viewport.height;
+  const safe = safeInset(W);
+  const haloRight = halo.left + halo.width;
+  const haloBottom = halo.top + halo.height;
+  const need = SIDE_CARD_MIN_WIDTH + SIDE_GAP + safe;
+  const leftFits = halo.left >= need;
+  const rightFits = W - haloRight >= need;
+  if (!leftFits && !rightFits) return Number.POSITIVE_INFINITY;
+  const useRight = rightFits && (!leftFits || W - haloRight >= halo.left - 1);
+  const colLeft = useRight ? haloRight + SIDE_GAP : safe;
+  const colRight = useRight ? W - safe : halo.left - SIDE_GAP;
+  const crossing = outsideHalo(
+    keepOut.filter((r) => r.width > 0 && r.height > 0),
+    halo,
+  ).filter((r) => r.left < colRight && r.left + r.width > colLeft);
+  if (crossing.length === 0) return Number.POSITIVE_INFINITY;
+  const bands: Array<[number, number]> = [];
+  let cursor = safe;
+  for (const r of [...crossing].sort((a, b) => a.top - b.top)) {
+    if (r.top - CHROME_GAP > cursor) bands.push([cursor, r.top - CHROME_GAP]);
+    cursor = Math.max(cursor, r.top + r.height + CHROME_GAP);
+  }
+  if (H - safe > cursor) bands.push([cursor, H - safe]);
+  if (bands.length === 0) return 0;
+  const beside = bands.filter(([a, b]) => a <= haloBottom && b >= halo.top);
+  const pool = beside.length > 0 ? beside : bands;
+  return Math.max(...pool.map(([a, b]) => b - a));
 }
 
 /** How far a centred (no-target) card may move off dead centre to
@@ -970,33 +1091,36 @@ function placeCentred(
     return finish(best[0], best[1]);
 
   // Still on a keep-out region (the lesson-complete card over the result
-  // panel on a landscape phone): a narrower card in the widest free
-  // column beside it — sized like a side dock, never below
-  // `SIDE_REDOCK_MIN_WIDTH` — beats a centred one hiding the panel.
-  let column: { left: number; width: number } | null = null;
+  // panel on a landscape phone, a no-target card over the river block on
+  // desktop): a narrower card in a free column beside a region — sized
+  // like a side dock, never below `SIDE_REDOCK_MIN_WIDTH` — beats a
+  // centred one hiding it. Every column is scored against *all* the
+  // regions and the chrome (the widest column beside a seat badge runs
+  // straight across the river); the cleanest wins, then the widest.
+  let colBest: { left: number; top: number; width: number } | null = null;
+  let colKey: number[] | null = null;
   for (const r of hard) {
     const rightCol = { left: r.left + r.width + CENTRE_CHROME_GAP, width: 0 };
     rightCol.width = W - safe - rightCol.left;
     const leftCol = { left: safe, width: r.left - CENTRE_CHROME_GAP - safe };
     for (const c of [rightCol, leftCol]) {
-      if (c.width >= SIDE_REDOCK_MIN_WIDTH && (column === null || c.width > column.width))
-        column = c;
+      if (c.width < SIDE_REDOCK_MIN_WIDTH) continue;
+      width = Math.min(fullWidth, c.width);
+      const colLeft = c.left === safe ? c.left + c.width - width : c.left;
+      for (const t of topList) {
+        const [partial, total, near] = score(colLeft, t);
+        const key = [partial, total, near, -width, Math.abs(t - idealTop)];
+        if (colKey === null || lexLess(key, colKey)) {
+          colBest = { left: colLeft, top: t, width };
+          colKey = key;
+        }
+      }
     }
   }
-  if (column === null) return finish(best[0], best[1]);
-  width = Math.min(fullWidth, column.width);
-  const colLeft = column.left === safe ? column.left + column.width - width : column.left;
-  let colBest = idealTop;
-  let colKey: number[] | null = null;
-  for (const t of topList) {
-    const [partial, total, near] = score(colLeft, t);
-    const key = [partial, total, near, Math.abs(t - idealTop)];
-    if (colKey === null || lexLess(key, colKey)) {
-      colBest = t;
-      colKey = key;
-    }
-  }
-  return finish(colLeft, colBest);
+  width = fullWidth;
+  if (colBest === null) return finish(best[0], best[1]);
+  width = colBest.width;
+  return finish(colBest.left, colBest.top);
 }
 
 function lexLess(a: readonly number[], b: readonly number[]): boolean {

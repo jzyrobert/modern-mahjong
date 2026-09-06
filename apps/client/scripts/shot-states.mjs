@@ -871,9 +871,11 @@ export const STATES = {
       { clickTestId: 'own-hand-tile', nth: 0 },
       // The wall holds two tiles; the first bot draws one at once and
       // its paced discard hands the last tile on 9 s later — shoot once
-      // that draw has landed (flight + bounce ≈ 1.2 s), inside the window.
+      // that draw has landed (flight + bounce ≈ 1.2 s, plus the ring
+      // easing onto the remaining tile — a 1.3 s wait once caught the
+      // ring mid-flight on a loaded host), inside the window.
       { waitForFunction: `(${ENGINE}?.wall?.length ?? 2) === 1`, timeout: 20000 },
-      { waitMs: 1300 },
+      { waitMs: 2400 },
       ...TUTORIAL_CARD_SHOWN,
     ],
   },

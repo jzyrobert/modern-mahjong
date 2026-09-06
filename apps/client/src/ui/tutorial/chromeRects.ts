@@ -233,6 +233,28 @@ export function collectKeepOutRects(doc: Document, origin: { x: number; y: numbe
   return out;
 }
 
+/** The opponents' seat badges (`data-seat-badge="opponent"`, set by the
+ *  3D shell's `SeatBadge`; the user's own badge is ordinary chrome). A
+ *  step that asks the player to watch the other seats keeps its card
+ *  off them outright; any other card keeps off them when it can
+ *  (`PlacementInput.keepOutSoft`). Round-5 critic: the river card
+ *  covered a bot's badge at every viewport. */
+const SEAT_BADGE_SELECTOR = '[data-seat-badge="opponent"]';
+
+/** Rects (overlay coordinates) of the visible opponent badges. */
+export function collectSeatBadgeRects(doc: Document, origin: { x: number; y: number }): HaloRect[] {
+  const out: HaloRect[] = [];
+  for (const el of Array.from(doc.querySelectorAll<HTMLElement>(SEAT_BADGE_SELECTOR))) {
+    if (el.closest(`[${OVERLAY_ATTR}], [${IGNORE_ATTR}]`)) continue;
+    const visible = (el as { checkVisibility?: (o?: object) => boolean }).checkVisibility;
+    if (typeof visible === 'function' && !visible.call(el, { opacityProperty: true })) continue;
+    const b = el.getBoundingClientRect();
+    if (b.width <= 0 || b.height <= 0) continue;
+    out.push({ left: b.left - origin.x, top: b.top - origin.y, width: b.width, height: b.height });
+  }
+  return out;
+}
+
 /** Slack for a tile that rides above its row: the classic shells lift the
  *  drawn tile 10 px past the wrapper's 4 px pad. */
 const TILE_IN_PLACE_PAD = 12;

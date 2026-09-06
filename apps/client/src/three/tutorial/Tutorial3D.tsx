@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useGame } from '../../state/game';
 import { useActiveTutorialStep } from '../../state/tutorial';
+import { SPOTLIGHT_LEVEL_BACK } from '../core/spotlight';
 import { resolveRenderer } from '../renderer';
 import { clearSpotlightTiles, setSpotlightTiles, tilesForTarget } from './targets';
 
@@ -28,7 +29,13 @@ export function Tutorial3D() {
   const seat = typeof you === 'number' ? you : 0;
 
   useEffect(() => {
-    setSpotlightTiles(is3d ? tilesForTarget(targetId, state, seat) : []);
+    // The wall's next tile lies face down: the hand's full gold washed
+    // its back into a cream slab, so it takes the dimmer back level and
+    // the overlay's ring around its projected rect carries the cue.
+    setSpotlightTiles(
+      is3d ? tilesForTarget(targetId, state, seat) : [],
+      targetId === 'wall-draw' ? SPOTLIGHT_LEVEL_BACK : 1,
+    );
   }, [targetId, state, seat, is3d]);
 
   useEffect(() => () => clearSpotlightTiles(), []);
