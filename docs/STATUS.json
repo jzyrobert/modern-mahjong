@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "updatedAt": "2026-09-06T02:59:48Z",
-  "round": 4,
+  "updatedAt": "2026-09-06T12:07:19Z",
+  "round": 5,
   "passThreshold": 8.5,
   "subsystems": {
     "core": {
@@ -1604,6 +1604,56 @@
           "item": "The walls are staggered but not at a slight angle like a real table",
           "status": "fixed",
           "note": "WALL_YAW 2.5 deg per wall about its centre (overhanging end toward the owner's rail), row clearances (rowLeftLimit, SIDE_SEAT_OUT_PORTRAIT, FAR_SEAT_OUT, OWN_MELD_Z_HELD); critic: perceptible, reads as a hand-pushed wall, consistent on all four walls; residual projection contacts on the phone cameras listed in TODO."
+        }
+      ]
+    },
+    {
+      "id": "fb5",
+      "at": "2026-09-06T12:07:19Z",
+      "source": "fifth manual play-test on the Pages preview (Android phone); 2 mobile items + a general request for a carved tile look",
+      "areas": {
+        "table": {
+          "rounds": [
+            {
+              "score": 8.4,
+              "pass": false,
+              "errors": 0,
+              "fixed": 2,
+              "total": 3,
+              "note": "zoom meld shelf verified on phone / phone-small / phone-tall (13 / 14 / 47 CSS px clear of the hand, toast never on the shelf, no-meld zoom unchanged); sink / rise verified from the debug trajectory at real speed (107 tiles vanish:360 hidden by 857 ms, rise:320 back at rest by 1085 ms, scale 1 throughout) and a pose-tied mid-rise frame (stacks cut cleanly by the felt, rail at rest); relief read as engraved but the symmetric groove wall blackened coloured ink (fa ink luminance 142 -> 123, dong floor 72 -> 28) and added edge noise on 24 px river tiles (+5-10 % edge gradient)"
+            },
+            {
+              "score": 8.6,
+              "pass": true,
+              "errors": 0,
+              "fixed": 3,
+              "total": 3,
+              "note": "ivory-side, footprint-aware relief: fa ink 142.2 (before 142.0), dong floor 75, no near-black rim on red wan / green pins; river tiles pixel-identical to the previous build (ink px and edge gradient equal); front-row face spread 1.4 phone / 1.5 desktop; carve still reads at 3x phone / 5x desktop. Remaining low: desktop 48 px pin rings render the relief as speckle (ink px 365 -> 445)"
+            }
+          ],
+          "final": 8.6,
+          "pass": true,
+          "note": "all three user items verified fixed; lows carried in TODO.md (desktop pin-ring speckle, sink-tail felt speckle, early-river shelf spacing, tall-phone toast slot with melds, four-meld recipe)"
+        }
+      },
+      "userItems": [
+        {
+          "area": "Mobile",
+          "item": "When zooming in, the hand tiles hide the peng/chi tiles",
+          "status": "fixed",
+          "note": "The zoom lays the user's melds on a shelf just past their river (zoomMeldShelf, 1.3x, right-aligned inside the block, shrunk to fit four) and pins the shelf's near edge above the held hand (riverZoomFrameFor shelfDepth); the shell re-fits when the meld count changes mid-zoom and projects the shelf edge for the toast slot. Recipe match-river-zoom-melds + 2 e2e (412x700, 360x640). Critic: every meld tile visible, 13 / 14 / 47 CSS px clear of the hand."
+        },
+        {
+          "area": "Mobile",
+          "item": "All other tiles suddenly being unrendered and then re-rendered on zoom is jarring",
+          "status": "fixed",
+          "note": "Tiles leaving the layout sink 1.7 units through the felt at full size over 360 ms (vanish) and rise back over 320 ms (rise) instead of an instant hide / scale-0 pop; the rail sinks and the felt spreads on the same beat (applyZoomBlend). Unit test + e2e sampling the sink alongside the tap under x8 slow motion. Critic: 107 tiles, no snap path, stacks cut cleanly by the opaque felt."
+        },
+        {
+          "area": "General",
+          "item": "Consider adding a small 3D inlay effect to the tiles so they are more realistic, as real tiles are carved",
+          "status": "fixed",
+          "note": "Shader relief: the atlas ink mask is a height map; finite differences (>= 3 texels and ~0.6 screen px) tilt the shading + clearcoat normals on the ivory side of each stroke edge, fading out on faces under ~40 device px. Critic r2: reads as a shallow engraving lit from top-left at 3x / 5x, ink colour unchanged, river tiles pixel-identical, luminance guard 1.4 / 1.5."
         }
       ]
     }
