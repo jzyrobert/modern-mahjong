@@ -66,7 +66,14 @@ import {
   toWorld,
   wallInnerFaceAt,
 } from './layout';
-import { type ScreenRect, projectPlaneRect, projectTileFaceRect, projectTileRect } from './picking';
+import {
+  type ScreenRect,
+  type TileCornerPoint,
+  projectPlaneRect,
+  projectTileCorners,
+  projectTileFaceRect,
+  projectTileRect,
+} from './picking';
 import { buildRailGeometry } from './rail';
 import {
   buildCueBandTexture,
@@ -143,6 +150,10 @@ export interface SyncInput {
   sideMeldsNear?: boolean | undefined;
   /** Camera-sized row gaps — see `LayoutOptions.rows`. */
   rows?: RowTuning | undefined;
+  /** Side walls' inward step — see `LayoutOptions.sideWallIn`. */
+  sideWallIn?: number | undefined;
+  /** Felt between the left seat's far-end melds and its rack — see `LayoutOptions.leftMeldGap`. */
+  leftMeldGap?: number | undefined;
   /** Side seats' meld scale — see `LayoutOptions.sideMeldScale`. */
   sideMeldScale?: number | undefined;
   /** Far seat's melds stood on the rail — see `LayoutOptions.farMeldsOnRail`. */
@@ -472,6 +483,8 @@ export class TableScene {
   private zoomBlend = 0;
   private zoomTarget = 0;
   private nearWallDim = 1;
+  /** Side walls' inward step the layout was built with (`SyncInput.sideWallIn`). */
+  private sideWallIn = 0;
   private lastLayout: Layout | null = null;
   private lastWaiting = false;
   /** Stable disposer for `SceneContext.onDestroy` while parked. */
@@ -720,6 +733,7 @@ export class TableScene {
     this.pulseUntil = 0;
     this.lastNow = 0;
     this.nearWallDim = 1;
+    this.sideWallIn = 0;
     this.plateInfo = { wind: null, count: -1, dead: -1 };
     this.marker.visible = false;
     this.markerRel = null;
@@ -871,6 +885,8 @@ export class TableScene {
       farSeatOut: input.farSeatOut,
       sideMeldsNear: input.sideMeldsNear,
       rows: input.rows,
+      sideWallIn: input.sideWallIn,
+      leftMeldGap: input.leftMeldGap,
       sideMeldScale: input.sideMeldScale,
       farMeldsOnRail: input.farMeldsOnRail,
       hideSideSeats: input.hideSideSeats,
@@ -909,6 +925,10 @@ export class TableScene {
     }
     this.needsDraw = input.needsDraw;
     this.nearWallDim = input.nearWallDim ?? 1;
+    if ((input.sideWallIn ?? 0) !== this.sideWallIn) {
+      this.sideWallIn = input.sideWallIn ?? 0;
+      this.interiorPublished = false;
+    }
     const next = state.wall[state.wall.length - 1];
     this.nextDrawId = next
       ? (layout.findIndex((s) => s?.zone === 'wall' && s.index === 0) ?? null)
@@ -1209,9 +1229,10 @@ export class TableScene {
     // Each wall's inner face is a yawed line (`wallInnerFaceAt`, owner's
     // frame): world t along the left / near walls is the owner's x, along
     // the right / far walls it is −x (`toLocal`).
+    // The side walls step in by `sideWallIn` on landscape (`LayoutOptions.sideWallIn`).
     for (const t of [-9.5, 0, 9.5]) {
-      left = Math.max(left, this.projectPoint(-wallInnerFaceAt(t), 0, t).x);
-      right = Math.min(right, this.projectPoint(wallInnerFaceAt(-t), 0, t).x);
+      left = Math.max(left, this.projectPoint(-(wallInnerFaceAt(t) - this.sideWallIn), 0, t).x);
+      right = Math.min(right, this.projectPoint(wallInnerFaceAt(-t) - this.sideWallIn, 0, t).x);
       top = Math.max(top, this.projectPoint(t, 0, -wallInnerFaceAt(-t)).y);
       bottom = Math.min(bottom, this.projectPoint(t, stackTop, wallInnerFaceAt(t)).y);
     }
@@ -1390,6 +1411,15 @@ export class TableScene {
     this.pool.mesh.updateMatrixWorld();
     const m = this.pool.matrixAt(id, _m);
     return projectTileRect(m, this.ctx.rig.camera, this.ctx.size.width, this.ctx.size.height, out);
+  }
+
+  /** The tile box's eight corners, world + screen (`projectTileCorners`); null when hidden. */
+  tileCorners(id: number): TileCornerPoint[] | null {
+    const t = this.choreo.tiles[id];
+    if (!t || !t.visible) return null;
+    this.pool.mesh.updateMatrixWorld();
+    const m = this.pool.matrixAt(id, _m);
+    return projectTileCorners(m, this.ctx.rig.camera, this.ctx.size.width, this.ctx.size.height);
   }
 
   /** Screen rect (CSS px) of a tile's printed face only — what the

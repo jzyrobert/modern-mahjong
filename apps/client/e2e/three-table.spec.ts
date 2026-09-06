@@ -2702,6 +2702,270 @@ async function readTablePoses(page: Page) {
   });
 }
 
+/** One tile's box corners from the debug snapshot (world + screen, CSS px). */
+interface TileCorner {
+  x: number;
+  y: number;
+  z: number;
+  sx: number;
+  sy: number;
+}
+interface TileWithCorners {
+  id: number;
+  zone: string | null;
+  x: number;
+  y: number;
+  z: number;
+  rect: { left: number; top: number; width: number; height: number } | null;
+  corners: TileCorner[] | null;
+}
+async function readTableTiles(page: Page): Promise<TileWithCorners[]> {
+  return page.evaluate(() => {
+    const dbg = (
+      globalThis as {
+        __MAHJONG_TABLE_3D_DEBUG__?: (opts?: {
+          corners?: boolean;
+        }) => { tiles: TileWithCorners[] } | null;
+      }
+    ).__MAHJONG_TABLE_3D_DEBUG__?.({ corners: true });
+    return dbg ? dbg.tiles : [];
+  });
+}
+
+/**
+ * Script bot `seat` to peng the user's first discard and make it: the
+ * user (dealer for the seed) discards a face that seat holds two of
+ * (the `match-claim-toast` setup). Seeds with such a pair *and* that
+ * seat's own wall standing after the deal: 9 → seat 1, 25 → seat 2,
+ * 49 → seat 3.
+ */
+async function botPengsFirstDiscard(page: Page, seat: 1 | 2 | 3) {
+  await page.evaluate((bot) => {
+    type T = { kind: string; suit?: string; rank?: number; honor?: string };
+    const g = globalThis as {
+      __MAHJONG_TEST_GET_STATE__?: () => { state: { hands: Record<number, T[]> }; you: number };
+      __MAHJONG_TEST_BOT_SCRIPTS__?: Record<number, { claims?: { kind: string }[] }>;
+    };
+    const s = g.__MAHJONG_TEST_GET_STATE__!();
+    const key = (t: T) => (t.kind === 'suit' ? `s:${t.suit}:${t.rank}` : `h:${t.honor}`);
+    const botCounts = new Map<string, number>();
+    for (const t of s.state.hands[bot]!) botCounts.set(key(t), (botCounts.get(key(t)) ?? 0) + 1);
+    const target = s.state.hands[s.you]!.find((t) => (botCounts.get(key(t)) ?? 0) >= 2)!;
+    g.__MAHJONG_TEST_BOT_SCRIPTS__![bot] = { claims: [{ kind: 'peng' }] };
+    const names: Record<string, string> = {
+      E: 'East wind',
+      S: 'South wind',
+      W: 'West wind',
+      N: 'North wind',
+      Z: 'Red dragon',
+      F: 'Green dragon',
+      B: 'White dragon',
+    };
+    const want = target.kind === 'suit' ? `${target.rank} ${target.suit}` : names[target.honor!]!;
+    const btn = Array.from(
+      document.querySelectorAll<HTMLElement>('[data-testid="own-hand-tile"]'),
+    ).find((b) => (b.getAttribute('aria-label') || '').startsWith(want))!;
+    btn.click();
+  }, seat);
+}
+
+/**
+ * Screen-space clearance (CSS px) between a side seat's flat melds and
+ * its own wall's silhouette — the two-high stacks' top outer edge, read
+ * at each meld corner's own screen row (a whole-box rect cannot say
+ * this: a nearer stack's rect reaches ~12 px further out than the
+ * silhouette beside the meld). `bottom` is for the meld's inner corners
+ * on the felt, `top` for its top face's inner edge; negative = hidden.
+ */
+function sideMeldClearance(tiles: TileWithCorners[], side: 1 | -1) {
+  const melds = tiles.filter((t) => t.zone === 'meld' && t.x * side > 10.2 && t.corners);
+  const wall = tiles.filter(
+    (t) =>
+      (t.zone === 'wall' || t.zone === 'deadWall') &&
+      t.x * side > 6 &&
+      Math.abs(t.z) < 8.1 &&
+      t.y > 0.62 && // level 1: its top edge is the silhouette
+      t.corners,
+  );
+  const sil = wall
+    .flatMap((w) =>
+      [...w.corners!]
+        .filter((c) => c.y > w.y)
+        .sort((a, b) => Math.abs(b.x) - Math.abs(a.x))
+        .slice(0, 2),
+    )
+    .sort((a, b) => a.sy - b.sy);
+  const silX = (sy: number): number | null => {
+    for (let i = 0; i + 1 < sil.length; i++) {
+      const a = sil[i]!;
+      const b = sil[i + 1]!;
+      if (sy >= a.sy && sy <= b.sy)
+        return b.sy === a.sy ? a.sx : a.sx + ((sy - a.sy) / (b.sy - a.sy)) * (b.sx - a.sx);
+    }
+    return null;
+  };
+  let bottom = Number.POSITIVE_INFINITY;
+  let top = Number.POSITIVE_INFINITY;
+  let samples = 0;
+  for (const m of melds) {
+    const inner = [...m.corners!].sort((a, b) => Math.abs(a.x) - Math.abs(b.x)).slice(0, 4);
+    for (const c of inner) {
+      const wx = silX(c.sy);
+      if (wx === null) continue;
+      samples++;
+      const gap = side === 1 ? c.sx - wx : wx - c.sx;
+      if (c.y > 0.55) top = Math.min(top, gap);
+      else bottom = Math.min(bottom, gap);
+    }
+  }
+  return { melds: melds.length, stacks: wall.length, samples, bottom, top };
+}
+
+/**
+ * Round-6 landscape items. The far seat's melds stand on the far rail;
+ * from the round-3 31° camera their tops (y ≈ 35) sat inside the 46 px
+ * chrome row of pills — the 27° preset keeps them ≥ 8 px under it.
+ */
+test('phone landscape: the far seat’s rail melds stand ≥ 8 px under the chrome row', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 915, height: 412 });
+  await page.addInitScript(() => {
+    const g = globalThis as {
+      __MAHJONG_TEST_SEED__?: number;
+      __MAHJONG_TEST_BOT_SCRIPTS__?: Record<number, object>;
+    };
+    g.__MAHJONG_TEST_SEED__ = 25;
+    g.__MAHJONG_TEST_BOT_SCRIPTS__ = { 1: {}, 2: {}, 3: {} };
+  });
+  const errors: string[] = [];
+  await startSolo(page, errors);
+  await waitForDealSettled(page);
+  await botPengsFirstDiscard(page, 2);
+  // The far rail: z ≈ −12.25 (`RAIL_MELD_Z`), standing 0.53 up.
+  const railMelds = (tiles: TileWithCorners[]) =>
+    tiles.filter((t) => t.zone === 'meld' && t.z < -11.5 && t.rect);
+  await expect
+    .poll(async () => railMelds(await readTableTiles(page)).length, { timeout: 30_000 })
+    .toBeGreaterThanOrEqual(3);
+  await waitForDealSettled(page);
+  const melds = railMelds(await readTableTiles(page));
+  const menu = (await page.getByRole('button', { name: 'Open menu' }).boundingBox())!;
+  const chromeBottom = menu.y + menu.height;
+  expect(chromeBottom).toBeLessThanOrEqual(46);
+  for (const m of melds) {
+    expect(m.y).toBeGreaterThan(1.1); // on the rail top, not the felt
+    expect(m.rect!.top).toBeGreaterThanOrEqual(chromeBottom + 8);
+    expect(m.rect!.top).toBeGreaterThanOrEqual(54);
+    // … and legible: ≥ 20 px tall, wholly above the far rack's tops.
+    expect(m.rect!.height).toBeGreaterThanOrEqual(20);
+  }
+  // The hand row still meets the footer: bottoms 6–12 px above the 45 px strip.
+  const handBottom = await page
+    .getByTestId('own-hand-tile')
+    .evaluateAll((els) => Math.max(...els.map((el) => el.getBoundingClientRect().bottom)));
+  expect(handBottom).toBeLessThanOrEqual(412 - 45 - 6 + 0.5);
+  expect(handBottom).toBeGreaterThan(412 - 45 - 12);
+  expect(errors, 'console / page errors').toEqual([]);
+});
+
+/**
+ * Round-6 landscape item: at 31° the side walls' heel halves hid a flat
+ * side meld's inner edge (0.1–0.3 world) and no row step could clear it
+ * on the felt. The side walls step in `SIDE_WALL_IN_LOW` on landscape
+ * so their silhouettes end ≥ 4 px inside both seats' melds' inner edges.
+ */
+for (const [seat, seed, side, label] of [
+  [1, 9, 1, 'right'],
+  [3, 49, -1, 'left'],
+] as const) {
+  test(`phone landscape: the ${label} seat’s melds clear its wall’s silhouette by ≥ 4 px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 915, height: 412 });
+    await page.addInitScript((s) => {
+      const g = globalThis as {
+        __MAHJONG_TEST_SEED__?: number;
+        __MAHJONG_TEST_BOT_SCRIPTS__?: Record<number, object>;
+      };
+      g.__MAHJONG_TEST_SEED__ = s;
+      g.__MAHJONG_TEST_BOT_SCRIPTS__ = { 1: {}, 2: {}, 3: {} };
+    }, seed);
+    const errors: string[] = [];
+    await startSolo(page, errors);
+    await waitForDealSettled(page);
+    await botPengsFirstDiscard(page, seat);
+    await expect
+      .poll(async () => sideMeldClearance(await readTableTiles(page), side).melds, {
+        timeout: 30_000,
+      })
+      .toBeGreaterThanOrEqual(3);
+    await waitForDealSettled(page);
+    const tiles = await readTableTiles(page);
+    // The side wall stands inset: level-0 stacks' centres at |x| ≈ 8.2–8.9
+    // (9.16–9.52 at WALL_D), the row's rack and melds where they were.
+    const stacks = tiles.filter(
+      (t) => (t.zone === 'wall' || t.zone === 'deadWall') && t.x * side > 6 && Math.abs(t.z) < 8.1,
+    );
+    expect(stacks.length).toBeGreaterThan(8);
+    for (const w of stacks) expect(Math.abs(w.x)).toBeLessThan(8.95);
+    const racks = tiles.filter((t) => t.zone === 'oppHand' && t.x * side > 10);
+    for (const r of racks) expect(Math.abs(r.x)).toBeCloseTo(10.55 + 0.65, 1);
+    const c = sideMeldClearance(tiles, side);
+    expect(c.samples).toBeGreaterThanOrEqual(6);
+    expect(c.bottom).toBeGreaterThanOrEqual(4);
+    expect(c.top).toBeGreaterThanOrEqual(4);
+    // The left seat's melds lie at its far end, behind its rack from the
+    // camera: `SIDE_MELD_GAP_BEHIND` (1.8) of felt keeps the rack's end
+    // tile's outline off the meld's end face (round-6 critic: "the meld's
+    // first tile touches the stack's top face, 0 px felt"); the right
+    // seat's melds lie in front of its rack at MELD_GAP.
+    const melds = tiles.filter((t) => t.zone === 'meld' && t.x * side > 10.2 && t.corners);
+    const rack = racks.filter((t) => t.corners);
+    // Along-row (world z) extents from the box corners: a claimed tile lies turned.
+    const zs = (t: TileWithCorners) => t.corners!.map((p) => p.z);
+    const meldEnd = side === -1 ? Math.max(...melds.flatMap(zs)) : Math.min(...melds.flatMap(zs));
+    const rackEnd = side === -1 ? Math.min(...rack.flatMap(zs)) : Math.max(...rack.flatMap(zs));
+    expect(Math.abs(rackEnd - meldEnd)).toBeCloseTo(side === -1 ? 1.8 : 0.55, 1);
+    if (side === -1) {
+      const m = melds.reduce((a, b) => (Math.max(...zs(b)) > Math.max(...zs(a)) ? b : a));
+      const r = rack.reduce((a, b) => (Math.min(...zs(b)) < Math.min(...zs(a)) ? b : a));
+      // The rack tile's projected outline (convex hull of its eight corners).
+      const pts = r
+        .corners!.map((p) => ({ x: p.sx, y: p.sy }))
+        .sort((a, b) => a.x - b.x || a.y - b.y);
+      const cross = (
+        o: { x: number; y: number },
+        a: { x: number; y: number },
+        b: { x: number; y: number },
+      ) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+      const half = (src: typeof pts) => {
+        const out: typeof pts = [];
+        for (const q of src) {
+          while (out.length >= 2 && cross(out[out.length - 2]!, out[out.length - 1]!, q) <= 0)
+            out.pop();
+          out.push(q);
+        }
+        return out.slice(0, -1);
+      };
+      const hull = [...half(pts), ...half([...pts].reverse())];
+      const inside = (q: { x: number; y: number }) => {
+        let sgn = 0;
+        for (let i = 0; i < hull.length; i++) {
+          const c = cross(hull[i]!, hull[(i + 1) % hull.length]!, q);
+          if (c === 0) continue;
+          if (sgn === 0) sgn = Math.sign(c);
+          else if (Math.sign(c) !== sgn) return false;
+        }
+        return true;
+      };
+      const endFace = [...m.corners!].sort((a, b) => b.z - a.z).slice(0, 4);
+      expect(endFace.filter((p) => inside({ x: p.sx, y: p.sy })).length).toBe(0);
+    }
+    expect(errors, 'console / page errors').toEqual([]);
+  });
+}
+
 /**
  * Round-6 wall-overhang contacts, as the shell wires `rowTuningFor`
  * (`layout.RowTuning`) into the scene: the right seat's near-end melds
@@ -2806,17 +3070,20 @@ test('phone landscape: the dealer’s 14-tile hand slides off the left wall’s 
     (t) => (t.zone === 'wall' || t.zone === 'deadWall') && t.x < -8.3 && t.z > 9.5,
   );
   expect(tip.length).toBeGreaterThanOrEqual(2);
-  // Centred, 14 tiles reach x −7.39; the landscape own gap (≈ 1.5 from
-  // the tip's inner face at −8.48) starts the row at ≈ −6.98 instead.
+  // Centred, 14 tiles reach x −7.39; the landscape own gap (≈ 1.47 from
+  // the tip's inner face, itself inset to −7.88 by `SIDE_WALL_IN_LOW`)
+  // starts the row at ≈ −6.41 instead (−6.98 before the round-6 inset).
   const left = Math.min(...hand.map((t) => t.x)) - 0.5;
-  expect(left).toBeGreaterThan(-7.1);
-  expect(left).toBeLessThan(-6.9);
-  // On screen the leftmost tile's hit-target starts ≥ 12 px right of the
-  // tip stack's inner face (base corner at x ≈ 123): the row used to meet it.
+  expect(left).toBeGreaterThan(-6.55);
+  expect(left).toBeLessThan(-6.3);
+  // The tip stands inset: its stacks' centres at x ≈ −8.56 (−9.16 at WALL_D).
+  for (const t of tip) expect(t.x).toBeGreaterThan(-8.8);
+  // On screen the leftmost tile's hit-target starts right of the tip
+  // stack's inner face (base corner at x ≈ 140): the row used to meet it.
   const tiles = await page
     .getByTestId('own-hand-tile')
     .evaluateAll((els) => els.map((el) => el.getBoundingClientRect().left));
-  expect(Math.min(...tiles)).toBeGreaterThanOrEqual(135);
+  expect(Math.min(...tiles)).toBeGreaterThanOrEqual(155);
   expect(errors, 'console / page errors').toEqual([]);
 });
 

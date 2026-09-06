@@ -1,6 +1,7 @@
-import { PerspectiveCamera, Vector3 } from 'three';
+import { Matrix4, PerspectiveCamera, Quaternion, Vector3 } from 'three';
 import { describe, expect, test } from 'vitest';
-import { TILE_D, TILE_H } from '../tiles/geometry';
+import type { CameraPreset } from '../core/camera';
+import { TILE_D, TILE_H, TILE_W } from '../tiles/geometry';
 import {
   DICE_LESSON_GAP,
   HELD_BOTTOM_PX,
@@ -61,9 +62,13 @@ import {
 } from './cameraPresets';
 import {
   FELT_HALF,
+  HAND_TILT,
   HAND_Z,
   MELD_Z,
   OWN_HAND_Z,
+  RAIL_MELD_TILT,
+  RAIL_MELD_Z,
+  RAIL_TOP,
   RAIL_WIDTH,
   SHELF_GAP,
   SHELF_MARGIN,
@@ -348,10 +353,17 @@ describe('heldHandFrameFor', () => {
     expect(ZOOM_HEADER_BOTTOM).toBe(PORTRAIT_STRIP_TOP + PORTRAIT_STRIP_H + 6);
     expect(ZOOM_FAR_RIVER_Y).toBe(ZOOM_HEADER_BOTTOM + ZOOM_FAR_RIVER_GAP);
   });
-  test('landscape hand tiles meet the 44 px touch guideline', () => {
+  test('landscape: 44 px hand tiles above the footer, far side ≥ 8 px under the chrome row', () => {
     const w = 915;
     const h = 412;
     const preset = cameraFor(w, h);
+    // 27°: round 6 lowered the round-3 31° so the far seat's rail melds
+    // clear the chrome row (see `TABLE_CAMERA`).
+    const elev =
+      (Math.atan2(preset.position[1] - preset.target[1], preset.position[2] - preset.target[2]) *
+        180) /
+      Math.PI;
+    expect(elev).toBeCloseTo(27, 0);
     const cam = new PerspectiveCamera(preset.fov, w / h, 0.1, 200);
     cam.position.set(...preset.position);
     cam.lookAt(...preset.target);
@@ -360,18 +372,55 @@ describe('heldHandFrameFor', () => {
       const p = new Vector3(x, y, z).project(cam);
       return { x: (p.x * 0.5 + 0.5) * w, y: (-p.y * 0.5 + 0.5) * h };
     };
+    // Projected bounds of a tile box posed at (x, y, z) with `quat`.
+    const box = (x: number, y: number, z: number, quat: Quaternion) => {
+      const m = new Matrix4().compose(new Vector3(x, y, z), quat, new Vector3(1, 1, 1));
+      const pts: { x: number; y: number }[] = [];
+      for (const sx of [-1, 1])
+        for (const sy of [-1, 1])
+          for (const sz of [-1, 1]) {
+            const c = new Vector3((sx * TILE_W) / 2, (sy * TILE_H) / 2, (sz * TILE_D) / 2);
+            c.applyMatrix4(m);
+            pts.push(px(c.x, c.y, c.z));
+          }
+      return {
+        left: Math.min(...pts.map((p) => p.x)),
+        right: Math.max(...pts.map((p) => p.x)),
+        top: Math.min(...pts.map((p) => p.y)),
+        bottom: Math.max(...pts.map((p) => p.y)),
+      };
+    };
+    const X = new Vector3(1, 0, 0);
+    const Y = new Vector3(0, 1, 0);
+    // A hand tile: ≥ 44 px wide at its centre depth (the touch floor);
+    // the leaned row's bottom edge 6–12 px above the 45 px footer strip
+    // (5 px pad + 40 px pills) that hosts the claim bar.
     expect(px(1, STAND_Y, OWN_HAND_Z).x - px(0, STAND_Y, OWN_HAND_Z).x).toBeGreaterThanOrEqual(44);
-    // Hand bottom edge sits at (or a few px into) the footer row's top.
-    expect(px(0, 0, OWN_HAND_Z + TILE_D / 2).y).toBeLessThan(h - 12 - 44 + 10);
-    // Far wall's top edge below the chrome-row toast slot (6 + ~48 px);
-    // side rows inside the viewport.
-    expect(px(0, 2 * TILE_D, -(WALL_D + TILE_H / 2)).y).toBeGreaterThanOrEqual(50);
+    const hand = box(0, STAND_Y, OWN_HAND_Z, new Quaternion().setFromAxisAngle(X, -HAND_TILT));
+    expect(hand.bottom).toBeLessThanOrEqual(h - 45 - 6);
+    expect(hand.bottom).toBeGreaterThan(h - 45 - 12);
+    // The far wall's top edge and the far seat's rail-standing melds
+    // (`RAIL_MELD_Z`, leaning `RAIL_MELD_TILT`) keep ≥ 8 px under the
+    // chrome row (8 px pad + 38 px pills); the melds stay legible (≥ 20
+    // px tall). Round 6: at 31° their tops stood at y ≈ 35, in the row.
+    const chromeBottom = 8 + 38;
+    expect(px(0, 2 * TILE_D, -(WALL_D + TILE_H / 2)).y).toBeGreaterThanOrEqual(chromeBottom + 8);
+    const railQuat = new Quaternion()
+      .setFromAxisAngle(Y, Math.PI)
+      .multiply(new Quaternion().setFromAxisAngle(X, -RAIL_MELD_TILT));
+    const rail = box(0, RAIL_TOP + STAND_Y, -RAIL_MELD_Z, railQuat);
+    expect(rail.top).toBeGreaterThanOrEqual(chromeBottom + 8);
+    expect(rail.bottom - rail.top).toBeGreaterThanOrEqual(20);
+    // … whereas the round-3 preset (31°, rail centre line) put them inside it.
+    const old: CameraPreset = { position: [0, 9.06, 20.25], target: [0, 0, 4.55], fov: 42 };
+    const oldTop = projectPreset(old, w, h, [0, RAIL_TOP + TILE_H, -(FELT_HALF + RAIL_WIDTH / 2)]);
+    expect(oldTop.y).toBeLessThan(chromeBottom);
+    // Side rows inside the viewport; the plate and the far rack in frame.
     expect(px(-PORTRAIT_X_HALF, 0, 0).x).toBeGreaterThan(0);
-    // Free-felt band between a one-row river and the near wall's top
-    // edge is tall enough for the dense claim strip (~58 px).
-    const riverRow1Bottom = px(0, TILE_D, 2.6 + TILE_H / 2).y;
-    const nearWallTop = px(0, 2 * TILE_D, WALL_D - TILE_H / 2).y;
-    expect(nearWallTop - riverRow1Bottom).toBeGreaterThanOrEqual(58);
+    expect(px(PORTRAIT_X_HALF, 0, 0).x).toBeLessThan(w);
+    expect(px(0, TILE_H, -HAND_Z).y).toBeGreaterThan(chromeBottom);
+    expect(px(0, 0, 0).y).toBeGreaterThan(100);
+    expect(px(0, 0, 0).y).toBeLessThan(hand.top);
   });
   test('landscape river zoom frames the river block between the chrome and the footer at 62°', () => {
     const w = 915;

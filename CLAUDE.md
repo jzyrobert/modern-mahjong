@@ -696,10 +696,11 @@ CC0-only asset policy, verifier rules. Operational notes:
   silhouette — leaning it further back lowers the top-back edge but
   raises the top-front edge onto the same screen line, and standing it
   up reveals the top face at that line (measured: `HAND_TILT` 0.3 moved
-  nothing). Closing the seam needs the hand ≥ 10 px lower or the near
-  wall higher — the camera / footer
-  (`cameraPresets.TABLE_CAMERA['phone-landscape']`, 9 px of footer
-  slack), not `layout.ts`.
+  nothing). Closing the seam would need the hand ≥ 10 px lower or the
+  near wall higher — and neither the camera nor the footer can give
+  that: see "The landscape hand's top meets the near wall's stack seam
+  on every camera" below for the derivation and the levers that were
+  measured (elevation, distance, lean, wall step, hand step).
 - **Parallel agents share the session scratchpad.** Four worktrees
   running from one session write to the same
   `/tmp/claude-0/.../scratchpad`; a sibling clobbered an unprefixed
@@ -849,3 +850,49 @@ CC0-only asset policy, verifier rules. Operational notes:
   seat *after* the claimer, so bot 1 moves twice before bot 3 does) and
   `match-river-zoom-sink` (×200 slow motion, 45 s) are the new table
   recipes.
+- **Landscape table is a 27° camera over an inset pinwheel** (round-6
+  landscape items). `TABLE_CAMERA['phone-landscape']` dropped from 31°
+  to 27° so the far seat's rail-standing melds (now on the rail's inner
+  half, `RAIL_MELD_Z` = `FELT_HALF` + 0.35) sit ≥ 8 px under the 46 px
+  chrome row (tops at y ≈ 58, from 35): with the hand pinned to the
+  footer the far side only comes down by foreshortening — a higher or
+  longer lens pushes it up, a wider one shrinks the tiles under 44 px.
+  The **side walls step in `SIDE_WALL_IN_LOW` (0.6)** on landscape
+  (`LayoutOptions.sideWallIn`, `wallSlotPosition(ref, me, sideWallIn)`):
+  a two-high stack's top outer edge casts onto the felt at |x| ·
+  cy / (cy − 1.24) ≈ 1.17 |x|, so from 9.16–9.52 it reached 10.7–11.1 —
+  past a flat side meld's inner edge (10.47) whose outer edge is 0.07
+  off the felt's edge, i.e. no step of the *row* could ever clear it;
+  the walls move instead, their tips with them (`rowLeftLimit(own, gap,
+  tipIn)` for the user's / far seat's rows, `rowTuningFor(cam,
+  sideWallIn)` for the hand's corner shadow), and only the *right*
+  seat's near end keeps the camera-sized overhang gap — the far and
+  left seats' tips cast away from their rows and keep the 1.0 floor
+  (they used to slide 0.47 for nothing). The left seat's far-end melds
+  lie *behind* its rack from the low camera, whose end tile's outline
+  drifts outward over the meld's outer half for ~1.5 units, so they keep
+  `SIDE_MELD_GAP_BEHIND` (1.8, `LayoutOptions.leftMeldGap`) instead of
+  `MELD_GAP`. `__MAHJONG_TABLE_3D_DEBUG__` tiles now carry `corners`
+  (world + screen box corners, `TableScene.tileCorners`) — silhouette
+  checks need the wall's top edge *at the meld's screen row*; a nearer
+  stack's whole-box rect reaches ~12 px further out and reads as a
+  false overlap. Recipes `match-far-meld` (seed 25, seat 2 pengs) and
+  `match-left-meld` (seed 49, seat 3) exist because `match-mid-hand`'s
+  melds depend on bot timing; a scripted bot claim needs the user as
+  dealer (`startHand` picks the dealer by dice per seed — check
+  `state.dealer`, not the fixture's default).
+- **The landscape hand's top meets the near wall's stack seam on every
+  camera — do not re-attempt "felt between the hand tops and the near
+  wall" by camera or footer.** Both edges are ≈ 1.2–1.4 above the felt
+  (a tile's silhouette top is insensitive to its lean) 1.55 apart, so
+  for elevation e the hand top sits (1.3 · cos e − 1.55 · sin e) above
+  the seam's felt line: +0.47 units (≈ 20 px) at 27–31°, still +0.28 at
+  39°, and 6 px of felt would need the wall 1.2 units nearer the centre
+  — which puts the user's third river row behind it (its top edge line
+  crosses the row at y ≈ 1.0) — or the hand 1.2 nearer the camera, past
+  the felt's edge (its front foot is already at 11.65 of 11.9). A nearer
+  wide-angle camera (dist 12, fov ~70°) gets to −7 px while shrinking
+  the table to 680 px with void columns. The tangency moves ±3 px
+  between 25° and 35° (hand top ≈ the level seam at 28°); treat it as
+  the landscape composition and reason about "the hand in front of the
+  wall" with occlusion and the 0.85 `nearWallDim`, not a gap.

@@ -1,7 +1,10 @@
 import { type GameState, type Seat, emptyState, startHand, tileId } from '@mahjong/game-logic';
+import { Matrix4, Quaternion, Vector3 } from 'three';
 import { describe, expect, test } from 'vitest';
+import type { CameraPreset } from '../core/camera';
 import { TILE_D, TILE_H, TILE_W } from '../tiles/geometry';
 import { TABLE_CAMERA, cameraFor, projectPreset } from './cameraPresets';
+import { slotQuaternion } from './choreography';
 import {
   CHIP_FRONT_GAP,
   CHIP_HEEL_OVERLAP,
@@ -15,6 +18,7 @@ import {
   HAND_Z,
   HELD_ROW_UNITS,
   type LayoutOptions,
+  MELD_GAP,
   MELD_Z,
   OWN_HAND_Z,
   OWN_MELD_RIGHT,
@@ -33,10 +37,12 @@ import {
   type RowTuning,
   SHELF_GAP,
   SHELF_MARGIN,
+  SIDE_MELD_GAP_BEHIND,
   SIDE_MELD_SCALE_PORTRAIT,
   SIDE_SEAT_OUT_DESKTOP,
   SIDE_SEAT_OUT_LOW,
   SIDE_SEAT_OUT_PORTRAIT,
+  SIDE_WALL_IN_LOW,
   STACKS_PER_WALL,
   STAND_Y,
   type TileSlot,
@@ -1097,9 +1103,9 @@ describe('held hand (phone portrait)', () => {
   });
 });
 
-/** Seed 5 with a peng laid out for `seat`, claimed from the next seat. */
-function withMeldFor(seat: Seat): GameState {
-  const s = dealt();
+/** Seed 5 (or `seed`) with a peng laid out for `seat`, claimed from the next seat. */
+function withMeldFor(seat: Seat, seed = 5): GameState {
+  const s = dealt(seed);
   return {
     ...s,
     hands: { ...s.hands, [seat]: s.hands[seat].slice(3) },
@@ -1784,7 +1790,8 @@ describe('camera-sized row gaps (RowTuning)', () => {
     expect(tuning('phone-tall').overhangGap).toBe(ROW_OVERHANG_GAP);
     expect(tuning('phone').overhangGap).toBeCloseTo(1.34, 1);
     expect(tuning('phone-small').overhangGap).toBeCloseTo(1.54, 1);
-    expect(tuning('landscape').overhangGap).toBeCloseTo(2.27, 1);
+    // Landscape: 2.45 from the 27° preset (2.27 at round 3's 31°).
+    expect(tuning('landscape').overhangGap).toBeCloseTo(2.45, 1);
     expect(tuning('desktop').overhangGap).toBeCloseTo(1.39, 1);
     // Lower camera → deeper shadow → wider gap.
     expect(tuning('phone-small').overhangGap).toBeGreaterThan(tuning('phone').overhangGap);
@@ -1838,7 +1845,7 @@ describe('camera-sized row gaps (RowTuning)', () => {
     expect(tuning('phone-tall').ownOverhangGap).toBe(OWN_ROW_OVERHANG_GAP);
     const ls = tuning('landscape');
     expect(ls.ownOverhangGap).toBeGreaterThan(1.4);
-    expect(ls.ownOverhangGap).toBeLessThan(1.6);
+    expect(ls.ownOverhangGap).toBeLessThan(1.7);
     const cam = CAMS.landscape.cam.position;
     const shadowX = (x: number, y: number) => x * (cam[1] / (cam[1] - y));
     const topY =
@@ -1875,5 +1882,295 @@ describe('camera-sized row gaps (RowTuning)', () => {
     expect((-7.6 * deskCam[1]) / (deskCam[1] - topY) + WALL_OVERHANG_INNER).toBeGreaterThan(
       OWN_ROW_OVERHANG_FELT,
     );
+  });
+});
+
+describe('landscape side-wall inset (sideWallIn)', () => {
+  const CAM = TABLE_CAMERA['phone-landscape'];
+  const W = 915;
+  const H = 412;
+  const IN = SIDE_WALL_IN_LOW;
+  const LS: LayoutOptions = {
+    ...PRESETS.landscape,
+    sideWallIn: IN,
+    leftMeldGap: SIDE_MELD_GAP_BEHIND,
+    rows: rowTuningFor(CAM.position, IN),
+  };
+  /** The eight box corners of a slot, world + screen. */
+  function corners(cam: CameraPreset, sl: TileSlot) {
+    const q = slotQuaternion(sl, new Quaternion());
+    const k = sl.scale ?? 1;
+    const m = new Matrix4().compose(new Vector3(sl.x, sl.y, sl.z), q, new Vector3(k, k, k));
+    const out: { x: number; y: number; z: number; sx: number; sy: number }[] = [];
+    for (const sx of [-1, 1])
+      for (const sy of [-1, 1])
+        for (const sz of [-1, 1]) {
+          const c = new Vector3((sx * TILE_W) / 2, (sy * TILE_H) / 2, (sz * TILE_D) / 2);
+          c.applyMatrix4(m);
+          const p = projectPreset(cam, W, H, [c.x, c.y, c.z]);
+          out.push({ x: c.x, y: c.y, z: c.z, sx: p.x, sy: p.y });
+        }
+    return out;
+  }
+  const along = (sl: TileSlot) => toLocal(sl.rel, sl.x, sl.z)[0];
+  /** Along-row extents of a seat's slots in `zones`, from the box corners (a claimed tile lies turned). */
+  function rowExtent(lay: (TileSlot | null)[], seat: Seat, zones: readonly string[]) {
+    const xs = lay
+      .filter((sl) => sl && sl.seat === seat && zones.includes(sl.zone))
+      .flatMap((sl) => corners(CAM, sl!).map((c) => toLocal(sl!.rel, c.x, c.z)[0]));
+    return { min: Math.min(...xs), max: Math.max(...xs) };
+  }
+  /**
+   * Screen-space clearance (CSS px) between a side seat's melds and its
+   * wall's silhouette — the two-high stacks' top outer edge, read at the
+   * meld corner's own screen row — for the meld's inner *bottom* corners
+   * (on the felt) and inner *top* corners. Negative: the wall hides them.
+   */
+  function sideMeldClearance(seat: Seat, seed: number, opts: LayoutOptions) {
+    const lay = computeLayout(withMeldFor(seat, seed), 0, opts).filter(
+      (sl): sl is TileSlot => !!sl,
+    );
+    const rel = relOf(seat, 0);
+    const melds = lay.filter((sl) => sl.zone === 'meld' && sl.seat === seat);
+    const wall = lay.filter(
+      (sl) => (sl.zone === 'wall' || sl.zone === 'deadWall') && sl.rel === rel,
+    );
+    expect(melds.length).toBeGreaterThanOrEqual(3);
+    expect(wall.length).toBeGreaterThan(20);
+    const sil: { sx: number; sy: number }[] = [];
+    for (const w of wall) {
+      if (w.y < TILE_D) continue; // level 1 only: its top edge is the silhouette
+      const top = corners(CAM, w)
+        .filter((c) => c.y > w.y)
+        .sort((a, b) => Math.abs(b.x) - Math.abs(a.x))
+        .slice(0, 2);
+      sil.push(...top);
+    }
+    sil.sort((a, b) => a.sy - b.sy);
+    const silX = (sy: number): number | null => {
+      for (let i = 0; i + 1 < sil.length; i++) {
+        const a = sil[i]!;
+        const b = sil[i + 1]!;
+        if (sy >= a.sy && sy <= b.sy)
+          return b.sy === a.sy ? a.sx : a.sx + ((sy - a.sy) / (b.sy - a.sy)) * (b.sx - a.sx);
+      }
+      return null;
+    };
+    let bottom = Number.POSITIVE_INFINITY;
+    let top = Number.POSITIVE_INFINITY;
+    for (const m of melds) {
+      const inner = corners(CAM, m)
+        .sort((a, b) => Math.abs(a.x) - Math.abs(b.x))
+        .slice(0, 4);
+      for (const c of inner) {
+        const wx = silX(c.sy);
+        if (wx === null) continue;
+        const gap = rel === 1 ? c.sx - wx : wx - c.sx;
+        if (c.y > TILE_D * 0.9) top = Math.min(top, gap);
+        else bottom = Math.min(bottom, gap);
+      }
+    }
+    expect(Number.isFinite(bottom)).toBe(true);
+    return { bottom, top };
+  }
+  test('only the side runs move, toward the centre, stagger and yaw kept', () => {
+    for (const wallSeat of [0, 1, 2, 3] as Seat[])
+      for (const stack of [0, 8, 16])
+        for (const level of [0, 1] as const) {
+          const ref = { wallSeat, stack, level, dead: false };
+          const a = wallSlotPosition(ref, 0);
+          const b = wallSlotPosition(ref, 0, IN);
+          expect(b.yaw).toBe(a.yaw);
+          expect(b.y).toBe(a.y);
+          expect(b.rel).toBe(a.rel);
+          if (a.rel === 1 || a.rel === 3) {
+            expect(b.x - a.x).toBeCloseTo(a.rel === 1 ? -IN : IN, 9);
+            expect(b.z).toBeCloseTo(a.z, 9);
+          } else {
+            expect(b.x).toBeCloseTo(a.x, 9);
+            expect(b.z).toBeCloseTo(a.z, 9);
+          }
+        }
+    // `computeLayout` applies it to every stack of both side walls.
+    const st = dealt(9);
+    const plain = computeLayout(st, 0, PRESETS.landscape);
+    const inset = computeLayout(st, 0, LS);
+    let n = 0;
+    for (let id = 0; id < 136; id++) {
+      const a = plain[id];
+      const b = inset[id];
+      if (!a || !b || (a.zone !== 'wall' && a.zone !== 'deadWall')) continue;
+      const sign = a.rel === 1 ? -1 : a.rel === 3 ? 1 : 0;
+      expect(b.x - a.x).toBeCloseTo(sign * IN, 9);
+      expect(b.z).toBeCloseTo(a.z, 9);
+      if (sign !== 0) n++;
+    }
+    expect(n).toBeGreaterThan(30);
+  });
+  test('the inset ring keeps its corners apart and its inner faces off the side rivers', () => {
+    const ring: { poly: Poly; rel: number }[] = [];
+    for (const wallSeat of [0, 1, 2, 3] as Seat[])
+      for (let stack = 0; stack < STACKS_PER_WALL; stack++) {
+        const p = wallSlotPosition({ wallSeat, stack, level: 0, dead: false }, 0, IN);
+        ring.push({ poly: stackFootprint(p), rel: p.rel });
+      }
+    let corner = Number.POSITIVE_INFINITY;
+    for (const a of ring)
+      for (const b of ring) {
+        if (a.rel === b.rel) continue;
+        corner = Math.min(corner, separation(a.poly, b.poly));
+      }
+    // The side walls' tips (in the user's / far seat's corridors) now stand
+    // 0.6 nearer the near / far walls' heel ends: 1.1 apart, from 1.7.
+    expect(corner).toBeGreaterThan(0.75);
+    expect(corner).toBeLessThan(1.3);
+    // A side wall's inner face (least across the yawed run: its heel
+    // stack, swung in) stays ≥ 0.7 off the side rivers' third row.
+    const heelInner = wallRunPoint(-TIP_DX)[1] - WALL_ACROSS_HALF - IN;
+    expect(heelInner).toBeGreaterThan(riverMetrics(1).farEdge + 0.7);
+    expect(heelInner).toBeLessThan(WALL_D - TILE_H / 2);
+  });
+  test('the rows follow the inset tips: the hand slides off the left tip, far and left rows stay centred', () => {
+    const rows = LS.rows!;
+    // The user's row: `rowLeftLimit` reads the inset tip, and the raised
+    // top-left corner's felt shadow still keeps OWN_ROW_OVERHANG_FELT
+    // inside the (inset) inner face.
+    const tipInner = WALL_OVERHANG_INNER - IN;
+    expect(rowLeftLimit(true, rows.ownOverhangGap, IN)).toBeCloseTo(
+      -tipInner + rows.ownOverhangGap,
+      9,
+    );
+    expect(rowLeftLimit(false, undefined, IN)).toBeCloseTo(-tipInner + ROW_OVERHANG_GAP, 9);
+    const { state, drawnId } = withRow(0, 0, true);
+    const hand = computeLayout(state, 0, { ...LS, drawnTileId: drawnId }).filter(
+      (sl) => sl?.zone === 'hand',
+    );
+    expect(hand).toHaveLength(14);
+    const left14 = Math.min(...hand.map((sl) => sl!.x)) - TILE_W / 2;
+    expect(left14).toBeCloseTo(rowLeftLimit(true, rows.ownOverhangGap, IN), 6);
+    expect(left14).toBeGreaterThan(-6.6);
+    expect(left14).toBeLessThan(-6.3);
+    const topY =
+      TILE_H / 2 + (TILE_H / 2) * Math.cos(HAND_TILT) + (TILE_D / 2) * Math.sin(HAND_TILT);
+    const shadowX = (left14 * CAM.position[1]) / (CAM.position[1] - topY);
+    expect(shadowX + tipInner).toBeCloseTo(OWN_ROW_OVERHANG_FELT, 6);
+    // Only the right seat's near end stands behind the near wall's tip
+    // from the camera: the far rack (13 tiles, ±6.68) keeps the 1.0 floor
+    // and stays centred — the camera gap (2.45) used to slide it 0.47 —
+    // and the left seat's row (a meld, `SIDE_MELD_GAP_BEHIND`, 10 tiles:
+    // 15.5 wide) sits on the floor limit at the far wall's (unmoved) tip.
+    const far = computeLayout(withRow(2, 0, false).state, 0, LS)
+      .filter((sl) => sl && sl.seat === 2 && sl.zone === 'oppHand')
+      .map((sl) => along(sl!));
+    expect(Math.min(...far) + Math.max(...far)).toBeCloseTo(0, 6);
+    expect(Math.min(...far) - TILE_W / 2).toBeGreaterThan(rowLeftLimit(false, undefined, IN));
+    const leftRow = rowExtent(computeLayout(withRow(3, 1, false).state, 0, LS), 3, [
+      'oppHand',
+      'meld',
+    ]);
+    expect(leftRow.min).toBeCloseTo(rowLeftLimit(false), 6);
+    expect(rowLeftLimit(false)).toBeCloseTo(-WALL_OVERHANG_INNER + ROW_OVERHANG_GAP, 9);
+    // The right seat keeps the camera gap from the (unmoved) near wall's tip.
+    const right = computeLayout(withRow(1, 1, false).state, 0, LS).filter(
+      (sl) => sl && sl.seat === 1 && (sl.zone === 'oppHand' || sl.zone === 'meld'),
+    );
+    const rightLeft = Math.min(...right.map((sl) => along(sl!) - TILE_W / 2));
+    expect(rightLeft).toBeCloseTo(rowLeftLimit(false, rows.overhangGap), 6);
+  });
+  test('both side seats’ melds clear their wall’s silhouette by ≥ 4 px from the 27° camera; not without the inset', () => {
+    // Seed 9: the right seat's wall stands whole; seed 49: the left's.
+    // (Dealer 0 in these fixtures, as the shot recipes / e2e specs use.)
+    for (const [seat, seed] of [
+      [1, 9],
+      [3, 49],
+    ] as [Seat, number][]) {
+      const inset = sideMeldClearance(seat, seed, LS);
+      expect(inset.bottom, `seat ${seat} inset`).toBeGreaterThanOrEqual(4);
+      expect(inset.top, `seat ${seat} inset`).toBeGreaterThanOrEqual(4);
+      // The round-6 residual: with the walls at WALL_D the two-high heel
+      // half hid the meld's inner edge (0.1–0.3 world) on both sides.
+      const plain = sideMeldClearance(seat, seed, {
+        ...PRESETS.landscape,
+        rows: rowTuningFor(CAM.position),
+      });
+      expect(plain.bottom, `seat ${seat} plain`).toBeLessThan(0);
+      expect(plain.top, `seat ${seat} plain`).toBeGreaterThan(0);
+    }
+    // The melds themselves did not move for it: still `MELD_Z + SIDE_SEAT_OUT_LOW`,
+    // their outer edge on the felt.
+    for (const sl of computeLayout(withMeldFor(1, 9), 0, LS)) {
+      if (!sl || sl.zone !== 'meld' || sl.seat !== 1) continue;
+      expect(sl.x).toBeCloseTo(MELD_Z + SIDE_SEAT_OUT_LOW, 6);
+      expect(sl.x + TILE_H / 2).toBeLessThan(FELT_HALF);
+    }
+  });
+  test('the left seat’s far-end melds keep SIDE_MELD_GAP_BEHIND from its rack, whose end tile then clears them on screen', () => {
+    const edges = (lay: (TileSlot | null)[], seat: Seat, zone: 'meld' | 'oppHand') =>
+      rowExtent(lay, seat, [zone]);
+    // Left seat (rel 3): melds first, then the gap, then the rack; the right
+    // seat keeps MELD_GAP; portrait / desktop (no option) keep MELD_GAP too.
+    const left = computeLayout(withMeldFor(3, 49), 0, LS);
+    const gapL = edges(left, 3, 'oppHand').min - edges(left, 3, 'meld').max;
+    expect(gapL).toBeCloseTo(SIDE_MELD_GAP_BEHIND, 6);
+    const right = computeLayout(withMeldFor(1, 9), 0, LS);
+    const gapR = edges(right, 1, 'oppHand').min - edges(right, 1, 'meld').max;
+    expect(gapR).toBeCloseTo(MELD_GAP, 6);
+    const plain = computeLayout(withMeldFor(3, 49), 0, PRESETS.portrait);
+    expect(edges(plain, 3, 'oppHand').min - edges(plain, 3, 'meld').max).toBeCloseTo(MELD_GAP, 6);
+    // Four melds + one tile still fit: the row slides off the far wall's
+    // tip toward the near end and stays on the felt.
+    const four = rowExtent(computeLayout(withRow(3, 4, false).state, 0, LS), 3, [
+      'oppHand',
+      'meld',
+    ]);
+    expect(four.min).toBeCloseTo(rowLeftLimit(false), 6);
+    expect(four.max).toBeLessThan(FELT_HALF - 1.5);
+    // By projection from the landscape camera: no corner of the meld's end
+    // face (toward the rack) lies inside the rack's end tile's outline —
+    // at MELD_GAP two of the four did.
+    const hull = (pts: { x: number; y: number }[]) => {
+      const p = [...pts].sort((a, b) => a.x - b.x || a.y - b.y);
+      const cross = (
+        o: { x: number; y: number },
+        a: { x: number; y: number },
+        b: { x: number; y: number },
+      ) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+      const half = (src: typeof p) => {
+        const out: typeof p = [];
+        for (const q of src) {
+          while (out.length >= 2 && cross(out[out.length - 2]!, out[out.length - 1]!, q) <= 0)
+            out.pop();
+          out.push(q);
+        }
+        return out.slice(0, -1);
+      };
+      return [...half(p), ...half([...p].reverse())];
+    };
+    const inside = (h: { x: number; y: number }[], q: { x: number; y: number }) => {
+      let s = 0;
+      for (let i = 0; i < h.length; i++) {
+        const a = h[i]!;
+        const b = h[(i + 1) % h.length]!;
+        const c = (b.x - a.x) * (q.y - a.y) - (b.y - a.y) * (q.x - a.x);
+        if (c === 0) continue;
+        if (s === 0) s = Math.sign(c);
+        else if (Math.sign(c) !== s) return false;
+      }
+      return true;
+    };
+    const hiddenCorners = (opts: LayoutOptions) => {
+      const lay = computeLayout(withMeldFor(3, 49), 0, opts).filter((sl): sl is TileSlot => !!sl);
+      const melds = lay.filter((sl) => sl.zone === 'meld' && sl.seat === 3);
+      const rack = lay.filter((sl) => sl.zone === 'oppHand' && sl.seat === 3);
+      // The adjacent pair: the meld tile nearest the rack (largest world
+      // z, the row runs toward the camera) and the rack's end tile.
+      const m = melds.reduce((a, b) => (b.z > a.z ? b : a));
+      const r = rack.reduce((a, b) => (b.z < a.z ? b : a));
+      const outline = hull(corners(CAM, r).map((c) => ({ x: c.sx, y: c.sy })));
+      const endFace = [...corners(CAM, m)].sort((a, b) => b.z - a.z).slice(0, 4);
+      return endFace.filter((c) => inside(outline, { x: c.sx, y: c.sy })).length;
+    };
+    expect(hiddenCorners(LS)).toBe(0);
+    expect(hiddenCorners({ ...LS, leftMeldGap: undefined })).toBeGreaterThanOrEqual(2);
   });
 });

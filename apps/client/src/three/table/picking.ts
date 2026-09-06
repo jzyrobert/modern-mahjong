@@ -54,6 +54,40 @@ export function projectTileRect(
   return projectCorners(CORNERS, matrixWorld, camera, width, height, out);
 }
 
+/** One box corner of a tile: world position and its screen projection (CSS px). */
+export interface TileCornerPoint {
+  x: number;
+  y: number;
+  z: number;
+  sx: number;
+  sy: number;
+}
+
+/**
+ * The eight box corners of a tile, in world space and projected — the
+ * test seam behind silhouette checks (a wall stack's top outer edge vs a
+ * meld's inner edge at the same screen row) that a whole-box rect cannot
+ * express. Null when any corner is behind the camera.
+ */
+export function projectTileCorners(
+  matrixWorld: Matrix4,
+  camera: Camera,
+  width: number,
+  height: number,
+): TileCornerPoint[] | null {
+  const out: TileCornerPoint[] = [];
+  for (const c of CORNERS) {
+    _v.copy(c).applyMatrix4(matrixWorld);
+    const x = _v.x;
+    const y = _v.y;
+    const z = _v.z;
+    _v.project(camera);
+    if (_v.z > 1) return null;
+    out.push({ x, y, z, sx: (_v.x * 0.5 + 0.5) * width, sy: (-_v.y * 0.5 + 0.5) * height });
+  }
+  return out;
+}
+
 /** Like `projectTileRect`, but the 2D bounds of the tile's +Z face only. */
 export function projectTileFaceRect(
   matrixWorld: Matrix4,

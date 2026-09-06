@@ -256,29 +256,34 @@ const FOUR_MELDS_CLAIM = (button) => [
   { evaluate: TWO_MELDS_DISCARD_KEEP_RUN },
 ];
 
-const CLAIM_TOAST_INIT = `
-globalThis.__MAHJONG_TEST_SEED__ = 9;
+/** Seed + scripted bots for a bot's claim on the user's first discard (`botClaimInit`). */
+const botClaimInit = (seed) => `
+globalThis.__MAHJONG_TEST_SEED__ = ${seed};
 globalThis.__MAHJONG_TEST_BOT_SCRIPTS__ = { 1: {}, 2: {}, 3: {} };
 globalThis.__MAHJONG_TEST_BOT_CLAIM_DELAY_MS__ = 300;
 `;
+const CLAIM_TOAST_INIT = botClaimInit(9);
 
 /**
- * Bot-claim setup (`match-claim-toast`): find a face the user holds one
- * of and seat 1 holds two of, script seat 1 to peng it (the scripted
- * bots accept a `claims` list to issue when legal) and discard
- * it from the user's hand.
+ * Bot-claim setup (`match-claim-toast`, `match-far-meld`,
+ * `match-left-meld`): find a face the user holds one of and `seat` holds
+ * two of, script that seat to peng it (the scripted bots accept a
+ * `claims` list to issue when legal) and discard it from the user's
+ * hand. The seed must make the user dealer (so their discard comes
+ * first) and deal such a pair: 9 for seat 1, 25 for seat 2, 49 for seat
+ * 3 — each with that seat's own wall still standing after the deal.
  */
-const BOT_PENG_SETUP = `
+const botPengSetup = (seat) => `
 (() => {
   const s = globalThis.__MAHJONG_TEST_GET_STATE__();
   if (!s.state || s.you === null) throw new Error('no state');
   const key = (t) => (t.kind === 'suit' ? 's:' + t.suit + ':' + t.rank : 'h:' + t.honor);
   const mine = s.state.hands[s.you];
   const botCounts = new Map();
-  for (const t of s.state.hands[1]) botCounts.set(key(t), (botCounts.get(key(t)) ?? 0) + 1);
+  for (const t of s.state.hands[${seat}]) botCounts.set(key(t), (botCounts.get(key(t)) ?? 0) + 1);
   const target = mine.find((t) => (botCounts.get(key(t)) ?? 0) >= 2);
   if (!target) throw new Error('no bot-peng-able face in the dealt hand');
-  globalThis.__MAHJONG_TEST_BOT_SCRIPTS__[1] = { claims: [{ kind: 'peng' }] };
+  globalThis.__MAHJONG_TEST_BOT_SCRIPTS__[${seat}] = { claims: [{ kind: 'peng' }] };
   const name = (t) => (t.kind === 'suit' ? t.rank + ' ' + t.suit : ({ E: 'East wind', S: 'South wind', W: 'West wind', N: 'North wind', Z: 'Red dragon', F: 'Green dragon', B: 'White dragon' })[t.honor]);
   const want = name(target);
   const btn = [...document.querySelectorAll('[data-testid="own-hand-tile"]')].find((b) => (b.getAttribute('aria-label') || '').startsWith(want));
@@ -286,6 +291,7 @@ const BOT_PENG_SETUP = `
   btn.click();
 })();
 `;
+const BOT_PENG_SETUP = botPengSetup(1);
 
 /**
  * Tenpai claim window (`match-tenpai-claim`): the user is tenpai after
@@ -1375,6 +1381,42 @@ export const STATES = {
       { waitForDrawCue: true, timeout: 40000 },
       { clickTestId: 'wall-draw-next' },
       { waitMs: 1600 },
+    ],
+  },
+  'match-far-meld': {
+    owner: 'table',
+    // The far seat's exposed meld: seed 25 deals the user (dealer) a face
+    // seat 2 holds two of; seat 2 pengs the user's first discard. On
+    // landscape the meld stands on the far rail (`farMeldsOnRail`) under
+    // the chrome row — round-6 measured its tops inside the row of pills;
+    // the 27° preset keeps them ≥ 8 px under it. The far wall stands
+    // whole for this seed.
+    steps: [
+      { initScript: botClaimInit(25) },
+      ...START_SOLO,
+      { waitForOwnHand: true },
+      { waitMs: 1600 },
+      { evaluate: botPengSetup(2) },
+      { waitFor: '[data-testid="claim-toast-glyph"]', timeout: 20000 },
+      { waitMs: 1400 },
+    ],
+  },
+  'match-left-meld': {
+    owner: 'table',
+    // The left seat's exposed meld (seed 49: seat 3 holds two of a face
+    // the user (dealer) was dealt; the left wall stands whole): lies flat at the
+    // row's far end beside the left wall's heel half. On landscape the
+    // side walls step in (`SIDE_WALL_IN_LOW`) so the wall's two-high
+    // silhouette ends inside the meld's inner edge — the right seat's
+    // counterpart is `match-claim-toast`.
+    steps: [
+      { initScript: botClaimInit(49) },
+      ...START_SOLO,
+      { waitForOwnHand: true },
+      { waitMs: 1600 },
+      { evaluate: botPengSetup(3) },
+      { waitFor: '[data-testid="claim-toast-glyph"]', timeout: 20000 },
+      { waitMs: 1400 },
     ],
   },
   'match-claim-toast': {

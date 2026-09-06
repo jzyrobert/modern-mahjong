@@ -184,9 +184,12 @@ export const OWN_ROW_OVERHANG_GAP = 0.6;
  * Leftmost owner-frame x a rack + melds row may start at. `gap` is the
  * felt kept from the overhang's inner face (default the world-space
  * floors above; the shells pass the camera-sized `RowTuning` gaps).
+ * `tipIn` is the inward step of the wall whose tip stands at this end
+ * (`LayoutOptions.sideWallIn` for the user's and the far seat's rows,
+ * whose tips belong to the side walls; 0 otherwise).
  */
-export function rowLeftLimit(own = false, gap?: number): number {
-  return -WALL_OVERHANG_INNER + (gap ?? (own ? OWN_ROW_OVERHANG_GAP : ROW_OVERHANG_GAP));
+export function rowLeftLimit(own = false, gap?: number, tipIn = 0): number {
+  return -(WALL_OVERHANG_INNER - tipIn) + (gap ?? (own ? OWN_ROW_OVERHANG_GAP : ROW_OVERHANG_GAP));
 }
 /**
  * Per-camera row tuning (`LayoutOptions.rows`, from `rowTuningFor`).
@@ -217,7 +220,12 @@ export function rowLeftLimit(own = false, gap?: number): number {
  *   0.6 floor (the hand is held off the table anyway).
  */
 export interface RowTuning {
-  /** Felt an opponent's row keeps past the overhang at its left end (≥ `ROW_OVERHANG_GAP`). */
+  /**
+   * Felt the *right* seat's row keeps past the near wall's overhang at
+   * its near end (≥ `ROW_OVERHANG_GAP`). The far and left seats' left
+   * ends stand beside the right / far walls' tips, whose top faces cast
+   * *away* from those rows on every camera, so they keep the floor.
+   */
   overhangGap: number;
   /** The same for the user's row (≥ `OWN_ROW_OVERHANG_GAP`). */
   ownOverhangGap: number;
@@ -237,8 +245,13 @@ function feltShadow(
   const t = cam[1] / Math.max(1e-6, cam[1] - p[1]);
   return [cam[0] + (p[0] - cam[0]) * t, cam[2] + (p[2] - cam[2]) * t];
 }
-/** Row gaps for a camera position (world units) — see `RowTuning`. */
-export function rowTuningFor(cam: readonly [number, number, number]): RowTuning {
+/**
+ * Row gaps for a camera position (world units) — see `RowTuning`.
+ * `sideWallIn` is the side walls' inward step (`LayoutOptions.
+ * sideWallIn`): the left wall's tip, whose inner face the user's row
+ * keeps its corner shadow off, stands that much nearer the centre.
+ */
+export function rowTuningFor(cam: readonly [number, number, number], sideWallIn = 0): RowTuning {
   // Near wall's tip, top inner corner: where its shadow ends behind the
   // wall is where the right seat's row may begin (plus visible felt).
   const shadowZ = feltShadow(cam, [WALL_END, 2 * TILE_D, WALL_OVERHANG_INNER])[1];
@@ -248,8 +261,9 @@ export function rowTuningFor(cam: readonly [number, number, number]): RowTuning 
   // `OWN_ROW_OVERHANG_FELT` inside the left wall's inner face.
   const topY = TILE_H / 2 + (TILE_H / 2) * Math.cos(HAND_TILT) + (TILE_D / 2) * Math.sin(HAND_TILT);
   const k = cam[1] / Math.max(1e-6, cam[1] - topY);
-  const cornerX = (-WALL_OVERHANG_INNER + OWN_ROW_OVERHANG_FELT) / k;
-  const ownOverhangGap = Math.max(OWN_ROW_OVERHANG_GAP, cornerX + WALL_OVERHANG_INNER);
+  const tipInner = WALL_OVERHANG_INNER - sideWallIn;
+  const cornerX = (-tipInner + OWN_ROW_OVERHANG_FELT) / k;
+  const ownOverhangGap = Math.max(OWN_ROW_OVERHANG_GAP, cornerX + tipInner);
   return { overhangGap, ownOverhangGap };
 }
 /** Opponent hand rows sit just outside the wall. */
@@ -516,10 +530,14 @@ export function wallSlotRefs(
 export function wallSlotPosition(
   ref: WallRef,
   me: Seat,
+  sideWallIn = 0,
 ): { x: number; y: number; z: number; yaw: number; rel: Rel } {
   const rel = relOf(ref.wallSeat, me);
   const [lx, lz] = wallRunPoint((ref.stack - (STACKS_PER_WALL - 1) / 2) * WALL_PITCH);
-  const [x, z] = toWorld(rel, lx, lz + (ref.dead ? DEAD_WALL_OFFSET : 0));
+  // Side walls (rel 1 / 3) step toward the centre by `sideWallIn`
+  // (`LayoutOptions.sideWallIn`); the near and far runs stay.
+  const across = lz + (ref.dead ? DEAD_WALL_OFFSET : 0) - (rel === 1 || rel === 3 ? sideWallIn : 0);
+  const [x, z] = toWorld(rel, lx, across);
   // `setFromAxisAngle(Y, yaw)` turns local +x to (cos, −sin) in (x, z);
   // the run climbs +z with x, so the tile turns by −WALL_YAW.
   return { x, y: FLAT_Y + ref.level * TILE_D, z, yaw: yawOf(rel) - WALL_YAW, rel };
@@ -718,6 +736,33 @@ export interface LayoutOptions extends HandOrderOptions {
    */
   rows?: RowTuning | undefined;
   /**
+   * Inward step (world units, toward the table centre) for the *side*
+   * walls' runs (rel 1 / 3), stagger and yaw kept. The low phone-
+   * landscape camera looks over a side wall's two-high top edge onto the
+   * felt beyond it: from the 27° preset the heel half's top outer edge
+   * (|x| 9.16–9.52) hides the felt out to |x| ≈ 10.7–11.1 — past a flat
+   * side meld's inner edge at 10.47, so the meld read as wedged under
+   * the wall (round-6 residual) and no step of the *row* could clear it
+   * (its outer edge is 0.07 off the felt's edge). Stepping the walls in
+   * `SIDE_WALL_IN_LOW` pulls that silhouette inside the meld's edge
+   * instead; the tips (in the user's and the far seat's corridors) move
+   * with the run — see `rowLeftLimit` / `rowTuningFor`. Default 0.
+   */
+  sideWallIn?: number | undefined;
+  /**
+   * Felt (world units) between the *left* seat's melds and its rack when
+   * its melds lie first — at its far end (`sideMeldsNear`). From the low
+   * landscape camera that end of the row recedes almost along the line
+   * of sight, so the rack's end tile (standing, 1.36 high) overlaps the
+   * flat meld behind it on screen: its outline drifts outward as it
+   * recedes and covers the meld's outer half for ~1.5 units of felt
+   * (round-6 critic: "the meld's first tile touches the stack's top
+   * face, 0 px felt"). `SIDE_MELD_GAP_BEHIND` keeps the meld's end face
+   * outside that outline; the right seat's melds lie *in front of* its
+   * rack and keep `MELD_GAP`. Default `MELD_GAP`.
+   */
+  leftMeldGap?: number | undefined;
+  /**
    * Uniform scale for the *side* seats' (rel 1 / 3) exposed melds. The
    * side melds are the smallest readable thing on the table: their
    * glyphs run sideways and, on the width-bound portrait camera, a flat
@@ -780,6 +825,34 @@ export interface LayoutOptions extends HandOrderOptions {
  * follows so rack and melds remain one row.
  */
 export const SIDE_SEAT_OUT_LOW = 0.65;
+
+/**
+ * Side walls' inward step on phone landscape (`LayoutOptions.sideWallIn`).
+ * Sized by projection from the 27° preset (camera 8.6 up): a two-high
+ * stack's top outer edge at |x| casts onto the felt at |x| · cy / (cy −
+ * 1.24) ≈ 1.17 |x|; the heel half's outer face (9.16–9.52) needs to sit
+ * at ≤ 8.97 for the shadow to end ≥ 4 CSS px (≈ 0.13) inside a flat
+ * meld's inner edge (`MELD_Z` + `SIDE_SEAT_OUT_LOW` − 0.68 = 10.47) on
+ * the far end too, where the left seat's melds lie beside mid-run
+ * stacks. 0.6 keeps the walls' inner faces (7.52) 1.1 off the side
+ * rivers' third row (6.38), the heel ends 0.8 off the neighbouring
+ * runs' inner faces, and the tips' shadows still run away from the
+ * user's and the far seat's rows (`layout.test.ts` pins the numbers).
+ */
+export const SIDE_WALL_IN_LOW = 0.6;
+
+/**
+ * Felt between the left seat's far-end melds and its rack on phone
+ * landscape (`LayoutOptions.leftMeldGap`). From the 27° preset (camera
+ * 8.6 up, 20.7 back) a ray over the rack's end tile at |x| 10.9–11.5
+ * drifts outward ≈ 3.5 % per unit of depth, so the tile's outline still
+ * covers the meld's outer half (|x| to 11.83) 1.2 units behind it and
+ * clears the meld's end face from 1.5; 1.8 leaves the rack's silhouette
+ * wholly beside the meld (`layout.test.ts` pins it by projection). A
+ * one-meld row (3.4 + 1.8 + 10.3) then slides 0.27 toward the near end
+ * off the far wall's tip; four melds slide 0.72, the near end at 8.9.
+ */
+export const SIDE_MELD_GAP_BEHIND = 1.8;
 
 /**
  * Side-seat outward shift for the desktop preset (44°, camera on the
@@ -969,7 +1042,7 @@ export function computeLayout(state: GameState, me: Seat, opts: LayoutOptions): 
   const layout = emptyLayout();
 
   if (opts.waitingWalls) placeWaitingWalls(layout, state, me);
-  else if (opts.hideWalls !== true) placeWalls(layout, state, me);
+  else if (opts.hideWalls !== true) placeWalls(layout, state, me, opts.sideWallIn ?? 0);
 
   for (const seat of [0, 1, 2, 3] as Seat[]) {
     const rel = relOf(seat, me);
@@ -1039,20 +1112,27 @@ export function computeLayout(state: GameState, me: Seat, opts: LayoutOptions): 
     const railMelds = !isMe && rel === 2 && opts.farMeldsOnRail === true && melds.length > 0;
     const groups = standingOwn ? standingMelds : melds;
     const meldsWidth = railMelds ? 0 : meldGroupsWidth(groups) * meldScale;
-    const total =
-      handWidth + (groups.length > 0 && hand.length > 0 && !railMelds ? MELD_GAP : 0) + meldsWidth;
     // Side seats: melds first (their left end, beside their own wall's
-    // in-swinging heel), then the rack.
+    // in-swinging heel), then the rack. The left seat's melds then lie
+    // behind its rack from the cameras (`LayoutOptions.leftMeldGap`).
     const meldsFirst = opts.sideMeldsNear === true && isSide && melds.length > 0 && !railMelds;
+    const meldGap = meldsFirst && rel === 3 ? (opts.leftMeldGap ?? MELD_GAP) : MELD_GAP;
+    const total =
+      handWidth + (groups.length > 0 && hand.length > 0 && !railMelds ? meldGap : 0) + meldsWidth;
     // A row is centred on its seat unless its left end would run into
     // the overhang standing there (`rowLeftLimit`, the camera-sized gap
     // when the shell passes one): then the whole row slides right by
     // the overrun.
-    const gap = isMe ? opts.rows?.ownOverhangGap : opts.rows?.overhangGap;
-    let cursor = Math.max(-total / 2, rowLeftLimit(isMe, gap));
+    // Only the right seat's near end stands *behind* the near wall's tip
+    // from the cameras (its projected top face — `RowTuning`); the far and
+    // left seats keep the world floor. The user's and the far seat's left
+    // ends stand at the side walls' tips, which `sideWallIn` steps in.
+    const gap = isMe ? opts.rows?.ownOverhangGap : rel === 1 ? opts.rows?.overhangGap : undefined;
+    const tipIn = rel === 0 || rel === 2 ? (opts.sideWallIn ?? 0) : 0;
+    let cursor = Math.max(-total / 2, rowLeftLimit(isMe, gap, tipIn));
     if (meldsFirst) {
       cursor = placeMelds(layout, melds, seat, rel, yaw, meldZ, cursor, meldScale);
-      if (hand.length > 0) cursor += MELD_GAP;
+      if (hand.length > 0) cursor += meldGap;
     }
 
     const revealOpp = !isMe && opts.reveal;
@@ -1259,8 +1339,15 @@ function placeStandingMelds(
 
 /** Top of the wood rail (its box is centred `RAIL_H / 2 − 0.02` up). */
 export const RAIL_TOP = RAIL_H - 0.02;
-/** Centre line (owner's frame) of melds stood on the far rail — see `LayoutOptions.farMeldsOnRail`. */
-export const RAIL_MELD_Z = FELT_HALF + RAIL_WIDTH / 2;
+/**
+ * Centre line (owner's frame) of melds stood on the far rail — see
+ * `LayoutOptions.farMeldsOnRail`. On the rail's inner half (0.35 past
+ * the felt's edge: the tile's foot on the rail with its lean's overhang
+ * still inside the 1.1 rail), not its centre line — every 0.1 nearer
+ * the camera drops the tiles' tops ~1 CSS px below the landscape chrome
+ * row (round-6 item "far-seat melds crowd the chrome row").
+ */
+export const RAIL_MELD_Z = FELT_HALF + 0.35;
 /** Backward lean of rail-standing melds: the face tips up toward the low camera. */
 export const RAIL_MELD_TILT = 0.2;
 
@@ -1317,7 +1404,7 @@ function placeRailMelds(
  * break grows as the hand progresses, the dead wall shrinks from its
  * break end — the two ends of the deck meet at the gap).
  */
-function placeWalls(layout: Layout, state: GameState, me: Seat): void {
+function placeWalls(layout: Layout, state: GameState, me: Seat, sideWallIn: number): void {
   const refs = wallSlotRefs(
     state.dealer,
     state.openingRolls?.breakPosition,
@@ -1330,7 +1417,7 @@ function placeWalls(layout: Layout, state: GameState, me: Seat): void {
     if (i < 0) return;
     const tile = state.wall[state.wall.length - 1 - i];
     if (!tile) return;
-    const p = wallSlotPosition(ref, me);
+    const p = wallSlotPosition(ref, me, sideWallIn);
     put(layout, {
       id: tileId(tile),
       zone: 'wall',
@@ -1352,7 +1439,7 @@ function placeWalls(layout: Layout, state: GameState, me: Seat): void {
     if (i < 0) return;
     const tile = state.deadWall[i];
     if (!tile) return;
-    const p = wallSlotPosition(ref, me);
+    const p = wallSlotPosition(ref, me, sideWallIn);
     put(layout, {
       id: tileId(tile),
       zone: 'deadWall',
