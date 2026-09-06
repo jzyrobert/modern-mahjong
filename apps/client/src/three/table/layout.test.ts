@@ -28,6 +28,9 @@ import {
   STACKS_PER_WALL,
   STAND_Y,
   WALL_D,
+  WALL_END,
+  WALL_PITCH,
+  WALL_STAGGER,
   computeLayout,
   dealerChipBlocked,
   dealerChipLocal,
@@ -203,7 +206,7 @@ describe('wallSlotPosition', () => {
       }
     }
   });
-  test('the four walls form a pinwheel that never overlaps at the corners', () => {
+  test('the four walls form a pinwheel: the near wall overhangs on the user’s right', () => {
     // Near wall's right end vs. right wall's near end.
     const nearEnd = wallSlotPosition(
       { wallSeat: 0, stack: STACKS_PER_WALL - 1, level: 0, dead: true },
@@ -211,9 +214,110 @@ describe('wallSlotPosition', () => {
     );
     const rightNear = wallSlotPosition({ wallSeat: 1, stack: 0, level: 0, dead: false }, 0);
     // Right wall tiles occupy z ≤ rightNear.z + TILE_W/2; near wall tiles
-    // occupy z ≥ nearEnd.z − TILE_H/2.
-    expect(rightNear.z + TILE_W / 2).toBeLessThan(nearEnd.z - TILE_H / 2);
-    expect(Math.abs(nearEnd.x) + TILE_W / 2).toBeLessThan(FELT_HALF);
+    // occupy z ≥ nearEnd.z − TILE_H/2 — a clear gap, not a graze.
+    expect(nearEnd.z - TILE_H / 2 - (rightNear.z + TILE_W / 2)).toBeGreaterThan(1);
+    // The overhanging end passes the right wall's inner face by the
+    // stagger and stays well inside the felt (`WALL_END`).
+    expect(nearEnd.x + TILE_W / 2).toBeCloseTo(WALL_END, 9);
+    expect(WALL_END).toBeGreaterThan(WALL_D - TILE_H / 2 + WALL_STAGGER);
+    expect(WALL_END).toBeLessThan(FELT_HALF - TILE_H / 2);
+    // The retreated (left) end stops short of the left wall's inner face.
+    const nearLeft = wallSlotPosition({ wallSeat: 0, stack: 0, level: 0, dead: false }, 0);
+    expect(nearLeft.x - TILE_W / 2).toBeGreaterThan(-(WALL_D - TILE_H / 2) + 1);
+    // The automatic-table look: about two stacks of stagger.
+    expect(WALL_STAGGER).toBeGreaterThanOrEqual(1.5);
+    expect(WALL_STAGGER).toBeLessThanOrEqual(2.5);
+  });
+  test('the pinwheel is rotationally symmetric: every wall is the near wall turned 90°·rel', () => {
+    for (const me of [0, 1, 2, 3] as Seat[]) {
+      for (const wallSeat of [0, 1, 2, 3] as Seat[]) {
+        const rel = relOf(wallSeat, me);
+        for (const stack of [0, 8, STACKS_PER_WALL - 1]) {
+          const p = wallSlotPosition({ wallSeat, stack, level: 0, dead: false }, me);
+          const near = wallSlotPosition({ wallSeat: me, stack, level: 0, dead: false }, me);
+          const [x, z] = toWorld(rel, near.x, near.z);
+          expect(p.x).toBeCloseTo(x, 9);
+          expect(p.z).toBeCloseTo(z, 9);
+          expect(p.rel).toBe(rel);
+          // In its owner's frame every wall is the same staggered run.
+          const [lx, lz] = toLocal(rel, p.x, p.z);
+          expect(lx).toBeCloseTo((stack - 8) * WALL_PITCH + WALL_STAGGER, 9);
+          expect(lz).toBeCloseTo(WALL_D, 9);
+        }
+      }
+    }
+  });
+  test('no stack ever reaches a perpendicular wall, for every dealer / break, from every seat', () => {
+    // Stacks on different walls must clear each other by a whole tile
+    // on at least one axis: the overhanging end passes in *front* of the
+    // neighbour's retreated end, never through it, and the retreated end
+    // stops short of the wall it runs toward.
+    const inner = WALL_D - TILE_H / 2;
+    const outer = WALL_D + TILE_H / 2;
+    const box = (p: { x: number; z: number; rel: number }) => {
+      const alongX = p.rel % 2 === 0;
+      const hx = alongX ? TILE_W / 2 : TILE_H / 2;
+      const hz = alongX ? TILE_H / 2 : TILE_W / 2;
+      return { x0: p.x - hx, x1: p.x + hx, z0: p.z - hz, z1: p.z + hz, rel: p.rel };
+    };
+    for (const me of [0, 1, 2, 3] as Seat[]) {
+      for (const dealer of [0, 1, 2, 3] as Seat[]) {
+        for (let n = 2; n <= 12; n++) {
+          const { live, dead } = wallSlotRefs(dealer, n, 122, 14);
+          const stacks = [...live, ...dead].filter((r) => r.level === 0);
+          const boxes = stacks.map((r) => box(wallSlotPosition(r, me)));
+          for (const ref of stacks) {
+            const p = wallSlotPosition(ref, me);
+            const [lx] = toLocal(p.rel, p.x, p.z);
+            // Retreated end: a whole tile short of the left neighbour's inner face.
+            expect(lx - TILE_W / 2).toBeGreaterThan(-inner + 1);
+            // Overhanging end: the last stack is entirely past the right
+            // neighbour's outer face, never sitting on its footprint.
+            if (ref.stack === STACKS_PER_WALL - 1) expect(lx - TILE_W / 2).toBeGreaterThan(outer);
+            expect(lx + TILE_W / 2).toBeLessThanOrEqual(WALL_END + 1e-9);
+          }
+          // Pairwise clearance from one seat only: the other seats' rings
+          // are pure rotations (the symmetry test above).
+          for (let i = 0; me === 0 && i < boxes.length; i++) {
+            for (let j = i + 1; j < boxes.length; j++) {
+              const a = boxes[i]!;
+              const b = boxes[j]!;
+              if (a.rel === b.rel) continue;
+              const gapX = Math.max(a.x0 - b.x1, b.x0 - a.x1);
+              const gapZ = Math.max(a.z0 - b.z1, b.z0 - a.z1);
+              expect(
+                Math.max(gapX, gapZ),
+                `me ${me} dealer ${dealer} roll ${n}: walls ${a.rel}/${b.rel} touch`,
+              ).toBeGreaterThan(1);
+            }
+          }
+        }
+      }
+    }
+  });
+  test('every wall stack stays on the felt with a rail margin (overhang included)', () => {
+    for (const me of [0, 1, 2, 3] as Seat[]) {
+      const { live, dead } = wallSlotRefs(0, 7, 122, 14);
+      for (const ref of [...live, ...dead]) {
+        const p = wallSlotPosition(ref, me);
+        expect(Math.abs(p.x) + TILE_H / 2).toBeLessThan(FELT_HALF - 0.5);
+        expect(Math.abs(p.z) + TILE_H / 2).toBeLessThan(FELT_HALF - 0.5);
+      }
+    }
+  });
+  test('the live wall drains leftward from the break and enters each new wall at its overhanging end', () => {
+    for (const dealer of [0, 1, 2, 3] as Seat[]) {
+      for (let n = 2; n <= 12; n++) {
+        const { live } = wallSlotRefs(dealer, n, 122, 14);
+        for (let k = 1; k < live.length; k++) {
+          const a = live[k - 1]!;
+          const b = live[k]!;
+          if (a.wallSeat === b.wallSeat) expect(b.stack).toBeLessThanOrEqual(a.stack);
+          // A wrap lands on the previous seat's rightmost (overhanging) stack.
+          else expect(b.stack).toBe(STACKS_PER_WALL - 1);
+        }
+      }
+    }
   });
 });
 

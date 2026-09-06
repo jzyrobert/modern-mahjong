@@ -85,8 +85,28 @@ export const STACKS_PER_WALL = 17;
 export const DEAD_WALL_STACKS = 7;
 /** Distance from the table centre to the wall tiles' centre line. */
 export const WALL_D = 8.8;
-/** Pinwheel shift of each wall toward its owner's right. */
-export const WALL_SHIFT = 0.75;
+/**
+ * Pinwheel stagger: every wall is shifted this far along its own axis
+ * toward its owner's right, all four in the same rotational sense, so
+ * the ring reads like an automatic table's — one end of each wall
+ * overhangs past the neighbouring wall's inner face
+ * (`WALL_D − TILE_H / 2` = 8.12; the run's own end reaches
+ * `WALL_END` = 10.74, 2.6 units past it and 1.16 inside the felt edge)
+ * and the other end stops `WALL_STAGGER − 0.62` = 1.38 units short of
+ * the opposite neighbour, so no stack can touch a perpendicular wall
+ * for any break. Round-4 feedback asked for the staggered square of a
+ * real table; the earlier 0.75 read as four centred runs whose corners
+ * merely failed to collide (0.13 clearance). From the user's seat the
+ * near wall's overhang is on their right; the live wall drains
+ * leftward from the break, wrapping onto the previous seat's right
+ * (overhanging) end, so an arm's overhang is the first part of it to go
+ * once the draw reaches that wall (`wallSlotRefs`).
+ */
+export const WALL_STAGGER = 2.0;
+/** Half-length of a full 17-stack run (edge to edge), world units. */
+export const WALL_HALF = ((STACKS_PER_WALL - 1) / 2) * WALL_PITCH + TILE_W / 2;
+/** Along-axis reach of a wall's overhanging end in its owner's frame (edge). */
+export const WALL_END = WALL_HALF + WALL_STAGGER;
 /** Opponent hand rows sit just outside the wall. */
 export const HAND_Z = 10.55;
 /**
@@ -305,14 +325,15 @@ export function wallSlotRefs(
  * faces z-fighting read as a ghost tile). The dead stacks are marked by
  * `TableScene`'s warm 0.5 tint alone (`DEAD_WALL_OFFSET` is 0: the
  * earlier fifth-of-a-tile step read as misaligned stacks rather than a
- * marker); the break gap grows naturally as tiles leave.
+ * marker); the break gap grows naturally as tiles leave. Every stack
+ * carries the `WALL_STAGGER` pinwheel shift along its owner's x.
  */
 export function wallSlotPosition(
   ref: WallRef,
   me: Seat,
 ): { x: number; y: number; z: number; yaw: number; rel: Rel } {
   const rel = relOf(ref.wallSeat, me);
-  const lx = (ref.stack - (STACKS_PER_WALL - 1) / 2) * WALL_PITCH + WALL_SHIFT;
+  const lx = (ref.stack - (STACKS_PER_WALL - 1) / 2) * WALL_PITCH + WALL_STAGGER;
   const [x, z] = toWorld(rel, lx, WALL_D + (ref.dead ? DEAD_WALL_OFFSET : 0));
   return { x, y: FLAT_Y + ref.level * TILE_D, z, yaw: yawOf(rel), rel };
 }
@@ -1013,7 +1034,7 @@ function placeWalls(layout: Layout, state: GameState, me: Seat): void {
  * `wall` + `deadWall` lies in one of four centred runs of whole stacks,
  * the runs as even as the count allows (the extra stacks go to the seats
  * nearest the viewer). A leftover single tile stays hidden. Keeps the
- * pinwheel shift so the runs sit like the real walls will.
+ * `WALL_STAGGER` pinwheel so the runs sit like the real walls will.
  */
 function placeWaitingWalls(layout: Layout, state: GameState, me: Seat): void {
   const tiles = [...state.deadWall, ...state.wall];

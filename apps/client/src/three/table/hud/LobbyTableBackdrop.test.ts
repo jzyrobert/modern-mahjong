@@ -2,7 +2,15 @@ import { TOTAL_TILES } from '@mahjong/game-logic';
 import { PerspectiveCamera, Vector3 } from 'three';
 import { describe, expect, test } from 'vitest';
 import { TILE_D, TILE_H } from '../../tiles/geometry';
-import { FELT_HALF, RAIL_H, RAIL_WIDTH, STACKS_PER_WALL, WALL_D, computeLayout } from '../layout';
+import {
+  FELT_HALF,
+  RAIL_H,
+  RAIL_WIDTH,
+  STACKS_PER_WALL,
+  WALL_D,
+  WALL_END,
+  computeLayout,
+} from '../layout';
 import {
   LOBBY_LANDSCAPE_FELT_BAND,
   LOBBY_LANDSCAPE_WALL_POINT,
@@ -91,8 +99,9 @@ describe('waiting table', () => {
       expect(wallFrontTop).toBeGreaterThan(bandTop + 8);
       expect(wallBottom - wallFrontTop).toBeGreaterThanOrEqual(20);
       // Felt shows beyond the wall's ends (17 stacks ≈ 17.5 units of the
-      // 23.8-unit felt), inside the viewport's width.
-      expect(px(p, w, h, new Vector3(9.2, 0, WALL_D)).x).toBeLessThan(w - 40);
+      // 23.8-unit felt, staggered `WALL_STAGGER` to the right into the
+      // pinwheel), inside the viewport's width.
+      expect(px(p, w, h, new Vector3(WALL_END, 0, WALL_D)).x).toBeLessThan(w - 40);
       expect(px(p, w, h, new Vector3(-FELT_HALF, 0, WALL_D)).x).toBeGreaterThan(-40);
       // The rail sits below the frame; the plate well up behind the panel.
       expect(px(p, w, h, new Vector3(0, RAIL_H, FELT_HALF + RAIL_WIDTH)).y).toBeGreaterThan(h);
