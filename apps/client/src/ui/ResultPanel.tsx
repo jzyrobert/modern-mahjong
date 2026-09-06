@@ -178,6 +178,8 @@ export function ResultPanel({
             result={r}
             faanMin={state.rules.faanMin}
             theme="glass"
+            winnerLabel={winnerName === 'You' ? 'You win' : `${winnerName} wins`}
+            fromName={fromName ?? undefined}
           />
         ) : null}
       </View>
@@ -234,6 +236,8 @@ export function ResultPanel({
           onClose={() => setBreakdownOpen(false)}
           result={r}
           faanMin={state.rules.faanMin}
+          winnerLabel={r.winner === mySeat ? 'You win' : `${nameForSeat(lobby, r.winner)} wins`}
+          fromName={r.selfDraw ? undefined : r.from === mySeat ? 'you' : nameForSeat(lobby, r.from)}
         />
       ) : null}
     </View>

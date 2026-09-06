@@ -1009,6 +1009,36 @@ describe('held hand (phone portrait)', () => {
     // at its `rightEdge` along our z) or the rail.
     expect(wide.z - (TILE_H / 2) * wide.scale).toBeGreaterThan(m.rightEdge + 1);
     expect(wide.z + (TILE_H / 2) * wide.scale).toBeLessThan(FELT_HALF - 1);
+    // A fitted block (round-5: the shelf on the reserved line read as part
+    // of the hand early in the hand): the shelf lies past the block's near
+    // edge and right-aligns inside its half-width; the four-meld row now
+    // shrinks to that narrower block.
+    const block = { xHalf: 6.6, near: 5.9 };
+    const fitted = zoomMeldShelf(scale, four, block);
+    expect(fitted.z - (TILE_H / 2) * fitted.scale).toBeCloseTo(block.near + SHELF_GAP, 9);
+    expect(fitted.right).toBeCloseTo(block.xHalf - SHELF_MARGIN, 9);
+    expect(four * fitted.scale).toBeCloseTo(2 * fitted.right, 9);
+    expect(fitted.scale).toBeLessThan(wide.scale);
+    const twoFitted = zoomMeldShelf(scale, 2 * 3.42 + 0.3, block);
+    expect(twoFitted.scale).toBeCloseTo(OWN_MELD_SCALE_HELD, 9);
+    expect(twoFitted.depth).toBeCloseTo(SHELF_GAP + TILE_H * OWN_MELD_SCALE_HELD, 9);
+    // The layout option carries the block through to the slots.
+    const s = dealt();
+    const withMelds: GameState = {
+      ...s,
+      hands: { ...s.hands, 0: s.hands[0].slice(3) },
+      melds: { ...s.melds, 0: [{ kind: 'peng', tiles: s.hands[0].slice(0, 3), from: 1 }] },
+    } as GameState;
+    const slots = computeLayout(withMelds, 0, {
+      ...OPTS,
+      heldHand: FRAME,
+      riverScale: scale,
+      heldMeldsShelf: true,
+      hideWalls: true,
+      zoomBlock: block,
+    }).filter((sl) => sl?.zone === 'meld' && sl.seat === 0);
+    expect(slots).toHaveLength(3);
+    for (const sl of slots) expect(sl!.z).toBeCloseTo(zoomMeldShelf(scale, 3.42, block).z, 5);
   });
   test("heldMeldsShelf lays the held hand's melds on the shelf past the river, right-aligned", () => {
     const s = dealt();

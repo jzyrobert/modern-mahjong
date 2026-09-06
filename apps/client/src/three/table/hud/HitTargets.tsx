@@ -41,6 +41,8 @@ export interface HudRects {
   nearRailBottom: number | null;
   /** Screen y of the near river's last row's far edge at the portrait river scale — the block's bottom while zoomed (toast slot). */
   riverBlockBottom: number | null;
+  /** Screen x of the felt's near-right corner (the rail's inner mitre) — the desktop sort control stops left of it. */
+  feltNearRight: number | null;
 }
 
 export interface HitTargetsHandle {

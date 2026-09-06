@@ -144,6 +144,105 @@ const TWO_MELDS_DISCARD_KEEP_RUN = `
 })();
 `;
 
+/**
+ * Four melds (`match-river-zoom-four-melds`): seed 5752 deals the user
+ * (dealer, seat 0) two pairs bot 1 holds a third of (3 sou, 2 pin) and
+ * two single-shape runs bot 3 — the seat before the user — can complete
+ * (2-3 man ← 4 man, 8-9 sou ← 7 sou), with eight tiles all distinct and
+ * six others to discard. Bot 1 is scripted to pitch the two pair faces
+ * on its first two turns and bot 3 the two run feeds, so the claims
+ * land in the order peng, peng, chi, chi: play resumes from the seat
+ * after the claimer, so bot 1 moves again straight after each peng and
+ * its second turn is the second peng; only then do bots 2 and 3 move,
+ * by which time the user holds no pair (nothing an unscripted discard
+ * of theirs could offer, and a chi comes from seat 3 alone). Bot 2 is
+ * still handed two white dragons the user's hand has no use for. The
+ * user is left with one concealed tile before the next draw. The setup
+ * re-derives the plan from the dealt state (the same search that chose
+ * the seed) rather than hard-coding tiles.
+ */
+const FOUR_MELDS_INIT = `
+globalThis.__MAHJONG_TEST_SEED__ = 5752;
+globalThis.__MAHJONG_TEST_BOT_SCRIPTS__ = { 1: {}, 2: {}, 3: {} };
+globalThis.__MAHJONG_TEST_BOT_PACE_MS__ = 600;
+globalThis.__MAHJONG_TUTORIAL_FORCE_PASS__ = true;
+`;
+const FOUR_MELDS_SETUP = `
+(() => {
+  const s = globalThis.__MAHJONG_TEST_GET_STATE__();
+  if (!s.state || s.you === null) throw new Error('no state');
+  const key = (t) => (t.kind === 'suit' ? 's:' + t.suit + ':' + t.rank : 'h:' + t.honor);
+  const tileOf = (k) => {
+    const [kind, a, b] = k.split(':');
+    return kind === 's' ? { kind: 'suit', suit: a, rank: Number(b) } : { kind: 'honor', honor: a };
+  };
+  const hands = s.state.hands;
+  const mine = hands[s.you];
+  const counts = new Map();
+  for (const t of mine) counts.set(key(t), (counts.get(key(t)) ?? 0) + 1);
+  const bot1 = new Set(hands[1].map(key));
+  const bot3 = new Set(hands[3].map(key));
+  const has = (suit, r) => counts.get('s:' + suit + ':' + r) ?? 0;
+  const pairs = [...counts.entries()].filter(([k, c]) => c === 2 && bot1.has(k)).map(([k]) => k);
+  const chis = [];
+  for (const suit of ['man', 'pin', 'sou']) {
+    for (let r = 1; r <= 8; r++) {
+      if (has(suit, r) !== 1 || has(suit, r + 1) !== 1) continue;
+      for (const x of [r - 1, r + 2]) {
+        if (x < 1 || x > 9 || has(suit, x) > 0 || !bot3.has('s:' + suit + ':' + x)) continue;
+        const near = [x - 2, x - 1, x + 1, x + 2].filter((q) => q >= 1 && q <= 9 && has(suit, q) > 0);
+        if (near.length === 2) chis.push({ suit, keep: [r, r + 1], x });
+      }
+    }
+  }
+  let plan = null;
+  for (let i = 0; i < pairs.length && !plan; i++)
+    for (let j = i + 1; j < pairs.length && !plan; j++)
+      for (let a = 0; a < chis.length && !plan; a++)
+        for (let b = a + 1; b < chis.length && !plan; b++) {
+          const c1 = chis[a];
+          const c2 = chis[b];
+          const used = new Set([pairs[i], pairs[j]]);
+          let ok = true;
+          for (const c of [c1, c2]) for (const r of c.keep) {
+            const k = 's:' + c.suit + ':' + r;
+            if (used.has(k)) ok = false;
+            used.add(k);
+          }
+          if (!ok || (c1.suit === c2.suit && c1.x === c2.x)) continue;
+          if (used.has('s:' + c1.suit + ':' + c1.x) || used.has('s:' + c2.suit + ':' + c2.x)) continue;
+          plan = { pairs: [pairs[i], pairs[j]], chis: [c1, c2], used };
+        }
+  if (!plan) throw new Error('seed 5752: no two pengs + two chis bots 1 / 3 can feed');
+  const mineKeys = new Set(mine.map(key));
+  const isolated = (t) => {
+    if (mineKeys.has(key(t))) return false;
+    if (t.kind !== 'suit') return true;
+    for (let d = -2; d <= 2; d++) if (mineKeys.has('s:' + t.suit + ':' + (t.rank + d))) return false;
+    return true;
+  };
+  const junk = hands[2].filter(isolated).slice(0, 2);
+  if (junk.length < 2) throw new Error('seed 5752: bot 2 has no two isolated tiles to pitch');
+  globalThis.__MAHJONG_TEST_BOT_SCRIPTS__[1] = { discards: plan.pairs.map(tileOf) };
+  globalThis.__MAHJONG_TEST_BOT_SCRIPTS__[2] = { discards: junk };
+  globalThis.__MAHJONG_TEST_BOT_SCRIPTS__[3] = {
+    discards: plan.chis.map((c) => ({ kind: 'suit', suit: c.suit, rank: c.x })),
+  };
+  ${TILE_NAME_JS}
+  const avoid = [...plan.used].map((k) => name(tileOf(k)));
+  globalThis.__SHOT_TWO_MELDS_AVOID__ = avoid;
+  discardAvoiding(avoid);
+})();
+`;
+/** One claim of the four-meld drive: take the offered call, then discard keeping the plan's tiles. */
+const FOUR_MELDS_CLAIM = (button) => [
+  { waitForClaimButton: button, timeout: 40000 },
+  { click: `role=button[name="${button}"]`, timeout: 10000 },
+  { waitFor: '[data-testid="claim-bar"]', state: 'hidden', timeout: 10000 },
+  { waitMs: 900 },
+  { evaluate: TWO_MELDS_DISCARD_KEEP_RUN },
+];
+
 const CLAIM_TOAST_INIT = `
 globalThis.__MAHJONG_TEST_SEED__ = 9;
 globalThis.__MAHJONG_TEST_BOT_SCRIPTS__ = { 1: {}, 2: {}, 3: {} };
@@ -1535,6 +1634,62 @@ export const STATES = {
       ...START_SOLO,
       { waitFor: '[data-testid="table-3d-scene"]', timeout: 20000 },
       { waitMs: 1200 },
+    ],
+  },
+  'match-river-zoom-four-melds': {
+    owner: 'table',
+    // Phone portrait, zoomed with four melds out (two pengs + two chis,
+    // see `FOUR_MELDS_SETUP`) and the next tile drawn: the held hand is
+    // two tiles, and the zoom meld shelf (`zoomMeldShelf`) is wider than
+    // the block at 1.3×, so its scale shrinks until the four groups
+    // exactly span the block minus its margins (~1.09× in the reserved
+    // block; the fitted early-hand block is narrower still). Round 5
+    // verified this geometrically only; shoot at phone and phone-small.
+    viewport: 'phone',
+    steps: [
+      { initScript: FOUR_MELDS_INIT },
+      ...START_SOLO,
+      { waitForOwnHand: true },
+      { waitMs: 1600 },
+      { evaluate: FOUR_MELDS_SETUP },
+      ...FOUR_MELDS_CLAIM('Peng'),
+      ...FOUR_MELDS_CLAIM('Peng'),
+      ...FOUR_MELDS_CLAIM('Chi'),
+      ...FOUR_MELDS_CLAIM('Chi'),
+      { waitForDrawCue: true, timeout: 40000 },
+      { clickTestId: 'wall-draw-next' },
+      { waitMs: 1600 },
+      { evaluate: `document.querySelector('[data-testid="shared-discards-region"]')?.click()` },
+      { waitForCameraSettled: true },
+      { waitMs: 400 },
+    ],
+  },
+  'match-river-zoom-sink': {
+    owner: 'table',
+    // Motion still: the portrait river zoom's walls caught mid-sink. The
+    // 360 ms `vanish` is stretched ×200 (72 s) so the moment is broad
+    // enough to hit through the verifier's capture latency: 45 s in, the
+    // stacks' lower tiles' tops sit ≈ 0.1–0.2 above the felt (the shadow
+    // bias band the round-5 critic saw faint light speckles in, where a
+    // caster's top face tied with the felt's shadow depth) and the upper
+    // tiles are still ~0.7 above. Tiles sinking past `SHADOW_CAST_FLOOR`
+    // leave the shadow pass (`sinkCastsShadow`), so the felt around the
+    // stacks reads clean. The bots are parked meanwhile so no discard
+    // crawls through the air at ×200; the camera eases in at its own pace.
+    viewport: 'phone',
+    steps: [
+      ...START_SOLO,
+      { waitForOwnHand: true },
+      { playTurns: 6 },
+      { waitMs: 1200 },
+      // Slow motion from here only (the seam is read when a flight starts),
+      // so the six turns' discards have landed by the time the walls sink.
+      {
+        evaluate:
+          'globalThis.__MAHJONG_TEST_MOTION_SLOWMO__ = 200; globalThis.__MAHJONG_TEST_BOT_PACE_MS__ = 600000;',
+      },
+      { evaluate: `document.querySelector('[data-testid="shared-discards-region"]')?.click()` },
+      { waitMs: 45000 },
     ],
   },
 };

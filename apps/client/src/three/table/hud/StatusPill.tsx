@@ -10,11 +10,15 @@ interface StatusPillProps {
   /**
    * Tiles left in the dead wall (gang replacements), so the stacks still
    * standing when the live wall runs dry are accounted for — "0 left ·
-   * 14 dead". Desktop shows it throughout; the compact pill (phone
-   * landscape) only once the live count is low, where it matters and
-   * where the row has the room (portrait leaves it to the plate).
+   * 14 dead". Desktop shows it throughout; the compact pill only once
+   * the live count is low, where it matters and where the row has the
+   * room — unless `deadAlways` (phone portrait: the pill carries no name
+   * and no turn segment, and the plate's own "14 dead" is ~5 px there,
+   * so "69 left · 14 dead" is the one legible dead count on the phone —
+   * round-5 critic).
    */
   deadCount?: number | undefined;
+  deadAlways?: boolean | undefined;
   isMyTurn: boolean;
   needsDraw: boolean;
   turnCountdown: number | null;
@@ -47,6 +51,7 @@ export function StatusPill({
   name,
   wallCount,
   deadCount,
+  deadAlways = false,
   isMyTurn,
   needsDraw,
   turnCountdown,
@@ -135,7 +140,7 @@ export function StatusPill({
       >
         {wallCount} left
       </span>
-      {deadCount !== undefined && deadCount > 0 && (!compact || low) ? (
+      {deadCount !== undefined && deadCount > 0 && (!compact || low || deadAlways) ? (
         <span
           aria-label={`${deadCount} tiles in the dead wall`}
           style={{

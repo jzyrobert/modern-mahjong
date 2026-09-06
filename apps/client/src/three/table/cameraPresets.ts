@@ -1,5 +1,6 @@
+import type { Seat } from '@mahjong/game-logic';
 import type { CameraPreset } from '../core/camera';
-import { TILE_D, TILE_H } from '../tiles/geometry';
+import { TILE_D, TILE_H, TILE_W } from '../tiles/geometry';
 import {
   FELT_HALF,
   HELD_ROW_GAP,
@@ -7,9 +8,17 @@ import {
   type HeldHandFrame,
   RAIL_H,
   RAIL_WIDTH,
+  RIVER_COLS,
+  RIVER_NEAR_EDGE,
+  RIVER_ROWS,
   WALL_D,
   ZOOM_BLOCK_PAD,
+  type ZoomShelfBlock,
+  relOf,
   riverMetrics,
+  riverZ0,
+  toWorld,
+  zoomShelfXHalf,
 } from './layout';
 
 /**
@@ -189,13 +198,116 @@ export const ZOOM_NEAR_RIVER_POINT: [number, number, number] = [
   riverMetrics(PORTRAIT_RIVER_SCALE).farEdge,
 ];
 /**
- * The near point the zoom pins above the held hand: the near river's
- * last row's far edge, or — with the user's melds on the zoom shelf
- * (`layout.zoomMeldShelf`) — the shelf's near edge `shelfDepth` past
- * it, so the melds sit in frame between the block and the hand.
+ * The near point the zoom pins above the held hand: the block's near
+ * edge (`near`, default the reserved near river's last row's far edge),
+ * or — with the user's melds on the zoom shelf (`layout.zoomMeldShelf`)
+ * — the shelf's near edge `shelfDepth` past it, so the melds sit in
+ * frame between the block and the hand.
  */
-export function zoomNearPoint(shelfDepth = 0): [number, number, number] {
-  return [0, 0, ZOOM_NEAR_RIVER_POINT[2] + shelfDepth];
+export function zoomNearPoint(
+  shelfDepth = 0,
+  near: number = ZOOM_NEAR_RIVER_POINT[2],
+): [number, number, number] {
+  return [0, 0, near + shelfDepth];
+}
+/** The far point the zoom pins under the header: the block's far edge (default the reserved line). */
+export function zoomFarPoint(far = -ZOOM_FAR_RIVER_POINT[2]): [number, number, number] {
+  return [0, 0, -far];
+}
+
+/**
+ * The river block the portrait zoom frames: half-width (world x, the
+ * frame's `ZOOM_BLOCK_PAD` included) and the far / near edges (world
+ * |z|, no pad — the header and hand gaps are the pads). The reserved
+ * block (`ZOOM_BLOCK_RESERVED`) is the four rivers' full three rows;
+ * `riverZoomBlock` fits one to the rows present.
+ */
+export interface RiverZoomBlock extends ZoomShelfBlock {
+  far: number;
+}
+export const ZOOM_BLOCK_RESERVED: RiverZoomBlock = {
+  xHalf: ZOOM_X_HALF_MIN,
+  far: riverMetrics(PORTRAIT_RIVER_SCALE).farEdge,
+  near: riverMetrics(PORTRAIT_RIVER_SCALE).farEdge,
+};
+
+/**
+ * The block the four rivers occupy *now*, one step of growth reserved,
+ * capped at the reserved block. Round-5 critic: early in the hand the
+ * zoom framed three empty river rows (1.3× over the resting view on
+ * 412×700 for a table with one row per river). Each river with `n`
+ * discards is taken as its rows present plus one (a discard landing in
+ * a new row does not move the frame at once; `min(reserved 3-row line,
+ * last row + one pitch)`) and its columns present plus one, mapped to
+ * world space (`toWorld`) and unioned — so the side rivers' arms bound
+ * the far / near edges once they fill, and the near / far rivers' rows
+ * bound the width. No discards at all reads as the first row coming.
+ * `growZoomBlock` gives the frame its grow-only hysteresis: a claim
+ * takes a tile back out of a river, and the frame must not zoom back
+ * in. Pure.
+ */
+export function riverZoomBlock(
+  discardCounts: readonly number[],
+  me: Seat,
+  riverScale: number = PORTRAIT_RIVER_SCALE,
+): RiverZoomBlock {
+  const m = riverMetrics(riverScale);
+  const z0 = riverZ0(riverScale);
+  const halfW = (TILE_W / 2) * riverScale;
+  const halfH = (TILE_H / 2) * riverScale;
+  let maxX = 0;
+  let far = 0;
+  let near = 0;
+  for (let seat = 0; seat < 4; seat++) {
+    const n = discardCounts[seat] ?? 0;
+    const rowsNow = n <= 0 ? 0 : Math.min(RIVER_ROWS, Math.ceil(n / RIVER_COLS));
+    const colsNow = n >= RIVER_COLS ? RIVER_COLS : n;
+    const rows = Math.min(RIVER_ROWS, Math.max(1, rowsNow) + 1);
+    const cols = Math.min(RIVER_COLS, Math.max(1, colsNow) + 1);
+    // Owner's frame: the rows march toward the owner (+lz), the columns
+    // run to the owner's right (+lx), every row shifted by `m.shift`.
+    const lz1 = z0 + (rows - 1) * m.pitchZ + halfH;
+    const lx0 = -((RIVER_COLS - 1) / 2) * m.pitchX + m.shift - halfW;
+    const lx1 = (cols - 1 - (RIVER_COLS - 1) / 2) * m.pitchX + m.shift + halfW;
+    const rel = relOf(seat as Seat, me);
+    for (const [lx, lz] of [
+      [lx0, RIVER_NEAR_EDGE],
+      [lx1, RIVER_NEAR_EDGE],
+      [lx0, lz1],
+      [lx1, lz1],
+    ] as const) {
+      const [x, z] = toWorld(rel, lx, lz);
+      maxX = Math.max(maxX, Math.abs(x));
+      far = Math.max(far, -z);
+      near = Math.max(near, z);
+    }
+  }
+  return {
+    xHalf: Math.min(ZOOM_X_HALF_MIN, maxX + ZOOM_BLOCK_PAD),
+    far: Math.min(m.farEdge, far),
+    near: Math.min(m.farEdge, near),
+  };
+}
+
+/**
+ * The fitted block widened, if need be, so the user's melds lie on its
+ * shelf at `layout.SHELF_MIN_SCALE` or more (`zoomShelfXHalf`), never
+ * past the reserved half-width. Same object when nothing changes. Pure.
+ */
+export function fitZoomBlockToShelf(block: RiverZoomBlock, meldsWidthAt1: number): RiverZoomBlock {
+  const xHalf = Math.min(ZOOM_X_HALF_MIN, Math.max(block.xHalf, zoomShelfXHalf(meldsWidthAt1)));
+  return xHalf === block.xHalf ? block : { ...block, xHalf };
+}
+
+/** Grow-only hysteresis for the zoom block: `prev` grown to cover `next` (same object when nothing grew). */
+export function growZoomBlock(prev: RiverZoomBlock | null, next: RiverZoomBlock): RiverZoomBlock {
+  if (!prev) return next;
+  if (next.xHalf <= prev.xHalf && next.far <= prev.far && next.near <= prev.near) return prev;
+  return {
+    xHalf: Math.max(prev.xHalf, next.xHalf),
+    far: Math.max(prev.far, next.far),
+    near: Math.max(prev.near, next.near),
+  };
 }
 /**
  * Bottom edge of the zoom header — the seat strip grown into a
@@ -625,25 +737,31 @@ export interface RiverZoomFrame {
  * frame keeps above the hand is the shelf's near edge, `shelfDepth`
  * beyond the river's far edge (`zoomNearPoint`) — a short phone backs
  * off a little more so the melds stay between the block and the hand;
- * a tall phone with room under the block need not move at all. Pure.
+ * a tall phone with room under the block need not move at all. `block`
+ * is the river block to frame — by default the reserved three rows;
+ * the shell passes the rows present (`riverZoomBlock`), whose tighter
+ * half-width and nearer edges are the tight frame and the header /
+ * hand anchors instead, so an early-hand zoom is not a plan view of
+ * empty rows. Pure.
  */
 export function riverZoomFrameFor(
   width: number,
   height: number,
   topInset = 0,
   shelfDepth = 0,
+  block: RiverZoomBlock = ZOOM_BLOCK_RESERVED,
 ): RiverZoomFrame {
   const { bandBottom } = portraitBandFor(width, height, topInset);
   const farY = ZOOM_FAR_RIVER_Y + topInset;
-  const nearPoint = zoomNearPoint(shelfDepth);
+  const nearPoint = zoomNearPoint(shelfDepth, block.near);
+  const farPoint = zoomFarPoint(block.far);
   const make = (xHalf: number) =>
-    portraitCameraAnchored(width, height, xHalf, ZOOM_FAR_RIVER_POINT, farY, ZOOM_ELEV_DEG);
+    portraitCameraAnchored(width, height, xHalf, farPoint, farY, ZOOM_ELEV_DEG);
   const nearY = (xHalf: number) => projectPreset(make(xHalf), width, height, nearPoint).y;
   const limit = bandBottom - ZOOM_NEAR_RIVER_GAP;
-  if (nearY(ZOOM_X_HALF_MIN) <= limit)
-    return { preset: make(ZOOM_X_HALF_MIN), xHalf: ZOOM_X_HALF_MIN };
+  if (nearY(block.xHalf) <= limit) return { preset: make(block.xHalf), xHalf: block.xHalf };
   // A wider frame spans fewer px per unit: the near edge rises (monotonic).
-  let lo = ZOOM_X_HALF_MIN;
+  let lo = block.xHalf;
   let hi = 40;
   for (let i = 0; i < 40; i++) {
     const mid = (lo + hi) / 2;
@@ -659,8 +777,9 @@ export function riverZoomCameraFor(
   height: number,
   topInset = 0,
   shelfDepth = 0,
+  block: RiverZoomBlock = ZOOM_BLOCK_RESERVED,
 ): CameraPreset {
-  return riverZoomFrameFor(width, height, topInset, shelfDepth).preset;
+  return riverZoomFrameFor(width, height, topInset, shelfDepth, block).preset;
 }
 
 // ─── Pointer parallax ──────────────────────────────────────────────

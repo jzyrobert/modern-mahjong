@@ -1,4 +1,11 @@
-import { Color, MeshPhysicalMaterial, type Texture, Vector2 } from 'three';
+import {
+  Color,
+  MeshDepthMaterial,
+  MeshPhysicalMaterial,
+  RGBADepthPacking,
+  type Texture,
+  Vector2,
+} from 'three';
 import type { FeltSkin, TileBackSkin } from '../../state/game';
 import { FELT_SKINS, TILE_BACK_SKINS } from '../../ui/match/skins';
 import { CELL_SCALE } from './faceAtlas';
@@ -62,10 +69,12 @@ export interface TileMaterialUniforms {
    * `uInlayDepth` × that gradient along the face's tangents, on the
    * ivory side of the edge only (the paint in the groove lies flat and
    * keeps its colour). The step is at least ~0.6 screen px wide and
-   * the relief fades out on faces under ~40 device px, so river tiles
-   * do not read edge noise; up close (the held hand, the tile sheet)
-   * the strokes read as cut into the face (round-5 ask: "a small 3d
-   * inlay effect … as real tiles are carved").
+   * the relief fades out on faces narrower than `INLAY_FADE_PX` device
+   * px (`INLAY_FULL_PX` for the full depth), so river tiles do not read
+   * edge noise and the 48 px desktop hand keeps its printed rings; up
+   * close (the held phone hand, the tile sheet) the strokes read as cut
+   * into the face (round-5 ask: "a small 3d inlay effect … as real
+   * tiles are carved").
    */
   uAtlasTexel: { value: Vector2 };
   uInlayDepth: { value: number };
@@ -75,6 +84,22 @@ export interface TileMaterialUniforms {
 export const INLAY_STEP = 3.0;
 /** Normal tilt per unit of ink gradient — see `TileMaterialUniforms.uInlayDepth`. */
 export const INLAY_DEPTH = 1.6;
+/**
+ * Face width (device px) under which the carved relief is off, and from
+ * which it runs at full depth. The relief is a finite difference over a
+ * ≥ 3-texel / ≥ 0.6 px step of the ink mask, so a glyph feature has to
+ * be several device px wide before its edges are a slope rather than a
+ * texel flip: at the desktop hand's 48 px (dpr 1) the 5–6 px pin rings
+ * came out as speckle inside the ring and a ragged outer edge (round-5
+ * critic: ink px 365 → 445 on the same face, the ivory unchanged). The
+ * old fade (~32–51 px, derived from atlas texels per pixel) left that
+ * face at ~0.7 of the depth; measured in face px it is independent of
+ * the atlas scale, off at ≤ 56 px and full from 76 px — the phone's
+ * held hand (105 px at dpr 2.625, 80 at dpr 2) keeps the carve, every
+ * river (≤ 40 px) stays exactly as it was.
+ */
+export const INLAY_FADE_PX = 56;
+export const INLAY_FULL_PX = 76;
 
 /** Body roughness shared by the tile faces and, by default, the back. */
 export const TILE_BODY_ROUGHNESS = 0.5; // see the material note below on the satin finish
@@ -223,6 +248,7 @@ export function createTileMaterial(
         uniform vec3 uDeadBack2;
         uniform vec2 uAtlasTexel;
         uniform float uInlayDepth;
+        uniform vec2 uCellScale;
         varying vec3 vTanV;
         varying vec3 vBitV;
         // Ink coverage at an atlas texel — the carved face's depth map.
@@ -303,10 +329,13 @@ export function createTileMaterial(
           // Footprint-aware: difference across at least ~0.6 screen px
           // so a river tile at four texels per pixel does not read
           // sub-pixel edge noise, and fade the relief out on faces
-          // smaller than ~40 device px (over ~6 texels per pixel).
-          vec2 fw = fwidth(vAtlasUv);
+          // narrower than INLAY_FADE_PX device px (the printed face's
+          // UV extent is one atlas cell, so the cell's UV size over the
+          // per-pixel UV footprint is the face's size on screen —
+          // independent of the atlas raster scale).
+          vec2 fw = max(fwidth(vAtlasUv), vec2(1e-7));
           vec2 stepUv = max(uAtlasTexel * ${INLAY_STEP.toFixed(3)}, fw * 0.6);
-          float tpp = max(fw.x / uAtlasTexel.x, fw.y / uAtlasTexel.y);
+          float facePx = min(uCellScale.x / fw.x, uCellScale.y / fw.y);
           vec2 du = vec2(stepUv.x, 0.0);
           vec2 dv = vec2(0.0, stepUv.y);
           float gx = mjInk(vAtlasUv + du) - mjInk(vAtlasUv - du);
@@ -314,7 +343,8 @@ export function createTileMaterial(
           // Only the ivory side of the edge is a groove wall: the paint
           // in the groove lies flat and keeps its colour (round-5 critic:
           // shading the ink side turned green and red ink black-rimmed).
-          float relief = uInlayDepth * inkMask * (1.0 - smoothstep(5.0, 8.0, tpp));
+          float relief = uInlayDepth * inkMask
+            * smoothstep(${INLAY_FADE_PX.toFixed(1)}, ${INLAY_FULL_PX.toFixed(1)}, facePx);
           normal = normalize(normal + (vTanV * gx + vBitV * gy) * relief);
         }`,
       )
@@ -349,7 +379,7 @@ export function createTileMaterial(
   };
   // Distinct cache key so three doesn't share the program with a stock
   // MeshPhysicalMaterial.
-  mat.customProgramCacheKey = () => 'mahjong-tile-v11';
+  mat.customProgramCacheKey = () => 'mahjong-tile-v12';
   return mat;
 }
 
@@ -387,4 +417,39 @@ export function setTileBackGradient(
   amount: number,
 ): void {
   mat.tileUniforms.uBackGradAmount.value = Math.min(1, Math.max(0, amount));
+}
+
+/**
+ * Shadow-pass material for the tile pool, with one instanced switch:
+ * `aShadowCast` (float, 1 casts / 0 does not). A tile is dropped from the
+ * casters by pushing its vertices outside clip space — the pool is one
+ * InstancedMesh, so nothing else can exclude a single instance. The
+ * table uses it for tiles sinking through the felt (the portrait river
+ * zoom's `vanish` / `rise`): while a caster straddles the receiving
+ * plane its top face lies within the shadow bias of the felt and the
+ * felt speckles light where the two depths tie (round-5 critic: "faint
+ * light speckles where the left wall's stacks cross the felt"), so the
+ * table stops the cast once the top is within `SHADOW_CAST_FLOOR` of
+ * the felt (`TableScene`). Same depth packing as three's own shadow
+ * material, so the program count does not change (the instanced depth
+ * variant was a program of its own already).
+ */
+export function createTileDepthMaterial(): MeshDepthMaterial {
+  const mat = new MeshDepthMaterial({ depthPacking: RGBADepthPacking });
+  mat.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        '#include <common>',
+        `#include <common>
+        attribute float aShadowCast;`,
+      )
+      .replace(
+        '#include <project_vertex>',
+        `#include <project_vertex>
+        // Behind the far clip plane on every axis: the triangle is culled.
+        if (aShadowCast < 0.5) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);`,
+      );
+  };
+  mat.customProgramCacheKey = () => 'mahjong-tile-depth-v1';
+  return mat;
 }

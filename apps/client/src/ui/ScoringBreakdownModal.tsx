@@ -17,6 +17,13 @@ interface ScoringBreakdownModalProps {
    *  HUD's dark panel the `ResultVeil` opens it from — serif pattern
    *  names, gold faan deltas, tiles on a felt-dark strip. */
   theme?: SheetTheme;
+  /**
+   * Header copy: the winner as a subject phrase ("You win", "Sharp
+   * Phoenix wins") and the discarder's display name ("you", "Quiet
+   * Crane"). Without them the header falls back to seat indices.
+   */
+  winnerLabel?: string | undefined;
+  fromName?: string | undefined;
 }
 
 /**
@@ -34,6 +41,8 @@ export function ScoringBreakdownModal({
   result,
   faanMin,
   theme = 'paper',
+  winnerLabel,
+  fromName,
 }: ScoringBreakdownModalProps) {
   const { winner, from, selfDraw, tile, faan, breakdown } = result;
   const glass = theme === 'glass';
@@ -41,7 +50,7 @@ export function ScoringBreakdownModal({
   return (
     <Modal
       open={open}
-      title={`Seat ${winner} wins — ${faan} faan`}
+      title={`${winnerLabel ?? `Seat ${winner} wins`} — ${faan} faan`}
       onClose={onClose}
       maxWidth={520}
       variant={theme}
@@ -63,7 +72,7 @@ export function ScoringBreakdownModal({
               : { fontSize: 12, color: COLORS.ink2, fontWeight: '700', flex: 1 }
           }
         >
-          {selfDraw ? 'Self-draw (tsumo)' : `Discarded by seat ${from}`}
+          {selfDraw ? 'Self-draw (tsumo)' : `Discarded by ${fromName ?? `seat ${from}`}`}
           {' · '}Min faan: {faanMin}
         </Text>
         <View
