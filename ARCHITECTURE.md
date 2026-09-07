@@ -16,7 +16,7 @@ projection of store state, never a second copy of it.**
 | Nothing regresses for the engine, server, protocol, native app or the existing Playwright suite | Renderer is a runtime switch (§3). Legacy shells stay in the tree and stay tested. |
 
 Non-goals for this pass: native (Android) WebGL via `expo-gl` (the native
-app keeps the legacy shells; see §3), WebGPU (three r185's WebGPURenderer is
+app keeps the legacy shells; see §3 and the sizing in `docs/NATIVE-3D.md`), WebGPU (three r185's WebGPURenderer is
 not yet a safe default on mid-range Android browsers), replacing the replay
 library / lobby-browser CRUD screens (they get the new theme, not a 3D scene).
 

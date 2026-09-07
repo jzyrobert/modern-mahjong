@@ -122,7 +122,7 @@ Every subsystem passed its art-director critic before the manual play-tests; the
   - [x] [low] Tooling: desktop recipes stall on the dice-modal dismiss step under load — _run critic shots with `SHOT_TIMEOUT_SCALE=3` on a shared host (shot.mjs header); all four stalls pass at 3×._
 - **whole game** (round 3: **8.7/10, pass** — visual 8.8 / motion 8.7 / legibility 8.4 / polish 8.4 / cohesion 9.1; rounds 8.2 → 8.6 → 8.7): scored before the feedback round; re-score after the residuals above are closed. 13 ranked residuals remain in `docs/STATUS.json` → `wholeGame.issues` (several are now fixed by the feedback round: dead-wall marker on every viewport, landscape lobby, coach-card opacity, camera settle).
 - **blind judges**: 3 judges × 15 A/B pairs (3D vs pre-rewrite baseline, labels shuffled) → 45/45 preferred the rewrite (`docs/STATUS.json` → `blindJudges`).
-- [ ] Native (Android) still uses the classic shells — `expo-gl` port of `src/three/` is out of scope for this pass (ARCHITECTURE.md §0).
+- [ ] Native (Android) still uses the classic shells — the `expo-gl` port of `src/three/` is out of scope for this pass (ARCHITECTURE.md §0). Sized in `docs/NATIVE-3D.md`: roughly 3–6 weeks for parity (canvas-drawn textures, DOM HUD, `fwidth` shader, no device evidence pipeline); the cheap route is the exported web build in a WebView, or the PWA.
 
 ### Future (post-MVP)
 
