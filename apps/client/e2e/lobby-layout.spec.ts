@@ -1,4 +1,25 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './_helpers';
+
+/**
+ * The classic hero fan (`ScatteredTiles`) is centred in the hero band
+ * the lobby measures under its title block (`HeroBandSlot`), so no
+ * tile may reach the heading or the tagline (round-1 feedback: the
+ * tagline ran across the tile tops on a phone).
+ */
+async function expectFanClearOfTitle(page: import('@playwright/test').Page): Promise<void> {
+  const heading = await page.getByRole('heading', { name: 'Modern Mahjong' }).boundingBox();
+  const tagline = await page.getByText(/^136 tiles/).boundingBox();
+  if (!heading || !tagline) throw new Error('missing title boxes');
+  const titleBottom = Math.max(heading.y + heading.height, tagline.y + tagline.height);
+  await expect(page.getByTestId('hero-fan')).toBeAttached();
+  const tiles = await page.getByTestId('hero-fan').evaluate((fan) =>
+    Array.from(fan.children)
+      .filter((c) => c.children.length > 0)
+      .map((c) => (c.children[0] as HTMLElement).getBoundingClientRect().top),
+  );
+  expect(tiles.length).toBeGreaterThanOrEqual(7);
+  for (const top of tiles) expect(top).toBeGreaterThanOrEqual(titleBottom + 8);
+}
 
 // Phone-width lobby uses `MobileLobby`'s app-bar + collapsed-row
 // layout (see `apps/client/src/ui/menu/MobileLobby.tsx`). At this
@@ -62,6 +83,8 @@ test.describe('Lobby mode cards', () => {
     for (const row of rows) {
       expect(row.width, `Row "${row.name}" too narrow (${row.width}px)`).toBeGreaterThan(320);
     }
+
+    await expectFanClearOfTitle(page);
   });
 
   test('cards lay out in rows at desktop width', async ({ page }) => {
@@ -95,5 +118,7 @@ test.describe('Lobby mode cards', () => {
     // Top row of three cards shares (close to) the same baseline y.
     expect(Math.abs(online - practice)).toBeLessThan(8);
     expect(Math.abs(practice - tutorial)).toBeLessThan(8);
+
+    await expectFanClearOfTitle(page);
   });
 });

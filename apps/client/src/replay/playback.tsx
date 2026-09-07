@@ -71,6 +71,12 @@ const MAX_FRAME_GAP_MS = 800;
 interface PlaybackProviderProps {
   record: ReplayRecord;
   children: ReactNode;
+  /**
+   * Visible-frame index to open on (clamped; `Infinity` for the last
+   * frame). The `/replays/[id]?frame=` deep link feeds this so a
+   * screenshot recipe can land mid-hand without stepping.
+   */
+  initialCursor?: number | undefined;
 }
 
 /**
@@ -97,7 +103,7 @@ function anyMeaningfulClaimInState(state: GameState): boolean {
  * claim that landed on a non-pass. Drop empty/`waiting`-only frames
  * and dead claim windows.
  */
-function computeVisibleSeqs(frames: readonly ReplayFrame[]): readonly number[] {
+export function computeVisibleSeqs(frames: readonly ReplayFrame[]): readonly number[] {
   if (frames.length === 0) return [];
   const out: number[] = [0];
   for (let i = 1; i < frames.length; i++) {
@@ -149,16 +155,15 @@ function bookmarkVisibleIndex(seq: number, visibleSeqs: readonly number[]): numb
   return visibleSeqs.length - 1;
 }
 
-export function PlaybackProvider({ record, children }: PlaybackProviderProps) {
-  const [cursor, setCursor] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [speed, setSpeed] = useState<0.5 | 1 | 2 | 4>(1);
-  const [pov, setPov] = useState<PlaybackPov>('all');
-
+export function PlaybackProvider({ record, children, initialCursor }: PlaybackProviderProps) {
   // Visible-frame projection: index into `record.frames`, in order.
   // `cursor` always indexes into this list (length === totalFrames).
   const visibleSeqs = useMemo(() => computeVisibleSeqs(record.frames), [record.frames]);
   const totalFrames = visibleSeqs.length;
+  const [cursor, setCursor] = useState(() => clampCursor(initialCursor, totalFrames));
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [speed, setSpeed] = useState<0.5 | 1 | 2 | 4>(1);
+  const [pov, setPov] = useState<PlaybackPov>('all');
 
   // Bookmarks remapped onto the visible space so the scrubber pips
   // line up with where the user will actually land when they tap.
@@ -308,6 +313,13 @@ function filterEvents(
     }
     return true;
   });
+}
+
+/** Clamp a requested opening cursor to the visible-frame range. */
+export function clampCursor(requested: number | undefined, totalFrames: number): number {
+  if (requested === undefined || Number.isNaN(requested)) return 0;
+  const last = Math.max(0, totalFrames - 1);
+  return Math.max(0, Math.min(last, Math.floor(requested)));
 }
 
 export function usePlayback(): PlaybackContextValue {

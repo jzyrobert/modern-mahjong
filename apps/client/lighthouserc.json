@@ -2,8 +2,9 @@
   "ci": {
     "collect": {
       "url": ["http://127.0.0.1:4173/"],
-      "startServerCommand": "npx --yes serve dist -l 4173 -s",
+      "startServerCommand": "npx serve dist -l 4173 -s",
       "startServerReadyPattern": "Accepting connections",
+      "startServerReadyTimeout": 60000,
       "numberOfRuns": 3,
       "settings": {
         "preset": "desktop",

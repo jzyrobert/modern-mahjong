@@ -67,6 +67,7 @@ describe('summariseReplays', () => {
 describe('replaySubtitleFor', () => {
   it('returns the empty-state copy when count is 0', () => {
     expect(replaySubtitleFor(0, 0, 0, false)).toBe('No saved matches yet');
+    expect(replaySubtitleFor(0, 0, 0, true)).toBe('No replays yet');
   });
 
   it('omits the streak below 2 in portrait', () => {

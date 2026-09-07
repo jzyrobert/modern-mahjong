@@ -41,7 +41,9 @@ export function replaySubtitleFor(
   streak: number,
   isLandscape: boolean,
 ): string {
-  if (count === 0) return 'No saved matches yet';
+  // Landscape rows are a third of the width — keep the copy short
+  // enough to never ellipsise at 11 px.
+  if (count === 0) return isLandscape ? 'No replays yet' : 'No saved matches yet';
   if (isLandscape) return `${count} saved · ${wins} wins`;
   const parts = [`${count} saved`, `${wins} wins`];
   if (streak >= 2) parts.push(`longest streak ${streak}`);

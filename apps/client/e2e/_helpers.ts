@@ -1,30 +1,47 @@
 import { type Page, test as base, expect } from '@playwright/test';
 
 /**
- * Spec-local `test` that pins solo bot pacing to 0ms via an
- * automatic `addInitScript`. Production solo runs at 3s per bot
- * turn so the user can read each opponent's discard, but that
- * would balloon the e2e suite from ~15s to several minutes. Specs
- * import this `test` (instead of `@playwright/test`'s) and get
- * instant-bot solo for free.
- *
- * Specs that need to assert pacing (none today) can override the
- * global later inside the test body itself.
+ * Init script shared by every page the suite opens. Pins the classic
+ * renderer + zero bot pacing. Exported so specs that hand-roll a
+ * `chromium.launch()` (lan-browser-join) can apply it to their own
+ * contexts too.
  */
+export function legacyInitScript(): void {
+  const g = globalThis as {
+    __MAHJONG_TEST_BOT_PACE_MS__?: number;
+    __MAHJONG_TEST_BOT_CLAIM_DELAY_MS__?: number;
+    __MAHJONG_TEST_RENDERER__?: 'classic' | '3d';
+  };
+  // The legacy suite asserts on the classic RN shells' DOM. Pin the
+  // renderer so the Three.js layer (`src/three/`) — the web default —
+  // doesn't swap the table out from under these specs. 3D-specific
+  // coverage lives in `three-*.spec.ts` and pins `'3d'` itself.
+  g.__MAHJONG_TEST_RENDERER__ = 'classic';
+  g.__MAHJONG_TEST_BOT_PACE_MS__ = 0;
+  // Zero the per-bot claim submission delay so e2e specs don't
+  // accumulate real wall-time waiting for bot claim staggers.
+  // Specs that need to assert pacing can override this inside
+  // the test body.
+  g.__MAHJONG_TEST_BOT_CLAIM_DELAY_MS__ = 0;
+}
+
 export const test = base.extend({
+  // Wrap `browser.newContext` so the multi-context online specs
+  // (`online-*`, `lobby-browser`) inherit the same init script as the
+  // default `page` fixture — a second player's tab must also land on
+  // the classic shells.
+  browser: async ({ browser }, use) => {
+    const original = browser.newContext.bind(browser);
+    browser.newContext = async (options) => {
+      const ctx = await original(options);
+      await ctx.addInitScript(legacyInitScript);
+      return ctx;
+    };
+    await use(browser);
+    browser.newContext = original;
+  },
   page: async ({ page }, use) => {
-    await page.addInitScript(() => {
-      const g = globalThis as {
-        __MAHJONG_TEST_BOT_PACE_MS__?: number;
-        __MAHJONG_TEST_BOT_CLAIM_DELAY_MS__?: number;
-      };
-      g.__MAHJONG_TEST_BOT_PACE_MS__ = 0;
-      // Zero the per-bot claim submission delay so e2e specs don't
-      // accumulate real wall-time waiting for bot claim staggers.
-      // Specs that need to assert pacing can override this inside
-      // the test body.
-      g.__MAHJONG_TEST_BOT_CLAIM_DELAY_MS__ = 0;
-    });
+    await page.addInitScript(legacyInitScript);
     await use(page);
   },
 });

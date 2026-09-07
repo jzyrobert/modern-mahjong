@@ -7,6 +7,8 @@ import { Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-na
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { JoinInfo } from '../../net/join-info';
 import { type LobbyState, useGame } from '../../state/game';
+import { Lobby3DView } from '../../three/entry';
+import { resolveRenderer } from '../../three/renderer';
 import { randomSeed } from '../../util';
 import { RulePanel } from '../RulePanel';
 import { GhostButton, PrimaryButton } from '../buttons';
@@ -57,6 +59,12 @@ export function LobbyView(props: LobbyViewProps) {
   // doesn't fire a second setRules dispatch.
   useLobbyPrefsApply(props.isHost, props.rules, props.onAction);
   const { width, height } = useWindowDimensions();
+  const rendererSetting = useGame((s) => s.settings.renderer);
+  // The Three.js renderer gets the glass waiting room so the match
+  // never opens on a cream page before cutting to the dark parlour.
+  if (resolveRenderer(rendererSetting) === '3d' && Lobby3DView !== null) {
+    return <Lobby3DView {...props} />;
+  }
   const isPhone = width < DESKTOP_WIDTH || height < DESKTOP_HEIGHT;
   if (isPhone) return <LobbyAccordion {...props} />;
   return <DesktopLobbyView {...props} />;

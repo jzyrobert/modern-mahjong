@@ -17,7 +17,17 @@ export type FeltSkin = 'sage' | 'jade' | 'ocean' | 'rose';
 /** Tile-back skin id — drives the face-down tile gradient. */
 export type TileBackSkin = 'cream' | 'blue' | 'plum' | 'mint';
 
+/** Which match / menu renderer to mount. `auto` resolves to the Three.js
+ *  renderer on web when WebGL2 is available and to the classic RN shells
+ *  everywhere else — see `src/three/renderer.ts`. */
+export type RendererChoice = 'auto' | '3d' | 'classic';
+/** Three.js quality tier. `auto` picks from device hints + measured
+ *  frame time (`src/three/core/quality.ts`). */
+export type QualityChoice = 'auto' | 'low' | 'mid' | 'high';
+
 export interface UserSettings {
+  renderer: RendererChoice;
+  quality: QualityChoice;
   felt: FeltSkin;
   tileBack: TileBackSkin;
   /** Override for the OS-level prefers-reduced-motion. true=motion on, false=reduced. */
@@ -74,6 +84,8 @@ export interface UserSettings {
 }
 
 const DEFAULT_SETTINGS: UserSettings = {
+  renderer: 'auto',
+  quality: 'auto',
   felt: 'sage',
   tileBack: 'blue',
   animations: true,

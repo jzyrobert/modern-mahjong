@@ -6,14 +6,23 @@ import {
   type ScoringRuleCategory,
   tileId,
 } from '@mahjong/game-logic';
-import { ScrollView, Text, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Animated, Easing, type LayoutChangeEvent, Pressable, Text, View } from 'react-native';
 import { Modal } from '../Modal';
 import { Tile } from '../Tile';
 import { COLORS } from '../colors';
+import { useReducedMotion } from '../tutorial/useReducedMotion';
+import { SheetBody } from './SheetBody';
+import { EXAMPLE_TILE_GAP, exampleTileWidth } from './sheetLayout';
+import { type SheetPalette, type SheetTheme, microLabel, sheetPalette } from './sheetTheme';
+import { useSheetPlacement } from './useSheetPlacement';
 
 interface ScoringRulesSheetProps {
   open: boolean;
   onClose: () => void;
+  /** `paper` (default) is the classic cream sheet; `glass` is the 3D
+   *  HUD's dark panel — the categories fold into a glass accordion. */
+  theme?: SheetTheme;
 }
 
 /** Display order for the category headings — matches the rule sheet's
@@ -61,11 +70,40 @@ const CATEGORY_LABEL: Record<ScoringRuleCategory, { title: string; subtitle: str
  * so the names + fan values stay in lockstep with `scoring.ts`. This
  * component is purely presentational.
  */
-export function ScoringRulesSheet({ open, onClose }: ScoringRulesSheetProps) {
+export function ScoringRulesSheet({ open, onClose, theme = 'paper' }: ScoringRulesSheetProps) {
+  const glass = theme === 'glass';
+  const P = sheetPalette(theme);
+  // Glass accordion: the first category starts open, the rest fold to
+  // their header row (title, fan range, chevron).
+  const [openCat, setOpenCat] = useState<ScoringRuleCategory | null>(CATEGORY_ORDER[0] ?? null);
+  const placement = useSheetPlacement();
   return (
-    <Modal open={open} title="Scoring rules" onClose={onClose} placement="bottom" maxWidth={620}>
-      <ScrollView contentContainerStyle={{ padding: 18, paddingBottom: 28, gap: 22 }}>
-        <Text style={{ fontSize: 12, color: COLORS.ink3, fontWeight: '600', lineHeight: 18 }}>
+    <Modal
+      open={open}
+      title="Scoring rules"
+      onClose={onClose}
+      placement={glass ? placement : 'bottom'}
+      maxWidth={620}
+      variant={theme}
+    >
+      <SheetBody
+        theme={theme}
+        testID="scoring-rules-body"
+        contentContainerStyle={{
+          padding: glass ? 14 : 18,
+          paddingBottom: 28,
+          gap: glass ? 10 : 22,
+        }}
+      >
+        <Text
+          style={{
+            fontSize: glass ? 13 : 12,
+            color: glass ? P.text2 : COLORS.ink3,
+            fontWeight: glass ? '500' : '600',
+            lineHeight: 18,
+            marginBottom: glass ? 4 : 0,
+          }}
+        >
           Hong Kong mahjong scores in fan (番): each pattern below contributes its fan value to the
           winning hand's total, and patterns can stack (e.g. 自摸 + 門前清 + 平和 = 3 fan). The
           lobby's faan-min setting is the floor a winning hand must clear.
@@ -76,6 +114,60 @@ export function ScoringRulesSheet({ open, onClose }: ScoringRulesSheetProps) {
           );
           if (rules.length === 0) return null;
           const meta = CATEGORY_LABEL[cat];
+          if (glass) {
+            const expanded = openCat === cat;
+            const lo = rules[0]?.faan ?? 0;
+            const hi = rules[rules.length - 1]?.faan ?? lo;
+            return (
+              <View
+                key={cat}
+                style={{
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  borderColor: expanded ? P.goldBorder : P.border,
+                  backgroundColor: P.surface,
+                  overflow: 'hidden',
+                }}
+              >
+                <Pressable
+                  onPress={() => setOpenCat(expanded ? null : cat)}
+                  accessibilityRole="button"
+                  accessibilityLabel={meta.title}
+                  accessibilityState={{ expanded }}
+                  aria-expanded={expanded}
+                  testID={`scoring-cat-${cat}`}
+                  style={({ pressed }) => ({
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 10,
+                    paddingHorizontal: 14,
+                    paddingVertical: 12,
+                    minHeight: 48,
+                    backgroundColor: pressed ? P.surfaceHi : 'transparent',
+                  })}
+                >
+                  <View style={{ flex: 1, gap: 3 }}>
+                    <Text style={microLabel(expanded ? P.gold : P.text)}>{meta.title}</Text>
+                    <Text
+                      style={{ fontSize: 12, lineHeight: 16, fontWeight: '500', color: P.text2 }}
+                    >
+                      {expanded ? meta.subtitle : `${rules.length} patterns · ${fanRange(lo, hi)}`}
+                    </Text>
+                  </View>
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: P.text3 }}>
+                    {expanded ? '▴' : '▾'}
+                  </Text>
+                </Pressable>
+                {expanded ? (
+                  <Expand>
+                    {rules.map((r) => (
+                      <RuleCard key={`${r.name}-${r.english}`} rule={r} P={P} glass />
+                    ))}
+                  </Expand>
+                ) : null}
+              </View>
+            );
+          }
           return (
             <View key={cat} style={{ gap: 10 }}>
               <View style={{ gap: 2 }}>
@@ -95,26 +187,73 @@ export function ScoringRulesSheet({ open, onClose }: ScoringRulesSheetProps) {
               </View>
               <View style={{ gap: 12 }}>
                 {rules.map((r) => (
-                  <RuleCard key={`${r.name}-${r.english}`} rule={r} />
+                  <RuleCard key={`${r.name}-${r.english}`} rule={r} P={P} glass={false} />
                 ))}
               </View>
             </View>
           );
         })}
-      </ScrollView>
+      </SheetBody>
       <View style={{ height: 8 }} />
     </Modal>
   );
 }
 
-function RuleCard({ rule }: { rule: ScoringRule }) {
+/** How long an opened section takes to settle in (opacity + 8 px rise). */
+const EXPAND_MS = 220;
+
+/**
+ * The glass accordion's opened body: mounts at opacity 0 / 8 px down
+ * and settles over `EXPAND_MS` (transform / opacity only), instead of
+ * snapping open (round-5 settings critic). Instant under reduced
+ * motion.
+ */
+function Expand({ children }: { children: React.ReactNode }) {
+  const reduce = useReducedMotion();
+  const progress = useRef(new Animated.Value(reduce ? 1 : 0)).current;
+  useEffect(() => {
+    if (reduce) {
+      progress.setValue(1);
+      return;
+    }
+    const anim = Animated.timing(progress, {
+      toValue: 1,
+      duration: EXPAND_MS,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    });
+    anim.start();
+    return () => anim.stop();
+  }, [progress, reduce]);
+  return (
+    <Animated.View
+      style={{
+        gap: 8,
+        paddingHorizontal: 10,
+        paddingBottom: 10,
+        opacity: progress,
+        transform: [
+          { translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }) },
+        ],
+      }}
+    >
+      {children}
+    </Animated.View>
+  );
+}
+
+function fanRange(lo: number, hi: number): string {
+  return lo === hi ? `${lo} fan` : `${lo}–${hi} fan`;
+}
+
+function RuleCard({ rule, P, glass }: { rule: ScoringRule; P: SheetPalette; glass: boolean }) {
   return (
     <View
       style={{
         gap: 8,
         padding: 12,
-        backgroundColor: COLORS.cream,
-        borderColor: COLORS.hairline,
+        backgroundColor: glass ? 'rgba(0,0,0,0.22)' : COLORS.cream,
+        borderColor: glass ? P.hairline : COLORS.hairline,
         borderWidth: 1,
         borderRadius: 12,
       }}
@@ -127,25 +266,53 @@ function RuleCard({ rule }: { rule: ScoringRule }) {
           gap: 8,
         }}
       >
-        <Text style={{ fontWeight: '900', fontSize: 16, color: COLORS.ink }}>{rule.name}</Text>
-        <Text style={{ fontSize: 12, fontWeight: '700', color: COLORS.ink3 }}>{rule.english}</Text>
+        <Text
+          style={{
+            fontFamily: glass ? P.serif : undefined,
+            fontWeight: glass ? '700' : '900',
+            fontSize: glass ? 17 : 16,
+            color: P.text,
+          }}
+        >
+          {rule.name}
+        </Text>
+        <Text
+          style={{
+            fontSize: 12,
+            fontWeight: glass ? '600' : '700',
+            color: glass ? P.text2 : COLORS.ink3,
+          }}
+        >
+          {rule.english}
+        </Text>
         <View style={{ flex: 1 }} />
         <View
           style={{
             paddingHorizontal: 8,
             paddingVertical: 2,
             borderRadius: 999,
-            backgroundColor: '#ede5d3',
-            borderColor: COLORS.hairline,
+            backgroundColor: glass ? P.goldTint : '#ede5d3',
+            borderColor: glass ? P.goldBorder : COLORS.hairline,
             borderWidth: 1,
           }}
         >
-          <Text style={{ fontSize: 11, fontWeight: '900', color: COLORS.ink2 }}>
+          <Text
+            style={
+              glass ? microLabel(P.gold) : { fontSize: 11, fontWeight: '900', color: COLORS.ink2 }
+            }
+          >
             +{rule.faan} fan
           </Text>
         </View>
       </View>
-      <Text style={{ fontSize: 12, fontWeight: '600', color: COLORS.ink2, lineHeight: 17 }}>
+      <Text
+        style={{
+          fontSize: 12,
+          fontWeight: glass ? '500' : '600',
+          color: glass ? P.text2 : COLORS.ink2,
+          lineHeight: 17,
+        }}
+      >
         {rule.description}
       </Text>
       <ExampleHand
@@ -153,6 +320,8 @@ function RuleCard({ rule }: { rule: ScoringRule }) {
         melds={rule.example.melds}
         winningTile={rule.example.winningTile}
         note={rule.example.note}
+        P={P}
+        glass={glass}
       />
     </View>
   );
@@ -163,33 +332,57 @@ interface ExampleHandProps {
   melds: ExampleMeld[];
   winningTile: MTile;
   note?: string | undefined;
+  P: SheetPalette;
+  glass: boolean;
 }
 
 /**
  * Renders an example hand as: a row of concealed-tile faces, the
  * highlighted winning tile separated by a small gap, and any exposed
  * melds laid out underneath. No interactivity — this is pure
- * documentation. The tiles use small 24×34 dimensions so a 14-tile
- * hand fits across a 320 px iPhone SE viewport without wrapping.
+ * documentation. The tiles size themselves to the row
+ * (`exampleTileWidth`) so a 14-tile hand stays on one line down to a
+ * 320 px viewport instead of wrapping.
  */
-function ExampleHand({ concealed, melds, winningTile, note }: ExampleHandProps) {
+function ExampleHand({ concealed, melds, winningTile, note, P, glass }: ExampleHandProps) {
+  const [rowW, setRowW] = useState(0);
+  const pad = glass ? 8 : 0;
+  const tileW = exampleTileWidth(rowW - 2 * pad, concealed.length);
+  const tileH = Math.round((tileW * 34) / 24);
+  const onLayout = (e: LayoutChangeEvent) => setRowW(e.nativeEvent.layout.width);
   return (
     <View style={{ gap: 6 }}>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 4 }}>
+      <View
+        onLayout={onLayout}
+        style={{
+          flexDirection: 'row',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          gap: EXAMPLE_TILE_GAP,
+          ...(glass && {
+            padding: 8,
+            borderRadius: 10,
+            backgroundColor: P.feltCard,
+            borderWidth: 1,
+            borderColor: P.feltCardBorder,
+          }),
+        }}
+      >
         {concealed.map((t, i) => (
-          <Tile key={`c-${i}-${tileId(t)}`} tile={t} width={24} height={34} />
+          <Tile key={`c-${i}-${tileId(t)}`} tile={t} width={tileW} height={tileH} />
         ))}
         <View style={{ width: 6 }} />
         <View
           style={{
             padding: 2,
             borderRadius: 4,
-            backgroundColor: '#fff5d6',
-            borderColor: '#d4a73a',
+            backgroundColor: glass ? 'rgba(216,168,90,0.22)' : '#fff5d6',
+            borderColor: glass ? P.gold : '#d4a73a',
             borderWidth: 1,
+            ...(glass && { boxShadow: '0 0 10px rgba(216,168,90,0.5)' }),
           }}
         >
-          <Tile tile={winningTile} width={24} height={34} />
+          <Tile tile={winningTile} width={tileW} height={tileH} />
         </View>
       </View>
       {melds.length > 0 ? (
@@ -201,11 +394,11 @@ function ExampleHand({ concealed, melds, winningTile, note }: ExampleHandProps) 
               style={{
                 flexDirection: 'row',
                 gap: 1,
-                backgroundColor: COLORS.creamLow,
-                borderColor: COLORS.hairline,
+                backgroundColor: glass ? P.feltCard : COLORS.creamLow,
+                borderColor: glass ? P.feltCardBorder : COLORS.hairline,
                 borderWidth: 1,
-                borderRadius: 4,
-                padding: 2,
+                borderRadius: glass ? 8 : 4,
+                padding: glass ? 4 : 2,
               }}
             >
               {m.tiles.map((t, j) => (
@@ -215,9 +408,10 @@ function ExampleHand({ concealed, melds, winningTile, note }: ExampleHandProps) 
                 style={{
                   fontSize: 8,
                   fontWeight: '700',
-                  color: '#918275',
+                  color: glass ? P.text2 : '#918275',
                   alignSelf: 'flex-end',
                   paddingLeft: 4,
+                  ...(glass && { letterSpacing: 1 }),
                 }}
               >
                 {m.kind.toUpperCase()}
@@ -227,7 +421,14 @@ function ExampleHand({ concealed, melds, winningTile, note }: ExampleHandProps) 
         </View>
       ) : null}
       {note ? (
-        <Text style={{ fontSize: 10, fontWeight: '600', color: COLORS.ink3, fontStyle: 'italic' }}>
+        <Text
+          style={{
+            fontSize: glass ? 11 : 10,
+            fontWeight: glass ? '500' : '600',
+            color: glass ? P.text3 : COLORS.ink3,
+            fontStyle: 'italic',
+          }}
+        >
           {note}
         </Text>
       ) : null}

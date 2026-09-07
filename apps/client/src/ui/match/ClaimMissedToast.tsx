@@ -24,7 +24,27 @@ const COLORS = {
  * `ClaimBar` is still in flight when this fires; we don't want to
  * push it down).
  */
-export function ClaimMissedToast() {
+interface ClaimMissedToastProps {
+  /** `glass` is the dark translucent card the Three.js HUD uses. */
+  theme?: 'paper' | 'glass';
+  /** Distance from the shell's top edge, px (default 12). */
+  top?: number;
+  /** Reports the toast mounting / leaving (see `ClaimAnnouncementToast`). */
+  onVisibleChange?: ((visible: boolean) => void) | undefined;
+}
+
+const GLASS = {
+  panel: 'rgba(14,20,17,0.84)',
+  border: 'rgba(216,168,90,0.55)',
+  text: 'rgba(255,255,255,0.92)',
+};
+
+export function ClaimMissedToast({
+  theme = 'paper',
+  top = 12,
+  onVisibleChange,
+}: ClaimMissedToastProps) {
+  const pal = theme === 'glass' ? GLASS : COLORS;
   const seq = useGame((s) => s.claimMissedSeq);
   const [visible, setVisible] = useState(false);
   const opacity = useRef(new Animated.Value(0)).current;
@@ -55,13 +75,17 @@ export function ClaimMissedToast() {
     };
   }, [seq, opacity]);
 
+  useEffect(() => {
+    onVisibleChange?.(visible);
+  }, [visible, onVisibleChange]);
+
   if (!visible) return null;
   return (
     <View
       pointerEvents="none"
       style={{
         position: 'absolute',
-        top: 12,
+        top,
         left: 0,
         right: 0,
         alignItems: 'center',
@@ -71,16 +95,16 @@ export function ClaimMissedToast() {
       <Animated.View
         style={{
           opacity,
-          backgroundColor: COLORS.panel,
-          borderColor: COLORS.border,
+          backgroundColor: pal.panel,
+          borderColor: pal.border,
           borderWidth: 1,
-          borderRadius: 10,
+          borderRadius: theme === 'glass' ? 16 : 10,
           paddingVertical: 8,
           paddingHorizontal: 14,
           boxShadow: '0px 4px 12px rgba(0,0,0,0.25)',
         }}
       >
-        <Text style={{ color: COLORS.text, fontWeight: '700', fontSize: 13 }}>
+        <Text style={{ color: pal.text, fontWeight: '700', fontSize: 13 }}>
           Claim missed — round already resolved
         </Text>
       </Animated.View>

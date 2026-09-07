@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './_helpers';
 
 // On web there's no embedded server runtime to host a LAN match
 // from, so the lobby's "Host LAN match" button is hidden — the

@@ -51,6 +51,7 @@ export function TopBar({ matchCode, viewers, onOpenMenu, menuOpen = false }: Top
       <Pressable
         onPress={onOpenMenu}
         accessibilityLabel="Open menu"
+        testID="open-menu"
         style={({ pressed }) => ({
           paddingHorizontal: 10,
           paddingVertical: 4,

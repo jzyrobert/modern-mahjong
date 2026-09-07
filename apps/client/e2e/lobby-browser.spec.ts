@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './_helpers';
 import { type TestServerHandle, startTestServer } from './test-server/server.js';
 
 /**
