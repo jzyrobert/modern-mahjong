@@ -32,7 +32,6 @@ You'll do this once, in this order. The workflow at [`.github/workflows/deploy.y
 - In the Cloudflare dashboard: **My Profile → API Tokens → Create Token**.
 - Use the **"Edit Cloudflare Workers"** template.
 - Add a second permission: **Account → Cloudflare Pages → Edit**.
-- And **Account → D1 → Edit** (the Worker binds the stats database — see "Play statistics").
 - Copy the token — you only see it once.
 
 ### 3. GitHub secrets
@@ -132,9 +131,10 @@ deliberately unauthenticated and not linked from the app — the numbers
 are aggregate and anonymous. `GET /stats/summary?days=N` returns the raw
 JSON (memoised per isolate for 60 s).
 
-- The CI deploy token needs **D1 edit** on the account (the Worker
-  upload validates the binding). If deploys start failing with a D1
-  error, add that permission to `CLOUDFLARE_API_TOKEN`.
+- The database already exists (created out of band; its id is in
+  `wrangler.toml`), and deploying a Worker with a D1 binding needs only
+  Workers edit, so the CI `CLOUDFLARE_API_TOKEN` needs no D1 scope.
+  Only the `wrangler d1 …` commands below need D1 permissions.
 - New schema changes go in a new `migrations/000N_*.sql` and are applied
   with `pnpm exec wrangler d1 migrations apply modern-mahjong-stats
   --remote` (`0001` was applied by hand at creation and is
