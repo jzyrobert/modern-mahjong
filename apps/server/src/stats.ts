@@ -10,25 +10,26 @@ import { STATS_DASHBOARD_HTML } from './stats-dashboard.js';
  *   so browsers skip the preflight). Geography is stamped here from
  *   `request.cf`; the IP is never stored. The write runs under
  *   `waitUntil` so the response returns before D1 does.
- * - `GET /stats/summary?days=N` — aggregates for the dashboard, gated
- *   on `Authorization: Bearer <STATS_ADMIN_TOKEN>`. One D1 `batch`, so
- *   one round-trip however many panels the page shows.
- * - `GET /stats` — the dashboard page itself (static HTML; it asks for
- *   the token and calls `/stats/summary`).
+ * - `GET /stats/summary?days=N` — aggregates for the dashboard. One D1
+ *   `batch`, so one round-trip however many panels the page shows, and
+ *   memoised per isolate for `SUMMARY_TTL_MS` (the Cache API is a no-op
+ *   on workers.dev).
+ * - `GET /stats` — the dashboard page itself (static HTML that calls
+ *   `/stats/summary`).
  *
- * Every route is a no-op 503 until the binding / secret exist, so a
- * worker deployed without D1 keeps serving matches.
+ * Deliberately unauthenticated and unlinked from the app: the numbers
+ * are aggregate and anonymous. Every route is a 503 until the binding
+ * exists, so a worker deployed without D1 keeps serving matches.
  */
 export interface StatsEnv {
   STATS?: D1Database;
-  STATS_ADMIN_TOKEN?: string;
 }
 
 const MAX_BODY_BYTES = 4096;
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Allow-Headers': 'Content-Type',
   'Access-Control-Max-Age': '86400',
 } as const;
 
@@ -190,14 +191,6 @@ export function statementsFor(
   return [upsertMatch, insertHand];
 }
 
-/** Constant-time string compare so the token can't be probed by timing. */
-function sameToken(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
-}
-
 // An online room is played by up to four reporting clients; a hand is
 // counted once per (room, seed). Solo hands are one report each.
 const UNIQUE_HAND = `CASE WHEN room IS NOT NULL AND mode IN ('online','lan')
@@ -246,19 +239,21 @@ const SUMMARY_QUERIES = {
     FROM matches WHERE day >= ?1 AND mode = 'tutorial' GROUP BY room ORDER BY n DESC`,
 } as const;
 
+const SUMMARY_TTL_MS = 60_000;
+const summaryCache = new Map<number, { at: number; body: string }>();
+
 async function summary(req: Request, env: StatsEnv): Promise<Response> {
-  const json = (body: unknown, status = 200) =>
-    new Response(JSON.stringify(body), {
+  const json = (body: string, status = 200) =>
+    new Response(body, {
       status,
       headers: { ...CORS, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
     });
-  if (!env.STATS || !env.STATS_ADMIN_TOKEN) return json({ error: 'stats not configured' }, 503);
-  const auth = req.headers.get('Authorization') ?? '';
-  const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
-  if (!sameToken(token, env.STATS_ADMIN_TOKEN)) return json({ error: 'unauthorized' }, 401);
+  if (!env.STATS) return json(JSON.stringify({ error: 'stats not configured' }), 503);
 
   const daysParam = Number(new URL(req.url).searchParams.get('days') ?? 30);
   const days = Number.isFinite(daysParam) ? Math.min(Math.max(Math.round(daysParam), 1), 3650) : 30;
+  const cached = summaryCache.get(days);
+  if (cached && Date.now() - cached.at < SUMMARY_TTL_MS) return json(cached.body);
   const since = dayOf(Date.now() - (days - 1) * 86_400_000);
   const db = env.STATS;
   const keys = Object.keys(SUMMARY_QUERIES) as (keyof typeof SUMMARY_QUERIES)[];
@@ -268,7 +263,7 @@ async function summary(req: Request, env: StatsEnv): Promise<Response> {
     Record<string, unknown>[]
   >;
 
-  return json({
+  const body = JSON.stringify({
     days,
     since,
     players: Number(rows.players[0]?.n ?? 0),
@@ -293,6 +288,8 @@ async function summary(req: Request, env: StatsEnv): Promise<Response> {
     botMixes: rows.botMixes,
     tutorials: rows.tutorials,
   });
+  summaryCache.set(days, { at: Date.now(), body });
+  return json(body);
 }
 
 /** Joins several `{ <key>, n }` row sets into one row per key. */

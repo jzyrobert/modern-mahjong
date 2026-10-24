@@ -304,7 +304,8 @@ sync with `main`:
   schema field + a new `migrations/000N_*.sql` (never edit `0001`) +
   a `SUMMARY_QUERIES` entry. Beacons are off under `navigator.webdriver`,
   so e2e never writes; validate dashboard SQL against `wrangler dev`
-  with `wrangler d1 migrations apply --local` and a `.dev.vars` token.
+  with `wrangler d1 migrations apply --local`. The `/stats` dashboard is
+  intentionally public and must stay unlinked from the app (user call).
 - **Client state**: `useGame` (zustand) holds session state. New slices that
   shouldn't survive a `reset()` need explicit clearing in the reset action.
   Anything that should outlive a tab refresh goes through

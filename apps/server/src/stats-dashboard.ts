@@ -1,6 +1,5 @@
 /**
- * The `/stats` dashboard: one static page, no dependencies. It keeps
- * the admin token in this browser's localStorage, calls
+ * The `/stats` dashboard: one static page, no dependencies. It calls
  * `/stats/summary?days=N` on the same origin and draws stat tiles, a
  * daily column chart and ranked tables. Colours follow the single-hue
  * (blue) sequential ramp with selected light / dark steps.
@@ -68,9 +67,6 @@ td.barcell { width: 40%; }
 .chart line.base { stroke: var(--axis); }
 .tip { position: absolute; pointer-events: none; background: var(--ink); color: var(--surface); padding: 6px 8px;
   border-radius: 6px; font-size: 12px; white-space: nowrap; transform: translate(-50%, -100%); display: none; }
-.login { max-width: 360px; margin: 15vh auto; }
-.login input { width: 100%; font: inherit; padding: 8px 10px; margin: 8px 0 12px; border-radius: 8px;
-  border: 1px solid var(--border); background: var(--page); color: var(--ink); }
 .err { color: var(--bad); }
 .note { color: var(--muted); font-size: 12px; margin-top: 16px; }
 </style>
@@ -79,17 +75,8 @@ td.barcell { width: 40%; }
 <main id="app"></main>
 <script>
 (function () {
-  var TOKEN_KEY = 'mahjongStatsToken';
   var app = document.getElementById('app');
   var state = { days: 30, metric: 'hands', data: null };
-
-  function store(get, value) {
-    try {
-      if (get) return localStorage.getItem(TOKEN_KEY);
-      if (value === null) localStorage.removeItem(TOKEN_KEY); else localStorage.setItem(TOKEN_KEY, value);
-    } catch (e) { return null; }
-  }
-  var token = store(true);
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -109,30 +96,14 @@ td.barcell { width: 40%; }
     return flag + '\u00a0' + name;
   }
 
-  function login(msg) {
-    app.innerHTML = '<div class="card login"><h1>Mahjong stats</h1>' +
-      '<p class="note">Paste the <code>STATS_ADMIN_TOKEN</code> worker secret. It stays in this browser.</p>' +
-      (msg ? '<p class="err">' + esc(msg) + '</p>' : '') +
-      '<form id="f"><input id="t" type="password" autocomplete="off" placeholder="Admin token" required>' +
-      '<button type="submit">Open dashboard</button></form></div>';
-    document.getElementById('f').onsubmit = function (e) {
-      e.preventDefault();
-      token = document.getElementById('t').value.trim();
-      store(false, token);
-      load();
-    };
-  }
-
   function load() {
-    if (!token) return login();
-    fetch('/stats/summary?days=' + state.days, { headers: { Authorization: 'Bearer ' + token } })
+    fetch('/stats/summary?days=' + state.days)
       .then(function (r) {
-        if (r.status === 401) { store(false, null); token = null; throw new Error('That token was rejected.'); }
         if (!r.ok) throw new Error('Summary failed (' + r.status + ').');
         return r.json();
       })
       .then(function (d) { state.data = d; render(); })
-      .catch(function (e) { if (!token) login(e.message); else app.innerHTML = '<p class="err">' + esc(e.message) + '</p>'; });
+      .catch(function (e) { app.innerHTML = '<p class="err">' + esc(e.message) + '</p>'; });
   }
 
   function sum(rows, key) { return rows.reduce(function (a, r) { return a + Number(r[key] || 0); }, 0); }
@@ -236,7 +207,7 @@ td.barcell { width: 40%; }
 
     app.innerHTML =
       '<header><h1>Mahjong stats <span class="note">since ' + esc(d.since) + '</span></h1>' +
-      '<div class="controls">' + rangeBtns + '<button id="out">Sign out</button></div></header>' +
+      '<div class="controls">' + rangeBtns + '</div></header>' +
       '<section class="tiles">' +
         tile(fmt(d.players), 'Active players', fmt(d.newPlayers) + ' new') +
         tile(fmt(matches), 'Matches started', pct(abandoned, matches) + ' left before a hand finished') +
@@ -298,7 +269,6 @@ td.barcell { width: 40%; }
     app.querySelectorAll('[data-metric]').forEach(function (b) {
       b.onclick = function () { state.metric = b.getAttribute('data-metric'); render(); };
     });
-    document.getElementById('out').onclick = function () { store(false, null); token = null; login(); };
   }
 
   var resizeTimer = null;

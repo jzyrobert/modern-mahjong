@@ -127,16 +127,10 @@ starts — and the Worker stamps country / region / city from
 spectators.
 
 The dashboard is `https://<worker>/stats` (e.g.
-`https://modern-mahjong-server.jzyrobert.workers.dev/stats`). It needs
-one secret, set once:
-
-```sh
-cd apps/server
-pnpm exec wrangler secret put STATS_ADMIN_TOKEN   # paste a long random string
-```
-
-Then open `/stats` and paste the same string. `GET /stats/summary?days=N`
-with `Authorization: Bearer <token>` returns the raw JSON.
+`https://modern-mahjong-server.jzyrobert.workers.dev/stats`). It is
+deliberately unauthenticated and not linked from the app — the numbers
+are aggregate and anonymous. `GET /stats/summary?days=N` returns the raw
+JSON (memoised per isolate for 60 s).
 
 - The CI deploy token needs **D1 edit** on the account (the Worker
   upload validates the binding). If deploys start failing with a D1

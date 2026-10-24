@@ -21,8 +21,7 @@ new_sqlite_classes = ["LobbyRegistry"]
 
 # Play statistics (`src/stats.ts`). Schema: `migrations/0001_stats.sql`
 # — apply with `wrangler d1 migrations apply modern-mahjong-stats --remote`.
-# The dashboard at `/stats` also needs the `STATS_ADMIN_TOKEN` secret
-# (`wrangler secret put STATS_ADMIN_TOKEN`).
+# The dashboard is served (unauthenticated, unlinked) at `/stats`.
 [[d1_databases]]
 binding = "STATS"
 database_name = "modern-mahjong-stats"
