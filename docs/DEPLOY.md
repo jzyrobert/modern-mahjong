@@ -32,6 +32,7 @@ You'll do this once, in this order. The workflow at [`.github/workflows/deploy.y
 - In the Cloudflare dashboard: **My Profile → API Tokens → Create Token**.
 - Use the **"Edit Cloudflare Workers"** template.
 - Add a second permission: **Account → Cloudflare Pages → Edit**.
+- And **Account → D1 → Edit** (the Worker binds the stats database — see "Play statistics").
 - Copy the token — you only see it once.
 
 ### 3. GitHub secrets
@@ -113,6 +114,39 @@ Cloudflare, so the CNAME is proxied and TLS is automatic):
 
 That is a dashboard / DNS-API action on the zone, not something the
 repo's `CLOUDFLARE_API_TOKEN` (Workers + Pages scopes only) can do.
+
+## Play statistics (D1)
+
+The Worker records anonymous play stats into the D1 database
+`modern-mahjong-stats` (binding `STATS` in `apps/server/wrangler.toml`,
+schema in `apps/server/migrations/`). Clients beacon `POST /stats/event`
+— one visit per player per day, plus hand start / end and tutorial
+starts — and the Worker stamps country / region / city from
+`request.cf` (no IPs stored). Beacons are skipped under automation
+(`navigator.webdriver`), Do-Not-Track / Global Privacy Control, and for
+spectators.
+
+The dashboard is `https://<worker>/stats` (e.g.
+`https://modern-mahjong-server.jzyrobert.workers.dev/stats`). It needs
+one secret, set once:
+
+```sh
+cd apps/server
+pnpm exec wrangler secret put STATS_ADMIN_TOKEN   # paste a long random string
+```
+
+Then open `/stats` and paste the same string. `GET /stats/summary?days=N`
+with `Authorization: Bearer <token>` returns the raw JSON.
+
+- The CI deploy token needs **D1 edit** on the account (the Worker
+  upload validates the binding). If deploys start failing with a D1
+  error, add that permission to `CLOUDFLARE_API_TOKEN`.
+- New schema changes go in a new `migrations/000N_*.sql` and are applied
+  with `pnpm exec wrangler d1 migrations apply modern-mahjong-stats
+  --remote` (`0001` was applied by hand at creation and is
+  `IF NOT EXISTS`-safe to re-run).
+- Ad-hoc queries: `pnpm exec wrangler d1 execute modern-mahjong-stats
+  --remote --command "SELECT country, COUNT(*) FROM hands GROUP BY 1"`.
 
 ## Custom domain (optional)
 

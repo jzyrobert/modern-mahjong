@@ -1,10 +1,11 @@
 import { routePartykitRequest } from 'partyserver';
 import { LobbyRegistry } from './LobbyRegistry.js';
 import { MatchRoom } from './MatchRoom.js';
+import { type StatsEnv, handleStats } from './stats.js';
 
 export { MatchRoom, LobbyRegistry };
 
-export interface Env {
+export interface Env extends StatsEnv {
   MatchRoom: DurableObjectNamespace;
   LobbyRegistry: DurableObjectNamespace;
 }
@@ -17,8 +18,11 @@ const CORS_PREFLIGHT_HEADERS = {
 } as const;
 
 export default {
-  async fetch(req: Request, env: Env): Promise<Response> {
+  async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
+    // Play statistics: client beacons + the admin dashboard (`stats.ts`).
+    const stats = await handleStats(req, env, ctx);
+    if (stats) return stats;
     // Public lobby-browser endpoint. Proxies to the singleton
     // `LobbyRegistry` DO, which keeps the live summary map. CORS is
     // open so the static client hosted on a different origin (Pages,
