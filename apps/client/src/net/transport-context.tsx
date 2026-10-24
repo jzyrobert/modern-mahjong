@@ -26,6 +26,7 @@ import {
   applyTestWallDepth,
   createSoloTransport,
 } from './solo-transport';
+import { reportTutorial, reportVisit, statsLeaveMatch } from './stats';
 import {
   type Transport,
   type TransportStatus,
@@ -295,6 +296,7 @@ export function TransportProvider({ children }: { children: ReactNode }) {
         'SOLO',
       );
       useTutorial.getState().begin(lessonId);
+      reportTutorial(lessonId);
     },
     [swap, recordJoin],
   );
@@ -357,6 +359,7 @@ export function TransportProvider({ children }: { children: ReactNode }) {
   // inside `useWireRouter`), which both need to reset the same
   // fields plus reset the engine store.
   const teardown = useCallback(() => {
+    statsLeaveMatch();
     // Persist the in-memory replay draft (auto or explicit) before the
     // store gets cleared. Reads the live settings off the zustand
     // store so teardowns triggered by HOST_LEFT respect the user's
@@ -472,6 +475,11 @@ export function TransportProvider({ children }: { children: ReactNode }) {
   });
 
   useReconnectOnForeground({ reconnectInfoRef, joinOnline, joinLan });
+
+  // Daily-active beacon (deduped per UTC day inside `reportVisit`).
+  useEffect(() => {
+    reportVisit();
+  }, []);
 
   // Test / verifier hook: lets `scripts/shot.mjs` and the `three-*`
   // Playwright specs launch a lesson without scripting the lobby UI.

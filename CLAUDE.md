@@ -297,6 +297,15 @@ sync with `main`:
   alongside the type if the field is something the server validates;
   optional fields (`viewers?: number`) keep older servers / clients
   parse-clean.
+- **Play statistics** (`apps/server/src/stats.ts`, `apps/client/src/net/
+  stats.ts`, D1 `modern-mahjong-stats`): the client beacons every mode
+  (solo / LAN never reach the server); the wire shape is
+  `statsEventSchema` in `packages/protocol`. A new metric = an optional
+  schema field + a new `migrations/000N_*.sql` (never edit `0001`) +
+  a `SUMMARY_QUERIES` entry. Beacons are off under `navigator.webdriver`,
+  so e2e never writes; validate dashboard SQL against `wrangler dev`
+  with `wrangler d1 migrations apply --local`. The `/stats` dashboard is
+  intentionally public and must stay unlinked from the app (user call).
 - **Client state**: `useGame` (zustand) holds session state. New slices that
   shouldn't survive a `reset()` need explicit clearing in the reset action.
   Anything that should outlive a tab refresh goes through

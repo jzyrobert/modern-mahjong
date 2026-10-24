@@ -114,6 +114,34 @@ Cloudflare, so the CNAME is proxied and TLS is automatic):
 That is a dashboard / DNS-API action on the zone, not something the
 repo's `CLOUDFLARE_API_TOKEN` (Workers + Pages scopes only) can do.
 
+## Play statistics (D1)
+
+The Worker records anonymous play stats into the D1 database
+`modern-mahjong-stats` (binding `STATS` in `apps/server/wrangler.toml`,
+schema in `apps/server/migrations/`). Clients beacon `POST /stats/event`
+— one visit per player per day, plus hand start / end and tutorial
+starts — and the Worker stamps country / region / city from
+`request.cf` (no IPs stored). Beacons are skipped under automation
+(`navigator.webdriver`), Do-Not-Track / Global Privacy Control, and for
+spectators.
+
+The dashboard is `https://<worker>/stats` (e.g.
+`https://modern-mahjong-server.jzyrobert.workers.dev/stats`). It is
+deliberately unauthenticated and not linked from the app — the numbers
+are aggregate and anonymous. `GET /stats/summary?days=N` returns the raw
+JSON (memoised per isolate for 60 s).
+
+- The database already exists (created out of band; its id is in
+  `wrangler.toml`), and deploying a Worker with a D1 binding needs only
+  Workers edit, so the CI `CLOUDFLARE_API_TOKEN` needs no D1 scope.
+  Only the `wrangler d1 …` commands below need D1 permissions.
+- New schema changes go in a new `migrations/000N_*.sql` and are applied
+  with `pnpm exec wrangler d1 migrations apply modern-mahjong-stats
+  --remote` (`0001` was applied by hand at creation and is
+  `IF NOT EXISTS`-safe to re-run).
+- Ad-hoc queries: `pnpm exec wrangler d1 execute modern-mahjong-stats
+  --remote --command "SELECT country, COUNT(*) FROM hands GROUP BY 1"`.
+
 ## Custom domain (optional)
 
 By default you'll get:

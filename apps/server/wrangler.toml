@@ -18,3 +18,12 @@ new_sqlite_classes = ["MatchRoom"]
 [[migrations]]
 tag = "v2"
 new_sqlite_classes = ["LobbyRegistry"]
+
+# Play statistics (`src/stats.ts`). Schema: `migrations/0001_stats.sql`
+# — apply with `wrangler d1 migrations apply modern-mahjong-stats --remote`.
+# The dashboard is served (unauthenticated, unlinked) at `/stats`.
+[[d1_databases]]
+binding = "STATS"
+database_name = "modern-mahjong-stats"
+database_id = "d6023ad8-3156-4dd5-a881-b5fe78d46277"
+migrations_dir = "migrations"

@@ -8,6 +8,7 @@ import { saveSoloSnapshot } from '../state/solo-persist';
 import { useTutorial } from '../state/tutorial';
 import { detectAutoDiscardSeats } from './auto-discard';
 import { type JoinInfo, matchCodeFor } from './join-info';
+import { statsOnEvents } from './stats';
 import type { Transport } from './transport';
 
 interface UseWireRouterArgs {
@@ -116,6 +117,10 @@ export function useWireRouter({
           setState(m.state);
           appendEvents(m.events);
           recorderOnDelta(m.events, m.state);
+          if (useTutorial.getState().active === null) {
+            const { you, lobby } = useGame.getState();
+            statsOnEvents(reconnectInfoRef.current, m.events, m.state, you, lobby?.players ?? []);
+          }
           // Suppress the draw popup for any seat whose `drew` is
           // immediately followed by their own `discarded` in the same
           // batch — that's the auto-discard signature

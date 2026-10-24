@@ -313,4 +313,62 @@ export function isValidMatchCode(code: string): boolean {
   return [...code].every((c) => CODE_ALPHABET.includes(c));
 }
 
+/**
+ * Play-statistics beacon (`POST /stats/event` on the Worker). Fire-and-
+ * forget from the client: one `visit` per player per UTC day, one
+ * `handStart` / `handEnd` per hand, one `tutorial` per lesson begun.
+ * The Worker stamps geography from `request.cf`; nothing here is
+ * personally identifying (`player` is the random local `playerId`).
+ * Strings are length-capped so a hostile client can't bloat the table.
+ */
+export const STATS_MODES = ['solo', 'online', 'lan', 'tutorial'] as const;
+export const STATS_PLATFORMS = ['web', 'android', 'ios', 'other'] as const;
+
+const statsId = z.string().min(1).max(64);
+const statsBase = {
+  player: statsId,
+  platform: z.enum(STATS_PLATFORMS),
+  appVersion: z.string().max(32).optional(),
+};
+const statsMatch = {
+  ...statsBase,
+  match: statsId,
+  mode: z.enum(STATS_MODES),
+  /** Online / LAN room code, or the lesson id for a tutorial. */
+  room: z.string().max(32).optional(),
+  humans: z.number().int().min(0).max(4).optional(),
+  bots: z.number().int().min(0).max(4).optional(),
+  botKinds: z.array(z.enum(BOT_KINDS)).max(4).optional(),
+};
+const count = z.number().int().min(0).max(1_000_000);
+
+export const statsEventSchema = z.discriminatedUnion('k', [
+  z.object({ k: z.literal('visit'), ...statsBase }),
+  z.object({ k: z.literal('tutorial'), ...statsMatch }),
+  z.object({ k: z.literal('handStart'), ...statsMatch }),
+  z.object({
+    k: z.literal('handEnd'),
+    ...statsMatch,
+    seed: z.number().int().optional(),
+    handNo: count.optional(),
+    outcome: z.enum(['win', 'draw']),
+    /** Relative to the reporting player; absent on a drawn game. */
+    winner: z.enum(['me', 'human', 'bot']).optional(),
+    selfDraw: z.boolean().optional(),
+    faan: z.number().int().min(0).max(100).optional(),
+    patterns: z.array(z.string().max(48)).max(24).optional(),
+    durationMs: z.number().int().min(0).max(86_400_000).optional(),
+    discards: count.optional(),
+  }),
+]);
+
+export type StatsEvent = z.infer<typeof statsEventSchema>;
+
+export function parseStatsEvent(
+  raw: unknown,
+): { ok: true; event: StatsEvent } | { ok: false; error: string } {
+  const r = statsEventSchema.safeParse(raw);
+  return r.success ? { ok: true, event: r.data } : { ok: false, error: r.error.message };
+}
+
 export type { Action, Claim, Event, GameState, RuleConfig, Seat };

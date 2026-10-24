@@ -4,6 +4,7 @@ import {
   generateMatchCode,
   isValidMatchCode,
   parseClientMessage,
+  parseStatsEvent,
 } from '../src/index.js';
 
 describe('protocol — match codes', () => {
@@ -119,5 +120,45 @@ describe('protocol — message parsing', () => {
   it('accepts an unseatBot message', () => {
     const r = parseClientMessage({ t: 'unseatBot', seat: 2 });
     expect(r.ok).toBe(true);
+  });
+});
+
+describe('protocol — stats events', () => {
+  const base = { player: 'p1', platform: 'web' as const };
+
+  it('accepts a visit and a finished hand', () => {
+    expect(parseStatsEvent({ k: 'visit', ...base }).ok).toBe(true);
+    const r = parseStatsEvent({
+      k: 'handEnd',
+      ...base,
+      match: 'm1',
+      mode: 'solo',
+      humans: 1,
+      bots: 3,
+      botKinds: ['heuristic', 'heuristic', 'simple'],
+      outcome: 'win',
+      winner: 'me',
+      selfDraw: true,
+      faan: 5,
+      patterns: ['full flush'],
+      durationMs: 120_000,
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it('rejects unknown kinds, modes and oversized strings', () => {
+    expect(parseStatsEvent({ k: 'pageview', ...base }).ok).toBe(false);
+    expect(parseStatsEvent({ k: 'handStart', ...base, match: 'm', mode: 'ranked' }).ok).toBe(false);
+    expect(parseStatsEvent({ k: 'visit', ...base, player: 'x'.repeat(65) }).ok).toBe(false);
+    expect(
+      parseStatsEvent({
+        k: 'handEnd',
+        ...base,
+        match: 'm',
+        mode: 'solo',
+        outcome: 'win',
+        faan: 1e9,
+      }).ok,
+    ).toBe(false);
   });
 });
