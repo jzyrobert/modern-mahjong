@@ -32,14 +32,55 @@ export default function Root({ children }: PropsWithChildren) {
         <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
         <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
         <meta name="theme-color" content={MENU.void0} />
+        <title>{SITE_TITLE}</title>
+        <meta name="description" content={SITE_DESCRIPTION} />
+        <link rel="canonical" href={`${SITE_URL}/`} />
+        <link rel="icon" href="/favicon.png" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+        <link rel="manifest" href="/manifest.webmanifest" />
+        <meta property="og:type" content="website" />
+        <meta property="og:site_name" content="Modern Mahjong" />
+        <meta property="og:title" content={SITE_TITLE} />
+        <meta property="og:description" content={SITE_DESCRIPTION} />
+        <meta property="og:url" content={`${SITE_URL}/`} />
+        <meta property="og:image" content={`${SITE_URL}/og-image.png`} />
+        <meta name="twitter:card" content="summary_large_image" />
+        {/* biome-ignore lint/security/noDangerouslySetInnerHtml: static JSON-LD built from literal constants. */}
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON_LD }} />
         <ScrollViewStyleReset />
         {/* biome-ignore lint/security/noDangerouslySetInnerHtml: static SSR-only stylesheet — content is a literal constant, not user-controlled, and this is the documented Expo Router pattern for injecting <head> CSS. */}
         <style dangerouslySetInnerHTML={{ __html: backgroundCss }} />
       </head>
-      <body>{children}</body>
+      <body>
+        {children}
+        <noscript>
+          <h1>Modern Mahjong: play Hong Kong mahjong free online</h1>
+          <p>{SITE_DESCRIPTION} Needs JavaScript to run.</p>
+          <a href="/how-to-play/">How to play</a> · <a href="/scoring/">Scoring (faan) table</a>
+        </noscript>
+      </body>
     </html>
   );
 }
+
+/** Canonical origin: the custom domain. The `*.pages.dev` host serves the same bundle. */
+const SITE_URL = 'https://mahjong.robertj.in';
+const SITE_TITLE = 'Modern Mahjong: Play Hong Kong Mahjong Free Online';
+const SITE_DESCRIPTION =
+  'Play Hong Kong mahjong free in your browser with a 3D table. Practise against bots, learn with the tutorial, or play online with friends. No download or account.';
+const JSON_LD = JSON.stringify({
+  '@context': 'https://schema.org',
+  '@type': 'VideoGame',
+  name: 'Modern Mahjong',
+  url: `${SITE_URL}/`,
+  description: SITE_DESCRIPTION,
+  image: `${SITE_URL}/og-image.png`,
+  genre: 'Board game',
+  gamePlatform: 'Web browser',
+  applicationCategory: 'Game',
+  playMode: ['SinglePlayer', 'MultiPlayer'],
+  offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+}).replace(/</g, '\\u003c');
 
 const backgroundCss = `
 html, body { background-color: ${MENU.void0}; }
