@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /match
+Disallow: /replays
+Disallow: /stats
+
+Sitemap: https://mahjong.robertj.in/sitemap.xml
